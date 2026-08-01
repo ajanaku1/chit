@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5efe5" />
+    <title>Chit · Active round sponsor</title>
+    <link rel="icon" href="../../brand/favicon.svg" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="docket">
+      <header class="masthead">
+        <img src="../../brand/logo.svg" alt="Chit" class="mark" />
+        <div>
+          <p class="eyebrow">Active round · sponsor 01</p>
+          <h1>Reuse previous sponsor</h1>
+        </div>
+        <span class="network">Sepolia</span>
+      </header>
+
+      <section class="brief" aria-labelledby="gate-title">
+        <div>
+          <p class="folio">FRESH VAULT / SAME SPONSOR</p>
+          <h2 id="gate-title">Admit once. Fund privately.</h2>
+        </div>
+        <p>
+          First, the creator signs a fresh admission for this vault. Then Rabby
+          switches to the previous sponsor to wrap 1,000 CHIT base units and
+          submit a vault-bound 137-byte Nox proof. The signature is off-chain;
+          every transaction waits for explicit wallet approval.
+        </p>
+      </section>
+
+      <section class="seam" aria-label="Sponsor registration progress">
+        <ol id="steps">
+          <li data-step="admission"><span>01</span> Creator admission signed</li>
+          <li data-step="wallet"><span>02</span> Previous sponsor connected</li>
+          <li data-step="allowance"><span>03</span> CHIT wrapper approved</li>
+          <li data-step="collateral"><span>04</span> 1,000 CHIT wrapped</li>
+          <li data-step="operator"><span>05</span> New vault authorized</li>
+          <li data-step="proof"><span>06</span> 137-byte proof created</li>
+          <li data-step="register"><span>07</span> Sponsor registered</li>
+        </ol>
+        <div class="private-side">
+          <p class="side-label">Active round evidence</p>
+          <dl>
+            <div><dt>Creator</dt><dd id="creator">Loading…</dd></div>
+            <div><dt>Sponsor</dt><dd id="sponsor">Loading…</dd></div>
+            <div><dt>New vault</dt><dd id="vault">Loading…</dd></div>
+            <div><dt>Admission</dt><dd id="admission">Not signed</dd></div>
+            <div><dt>Proof</dt><dd id="proof">—</dd></div>
+            <div><dt>Budget handle</dt><dd id="handle">—</dd></div>
+            <div><dt>Last transaction</dt><dd id="transaction">—</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <footer class="action-row">
+        <p id="status" role="status">Loading the active low-stake round…</p>
+        <button id="run" type="button" disabled>Continue with Rabby</button>
+      </footer>
+    </main>
+
+    <script type="module" src="./dist/main.js?v=active-sponsor-v1"></script>
+  </body>
+</html>

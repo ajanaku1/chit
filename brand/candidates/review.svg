@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" role="img" aria-labelledby="title">
+  <title id="title">Three Chit logo candidates</title>
+  <rect width="960" height="420" fill="#F5EFE5"/>
+  <g font-family="Arial, Helvetica, sans-serif" fill="#171513">
+    <text x="56" y="52" font-size="16" font-weight="700" letter-spacing="2">CHIT — LOGO GATE</text>
+    <text x="56" y="80" font-size="15" fill="#6F6860">Same palette. Three distinct ideas. Shown large and at actual favicon size.</text>
+  </g>
+  <g transform="translate(56 112)">
+    <rect width="256" height="254" rx="20" fill="#FFFFFF"/>
+    <image href="option-a.svg" x="48" y="24" width="160" height="160"/>
+    <image href="option-a.svg" x="216" y="32" width="16" height="16"/>
+    <text x="24" y="214" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#171513">A · Occluded fold</text>
+    <text x="24" y="238" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#6F6860">Visible ends, hidden link</text>
+  </g>
+  <g transform="translate(352 112)">
+    <rect width="256" height="254" rx="20" fill="#FFFFFF"/>
+    <image href="option-b.svg" x="48" y="24" width="160" height="160"/>
+    <image href="option-b.svg" x="216" y="32" width="16" height="16"/>
+    <text x="24" y="214" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#171513">B · Blind seam</text>
+    <text x="24" y="238" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#6F6860">One chit, attribution severed</text>
+  </g>
+  <g transform="translate(648 112)">
+    <rect width="256" height="254" rx="20" fill="#FFFFFF"/>
+    <image href="option-c.svg" x="48" y="24" width="160" height="160"/>
+    <image href="option-c.svg" x="216" y="32" width="16" height="16"/>
+    <text x="24" y="214" font-family="Arial, Helvetica, sans-serif" font-size="20" font-weight="700" fill="#171513">C · Quiet pool</text>
+    <text x="24" y="238" font-family="Arial, Helvetica, sans-serif" font-size="14" fill="#6F6860">Private inputs, public total</text>
+  </g>
+</svg>

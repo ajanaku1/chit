@@ -1,0 +1,42 @@
+{
+  "chainId": 11155111,
+  "sponsor": "0x536ad0665e4041e7e1843e0ce01b72ff90a9a4e5",
+  "roundSalt": "0xb0d66e43876495580498cbf15dbf7cf43310f795a9b92de036e6776dd31dd158",
+  "initializationTxs": {
+    "0": "0xf56b17e1648db09d3a4d2873b1690366ceb0c01d5a287410954a2e99bef69ef9",
+    "1": "0x81e88d2da7afe62dccfc4f1526c8d84417f398a3489e41245f7ad5c375c6694c",
+    "2": "0xac46f174529a758ac66defcf651f5b976f2feafde39774acc86f64ee25c1e4f4",
+    "3": "0xac560b2275dc47e8dc19062710ee2d71cc640214e26fa58a9c6b436bed741567",
+    "4": "0x0d9a9d98edd7bb3ed50c75e122fe7eb3bc428117d6ae2d1978dae53b5024632e"
+  },
+  "gasEstimates": {
+    "factoryDeploy": "4429685",
+    "beginRound": "3338144",
+    "initializeStep0": "152760",
+    "initializeStep1": "118637",
+    "initializeStep2": "118637",
+    "initializeStep3": "118637",
+    "initializeStep4": "94199",
+    "activateRound": "135314"
+  },
+  "chitToken": "0x19c151c602484234b689c46f3d2481dc05a7bfdb",
+  "chitBudgetToken": "0xf2a752bacb7fab05117ba8040f4f55537d50a60c",
+  "factoryDeployTx": "0x01daa7859700df12f7a64c36aa6daf2da085ad0245e7383340f6a8c1753e90ac",
+  "factory": "0x93541a57edd34dc5b2a8a64706b0271433d8b035",
+  "roundId": "0xf8e1fa0cdc16efa258718d8f01b6f31dec8e0198664ea08a3ed0f5015c0c5f23",
+  "beginRoundTx": "0xc1a8f2ba07b24134cc241f67d4dc7b5ced0adae8cc1911b9c9f2676bcf361425",
+  "vault": "0xa43DD18306082b24418D7C04a3e2d755aE4B0A9a",
+  "settlement": "0x94c84a14ea437914a94040DFBFE55485E2AfB45E",
+  "paymaster": "0x3087fe75BaBb0ED365860bc26436080c816CF4A0",
+  "activationTx": "0x70f2a5275748c9fd3a3bccc9145807121b331d75647edac9dd5e9e6af7e55ec4",
+  "sponsorCollateralTx": "0x51cef2ddaa6121e091796c8a1e9d256bbbed143eab3a2c65f001ed5d201d1be4",
+  "admissionExpiry": 1785589324,
+  "admissionSignature": "0x75bfff568ddfdf6557064d9b1e650edb0dd6b009bb48f3244f013e5397cda4da5af17cd39efebbbddc0c2d3dd9c95f6216c0f22ddea0a89dfa5c5088bdfdf23f1b",
+  "sponsorSlot": 0,
+  "sponsorRegistrationTx": "0xe9fae53ded837ae92a060f2f40a75e9de18caf52bd0491ef085a2ae518cbd2b4",
+  "sponsorRegistrationBlock": 11389608,
+  "budgetHandle": "0x0000aa36a72301394725dbc0534aba43ae189356b43f298cb64fc2dc10124acd",
+  "handleResolved": true,
+  "registeredAt": "2026-07-31T13:09:24.000Z",
+  "explorerUrl": "https://eth-sepolia.blockscout.com/tx/0xe9fae53ded837ae92a060f2f40a75e9de18caf52bd0491ef085a2ae518cbd2b4"
+}

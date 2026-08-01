@@ -1,0 +1,249 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap");
+
+:root {
+  color-scheme: light;
+  --paper: #f5efe5;
+  --paper-soft: #ded6ca;
+  --ink: #171513;
+  --muted: #6f6860;
+  --signal: #ff5a3c;
+  --line: rgba(23, 21, 19, 0.22);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  padding: clamp(1rem, 4vw, 3.5rem);
+  color: var(--ink);
+  background:
+    linear-gradient(rgba(23, 21, 19, 0.035) 1px, transparent 1px),
+    var(--paper-soft);
+  background-size: 100% 28px;
+  font-family: "DM Mono", monospace;
+}
+
+.docket {
+  width: min(1040px, 100%);
+  margin: 0 auto;
+  background: var(--paper);
+  border: 1px solid var(--ink);
+  box-shadow: 12px 12px 0 var(--ink);
+}
+
+.masthead,
+.brief,
+.seam,
+.action-row {
+  padding: clamp(1.1rem, 3vw, 2.25rem);
+}
+
+.masthead {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  border-bottom: 1px solid var(--ink);
+}
+
+.mark {
+  width: 54px;
+  height: 54px;
+}
+
+.eyebrow,
+.folio,
+.side-label {
+  margin: 0 0 0.4rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-family: "Fraunces", serif;
+  line-height: 0.98;
+}
+
+h1 {
+  font-size: clamp(1.7rem, 4vw, 3rem);
+}
+
+h2 {
+  max-width: 13ch;
+  font-size: clamp(2.4rem, 7vw, 5.75rem);
+}
+
+.network {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--signal);
+  color: var(--signal);
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.brief {
+  display: grid;
+  grid-template-columns: 1.3fr 0.7fr;
+  gap: clamp(2rem, 6vw, 6rem);
+  align-items: end;
+}
+
+.brief > p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.seam {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding-top: 0;
+}
+
+ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--ink);
+}
+
+li {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+
+li:last-child {
+  border-bottom: 0;
+}
+
+li span {
+  color: var(--signal);
+}
+
+li.complete {
+  color: var(--ink);
+  background: rgba(255, 90, 60, 0.09);
+}
+
+.private-side {
+  position: relative;
+  margin-left: -1px;
+  padding: 1.25rem 1.5rem 1.25rem 2.5rem;
+  color: var(--paper);
+  background: var(--ink);
+  clip-path: polygon(12px 0, 100% 0, 100% 100%, 12px 100%, 0 92%, 12px 84%, 0 76%, 12px 68%, 0 60%, 12px 52%, 0 44%, 12px 36%, 0 28%, 12px 20%, 0 12%);
+}
+
+.private-side .side-label {
+  color: var(--signal);
+}
+
+dl,
+dl div {
+  margin: 0;
+}
+
+dl div {
+  padding: 0.8rem 0;
+  border-bottom: 1px solid rgba(245, 239, 229, 0.2);
+}
+
+dt {
+  margin-bottom: 0.3rem;
+  color: var(--paper-soft);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+dd {
+  overflow-wrap: anywhere;
+  font-size: 0.78rem;
+}
+
+.action-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  border-top: 1px solid var(--ink);
+}
+
+.action-row p {
+  flex: 1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+button {
+  min-height: 48px;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--ink);
+  color: var(--paper);
+  background: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover:not(:disabled),
+button:focus-visible {
+  color: var(--ink);
+  background: var(--signal);
+}
+
+button.secondary {
+  color: var(--ink);
+  background: transparent;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+@media (max-width: 720px) {
+  body {
+    padding: 0;
+  }
+
+  .docket {
+    border-width: 0;
+    box-shadow: none;
+  }
+
+  .brief,
+  .seam {
+    grid-template-columns: 1fr;
+  }
+
+  .brief {
+    gap: 1.5rem;
+  }
+
+  .private-side {
+    margin: -1px 0 0;
+  }
+
+  .action-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+  }
+}

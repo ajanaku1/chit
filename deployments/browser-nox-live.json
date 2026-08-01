@@ -1,0 +1,17 @@
+{
+  "network": "ethereum-sepolia",
+  "chainId": 11155111,
+  "wallet": "Rabby via EIP-6963",
+  "contractAddress": "0x1eb25c8b43debbfd08427115082d3436fc15779a",
+  "sponsorSlot": 1,
+  "sponsorCountAfter": 2,
+  "transactionHash": "0xb21b1e98dc5087e6c6511c298ee7ff66fe76e7dc2938f3189160c82402631aa3",
+  "blockNumber": 11389231,
+  "sender": "0x536ad0665e4041e7e1843e0ce01b72ff90a9a4e5",
+  "inputHandle": "0x0000aa36a723012877fcf8b26147549147673deb3ed4c02bf89f65bd525893e9",
+  "budgetHandle": "0x0000aa36a723012877fcf8b26147549147673deb3ed4c02bf89f65bd525893e9",
+  "proofBytes": 137,
+  "handleResolved": true,
+  "confirmedAt": "2026-07-31T11:51:36Z",
+  "explorerUrl": "https://eth-sepolia.blockscout.com/tx/0xb21b1e98dc5087e6c6511c298ee7ff66fe76e7dc2938f3189160c82402631aa3"
+}

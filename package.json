@@ -1,0 +1,49 @@
+{
+  "name": "chit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Confidential multi-sponsor gas attribution on ERC-4337 with iExec Nox.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "browser:build": "tsc -p spikes/nox-browser/tsconfig.json && esbuild spikes/nox-browser/main.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=spikes/nox-browser/dist/main.js",
+    "build": "tsc --build",
+    "factory-gate:live": "npm run build && node --env-file=.env dist/scripts/factory-browser-gate-live.js",
+    "phase0:live": "npm run build && node --env-file=.env dist/scripts/phase0-live.js",
+    "phase0:verify-live": "node --env-file=.env dist/scripts/phase0-live.js --verify",
+    "phase2:check": "npm run build && node --env-file=.env dist/scripts/phase2-live.js --check",
+    "phase2:live": "npm run build && node --env-file=.env dist/scripts/phase2-live.js",
+    "service:check": "npm run build && node dist/scripts/service-sepolia-check.js",
+    "service:check:low-stake": "npm run build && CHIT_SERVICE_TARGET_PATH=deployments/low-stake-round.json node dist/scripts/service-sepolia-check.js 0xd39229508DA2126D0e1B4f68bb14E1b48810134b",
+    "service:derive": "npm run build && node --env-file=.env dist/scripts/derive-service-operator.js",
+    "low-stake-round:build": "tsc -p spikes/low-stake-round/tsconfig.json && esbuild spikes/low-stake-round/main.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=spikes/low-stake-round/dist/main.js",
+    "active-sponsor:build": "tsc -p spikes/active-sponsor/tsconfig.json && esbuild spikes/active-sponsor/main.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=spikes/active-sponsor/dist/main.js",
+    "service-rotation:build": "tsc -p spikes/service-rotation/tsconfig.json && esbuild spikes/service-rotation/main.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=spikes/service-rotation/dist/main.js",
+    "watch": "tsc --build . --watch",
+    "test": "npm run build && node --test --test-reporter spec dist/test/*.test.js",
+    "test:fork:oblivious": "node --test --test-reporter spec dist/test/fork/oblivious-debit.test.js",
+    "test:fork:contracts": "node --test --test-reporter spec dist/test/fork/phase1-contracts.test.js",
+    "test:fork:assets": "node --test --test-reporter spec dist/test/fork/phase2-assets.test.js",
+    "test:fork:factory": "node --test --test-reporter spec dist/test/fork/public-round-factory.test.js",
+    "test:fork:lifecycle": "node --test --test-reporter spec dist/test/fork/round-lifecycle.test.js",
+    "test:fork:authorizer": "node --test --test-reporter spec dist/test/fork/service-authorizer.test.js"
+  },
+  "dependencies": {
+    "@iexec-nox/nox-confidential-contracts": "^0.2.0",
+    "@iexec-nox/nox-protocol-contracts": "^0.2.4",
+    "@openzeppelin/contracts": "^5.6.1",
+    "viem": "^2.46.3"
+  },
+  "devDependencies": {
+    "@iexec-nox/nox-hardhat-plugin": "^0.1.0-beta.2",
+    "@nomicfoundation/hardhat-toolbox-viem": "^5.0.3",
+    "@tsconfig/node22": "^22.0.2",
+    "@types/node": "^22.11.0",
+    "forge-std": "github:foundry-rs/forge-std#v1.9.4",
+    "hardhat": "^3.4.0",
+    "typescript": "~5.8.0"
+  },
+  "overrides": {
+    "@nomicfoundation/hardhat-node-test-runner": "3.0.9"
+  }
+}

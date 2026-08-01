@@ -1,0 +1,31 @@
+# Local build notes
+Goal.md
+prompt.md
+plan.md
+*.done-when.md
+ai/
+
+# secrets — never committed, not even a testnet burn key
+.env
+.env.*
+!.env.example
+
+# build output
+node_modules/
+artifacts/
+cache/
+dist/
+build/
+types/
+typechain-types/
+app/dist/
+app/node_modules/
+video/
+
+# Local tooling
+.DS_Store
+*.log
+.vercel/
+.codex/
+.vercel
+.env*.local

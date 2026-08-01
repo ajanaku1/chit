@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Option A, occluded fold</title>
+  <rect width="64" height="64" rx="14" fill="#171513"/>
+  <path fill="#FF5A3C" d="M11 15h29l11 9-11 9H11V15Z"/>
+  <path fill="#FF5A3C" d="M53 31H29l-11 9 11 9h24V31Z"/>
+  <path fill="#F5EFE5" d="m31 24 10 8-10 8-10-8 10-8Z"/>
+</svg>

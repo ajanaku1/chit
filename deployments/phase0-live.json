@@ -1,0 +1,12 @@
+{
+  "network": "ethereum-sepolia",
+  "chainId": 11155111,
+  "contractAddress": "0x1eb25c8b43debbfd08427115082d3436fc15779a",
+  "fromExternalTx": "0x8a23b9e81e8a9aec7738a6ef2fd717dfd31b399b4c0c880f3618f346c3f00036",
+  "inputHandle": "0x0000aa36a72301e9018aed77ac1829e7b76c0332551dc8c7ffc470cec464ec81",
+  "budgetHandle": "0x0000aa36a72301e9018aed77ac1829e7b76c0332551dc8c7ffc470cec464ec81",
+  "proofBytes": 137,
+  "auditorDecrypt": true,
+  "nonAuditorDenied": true,
+  "handleResolved": true
+}

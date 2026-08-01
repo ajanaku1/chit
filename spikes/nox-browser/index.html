@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5efe5" />
+    <title>Chit · Browser Nox gate</title>
+    <link rel="icon" href="../../brand/favicon.svg" />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <main class="docket">
+      <header class="masthead">
+        <img src="../../brand/logo.svg" alt="Chit" class="mark" />
+        <div>
+          <p class="eyebrow">Implementation gate · 02</p>
+          <h1>Factory sponsor registration</h1>
+        </div>
+        <span class="network">Sepolia</span>
+      </header>
+
+      <section class="brief" aria-labelledby="gate-title">
+        <div>
+          <p class="folio">CHIT / NOX / 137</p>
+          <h2 id="gate-title">Prove the private side starts in the wallet.</h2>
+        </div>
+        <p>
+          This page wraps the admitted Rabby wallet's live CHIT, authorizes the
+          factory-created vault, imports a vault-bound Nox proof, and waits for
+          its ACL to resolve. No private key is bundled or read from disk.
+        </p>
+      </section>
+
+      <section class="seam" aria-label="Browser gate progress">
+        <ol id="steps">
+          <li data-step="wallet"><span>01</span> Wallet on Sepolia</li>
+          <li data-step="collateral"><span>02</span> CHIT wrapped</li>
+          <li data-step="operator"><span>03</span> Vault authorized</li>
+          <li data-step="proof"><span>04</span> 137-byte proof</li>
+          <li data-step="register"><span>05</span> Sponsor registered</li>
+          <li data-step="resolve"><span>06</span> Handle ACL resolved</li>
+        </ol>
+        <div class="private-side">
+          <p class="side-label">Private evidence</p>
+          <dl>
+            <div><dt>Account</dt><dd id="account">Not connected</dd></div>
+            <div><dt>Factory vault</dt><dd id="vault">Loading…</dd></div>
+            <div><dt>Proof</dt><dd id="proof">—</dd></div>
+            <div><dt>Handle</dt><dd id="handle">—</dd></div>
+            <div><dt>Transaction</dt><dd id="transaction">—</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <footer class="action-row">
+        <p id="status" role="status">Ready. Rabby will approve up to four Sepolia transactions.</p>
+        <button id="run" type="button">Register sponsor</button>
+        <button id="decrypt" class="secondary" type="button" disabled>
+          Test connected wallet access
+        </button>
+      </footer>
+    </main>
+
+    <script type="module" src="./dist/main.js?v=factory-vault"></script>
+  </body>
+</html>

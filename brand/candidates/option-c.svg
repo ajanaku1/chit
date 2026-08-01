@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">Option C, quiet pool</title>
+  <rect width="64" height="64" rx="14" fill="#171513"/>
+  <path fill="#FF5A3C" d="M11 12h9v20h8V12h8v20h8V12h9v29L43 51H21L11 41V12Z"/>
+  <path fill="#171513" d="M8 28h48v10H8z"/>
+  <path fill="#F5EFE5" d="M27 41h10v10H27z"/>
+</svg>

@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5efe5" />
+    <title>Chit · New Sepolia round</title>
+    <link rel="icon" href="../../brand/favicon.svg" />
+    <link rel="stylesheet" href="../nox-browser/style.css" />
+  </head>
+  <body>
+    <main class="docket">
+      <header class="masthead">
+        <img src="../../brand/logo.svg" alt="Chit" class="mark" />
+        <div>
+          <p class="eyebrow">Recovery deployment · Sepolia</p>
+          <h1>Create a compatible round</h1>
+        </div>
+        <span class="network">Rabby · 0.1 ETH stake</span>
+      </header>
+
+      <section class="brief" aria-labelledby="recovery-title">
+        <div>
+          <p class="folio">CHIT / ROUND / RECOVERY</p>
+          <h2 id="recovery-title">Replace the old factory without waiting for its stake.</h2>
+        </div>
+        <p>
+          This disclosed Sepolia profile stakes 0.1 ETH. The service address is
+          operator and verifier from genesis, so no post-deployment rotation is needed.
+        </p>
+      </section>
+
+      <section class="seam" aria-label="New round deployment progress">
+        <ol id="steps">
+          <li data-step="wallet"><span>01</span> Creator wallet connected</li>
+          <li data-step="factory"><span>02</span> Compatible factory deployed</li>
+          <li data-step="round"><span>03</span> Service-wired round created</li>
+          <li data-step="initialize"><span>04</span> Five Nox states initialized</li>
+          <li data-step="activate"><span>05</span> Round activated and staked</li>
+        </ol>
+        <div class="private-side">
+          <p class="side-label">Public deployment target</p>
+          <dl>
+            <div><dt>Creator / auditor</dt><dd id="creator">Loading…</dd></div>
+            <div><dt>Operator / verifier</dt><dd id="operator">Loading…</dd></div>
+            <div><dt>Minimum stake</dt><dd>0.1 Sepolia ETH</dd></div>
+            <div><dt>Factory</dt><dd id="factory">—</dd></div>
+            <div><dt>Paymaster</dt><dd id="paymaster">—</dd></div>
+            <div><dt>Last transaction</dt><dd id="transaction">—</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <footer class="action-row">
+        <p id="status" role="status">Loading the public recovery inputs…</p>
+        <button id="run" type="button" disabled>Continue with Rabby</button>
+      </footer>
+    </main>
+
+    <script type="module" src="./dist/main.js"></script>
+  </body>
+</html>
