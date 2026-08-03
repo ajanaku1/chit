@@ -69,6 +69,7 @@ describe("service role rotation planner", () => {
     const raw = "ab".repeat(32);
     assert.equal(parseSecretHex(raw, "secret"), `0x${raw}`);
     assert.equal(parseSecretHex(`0x${raw}`, "secret"), `0x${raw}`);
+    assert.equal(parseSecretHex(`  ${raw}\n`, "secret"), `0x${raw}`);
     assert.throws(() => parseSecretHex("abcd", "secret"), /32-byte/i);
   });
 

@@ -59,7 +59,8 @@ function differs(left: Address, right: Address): boolean {
 }
 
 export function parseSecretHex(value: string, name: string): Hex {
-  const normalized = value.startsWith("0x") ? value : `0x${value}`;
+  const trimmed = value.trim();
+  const normalized = trimmed.startsWith("0x") ? trimmed : `0x${trimmed}`;
   if (!isHex(normalized) || size(normalized) !== 32) {
     throw new Error(`${name} must be a 32-byte hex value`);
   }

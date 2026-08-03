@@ -38,6 +38,15 @@ describe("active sponsor target", () => {
     assert.equal(target.chitBudgetToken, round.wrapper);
   });
 
+  it("uses an explicitly configured sponsor for a creator-owned round", () => {
+    const target = parseActiveSponsorTarget({
+      ...round,
+      sponsor: round.creator,
+    }, assets);
+
+    assert.equal(target.sponsor, round.creator);
+  });
+
   it("rejects assets from a different wrapper or chain", () => {
     assert.throws(
       () => parseActiveSponsorTarget(round, { ...assets, chainId: 1 }),

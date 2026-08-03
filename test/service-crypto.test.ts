@@ -17,6 +17,7 @@ import {
   PaymasterAuthorizer,
   authorizationDigest,
   buildRequestMessage,
+  deriveOperatorAccount,
   deriveOperatorAddress,
   verifyRequestSignature,
 } from "../src/service-crypto.js";
@@ -116,6 +117,7 @@ describe("round-scoped key derivation", () => {
     const address = deriveOperatorAddress(MASTER_SECRET, context);
 
     assert.match(address, /^0x[0-9a-fA-F]{40}$/);
+    assert.equal(deriveOperatorAccount(MASTER_SECRET, context).address, address);
     assert.equal(deriveOperatorAddress(MASTER_SECRET, context), address);
     assert.notEqual(
       deriveOperatorAddress(MASTER_SECRET, { ...context, chainId: 11155112 }),

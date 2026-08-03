@@ -29,8 +29,10 @@
     "test:fork:authorizer": "node --test --test-reporter spec dist/test/fork/service-authorizer.test.js"
   },
   "dependencies": {
+    "@iexec-nox/handle": "^0.1.0-beta.13",
     "@iexec-nox/nox-confidential-contracts": "^0.2.0",
     "@iexec-nox/nox-protocol-contracts": "^0.2.4",
+    "@neondatabase/serverless": "^1.1.0",
     "@openzeppelin/contracts": "^5.6.1",
     "viem": "^2.46.3"
   },

@@ -10,14 +10,10 @@
 /proposals/
 /reports/
 /scripts/
-/spikes/
 /submission/
 /test/
 /video/
 /.env*
 /*.md
 /hardhat.config.ts
-/package-lock.json
-/package.json
-/tsconfig.json
 /verify.sh

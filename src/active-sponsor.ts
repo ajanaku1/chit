@@ -101,7 +101,9 @@ export function parseActiveSponsorTarget(
   return {
     chainId: SEPOLIA_CHAIN_ID,
     creator: requiredAddress(round, "creator"),
-    sponsor: PREVIOUS_SPONSOR,
+    sponsor: round.sponsor === undefined
+      ? PREVIOUS_SPONSOR
+      : requiredAddress(round, "sponsor"),
     chitToken: requiredAddress(assets, "chitToken"),
     chitBudgetToken: wrapper,
     factory: requiredAddress(round, "factory"),

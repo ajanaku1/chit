@@ -67,7 +67,7 @@ export interface InvitePayload {
   readonly account: Address;
   readonly expiresAt: number;
   readonly nonce: string;
-  readonly action: "counter.increment";
+  readonly action: string;
 }
 
 interface StoredInvite extends InvitePayload {
@@ -80,7 +80,7 @@ interface InviteExpectation {
   readonly round: string;
   readonly owner: Address;
   readonly account: Address;
-  readonly action: "counter.increment";
+  readonly action: string;
   readonly now: number;
 }
 
@@ -169,7 +169,14 @@ export function deriveOperatorAddress(
   masterSecret: Uint8Array,
   context: OperatorContext,
 ): Address {
-  return privateKeyToAccount(deriveOperatorPrivateKey(masterSecret, context)).address;
+  return deriveOperatorAccount(masterSecret, context).address;
+}
+
+export function deriveOperatorAccount(
+  masterSecret: Uint8Array,
+  context: OperatorContext,
+) {
+  return privateKeyToAccount(deriveOperatorPrivateKey(masterSecret, context));
 }
 
 function deriveOperatorPrivateKey(

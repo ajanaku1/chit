@@ -110,7 +110,7 @@ function withTimeout<T>(
 }
 
 async function loadRecord(): Promise<void> {
-  const response = await fetch("../../deployments/service-operator.json", {
+  const response = await fetch("./service-target.json", {
     cache: "no-store",
   });
   if (!response.ok) throw new Error(`Could not load service target (${response.status})`);

@@ -1,0 +1,23 @@
+{
+  "network": "ethereum-sepolia",
+  "chainId": 11155111,
+  "roundName": "Lagos builders",
+  "roundId": "0xdf1b4073be7e71e17e9b09eaa4f203b80f801e9639b7fbbd3f07b2c0f8643478",
+  "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+  "paymaster": "0x9f4A6871D8cb2be0A02e180901b65AEA9033f022",
+  "simpleAccount": "0x3671cb6675484DD48747F39Ed9110dc360CB633F",
+  "owner": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
+  "counter": "0x13283ab8e1f2bc4297e9ec6480c80c59674af554",
+  "transactionHash": "0x4585cd9e21ce2189bd77ee3edccaa020968068a714ce3507fe0df399a7c13176",
+  "userOperationHash": "0x0c034ba35073117fcb0367699024e19266c898c48965ea13e566a92617370571",
+  "blockNumber": 11407027,
+  "success": true,
+  "actualGasUsed": "457226",
+  "entryPointActualGasCostWei": "1016776161108400",
+  "chitRecordedClaimWei": "795401975725200",
+  "accountNonceAfter": "1",
+  "counterBefore": "1",
+  "counterAfter": "2",
+  "accountDeployed": true,
+  "ownerVerified": true
+}

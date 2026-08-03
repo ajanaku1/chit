@@ -14,6 +14,7 @@ Chit is a canonical ERC-4337 paymaster that privately attributes authorized gas 
 
 - [What Chit does](#what-chit-does)
 - [Live app](#live-app)
+- [Judge quick start](#judge-quick-start)
 - [Privacy boundary](#privacy-boundary)
 - [How the Nox privacy layer works](#how-the-nox-privacy-layer-works)
 - [Live Sepolia evidence](#live-sepolia-evidence)
@@ -26,13 +27,27 @@ Chit is a canonical ERC-4337 paymaster that privately attributes authorized gas 
 
 ## Live app
 
-[Open the Chit creator app](https://chit-kohl.vercel.app). Use Brave with Rabby on Ethereum Sepolia to create a round. Creating and activating a new round requires 0.111 Sepolia ETH plus transaction gas.
+[Open the Chit creator app](https://chit-kohl.vercel.app). The hosted [Lagos builders UserOperation path](https://chit-kohl.vercel.app/user-operation.html) runs the fixed sponsored action with Rabby on Ethereum Sepolia. Creating and activating another round requires 0.111 Sepolia ETH plus transaction gas.
+
+## Judge quick start
+
+Start with the browser app's **Judge path** section. It is a no-wallet review path for the recorded proof deployment: open the sponsored UserOperation, encrypted settlement, Nox external-input import, and [`feedback.md`](feedback.md) directly from the live page.
+
+| Review goal | Evidence |
+|---|---|
+| Confirm the canonical EntryPoint v0.7 UserOperation | [Sponsored UserOperation](https://eth-sepolia.blockscout.com/tx/0x0e5ddf0b032f284399cfe2ae3fbe8cf664ebc4c0a0e0acbdd56611d512f35970) |
+| Confirm the creator-driven Lagos builders UserOperation | [Live hosted UserOperation](https://eth-sepolia.blockscout.com/tx/0x4585cd9e21ce2189bd77ee3edccaa020968068a714ce3507fe0df399a7c13176) |
+| Confirm encrypted epoch settlement | [Encrypted settlement](https://eth-sepolia.blockscout.com/tx/0x99cd61e2ff3d6bdbca4bcb492a68a3d3891f7b9d42dea2242a8b2219a7e3996f) |
+| Confirm contract-bound Nox input | [Budget import](https://eth-sepolia.blockscout.com/tx/0x8a23b9e81e8a9aec7738a6ef2fd717dfd31b399b4c0c880f3618f346c3f00036) |
+| Review the iExec integration findings | [`feedback.md`](feedback.md) |
+
+The creator flow and proof deployment are currently separate, and are labeled that way in the app. The creator flow creates a new round; it does not claim to reproduce the completed UserOperation and settlement without a hosted operator and a funded round.
 
 ## What Chit does
 
 A normal paymaster leaves a public sponsor-to-user graph. Chit keeps the sponsored account public, as ERC-4337 requires, while storing its sponsor slot as an iExec Nox ciphertext handle.
 
-The current build proves the full flow on Ethereum Sepolia:
+The proof deployment records the following lifecycle on Ethereum Sepolia:
 
 1. A sponsor imports an encrypted budget through `Nox.fromExternal`.
 2. The operator enrolls an account against an encrypted sponsor slot.
@@ -175,6 +190,8 @@ The lifecycle record in [`deployments/sepolia.json`](deployments/sepolia.json) a
 
 ### Creator-driven low-stake round
 
+The hosted Lagos builders round now has its own complete creator-driven ERC-4337 proof. Transaction [`0x4585cd9e...c13176`](https://eth-sepolia.blockscout.com/tx/0x4585cd9e21ce2189bd77ee3edccaa020968068a714ce3507fe0df399a7c13176) deployed canonical SimpleAccount `0x3671...633F`, executed the fixed counter increment, and emitted both a successful EntryPoint `UserOperationEvent` and Chit's `ChitRecorded`. The account nonce advanced to `1`, the counter advanced from `1` to `2`, and Chit recorded a `795401975725200` wei epoch claim. The machine-readable verification is in [`deployments/lagos-builders-user-operation.json`](deployments/lagos-builders-user-operation.json).
+
 The frontend creates resumable rounds through factory `0xae9f63B7E7b0aC875AaDBEC56efCccFb88Ea87e6`. The recorded proof round uses paymaster `0x421afB0667Faf8B2Aa1d4e03EAb68c327875D54F`, a 0.1 Sepolia ETH stake, a 0.01 ETH deposit, and 0.001 ETH for operator gas.
 
 The low-stake round proves public round creation and sponsor registration. The completed UserOperation and settlement above belong to the earlier proof deployment. The demo inserts a full-screen handoff before switching between them.
@@ -223,7 +240,7 @@ The settlement loop always visits all four sponsor slots. It does not stop after
 
 ## Operator service surface
 
-The repository includes a dependency-free Node HTTP adapter around the trusted operator policy. It is a library component, not a hosted public endpoint in this submission.
+The production deployment now hosts narrow creator-signed enrollment and UserOperation paths for the Lagos builders round. [`/api/round`](https://chit-kohl.vercel.app/api/round) checks Neon and the live Sepolia roles; [`/enroll.html`](https://chit-kohl.vercel.app/enroll.html) obtains a creator signature before the protected operator imports a Nox-encrypted sponsor slot; and [`/user-operation.html`](https://chit-kohl.vercel.app/user-operation.html) permits only the fixed counter increment before self-bundling through EntryPoint. The generic routes below remain the broader library surface and are not all exposed publicly.
 
 | Method | Route | Purpose |
 |---|---|---|
@@ -237,6 +254,8 @@ The repository includes a dependency-free Node HTTP adapter around the trusted o
 | `POST` | `/v1/rounds/:roundId/user-operations/submit` | Verifies the user-signed envelope and self-bundles it. |
 | `POST` | `/v1/rounds/:roundId/settle` | Reconstructs a closed epoch and submits settlement. |
 | `POST` | `/v1/rounds/:roundId/operator-gas/recover` | Returns unused operator gas after closure. |
+
+The hosted endpoint stores one-time challenges in Neon. `SERVICE_MASTER_SECRET` remains a Vercel production secret; the service derives the round-scoped operator in memory and rejects startup unless its public address matches all protected contract roles.
 
 ## Run the creator app
 
@@ -285,7 +304,7 @@ npm test
 npm --prefix app run verify
 ```
 
-The full verified count is 148 tests: 128 root tests, 14 app tests, and 6 video evidence tests. The video source stays local, while its judged MP4 is committed under `submission/`.
+Run the root and browser verification suites locally with `npm test` and `npm --prefix app run verify`.
 
 Live deployment scripts need a funded Sepolia test key. Copy `.env.example` to `.env`, add the key yourself, and never commit it.
 
@@ -317,7 +336,7 @@ submission/   final judged demo video
 - The operator/verifying signer is trusted for confidential budget solvency.
 - The build self-bundles through `handleOps`; it does not integrate a third-party bundler.
 - Ring signatures, ZK membership proofs, and public per-sponsor bonds remain future work.
-- A production operator service still needs managed secrets, durable storage, monitoring, and deployment hardening.
+- The hosted service has managed secrets and durable challenge storage, but still needs production monitoring and broader multi-sponsor policy migration before mainnet use.
 
 ## Feedback and upstream report
 

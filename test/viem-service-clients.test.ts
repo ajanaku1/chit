@@ -338,6 +338,55 @@ describe("Viem account and operation readers", () => {
       gasCeilings,
     });
   });
+
+  it("builds operation facts for an explicitly configured sponsored action", async () => {
+    const client = new MockPublicClient({ code: undefined });
+    const actionData = encodeFunctionData({
+      abi: [{
+        type: "function",
+        name: "wrap",
+        inputs: [
+          { name: "to", type: "address" },
+          { name: "amount", type: "uint256" },
+        ],
+        outputs: [],
+      }],
+      functionName: "wrap",
+      args: [ACCOUNT, 1_000n],
+    });
+    const reader = new ViemOperationChainReader({
+      client,
+      round: ROUND,
+      settlement: SETTLEMENT,
+      paymaster: PAYMASTER,
+      entryPoint: ENTRY_POINT,
+      accountFactory: ACCOUNT_FACTORY,
+      counter: COUNTER,
+      action: { target: TOKEN, data: actionData },
+      chainId: 11155111,
+      gasCeilings,
+    });
+
+    const facts = await reader.readOperationFacts(ROUND, ACCOUNT, OWNER);
+
+    assert.equal(
+      facts.expectedCallData,
+      encodeFunctionData({
+        abi: [{
+          type: "function",
+          name: "execute",
+          inputs: [
+            { name: "dest", type: "address" },
+            { name: "value", type: "uint256" },
+            { name: "func", type: "bytes" },
+          ],
+          outputs: [],
+        }],
+        functionName: "execute",
+        args: [TOKEN, 0n, actionData],
+      }),
+    );
+  });
 });
 
 function lifecycleRecord(

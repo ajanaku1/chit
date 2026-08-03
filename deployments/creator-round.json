@@ -1,0 +1,17 @@
+{
+  "network": "ethereum-sepolia",
+  "chainId": 11155111,
+  "creator": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
+  "sponsor": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
+  "operator": "0x527e7Bdc2ef3eA0A10592Cc1B2DC40B974CD8c2F",
+  "verifier": "0x527e7Bdc2ef3eA0A10592Cc1B2DC40B974CD8c2F",
+  "auditor": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
+  "factory": "0xae9f63B7E7b0aC875AaDBEC56efCccFb88Ea87e6",
+  "wrapper": "0xf2a752bacb7fab05117ba8040f4f55537d50a60c",
+  "roundId": "0xdf1b4073be7e71e17e9b09eaa4f203b80f801e9639b7fbbd3f07b2c0f8643478",
+  "roundSalt": "0xb9be72f85c2b3ac09d3d42436be640ca215a01058043ee348e6081ba4aa425c1",
+  "vault": "0x1eA6D0c25C6b144a110d83C493cf8DC8a17d8C1b",
+  "settlement": "0xcc25c854C5c2745987302b2E7797C46C3019a46a",
+  "paymaster": "0x9f4A6871D8cb2be0A02e180901b65AEA9033f022",
+  "initializedSteps": 31
+}

@@ -127,7 +127,13 @@ interface OperationReaderOptions {
   readonly entryPoint: Address;
   readonly accountFactory: Address;
   readonly counter: Address;
+  readonly action?: SponsoredAction;
   readonly gasCeilings: GasCeilings;
+}
+
+export interface SponsoredAction {
+  readonly target: Address;
+  readonly data: Hex;
 }
 
 interface LifecycleReconcilerOptions {
@@ -457,7 +463,10 @@ export class ViemOperationChainReader implements OperationChainReader {
     deployedOwner: Address | undefined,
     currentEpochClaim: bigint,
   ): OperationChainFacts {
-    const increment = encodeFunctionData({ abi: COUNTER_ABI, functionName: "increment" });
+    const action = this.options.action ?? {
+      target: this.options.counter,
+      data: encodeFunctionData({ abi: COUNTER_ABI, functionName: "increment" }),
+    };
     return {
       enrolled: base.enrolled,
       deployed: base.deployed,
@@ -472,7 +481,7 @@ export class ViemOperationChainReader implements OperationChainReader {
       expectedCallData: encodeFunctionData({
         abi: ACCOUNT_ABI,
         functionName: "execute",
-        args: [this.options.counter, 0n, increment],
+        args: [action.target, 0n, action.data],
       }),
       paymaster: this.options.paymaster,
       currentEpochClaim,

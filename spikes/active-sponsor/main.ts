@@ -134,12 +134,12 @@ async function requireSponsorWallet(): Promise<
 > {
   const target = requireTarget();
   if (state.provider === undefined || state.wallet === undefined) {
-    throw new Error(`Switch Rabby to the previous sponsor ${target.sponsor}`);
+    throw new Error(`Switch Rabby to the sponsor ${target.sponsor}`);
   }
   const accounts = await state.provider.request({ method: "eth_accounts" });
   const connection = classifyWalletAccount(accounts, target.sponsor);
   if (connection.kind !== "match") {
-    throw new Error(`Switch Rabby to the previous sponsor ${target.sponsor}`);
+    throw new Error(`Switch Rabby to the sponsor ${target.sponsor}`);
   }
   state.account = getAddress(connection.account);
   return { account: state.account, wallet: state.wallet };
@@ -316,12 +316,12 @@ function actionCopy(action: ActiveSponsorAction): readonly [string, string] {
   const copy: Record<ActiveSponsorAction["kind"], readonly [string, string]> = {
     "reconcile-pending": ["Resume pending transaction", "Resume confirmation"],
     "sign-admission": ["Connect the creator and sign a fresh admission. This costs no gas.", "Sign creator admission"],
-    "switch-sponsor": ["Switch Rabby to the previous sponsor wallet, then continue.", "Connect previous sponsor"],
+    "switch-sponsor": ["Switch Rabby to the sponsor wallet, then continue.", "Connect sponsor wallet"],
     "approve-token": ["Approve the wrapper to use 1,000 CHIT base units.", "Approve CHIT wrapper"],
     "wrap-token": ["Wrap 1,000 CHIT base units for this registration.", "Wrap sponsor budget"],
     "authorize-vault": ["Authorize only the new low-stake vault as transfer operator.", "Authorize new vault"],
     "register-sponsor": ["Create the 137-byte proof and register the sponsor on-chain.", "Create proof & register"],
-    "complete": ["The previous sponsor is registered in the active low-stake round.", "Sponsor registered"],
+    "complete": ["The sponsor is registered in the active round.", "Sponsor registered"],
   };
   return copy[action.kind];
 }
@@ -391,7 +391,7 @@ async function approveToken(): Promise<void> {
   const target = requireTarget();
   const { account, wallet } = await requireSponsorWallet();
   const balance = await publicClient.readContract({ address: target.chitToken, abi: tokenAbi, functionName: "balanceOf", args: [account] });
-  if (balance < SPONSOR_BUDGET) throw new Error("Previous sponsor has fewer than 1,000 CHIT base units");
+  if (balance < SPONSOR_BUDGET) throw new Error("Sponsor has fewer than 1,000 CHIT base units");
   setStatus("Approve the CHIT wrapper transaction in Rabby.");
   await trackTransaction("approve", wallet.writeContract({
     account, address: target.chitToken, abi: tokenAbi, functionName: "approve",
@@ -458,8 +458,8 @@ async function execute(action: ActiveSponsorAction): Promise<void> {
   if (action.kind === "reconcile-pending") await reconcilePending();
   else if (action.kind === "sign-admission") await signAdmission();
   else if (action.kind === "switch-sponsor") {
-    setStatus("Switch Rabby to the previous sponsor, then approve the connection.");
-    await connectExpected(target.sponsor, "previous sponsor wallet");
+    setStatus("Switch Rabby to the sponsor wallet, then approve the connection.");
+    await connectExpected(target.sponsor, "sponsor wallet");
   } else if (action.kind === "approve-token") await approveToken();
   else if (action.kind === "wrap-token") await wrapToken();
   else if (action.kind === "authorize-vault") await authorizeVault();
@@ -493,8 +493,8 @@ async function assertLiveTarget(target: ActiveSponsorTarget): Promise<void> {
 
 async function initialize(): Promise<void> {
   const [round, assets] = await Promise.all([
-    fetchJson("../../deployments/low-stake-round.json"),
-    fetchJson("../../deployments/sepolia.json"),
+    fetchJson("./creator-round.json"),
+    fetchJson("./assets.json"),
   ]);
   const target = parseActiveSponsorTarget(round, assets);
   await assertLiveTarget(target);

@@ -99,6 +99,7 @@ export interface OperatorServiceOptions {
   readonly entryPoint: Address;
   readonly authorizationTtlSeconds: number;
   readonly clock: () => number;
+  readonly sponsoredActionName?: string;
 }
 
 export interface RegisterSponsorRequest {
@@ -165,6 +166,7 @@ function inviteRequestBody(request: IssueInviteRequest): object {
 function invitePayload(
   request: IssueInviteRequest,
   account: Address,
+  action: string,
 ): InvitePayload {
   return {
     round: request.round,
@@ -174,8 +176,16 @@ function invitePayload(
     account,
     expiresAt: request.inviteExpiresAt,
     nonce: request.inviteNonce,
-    action: "counter.increment",
+    action,
   };
+}
+
+const DEFAULT_SPONSORED_ACTION_NAME = "counter.increment";
+
+function sponsoredActionName(options: OperatorServiceOptions): string {
+  const action = options.sponsoredActionName ?? DEFAULT_SPONSORED_ACTION_NAME;
+  if (action.trim().length === 0) throw new Error("Sponsored action name is required");
+  return action;
 }
 
 export class OperatorService {
@@ -208,7 +218,7 @@ export class OperatorService {
       throw new Error("Invite expiry is in the past");
     }
     const account = await this.predictInvitedAccount(request);
-    const payload = invitePayload(request, account);
+    const payload = invitePayload(request, account, sponsoredActionName(this.options));
     const token = this.options.inviteCodec.issue(payload);
     this.persistInvite(request, account);
     return { account, token };
@@ -223,7 +233,7 @@ export class OperatorService {
       round: request.round,
       owner: request.owner,
       account: request.operation.sender,
-      action: "counter.increment",
+      action: sponsoredActionName(this.options),
       now,
     });
     const facts = await this.options.operationReader.readOperationFacts(
@@ -448,7 +458,7 @@ export class OperatorService {
         account,
         inviteNonce: request.inviteNonce,
         expiresAt: request.inviteExpiresAt,
-        action: "counter.increment",
+        action: sponsoredActionName(this.options),
       },
       {
         scope: "sponsor-invite",

@@ -10,6 +10,7 @@
     "verify": "npm run typecheck && npm test && npm run build"
   },
   "dependencies": {
+    "@iexec-nox/handle": "^0.1.0-beta.13",
     "viem": "^2.46.3"
   },
   "devDependencies": {
