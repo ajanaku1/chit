@@ -1,6 +1,8 @@
 # Chit: confidential gas sponsorship attribution
 
-Chit is a canonical ERC-4337 paymaster that privately attributes authorized gas sponsorship to sponsor budgets without exposing the sponsor-to-user relationship on-chain. It uses iExec Nox TEE computations for the confidential attribution and settlement path.
+Chit is a canonical ERC-4337 paymaster that privately attributes authorised gas sponsorship to sponsor budgets without exposing the sponsor-to-user relationship on-chain. It uses iExec Nox TEE computations for the confidential attribution and settlement path.
+
+CA: 0xD523A627030509021cC39B6d7C8543417D3E50D8
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.28-363636?logo=solidity)](https://soliditylang.org/)
