@@ -1,0 +1,24 @@
+{
+  "extends": "@tsconfig/node22/tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "${configDir}",
+    "outDir": "${configDir}/dist-fleet",
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "sourceMap": true,
+    "noEmitOnError": true,
+    "strict": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "skipDefaultLibCheck": true,
+    "typeRoots": ["${configDir}/node_modules/@types"]
+  },
+  "include": [
+    "${configDir}/src/fleet/**/*.ts",
+    "${configDir}/test/fleet/**/*.ts"
+  ]
+}

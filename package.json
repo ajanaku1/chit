@@ -8,6 +8,8 @@
   "scripts": {
     "browser:build": "tsc -p spikes/nox-browser/tsconfig.json && esbuild spikes/nox-browser/main.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=spikes/nox-browser/dist/main.js",
     "build": "tsc --build",
+    "build:fleet": "tsc -p tsconfig.fleet.json",
+    "test:fleet": "npm run build:fleet && node --test --test-reporter spec \"dist-fleet/test/fleet/*.test.js\"",
     "factory-gate:live": "npm run build && node --env-file=.env dist/scripts/factory-browser-gate-live.js",
     "phase0:live": "npm run build && node --env-file=.env dist/scripts/phase0-live.js",
     "phase0:verify-live": "node --env-file=.env dist/scripts/phase0-live.js --verify",
