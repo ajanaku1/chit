@@ -21,11 +21,12 @@ set -uo pipefail
 cd "$(dirname "$0")"
 
 FILTER="${1:-}"
-pass=0; fail=0; degraded=0
+pass=0; fail=0; degraded=0; executed=0
 
 check() {
   local tag="$1" desc="$2"; shift 2
   if [ -n "$FILTER" ] && [ "$tag" != "$FILTER" ]; then return 0; fi
+  executed=$((executed + 1))
   if "$@" >/dev/null 2>&1; then
     printf '  PASS  [%s] %s\n' "$tag" "$desc"; pass=$((pass + 1))
   else
@@ -73,6 +74,39 @@ has_code() {
   out=$(curl -s --max-time 20 -X POST "$RPC" -H 'content-type: application/json' \
     --data "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getCode\",\"params\":[\"$1\",\"latest\"]}" 2>/dev/null) || return 1
   printf '%s' "$out" | grep -qE '"result"[[:space:]]*:[[:space:]]*"0x[0-9a-fA-F]{40,}"'
+}
+
+fleet_evidence_live() {
+  local file mode chain rpc role address code bytecode
+  file="test/fleet/fixtures/dependency-evidence.json"
+  [ -f "$file" ] || return 1
+  mode=$(jq -er '.mode' "$file") || return 1
+  [ "$mode" = "live" ] || return 1
+  rpc="${FLEET_RPC_URL:-}"
+  [ -n "$rpc" ] || return 1
+  chain=$(jq -er '.chainId | tonumber' "$file") || return 1
+  curl -sS --max-time 10 -X POST "$rpc" -H 'content-type: application/json' \
+    --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' | \
+    jq -er --arg expected "$(printf '0x%x' "$chain")" '.result == $expected' >/dev/null || return 1
+  for role in entryPoint paymaster router venue; do
+    address=$(jq -er --arg role "$role" '.dependencies[$role].address // empty' "$file") || return 1
+    [ -n "$address" ] || return 1
+    printf '%s' "$address" | grep -qE '^0x[0-9a-fA-F]{40}$' || return 1
+    code=$(curl -sS --max-time 10 -X POST "$rpc" -H 'content-type: application/json' \
+      --data "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"eth_getCode\",\"params\":[\"$address\",\"latest\"]}" | jq -er '.result') || return 1
+    printf '%s' "$code" | grep -qE '^0x[0-9a-fA-F]{2,}$' || return 1
+    bytecode="${code#0x}"
+    printf '%s' "$bytecode" | grep -qE '[1-9a-fA-F]' || return 1
+  done
+}
+
+fleet_evidence_check() {
+  local file
+  file="test/fleet/fixtures/dependency-evidence.json"
+  test -f tsconfig.fleet.json && test -f "$file" && test -f test/fleet/chain-dependencies.test.ts && test -f test/fleet/types.test.ts && test -f src/fleet/types.ts && test -f app/src/fleet/index.ts && test -f app/test/fleet-boundary.test.ts || return 1
+  grep -qE '"build:fleet"' package.json && grep -qE '"test:fleet"' package.json || return 1
+  if jq -e '.mode == "fixture" and .testOnly == true and .allowedClaim == "test-only-fixture"' "$file" >/dev/null; then :; else fleet_evidence_live; fi
+  npm run build:fleet && node --test dist-fleet/test/fleet/chain-dependencies.test.js dist-fleet/test/fleet/types.test.js && npm --prefix app run verify
 }
 
 address_field() {
@@ -395,6 +429,21 @@ check active-sponsor "live vault stores the sponsor and nonzero confidential han
 check active-sponsor "registered confidential handle resolved at the Nox gateway" \
   active_sponsor_handle_resolved "$ACTIVE_SPONSOR"
 
+# --- Fleet Mission: isolated testnet acceptance family ----------------------
+# These checks are intentionally red until the T001–T041 slice exists. They
+# Fixture/scaffold checks make no network call; live mode uses only bounded configured RPC after guards.
+check fleet-evidence "Fleet dependency evidence or labelled fixture is tested" fleet_evidence_check
+checksh fleet-foundation "Fleet foundation outputs and tests pass" \
+  'test -f contracts/fleet/FleetAccountFactory.sol && test -f contracts/fleet/FleetSessionPolicy.sol && test -f contracts/fleet/FleetCampaignEscrow.sol && test -f src/fleet/campaign-service.ts && test -f test/fleet/campaign-state.test.ts && test -f test/fleet/session-policy.test.ts && test -f test/fleet/campaign-budget.test.ts && test -f test/fleet/campaign-service.test.ts && npm run build:fleet && node --test dist-fleet/test/fleet/campaign-state.test.js dist-fleet/test/fleet/session-policy.test.js dist-fleet/test/fleet/campaign-budget.test.js dist-fleet/test/fleet/campaign-service.test.js && npx hardhat compile'
+checksh fleet-create "Fleet CHIT fee and local-vault creation tests pass" \
+  'test -f specs/001-fleet-mission/contracts/fleet-vault.md && test -f test/fleet/fee-charge.test.ts && test -f test/fleet/campaign-route.test.ts && test -f src/fleet/eligibility.ts && test -f api/fleet/campaign.ts && test -f app/src/fleet/vault.ts && test -f app/src/fleet/campaign-setup.ts && test -f app/test/fleet-vault.test.ts && test -f app/test/fixtures/fleet-vault-v1.json && test -f app/test/fleet-setup.test.ts && npm run build:fleet && node --test dist-fleet/test/fleet/fee-charge.test.js dist-fleet/test/fleet/campaign-route.test.js && npm --prefix app run verify'
+checksh fleet-buy "Fleet SDK and five-wallet sponsored-buy tests pass" \
+  'test -f test/fleet/buy-route.test.ts && test -f test/fleet/sdk-policy.test.ts && test -f test/fleet/five-wallet-e2e.test.ts && test -f api/fleet/buy.ts && test -f src/fleet/user-operation.ts && test -f src/fleet/sdk.ts && test -f app/src/fleet/control-room.ts && test -f app/test/fleet-buy.test.ts && npm run build:fleet && node --test dist-fleet/test/fleet/buy-route.test.js dist-fleet/test/fleet/sdk-policy.test.js dist-fleet/test/fleet/five-wallet-e2e.test.js && npm --prefix app run verify'
+checksh fleet-control "Fleet terminal-revocation and owner-close tests pass" \
+  'test -f test/fleet/control-route.test.ts && test -f test/fleet/campaign-state.test.ts && test -f test/fleet/sdk-policy.test.ts && test -f app/test/fleet-control-room.test.ts && test -f api/fleet/control.ts && test -f app/src/fleet/control-room.ts && test -f src/fleet/sdk.ts && npm run build:fleet && node --test dist-fleet/test/fleet/control-route.test.js dist-fleet/test/fleet/campaign-state.test.js dist-fleet/test/fleet/sdk-policy.test.js && npm --prefix app run verify'
+checksh fleet-acceptance "Fleet suite, build, privacy boundary, and quickstart coverage pass" \
+  'test -f test/fleet/privacy-boundary.test.ts && test -f test/fleet/quickstart.test.ts && test -f app/test/fleet-acceptance.test.ts && test -f contracts/fleet/FleetAccountFactory.sol && test -f contracts/fleet/FleetSessionPolicy.sol && test -f contracts/fleet/FleetCampaignEscrow.sol && test -f specs/001-fleet-mission/quickstart.md && test -d app/src/fleet && test -d src/fleet && test -d api/fleet && test -d contracts/fleet && npm run build:fleet && node --test dist-fleet/test/fleet/*.test.js && npm --prefix app run verify && npm run build && ! grep -rqE "plaintext.{0,40}(owner|private).{0,40}key|fleet-wide unlinkability" app/src/fleet src/fleet api/fleet contracts/fleet'
+
 # --- phase 3: brand, then one screen --------------------------------------
 checksh phase-3 "brand truth names an accent hex"      'test -f brand/BRAND-TRUTH.md && grep -qE "#[0-9a-fA-F]{6}" brand/BRAND-TRUTH.md'
 checksh phase-3 "favicon exists and is non-empty"      'test -s brand/favicon.svg'
@@ -427,7 +476,7 @@ checksh phase-4 ".env is not tracked by git" \
 checksh phase-4 "no assistant traces in the repo" \
   'test -f README.md && ! grep -rqiE "claude|anthropic|generated by ai|as an ai" README.md feedback.md contracts/ 2>/dev/null'
 checksh phase-4 "scaffolding files are gitignored" \
-  'test -f .gitignore && grep -q "^prompt.md$" .gitignore && grep -q "^Goal.md$" .gitignore && grep -q "^plan.md$" .gitignore'
+  'test -f .gitignore && grep -q "^/prompt.md$" .gitignore && grep -q "^/Goal.md$" .gitignore && grep -q "^/plan.md$" .gitignore'
 checksh phase-4 "demo video is at most 4:00" \
   'f=$(ls submission/demo.mp4 2>/dev/null | head -1); test -n "$f" && command -v ffprobe >/dev/null && d=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$f" | cut -d. -f1) && [ "$d" -le 240 ]'
 
@@ -444,6 +493,7 @@ checksh phase-4 "demo video is at most 4:00" \
 #   CROSS_CHECK=1 ./verify.sh   everything, cross-check included
 CROSS_CHECK_BIN="${CROSS_CHECK_BIN:-$(cd "$(dirname "$0")/.." && pwd)/loop/guardrails/cross-check.sh}"
 if [ "$FILTER" = "cross" ] || [ "${CROSS_CHECK:-}" = "1" ]; then
+  executed=$((executed + 1))
   echo
   if [ ! -x "$CROSS_CHECK_BIN" ]; then
     printf '  FAIL  [cross] cross-check.sh not executable at %s\n' "$CROSS_CHECK_BIN"
@@ -467,6 +517,10 @@ if [ "$FILTER" = "cross" ] || [ "${CROSS_CHECK:-}" = "1" ]; then
 fi
 
 echo
+if [ "$executed" -eq 0 ]; then
+  printf '  FAIL  [filter] no checks matched "%s"; executed 0 predicates\n' "$FILTER"
+  fail=$((fail + 1))
+fi
 printf 'passed %d, failed %d\n' "$pass" "$fail"
 if [ "$degraded" -gt 0 ]; then
   printf 'DEGRADED: %d check(s) fell back to self-assessment because no independent\n' "$degraded"
@@ -484,6 +538,9 @@ manual:
   [ ] Nothing on the judged path uses mock data
   [ ] Repo is clean-room; no reuse of a prior iExec VIBE Coding project
   [ ] The narrow privacy claim is what the video says out loud, not just what the README says
+  [ ] Fleet Control Room makes public trades/shared paymaster and the private primary-to-fleet edge understandable
+  [ ] Fleet activation and pause/revoke feedback respects reduced-motion preferences
+  [ ] Fleet demo names a verified testnet route or clearly labels the test-only fixture
 MANUAL
 
 [ "$fail" -eq 0 ] || exit 1
