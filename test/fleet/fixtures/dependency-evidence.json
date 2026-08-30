@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "mode": "fixture",
+  "testOnly": true,
+  "chainId": 46630,
+  "verifiedAt": "2026-08-30T00:00:00.000Z",
+  "maxAgeSeconds": 0,
+  "allowedClaim": "test-only-fixture",
+  "dependencies": {
+    "provider": {
+      "role": "provider",
+      "verified": true,
+      "source": "Robinhood Chain testnet public RPC (https://rpc.testnet.chain.robinhood.com)",
+      "provenance": "eth_chainId returned 0xb626 (46630) on 2026-08-30; public endpoint is rate-limited and not for production load"
+    },
+    "entryPoint": {
+      "role": "entryPoint",
+      "verified": true,
+      "address": "0x0000000071727de22e5e9d8baf0edac6f37da032",
+      "source": "ERC-4337 EntryPoint v0.7.0",
+      "provenance": "listed at docs.robinhood.com/chain/account-abstraction; eth_getCode returned non-empty bytecode on chain 46630 on 2026-08-30"
+    },
+    "router": {
+      "role": "router",
+      "verified": true,
+      "address": "0x8876789976decbfcbbbe364623c63652db8c0904",
+      "source": "Uniswap v4 Universal Router",
+      "provenance": "listed for Robinhood Chain in Uniswap v4 deployments; eth_getCode returned 24546 bytes on chain 46630 on 2026-08-30"
+    },
+    "paymaster": {
+      "role": "paymaster",
+      "verified": false,
+      "source": "FleetPaymaster (not yet deployed)",
+      "provenance": "test-only double until the Fleet paymaster is deployed to chain 46630 and its address is recorded here"
+    },
+    "venue": {
+      "role": "venue",
+      "verified": false,
+      "source": "FleetFixtureToken",
+      "provenance": "test-only token; no Robinhood Chain testnet pool with confirmed liquidity has been verified for the demo buy"
+    }
+  }
+}
