@@ -1,0 +1,9 @@
+# Fleet Dependency Evidence Contract
+
+`test/fleet/chain-dependencies.test.ts` reads `test/fleet/fixtures/dependency-evidence.json`: `{ version: 1, mode: "live" | "fixture", chainId: number, verifiedAt: string, maxAgeSeconds: number, dependencies: Record<"provider"|"entryPoint"|"paymaster"|"router"|"venue", { role: string, verified: boolean, address?: "0x...", source: string, provenance: string }>, allowedClaim: "verified-testnet" | "test-only-fixture" }`. Missing fields, unknown roles, invalid version, expired `verifiedAt` against configured freshness, or claim/mode mismatch produce `evidence_invalid`.
+
+Each role declares whether it is verified. `verified: true` names a real deployment and MUST carry a bytecode-bearing address, except `provider`, which names an endpoint and MUST NOT carry one. `verified: false` names a test double and MUST NOT carry an address, so a double can never be mistaken for a deployment.
+
+Live records require `allowedClaim: "verified-testnet"`, every role `verified: true`, and a user-supplied `FLEET_RPC_URL`. The verifier uses bounded deterministic JSON-RPC requests to confirm the record chain ID and bytecode for address-bearing roles; no address, endpoint, or secret is invented by this feature.
+
+Fixture records require `testOnly: true`, `allowedClaim: "test-only-fixture"`, `maxAgeSeconds: 0`, and at least one role `verified: false` with named fixture token/router and provenance; fixture mode runs no RPC. A fixture record MAY carry verified real dependencies alongside its doubles, so implementation can target the chain's actual EntryPoint and router while the not-yet-deployed roles stay honestly labelled. Freshness applies to live records only, because a fixture describes locally deployed doubles rather than chain state. Missing, stale, malformed, or role-incomplete evidence blocks Fleet activation and the demo.
