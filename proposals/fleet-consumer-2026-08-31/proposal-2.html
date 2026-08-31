@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Proposal 2 · Night Ledger</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#101013;--panel:#1a1a1f;--panel2:#222228;--text:#f2efe9;--dim:#8f8c86;--coral:#ff5a3c;--line:#2e2e35;--green:#3ddc97;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:Sora,system-ui,sans-serif;padding:2rem 1rem;display:flex;flex-direction:column;align-items:center;gap:2rem}
+  .tag{font-family:"DM Mono",monospace;font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  header.demo{display:flex;justify-content:space-between;align-items:center;width:min(560px,100%)}
+  header.demo .brand{font-weight:700;font-size:1.15rem}
+  header.demo .brand i{display:inline-block;width:10px;height:10px;background:var(--coral);border-radius:50%;margin-right:.5rem}
+  header.demo nav{display:flex;gap:.4rem;font-size:.75rem}
+  header.demo a{color:var(--dim);text-decoration:none;padding:.45rem .8rem;border-radius:999px}
+  header.demo a.on{color:var(--text);background:var(--panel2)}
+  .shell{width:min(560px,100%);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:2.2rem}
+  .kicker{font-family:"DM Mono",monospace;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--coral);margin-bottom:.7rem}
+  h1{font-weight:700;font-size:1.8rem;line-height:1.15;margin-bottom:.7rem;letter-spacing:-.02em}
+  .lead{color:var(--dim);font-size:.9rem;line-height:1.6;margin-bottom:1.6rem}
+  .row{display:flex;flex-direction:column;gap:.9rem}
+  .fieldcard{background:var(--panel2);border:1px solid var(--line);border-radius:14px;padding:1rem 1.2rem;display:flex;justify-content:space-between;align-items:center}
+  .fieldcard label{font-size:.8rem;color:var(--dim)}
+  .fieldcard .val{font-family:"DM Mono",monospace;font-size:1.5rem;font-weight:500}
+  .fieldcard .val small{font-size:.8rem;color:var(--dim);margin-left:.3rem}
+  details{margin:1.2rem 0 0;font-size:.8rem;color:var(--dim)}
+  summary{cursor:pointer;color:var(--text)}
+  .cta{display:block;width:100%;margin-top:1.5rem;padding:1.05rem;background:var(--coral);color:#16090a;border:0;border-radius:14px;font-family:Sora,sans-serif;font-size:1rem;font-weight:700;cursor:pointer;box-shadow:0 8px 28px rgba(255,90,60,.35)}
+  .dots{display:flex;gap:.45rem;justify-content:center;margin-top:1.5rem}
+  .dots i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+  .dots i.on{background:var(--coral)}
+  .dash{width:min(560px,100%);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:2rem}
+  .dash .chip{float:right;font-family:"DM Mono",monospace;font-size:.72rem;color:var(--green);border:1px solid var(--green);border-radius:999px;padding:.3rem .7rem}
+  .dash h2{font-size:1.25rem;margin-bottom:1.2rem}
+  .big{font-family:"DM Mono",monospace;font-size:2.2rem;font-weight:500;margin-bottom:.3rem}
+  .big small{font-size:1rem;color:var(--dim)}
+  .sub{color:var(--dim);font-size:.8rem;margin-bottom:1.2rem}
+  .meter{height:10px;border-radius:999px;background:var(--panel2);overflow:hidden;margin-bottom:1.2rem}
+  .meter .a{display:block;height:100%;width:22%;background:linear-gradient(90deg,var(--coral),#ff8a6f);border-radius:999px}
+  .ctrls{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+  .ctrls button{padding:.85rem;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:12px;font-family:Sora,sans-serif;font-size:.85rem;cursor:pointer}
+  .ctrls button.danger{color:var(--coral);border-color:rgba(255,90,60,.4)}
+  .privacy{width:min(560px,100%);font-size:.8rem;color:var(--dim);text-align:center;line-height:1.6}
+  .privacy b{color:var(--text)}
+</style>
+</head>
+<body>
+<p class="tag">Proposal 2 — Night Ledger · DNA-wizard-dark-sans-round-glow</p>
+<header class="demo">
+  <span class="brand"><i></i>Chit Fleet</span>
+  <nav><a class="on" href="#">Set up</a><a href="#">Dashboard</a><a href="#">Private</a></nav>
+</header>
+
+<div class="shell">
+  <p class="kicker">Step 2 of 4</p>
+  <h1>Size your fleet</h1>
+  <p class="lead">Wallets and budget. The route is preset and verified — nothing else to configure.</p>
+  <div class="row">
+    <div class="fieldcard"><label>Wallets</label><span class="val">5</span></div>
+    <div class="fieldcard"><label>Gas budget</label><span class="val">0.001<small>ETH</small></span></div>
+    <div class="fieldcard"><label>Runs for</label><span class="val">1 week</span></div>
+  </div>
+  <details><summary>Advanced</summary>Uniswap route on Robinhood testnet, preset.</details>
+  <button class="cta">Continue</button>
+  <div class="dots"><i></i><i class="on"></i><i></i><i></i></div>
+</div>
+
+<div class="dash">
+  <span class="chip">ACTIVE</span>
+  <h2>Your fleet</h2>
+  <p class="big">0.00078 <small>ETH left</small></p>
+  <p class="sub">of 0.001 funded · 5 wallets trading</p>
+  <div class="meter"><span class="a"></span></div>
+  <div class="ctrls">
+    <button>Pause</button><button>Resume</button>
+    <button class="danger">Stop for good</button><button>Close &amp; get ETH back</button>
+  </div>
+</div>
+
+<p class="privacy"><b>Your main wallet never appears on-chain near the fleet.</b><br/>Trades stay public. The operator knows the mapping. No unlinkability claims.</p>
+</body>
+</html>

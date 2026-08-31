@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5efe5" />
+    <meta
+      name="description"
+      content="Chit Fleet: one private gas budget for all your trading wallets. Your keys stay with you; your main wallet stays out of sight."
+    />
+    <title>Chit Fleet · Set up your fleet</title>
+    <link rel="icon" href="./favicon.svg" />
+    <link rel="stylesheet" href="./fleet.css" />
+  </head>
+  <body class="fleet-body">
+    <a class="skip-link" href="#wizard">Skip to setup</a>
+    <div class="fleet-shell">
+      <header class="fleet-top">
+        <a class="brand" href="./index.html" aria-label="Chit home">
+          <img src="./logo.svg" alt="" width="40" height="40" />
+          <span>Chit Fleet</span>
+        </a>
+        <nav aria-label="Fleet pages">
+          <a href="./fleet.html" aria-current="page">Set up</a>
+          <a href="./fleet-dashboard.html">Dashboard</a>
+          <a href="./fleet-privacy.html">What's private</a>
+        </nav>
+        <div class="top-right">
+          <span class="chain-mark" title="Robinhood Chain testnet" aria-label="Robinhood Chain testnet">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false">
+              <path fill="#00c805" d="M20.5 2.6c.5.3.8 1 .8 2.4 0 7.3-5.2 12.9-12.4 13.9-1 .1-1.9.1-2.6.1l-2 2.1c-.3.3-.9.1-.9-.4l.1-2.8c-.1-.9-.1-2 .1-3.2C4.7 7.7 10.3 2.7 17.6 2.7c1.4 0 2.4.1 2.9-.1Z"/>
+              <path fill="none" stroke="#0a3d12" stroke-width="1.1" stroke-linecap="round" d="M17.5 6.2C13 8.1 9.6 11.6 7.7 16.2"/>
+            </svg>
+          </span>
+          <button id="hdr-wallet" type="button" class="wallet-btn" data-state="disconnected" aria-label="Connect wallet">Connect</button>
+        </div>
+      </header>
+
+      <main id="wizard" class="wizard">
+        <div id="status-banner" class="status-banner" role="status" aria-live="polite" hidden></div>
+
+        <!-- STEP 0: Welcome -->
+        <section class="wstep" data-wstep="welcome" aria-labelledby="welcome-h">
+          <p class="kicker">Private gas for your trading wallets</p>
+          <h1 id="welcome-h">One budget. Many wallets. No trail back to you.</h1>
+          <ul class="promises">
+            <li><strong>You keep the keys.</strong> Your fleet's wallets are created in this browser and never leave it.</li>
+            <li><strong>One gas budget.</strong> Fund it once in ETH; every wallet trades from it.</li>
+            <li><strong>Your main wallet stays out of sight.</strong> The chain never shows it funding the fleet.</li>
+          </ul>
+          <button id="start" type="button" class="primary big">Get started</button>
+          <p class="fineprint">Testnet demonstration. <a href="./fleet-privacy.html">Exactly what's private →</a></p>
+        </section>
+
+        <!-- STEP 1: Connect -->
+        <section class="wstep" data-wstep="connect" hidden aria-labelledby="connect-h">
+          <p class="kicker">Step 1 of 4</p>
+          <h2 id="connect-h">Connect your wallet</h2>
+          <p class="lead">This wallet approves the setup and locks your backup. It never touches the fleet on-chain.</p>
+          <button id="connect-wallet" type="button" class="primary big">Connect wallet</button>
+          <p id="wallet-line" class="mono-line" hidden></p>
+          <p id="eligibility-line" class="eligibility-line" hidden></p>
+        </section>
+
+        <!-- STEP 2: Size the fleet -->
+        <section class="wstep" data-wstep="size" hidden aria-labelledby="size-h">
+          <p class="kicker">Step 2 of 4</p>
+          <h2 id="size-h">Size your fleet</h2>
+          <form id="size-form" novalidate>
+            <div class="bigfield">
+              <label for="f-wallets">How many wallets?</label>
+              <input id="f-wallets" name="wallets" type="number" min="5" max="50" value="5" inputmode="numeric" />
+              <span class="unit">5–50</span>
+              <div class="quickpick" role="group" aria-label="Wallet presets">
+                <button type="button" data-pick="f-wallets" data-value="5" aria-pressed="true">5</button>
+                <button type="button" data-pick="f-wallets" data-value="10" aria-pressed="false">10</button>
+                <button type="button" data-pick="f-wallets" data-value="20" aria-pressed="false">20</button>
+                <button type="button" data-pick="f-wallets" data-value="50" aria-pressed="false">50</button>
+              </div>
+            </div>
+            <div class="bigfield">
+              <label for="f-budget">Gas budget</label>
+              <input id="f-budget" name="budget" type="text" value="0.001" inputmode="decimal" />
+              <span class="unit">ETH</span>
+            </div>
+            <div class="bigfield">
+              <label for="f-duration">Runs for</label>
+              <select id="f-duration" name="duration">
+                <option value="1">1 day</option>
+                <option value="7" selected>1 week</option>
+                <option value="30">1 month</option>
+              </select>
+              <div class="quickpick" role="group" aria-label="Duration presets">
+                <button type="button" data-pick="f-duration" data-value="1" aria-pressed="false">1 day</button>
+                <button type="button" data-pick="f-duration" data-value="7" aria-pressed="true">1 week</button>
+                <button type="button" data-pick="f-duration" data-value="30" aria-pressed="false">1 month</button>
+              </div>
+            </div>
+
+            <details class="advanced">
+              <summary>Advanced settings</summary>
+              <p class="hint">Preset to the verified Uniswap route on Robinhood testnet. Leave these alone unless you know why.</p>
+              <div class="field">
+                <label for="a-router">Router</label>
+                <input id="a-router" name="router" type="text" value="0x8876789976decbfcbbbe364623c63652db8c0904" />
+              </div>
+              <div class="field">
+                <label for="a-function">Function</label>
+                <input id="a-function" name="function" type="text" value="execute(bytes,bytes[],uint256)" />
+              </div>
+              <div class="field">
+                <label for="a-maxtrade">Max per trade (ETH)</label>
+                <input id="a-maxtrade" name="maxTrade" type="text" value="0.0005" inputmode="decimal" />
+              </div>
+              <div class="field">
+                <label for="a-pergas">Gas cap per wallet (ETH)</label>
+                <input id="a-pergas" name="perGas" type="text" value="0.0002" inputmode="decimal" />
+              </div>
+            </details>
+
+            <p id="size-error" class="field-error" role="alert" hidden></p>
+            <div class="wnav">
+              <button type="button" class="back" data-back>Back</button>
+              <button type="submit" class="primary big">Continue</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- STEP 3: Backup -->
+        <section class="wstep" data-wstep="backup" hidden aria-labelledby="backup-h">
+          <p class="kicker">Step 3 of 4</p>
+          <h2 id="backup-h">Save your backup</h2>
+          <p class="lead">
+            Your fleet's keys exist only in this browser. We'll hand you one encrypted backup file — only your wallet's
+            signature can ever open it.
+          </p>
+          <div class="seam-card">
+            <div class="seam-edge" aria-hidden="true"></div>
+            <div class="seam-inner">
+              <button id="generate-vault" type="button" class="primary big">Create fleet &amp; download backup</button>
+              <p id="vault-line" class="mono-line" hidden></p>
+              <p class="warnbox" id="vault-warn" hidden>
+                Keep this file safe. If you lose it and this browser's data, nobody can recover the fleet — not even Chit.
+              </p>
+              <button id="confirm-vault" type="button" class="ghost big" disabled>Sign to prove it opens</button>
+              <p id="confirm-line" class="mono-line" hidden></p>
+            </div>
+          </div>
+          <div class="wnav">
+            <button type="button" class="back" data-back>Back</button>
+            <button id="to-launch" type="button" class="primary big" disabled>Continue</button>
+          </div>
+        </section>
+
+        <!-- STEP 4: Launch -->
+        <section class="wstep" data-wstep="launch" hidden aria-labelledby="launch-h">
+          <p class="kicker">Step 4 of 4</p>
+          <h2 id="launch-h">Launch your fleet</h2>
+          <p class="lead">Funds your gas budget and switches the fleet on. From then on, manage everything from the dashboard.</p>
+          <dl class="summary" id="launch-summary"></dl>
+          <button id="launch-fleet" type="button" class="primary big">Launch fleet</button>
+          <div class="wnav">
+            <button type="button" class="back" data-back>Back</button>
+          </div>
+        </section>
+
+        <ol class="dots" id="dots" aria-label="Setup progress">
+          <li data-dot="welcome" aria-current="step"></li>
+          <li data-dot="connect"></li>
+          <li data-dot="size"></li>
+          <li data-dot="backup"></li>
+          <li data-dot="launch"></li>
+        </ol>
+
+        <!-- DONE -->
+        <section class="wstep" data-wstep="done" hidden aria-labelledby="done-h">
+          <p class="kicker">All set</p>
+          <h2 id="done-h">Your fleet is ready.</h2>
+          <p class="lead">Watch the budget, pause or stop anytime, and get unused ETH back whenever you close.</p>
+          <a class="primary big linkbtn" href="./fleet-dashboard.html">Open the dashboard</a>
+        </section>
+
+      </main>
+
+      <footer class="fleet-foot">
+        <p>Testnet demonstration on Robinhood Chain. Budget is ETH; CHIT is read-only for eligibility and discounts.</p>
+      </footer>
+    </div>
+    <button id="theme-toggle" type="button" class="theme-toggle" aria-label="Switch color theme" aria-pressed="false">☾</button>
+    <script type="module" src="./fleet-page.js"></script>
+  </body>
+</html>

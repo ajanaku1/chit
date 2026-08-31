@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Proposal 3 · Soft Receipt</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{--bg:#faf8f4;--card:#ffffff;--text:#1c1a17;--dim:#77726a;--coral:#ff5a3c;--coral-soft:#ffe9e3;--mint:#e7f4ec;--mint-text:#1f7a4d;--line:#ece7de;}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;padding:2rem 1rem;display:flex;flex-direction:column;align-items:center;gap:2rem}
+  .tag{font-family:"DM Mono",monospace;font-size:.7rem;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  header.demo{display:flex;justify-content:space-between;align-items:center;width:min(540px,100%)}
+  header.demo .brand{font-weight:800;font-size:1.1rem;letter-spacing:-.02em}
+  header.demo nav{display:flex;gap:.3rem;font-size:.78rem;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:.25rem}
+  header.demo a{color:var(--dim);text-decoration:none;padding:.4rem .8rem;border-radius:999px}
+  header.demo a.on{color:#fff;background:var(--text)}
+  .shell{width:min(540px,100%);background:var(--card);border:1px solid var(--line);border-radius:24px;padding:2.4rem;box-shadow:0 2px 24px rgba(28,26,23,.06)}
+  .kicker{font-size:.75rem;font-weight:700;color:var(--coral);margin-bottom:.6rem}
+  h1{font-weight:800;font-size:1.9rem;letter-spacing:-.03em;line-height:1.1;margin-bottom:.6rem}
+  .lead{color:var(--dim);font-size:.92rem;line-height:1.6;margin-bottom:1.8rem}
+  .stack{display:flex;flex-direction:column;gap:1rem}
+  .softfield{background:var(--bg);border:1.5px solid var(--line);border-radius:16px;padding:1rem 1.2rem}
+  .softfield label{display:block;font-size:.75rem;font-weight:600;color:var(--dim);margin-bottom:.35rem}
+  .softfield .val{font-size:1.35rem;font-weight:700;letter-spacing:-.02em}
+  .softfield .val small{font-size:.85rem;font-weight:500;color:var(--dim)}
+  .steppill{display:flex;gap:.4rem;margin-top:.5rem}
+  .steppill span{flex:1;text-align:center;font-size:.78rem;font-weight:600;padding:.5rem;border-radius:10px;background:var(--bg);color:var(--dim);border:1.5px solid var(--line)}
+  .steppill span.on{background:var(--coral-soft);color:var(--coral);border-color:var(--coral)}
+  details{margin:1.3rem 0 0;font-size:.82rem;color:var(--dim)}
+  summary{cursor:pointer;font-weight:600;color:var(--text)}
+  .cta{display:block;width:100%;margin-top:1.6rem;padding:1.05rem;background:var(--coral);color:#fff;border:0;border-radius:16px;font-family:Inter,sans-serif;font-size:1rem;font-weight:700;cursor:pointer}
+  .bar{display:flex;gap:.4rem;justify-content:center;margin-top:1.4rem}
+  .bar i{width:22px;height:5px;border-radius:999px;background:var(--line)}
+  .bar i.on{background:var(--coral)}
+  .dash{width:min(540px,100%);background:var(--card);border:1px solid var(--line);border-radius:24px;padding:2rem;box-shadow:0 2px 24px rgba(28,26,23,.06)}
+  .chip{float:right;font-size:.72rem;font-weight:700;color:var(--mint-text);background:var(--mint);border-radius:999px;padding:.35rem .8rem}
+  .dash h2{font-weight:800;font-size:1.2rem;letter-spacing:-.02em;margin-bottom:1.1rem}
+  .big{font-size:2.3rem;font-weight:800;letter-spacing:-.03em}
+  .big small{font-size:1rem;font-weight:600;color:var(--dim)}
+  .sub{color:var(--dim);font-size:.82rem;margin:.2rem 0 1.2rem}
+  .meter{height:12px;border-radius:999px;background:var(--bg);border:1px solid var(--line);overflow:hidden;margin-bottom:1.3rem}
+  .meter .a{display:block;height:100%;width:22%;background:var(--coral);border-radius:999px}
+  .ctrls{display:grid;grid-template-columns:1fr 1fr;gap:.7rem}
+  .ctrls button{padding:.9rem;background:var(--bg);border:1.5px solid var(--line);border-radius:14px;font-family:Inter,sans-serif;font-size:.85rem;font-weight:600;cursor:pointer;color:var(--text)}
+  .ctrls button.go{background:var(--text);color:#fff;border-color:var(--text)}
+  .note{width:min(540px,100%);background:var(--coral-soft);border-radius:16px;padding:1rem 1.3rem;font-size:.82rem;line-height:1.55;color:#8a3122}
+  .note b{color:var(--coral)}
+</style>
+</head>
+<body>
+<p class="tag">Proposal 3 — Soft Receipt · DNA-wizard-cream-sans-pill-calm</p>
+<header class="demo">
+  <span class="brand">chit fleet</span>
+  <nav><a class="on" href="#">Set up</a><a href="#">Dashboard</a><a href="#">Private</a></nav>
+</header>
+
+<div class="shell">
+  <p class="kicker">STEP 2 OF 4</p>
+  <h1>Size your fleet</h1>
+  <p class="lead">Two numbers and a duration. We preset the rest to the verified route.</p>
+  <div class="stack">
+    <div class="softfield"><label>How many wallets?</label><span class="val">5</span>
+      <div class="steppill"><span class="on">5</span><span>10</span><span>20</span><span>50</span></div>
+    </div>
+    <div class="softfield"><label>Gas budget</label><span class="val">0.001 <small>ETH</small></span></div>
+    <div class="softfield"><label>Runs for</label><span class="val">1 week</span>
+      <div class="steppill"><span>1 day</span><span class="on">1 week</span><span>1 month</span></div>
+    </div>
+  </div>
+  <details><summary>Advanced settings</summary>Uniswap route on Robinhood testnet, preset and verified.</details>
+  <button class="cta">Continue</button>
+  <div class="bar"><i></i><i class="on"></i><i></i><i></i></div>
+</div>
+
+<div class="dash">
+  <span class="chip">Active</span>
+  <h2>Your fleet</h2>
+  <p class="big">0.00078 <small>ETH left</small></p>
+  <p class="sub">of 0.001 funded · 5 wallets trading</p>
+  <div class="meter"><span class="a"></span></div>
+  <div class="ctrls">
+    <button>Pause</button><button>Resume</button>
+    <button>Stop for good</button><button class="go">Close &amp; get ETH back</button>
+  </div>
+</div>
+
+<p class="note"><b>Private where it counts.</b> Your main wallet never appears on-chain near the fleet. Trades stay public; the operator knows the mapping — we say so plainly.</p>
+</body>
+</html>

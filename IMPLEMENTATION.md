@@ -257,3 +257,70 @@ UserOperation on 46630, a verified venue, service configuration).
 Deviation: the Sol peer-verification gate cannot run from this session (no Sol
 seat available); queued for the user per the standoff rule. Fresh-context
 verification of the Fleet done_when runs next as its own step.
+
+## Fleet frontend + skill verification pass — 2026-08-31
+
+The Fleet tool now has a user-facing page: `app/fleet.html` + `app/fleet.css` +
+`app/src/fleet-page.ts`, wired into `app/build.mjs`, in the selected Public
+Docket direction (paper/ink editorial, Fraunces + DM Mono, signal coral, and the
+torn blind seam separating the public docket from the private attribution
+column). What is real today runs for real: fleet keys generate in the browser,
+the Recovery Vault v1 encrypts/downloads/confirms end to end with wallet
+signatures. Service-backed steps (quote, fund, activate, buy, lifecycle) call
+the Fleet API and surface the honest 503 testnet-pending banner until the
+service and paymaster exist on 46630; preview eligibility is labelled as such.
+
+Verification ran through the prompt.md preflight skills, correcting an earlier
+gap where several were satisfied only by their fallbacks:
+
+- **design (orchestrator, --polish-only)**: direction pre-selected; production
+  build + phase-5 QA. Contrast computed, not eyeballed: 10/10 pairs pass WCAG
+  AA (weakest 4.65:1). Record in `ai/design-progress.md`.
+- **code-reviewer** on the frontend: five findings, all fixed — innerHTML XSS in
+  the buy report (now textContent), a real vault success mislabeled as failure
+  when campaign create 503s (split), `not_created` shown as rejection instead
+  of testnet-pending (rerouted), an unbound CA copy button (bound), and a
+  keyboard-reachable "locked" policy form (now a disabled fieldset).
+- **solidity-security** on `contracts/fleet/`: report-only, queued as
+  pre-mainnet blockers, none affecting the value-free testnet MVP:
+  - HIGH: `FleetAccount` has no owner escape hatch — purchased tokens are
+    unrecoverable (execute is operator-only and router-bound; the recovered
+    keys control nothing on-chain).
+  - MEDIUM: a campaign owner can front-run `commit` with `close(openKeys)`,
+    rolling back an in-flight reservation after gas was spent.
+  - MEDIUM: committed `spent` ETH has no operator withdrawal and is stranded.
+  - LOW: campaign-id squatting via first-funder-becomes-owner; `openSession`
+    lacks sanity reverts (past expiry, chain mismatch, per>total gas).
+  - Verified sound: `close` CEI/reentrancy, CREATE2 retry idempotency,
+    terminal-revoke invariants.
+- **test-driven-development / web3-testing**: `app/test/isolated-build.test.ts`
+  gained the two new build inputs (inventory update, no assertion weakened);
+  full re-verify after fixes.
+
+Final state: all six `./verify.sh` fleet predicates PASS with the frontend
+inside the app pipeline; the app suite is 52/52.
+
+## Fleet consumer redesign — 2026-08-31
+
+The user judged the first Fleet page too complex for retail and reopened the
+visual direction. Full creative round run this time: three proposals in
+`proposals/fleet-consumer-2026-08-31/` (Docket Lite, Night Ledger, Soft
+Receipt). **User selected Soft Receipt, plus dark mode.**
+
+Shipped: the single dense page became three — `fleet.html` (a wizard, one
+question per screen: connect → size → backup → launch), `fleet-dashboard.html`
+(budget meter and plain-language lifecycle controls), and
+`fleet-privacy.html` (rendered from the same module constants the privacy
+tests enforce, so page copy cannot drift from tested claims). ETH units only;
+wei, router, selector, and gas caps live behind a collapsed Advanced panel with
+verified presets; totalGas derives from wallets × per-wallet cap. Quick-pick
+pills set wallet count and duration. Cross-page state is a sessionStorage
+snapshot of public data only — campaign handle, state, budget, addresses;
+never keys. Dark mode is Soft Receipt's warm-charcoal sibling: header toggle
+persisted in localStorage, system preference as default.
+
+QA (design skill phase 5, re-run): 17/17 color pairs pass WCAG AA in both
+themes, weakest 4.50:1. The proposal mock's white-on-coral CTA computed to
+~2.9:1 and was corrected to ink-on-coral (5.61:1) in production. All six
+verify.sh fleet predicates remain green; the app suite is 52/52 with the two
+new pages added to the build and the isolated-build inventory.
