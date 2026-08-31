@@ -324,3 +324,44 @@ themes, weakest 4.50:1. The proposal mock's white-on-coral CTA computed to
 ~2.9:1 and was corrected to ink-on-coral (5.61:1) in production. All six
 verify.sh fleet predicates remain green; the app suite is 52/52 with the two
 new pages added to the build and the isolated-build inventory.
+
+## Contract security hardening — 2026-08-31
+
+Direction changed: Fleet is going to production with real users, so every
+solidity-security finding is fixed before testnet, test-first, and proven on a
+live EVM (new suite `test/fork/fleet-contracts.test.ts`, now run by
+`./verify.sh fleet-foundation`). Standard caveat recorded and repeated to the
+user: contracts holding real user funds still warrant a professional audit
+before mainnet; this hardening closes the known findings but does not replace
+that gate.
+
+Fixes:
+
+- **HIGH — owner escape hatch.** `FleetAccount` gains owner-only
+  `withdrawToken`/`withdrawEth` (SafeERC20, zero-recipient guard). The sponsored
+  `execute` path stays operator-driven and policy-bound; recovering the account's
+  own assets is the owner acting directly, which the policy does not gate. Tokens
+  a fleet account buys are now recoverable.
+- **MEDIUM — close/commit race.** New `Locked` reservation state + `lock()`;
+  `close` will not roll back a reservation locked within `LOCK_WINDOW` (1h), so a
+  broadcast sponsored op can still be committed. The window bounds the operator's
+  exclusivity.
+- **MEDIUM — stranded locked reservation (found by the code-reviewer pass on this
+  very diff).** An early `close` skips a still-locked reservation but runs only
+  once, so an abandoned lock could strand ETH. Added owner-only
+  `reclaimExpiredLock`, callable after the window even post-close.
+- **MEDIUM — stranded spend.** `withdrawSpent` lets the operator withdraw
+  committed gas cost to a beneficiary, tracked by `spentWithdrawn` so nothing
+  pays twice; reverts once drained.
+- **LOW — id squatting.** `registerCampaign` (operator-only) sets the owner
+  before funding; `fund` now requires a registered campaign and the registered
+  owner. First-funder-becomes-owner is gone.
+- **LOW — openSession sanity.** Rejects past expiry, chain mismatch, zero router,
+  and per-account gas above the total.
+
+CEI verified on every new external call (state updated before transfer); the
+`spent - spentWithdrawn` and `funded - spent - reserved` subtractions cannot
+underflow given the maintained invariants. `campaign-budget.ts` stays the pure
+arithmetic twin; the lock/registration/withdrawal are on-chain concurrency and
+access concerns the single-threaded model does not need, an intentional
+documented divergence.

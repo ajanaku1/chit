@@ -28,7 +28,8 @@
     "test:fork:assets": "node --test --test-reporter spec dist/test/fork/phase2-assets.test.js",
     "test:fork:factory": "node --test --test-reporter spec dist/test/fork/public-round-factory.test.js",
     "test:fork:lifecycle": "node --test --test-reporter spec dist/test/fork/round-lifecycle.test.js",
-    "test:fork:authorizer": "node --test --test-reporter spec dist/test/fork/service-authorizer.test.js"
+    "test:fork:authorizer": "node --test --test-reporter spec dist/test/fork/service-authorizer.test.js",
+    "test:fleet:contracts": "npm run build && node --test dist/test/fork/fleet-contracts.test.js"
   },
   "dependencies": {
     "@iexec-nox/handle": "^0.1.0-beta.13",

@@ -13,12 +13,14 @@ contract FleetCampaignEscrow {
         None,
         Reserved,
         Committed,
-        RolledBack
+        RolledBack,
+        Locked
     }
 
     struct Reservation {
         uint256 amount;
         uint256 committed;
+        uint64 lockedUntil;
         ReservationState state;
     }
 
@@ -27,26 +29,37 @@ contract FleetCampaignEscrow {
         uint256 funded;
         uint256 reserved;
         uint256 spent;
+        uint256 spentWithdrawn;
         bool closed;
         bool exists;
     }
 
     address public immutable operator;
 
+    /// @notice How long a locked reservation is exclusively the operator's to
+    ///         settle. After this window the owner may reclaim it on close, so a
+    ///         vanished operator cannot strand funds forever.
+    uint64 public constant LOCK_WINDOW = 1 hours;
+
     mapping(bytes32 campaign => Campaign) private _campaigns;
     mapping(bytes32 campaign => mapping(bytes32 key => Reservation)) private _reservations;
 
+    event CampaignRegistered(bytes32 indexed campaign, address indexed owner);
     event CampaignFunded(bytes32 indexed campaign, address indexed owner, uint256 amount);
     event Reserved(bytes32 indexed campaign, bytes32 indexed key, uint256 amount);
+    event Locked(bytes32 indexed campaign, bytes32 indexed key, uint64 until);
     event Committed(bytes32 indexed campaign, bytes32 indexed key, uint256 amount);
     event RolledBack(bytes32 indexed campaign, bytes32 indexed key, uint256 amount);
+    event SpentWithdrawn(bytes32 indexed campaign, address indexed to, uint256 amount);
     event Closed(bytes32 indexed campaign, address indexed owner, uint256 returned);
 
     error NotOperator();
     error NotOwner();
     error CampaignMissing();
+    error CampaignExists();
     error CampaignClosed();
     error OwnerMismatch();
+    error ZeroAddress();
     error ZeroAmount();
     error ReservationExceedsUnused();
     error ReservationAmountChanged();
@@ -55,7 +68,9 @@ contract FleetCampaignEscrow {
     error ReservationUnknown();
     error ReservationRolledBack();
     error ReservationCommitted();
+    error NotReservedOrLocked();
     error ReturnFailed();
+    error NothingToWithdraw();
 
     modifier onlyOperator() {
         if (msg.sender != operator) revert NotOperator();
@@ -66,18 +81,26 @@ contract FleetCampaignEscrow {
         operator = operator_;
     }
 
-    /// @notice Funds a campaign. Only its original owner may add to it.
+    /// @notice Registers a campaign to its owner before any funding. Only the
+    ///         operator may register, which removes the first-funder land-grab:
+    ///         an observer can no longer squat a campaign id with 1 wei.
+    function registerCampaign(bytes32 campaign, address owner) external onlyOperator {
+        if (owner == address(0)) revert ZeroAddress();
+        Campaign storage record = _campaigns[campaign];
+        if (record.exists) revert CampaignExists();
+        record.owner = owner;
+        record.exists = true;
+        emit CampaignRegistered(campaign, owner);
+    }
+
+    /// @notice Funds a registered campaign. Only its registered owner may add to it.
     function fund(bytes32 campaign) external payable {
         if (msg.value == 0) revert ZeroAmount();
 
         Campaign storage record = _campaigns[campaign];
-        if (!record.exists) {
-            record.owner = msg.sender;
-            record.exists = true;
-        } else {
-            if (record.closed) revert CampaignClosed();
-            if (record.owner != msg.sender) revert OwnerMismatch();
-        }
+        if (!record.exists) revert CampaignMissing();
+        if (record.closed) revert CampaignClosed();
+        if (record.owner != msg.sender) revert OwnerMismatch();
 
         record.funded += msg.value;
         emit CampaignFunded(campaign, record.owner, msg.value);
@@ -118,6 +141,22 @@ contract FleetCampaignEscrow {
         emit Reserved(campaign, key, amount);
     }
 
+    /// @notice Locks a reservation the operator is about to submit on chain.
+    /// @dev This closes the close/commit race: once locked, the owner's `close`
+    ///      cannot claw the reservation back within LOCK_WINDOW, so a sponsored
+    ///      op that has already been broadcast can still be committed. The window
+    ///      bounds the operator's exclusivity so funds are never stranded.
+    function lock(bytes32 campaign, bytes32 key) external onlyOperator {
+        _requireCampaignStorage(campaign);
+        Reservation storage reservation = _reservations[campaign][key];
+        if (reservation.state != ReservationState.Reserved && reservation.state != ReservationState.Locked) {
+            revert NotReservedOrLocked();
+        }
+        reservation.lockedUntil = uint64(block.timestamp) + LOCK_WINDOW;
+        reservation.state = ReservationState.Locked;
+        emit Locked(campaign, key, reservation.lockedUntil);
+    }
+
     /// @notice Debits the request's actual cost and releases the remainder.
     function commit(bytes32 campaign, bytes32 key, uint256 actual) external onlyOperator {
         Campaign storage record = _requireCampaignStorage(campaign);
@@ -129,6 +168,7 @@ contract FleetCampaignEscrow {
             if (reservation.committed != actual) revert CommitAmountChanged();
             return;
         }
+        // Reserved or Locked both commit.
         if (actual > reservation.amount) revert CommitExceedsReservation();
 
         record.reserved -= reservation.amount;
@@ -156,9 +196,49 @@ contract FleetCampaignEscrow {
         return _reservations[campaign][key];
     }
 
+    /// @notice Owner reclaims a locked reservation the operator abandoned.
+    /// @dev The escape hatch that makes LOCK_WINDOW safe: once the window has
+    ///      passed, a still-locked reservation is no longer the operator's to
+    ///      settle, so the owner may roll it back and recover the ETH — even
+    ///      after close, which otherwise runs only once.
+    function reclaimExpiredLock(bytes32 campaign, bytes32 key) external returns (uint256 amount) {
+        Campaign storage record = _requireCampaignStorage(campaign);
+        if (msg.sender != record.owner) revert NotOwner();
+        Reservation storage reservation = _reservations[campaign][key];
+        if (reservation.state != ReservationState.Locked) revert NotReservedOrLocked();
+        if (block.timestamp <= reservation.lockedUntil) revert NotReservedOrLocked();
+
+        amount = reservation.amount;
+        record.reserved -= amount;
+        reservation.state = ReservationState.RolledBack;
+        emit RolledBack(campaign, key, amount);
+
+        (bool ok, ) = record.owner.call{value: amount}("");
+        if (!ok) revert ReturnFailed();
+    }
+
+    /// @notice Withdraws committed spend to a beneficiary — the ETH the operator
+    ///         fronted as gas for permitted sponsored requests.
+    /// @dev Without this the committed `spent` would be locked in the contract
+    ///      forever. Tracks `spentWithdrawn` so nothing is paid twice.
+    function withdrawSpent(bytes32 campaign, address to) external onlyOperator returns (uint256 amount) {
+        if (to == address(0)) revert ZeroAddress();
+        Campaign storage record = _requireCampaignStorage(campaign);
+        amount = record.spent - record.spentWithdrawn;
+        if (amount == 0) revert NothingToWithdraw();
+
+        record.spentWithdrawn += amount;
+        (bool ok, ) = to.call{value: amount}("");
+        if (!ok) revert ReturnFailed();
+        emit SpentWithdrawn(campaign, to, amount);
+    }
+
     /// @notice Closes the campaign and returns its unused ETH to the owner.
     /// @dev Open reservations are released first, so an interrupted submission
-    ///      never strands budget. Closing blocks every later charge.
+    ///      never strands budget. A reservation still Locked inside its window is
+    ///      left for the operator to settle; only after the window may the owner
+    ///      reclaim it. `spent` already withdrawn by the operator is excluded.
+    ///      Closing blocks every later charge.
     function close(bytes32 campaign, bytes32[] calldata openKeys) external returns (uint256 returned) {
         Campaign storage record = _requireCampaignStorage(campaign);
         if (msg.sender != record.owner) revert NotOwner();
@@ -166,12 +246,16 @@ contract FleetCampaignEscrow {
 
         for (uint256 index = 0; index < openKeys.length; ++index) {
             Reservation storage reservation = _reservations[campaign][openKeys[index]];
-            if (reservation.state != ReservationState.Reserved) continue;
+            bool releasable = reservation.state == ReservationState.Reserved ||
+                (reservation.state == ReservationState.Locked && block.timestamp > reservation.lockedUntil);
+            if (!releasable) continue;
             record.reserved -= reservation.amount;
             reservation.state = ReservationState.RolledBack;
             emit RolledBack(campaign, openKeys[index], reservation.amount);
         }
 
+        // Return the owner's remainder: funded minus committed spend and any
+        // reservation still standing (locked-within-window or committed).
         returned = record.funded - record.spent - record.reserved;
         record.closed = true;
 

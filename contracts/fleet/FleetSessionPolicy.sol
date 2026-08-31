@@ -71,6 +71,14 @@ contract FleetSessionPolicy {
         if (_sessions[campaign].exists) revert SessionExists();
         if (accounts.length < MIN_ACCOUNTS || accounts.length > MAX_ACCOUNTS) revert AccountCountOutOfRange();
 
+        // Sanity-check the session so a malformed one can never open: it must be
+        // for this chain, not already expired, with a real router and a total
+        // gas budget that can cover at least one per-account request.
+        if (session.chainId != block.chainid) revert ChainMismatch();
+        if (session.expiry <= block.timestamp) revert CampaignExpired();
+        if (session.router == address(0)) revert UnapprovedTarget();
+        if (session.perAccountGas > session.totalGas) revert TotalGasExceeded();
+
         address previous = address(0);
         for (uint256 index = 0; index < accounts.length; ++index) {
             if (accounts[index] <= previous) revert AccountsNotStrictlyIncreasing();

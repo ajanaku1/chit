@@ -1,23 +1,43 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
 import {FleetSessionPolicy} from "./FleetSessionPolicy.sol";
 
 /// @title Fleet account
 /// @notice A newly generated smart account owned by one browser-generated
 ///         credential. It is never an imported EOA (FR-005).
-/// @dev Every call it makes is checked against the campaign's session policy
-///      first, so the account cannot transfer assets, change ownership, withdraw
-///      gas, authorize a key, or reach an unapproved contract (FR-008).
+/// @dev The sponsored path (`execute`) is operator-driven and policy-bound, so
+///      it cannot transfer assets, change ownership, withdraw gas, authorize a
+///      key, or reach an unapproved contract (FR-008). Recovering the account's
+///      own assets is a separate, owner-only path (`withdrawToken`/`withdrawEth`)
+///      that the policy does not gate — it is the owner acting directly, not a
+///      sponsored operation. Without it, tokens a fleet account buys would be
+///      unrecoverable (the recovered browser key would command nothing on chain).
 contract FleetAccount {
+    using SafeERC20 for IERC20;
+
     address public immutable owner;
     address public immutable operator;
     FleetSessionPolicy public immutable policy;
     bytes32 public immutable campaign;
 
+    event TokenWithdrawn(address indexed token, address indexed to, uint256 amount);
+    event EthWithdrawn(address indexed to, uint256 amount);
+
     error NotOperator();
+    error NotOwner();
     error CallFailed();
     error EmptyCallData();
+    error ZeroRecipient();
+    error EthWithdrawFailed();
+
+    modifier onlyOwner() {
+        if (msg.sender != owner) revert NotOwner();
+        _;
+    }
 
     constructor(address owner_, address operator_, FleetSessionPolicy policy_, bytes32 campaign_) {
         owner = owner_;
@@ -36,6 +56,21 @@ contract FleetAccount {
         (bool ok, bytes memory result) = target.call{value: value}(data);
         if (!ok) revert CallFailed();
         return result;
+    }
+
+    /// @notice Owner-only recovery of ERC-20 tokens this account holds.
+    function withdrawToken(IERC20 token, address to, uint256 amount) external onlyOwner {
+        if (to == address(0)) revert ZeroRecipient();
+        token.safeTransfer(to, amount);
+        emit TokenWithdrawn(address(token), to, amount);
+    }
+
+    /// @notice Owner-only recovery of the native ETH this account holds.
+    function withdrawEth(address to, uint256 amount) external onlyOwner {
+        if (to == address(0)) revert ZeroRecipient();
+        (bool ok, ) = to.call{value: amount}("");
+        if (!ok) revert EthWithdrawFailed();
+        emit EthWithdrawn(to, amount);
     }
 
     receive() external payable {}
