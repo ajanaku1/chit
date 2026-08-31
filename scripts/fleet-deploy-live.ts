@@ -18,11 +18,14 @@ import { deployFleet } from "../src/fleet/deploy.js";
 
 const DEFAULT_RPC = "https://rpc.testnet.chain.robinhood.com";
 
+// Treat an empty env value (a blank line in .env) as unset, not as "".
+const RPC_URL = process.env.ROBINHOOD_TESTNET_RPC_URL || DEFAULT_RPC;
+
 const robinhoodTestnet = defineChain({
   id: 46630,
   name: "Robinhood Chain Testnet",
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-  rpcUrls: { default: { http: [process.env.ROBINHOOD_TESTNET_RPC_URL ?? DEFAULT_RPC] } },
+  rpcUrls: { default: { http: [RPC_URL] } },
 });
 
 const keyFromEnv = (): `0x${string}` => {
@@ -35,7 +38,7 @@ const keyFromEnv = (): `0x${string}` => {
 
 const main = async (): Promise<void> => {
   const account = privateKeyToAccount(keyFromEnv());
-  const transport = http(process.env.ROBINHOOD_TESTNET_RPC_URL ?? DEFAULT_RPC);
+  const transport = http(RPC_URL);
   const wallet = createWalletClient({ account, chain: robinhoodTestnet, transport });
   const publicClient = createPublicClient({ chain: robinhoodTestnet, transport });
 

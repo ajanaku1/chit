@@ -382,3 +382,28 @@ with `npm run fleet-deploy:live`.
 
 The actual on-chain deploy is a deliberate stop point per plan.md (outward
 action, requires a funded key and explicit go-ahead). It has not been run.
+
+## Testnet deployment — 2026-08-31
+
+The three core Fleet contracts are LIVE on Robinhood Chain testnet (46630),
+deployed via `npm run fleet-deploy:live` from the funded deployer
+`0x34b0Ba20669f3ec4F1056853780c381e5e35F724` (also the operator). Verified by
+independent `eth_getCode`: each address carries real bytecode.
+
+- FleetSessionPolicy  `0x57c7436bbbb40b08adef5c84f0aeaee0c4f3e011`
+- FleetAccountFactory `0x5c0e2ec619c11b66e0e0efb7931bccfa6b784ea6`
+- FleetCampaignEscrow `0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325`
+
+Record: `deployments/fleet-46630.json` (addresses + deploy tx hashes).
+
+One bug fixed en route: the live script read the RPC env var with `??`, which
+does not fall back on the empty string a blank `.env` line produces; switched to
+`||`. The failure happened at client construction, before any broadcast, so no
+gas was spent on the first attempt.
+
+Still pending before the app's "testnet pending" banners can go live:
+- A gas-sponsoring **paymaster** contract (not yet built; the escrow holds the
+  budget but does not itself sponsor UserOperations through the EntryPoint).
+- Wiring the deployed escrow + paymaster into the hosted service (the API still
+  uses the in-memory TS budget twin) and configuring it.
+- A seeded venue (a Uniswap v4 pool with liquidity, or the labelled test token).

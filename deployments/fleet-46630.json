@@ -1,0 +1,14 @@
+{
+  "network": "robinhood-testnet",
+  "chainId": 46630,
+  "operator": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
+  "entryPoint": "0x0000000071727de22e5e9d8baf0edac6f37da032",
+  "router": "0x8876789976decbfcbbbe364623c63652db8c0904",
+  "sessionPolicy": "0x57c7436bbbb40b08adef5c84f0aeaee0c4f3e011",
+  "accountFactory": "0x5c0e2ec619c11b66e0e0efb7931bccfa6b784ea6",
+  "campaignEscrow": "0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325",
+  "sessionPolicyTx": "0x46d1f706251dd5aa0ddbc91bf1b591a1721016b66c7d837f7f4c06bf3cee2ec6",
+  "accountFactoryTx": "0xd4ace2b2485394081dff2f8b78f6420c76eb973e9aa4d52a6036a97108155f02",
+  "campaignEscrowTx": "0xf464fa2ef42d72d357ffed0557bae54cbfbf22e0fc327693f43d7d186dbf708d",
+  "deployedAt": "2026-08-31T19:55:42.312Z"
+}
