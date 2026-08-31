@@ -72,13 +72,36 @@ contract FleetCampaignEscrow {
     error ReturnFailed();
     error NothingToWithdraw();
 
+    /// @notice A settlement module (the Fleet paymaster) the operator authorizes
+    ///         once to reserve, lock, commit, and roll back budget on its behalf.
+    ///         This lets the paymaster settle gas atomically inside the EntryPoint
+    ///         flow while the operator keeps registration and spend withdrawal.
+    address public settler;
+
+    event SettlerSet(address indexed settler);
+    error SettlerAlreadySet();
+    error NotOperatorOrSettler();
+
     modifier onlyOperator() {
         if (msg.sender != operator) revert NotOperator();
         _;
     }
 
+    modifier onlyOperatorOrSettler() {
+        if (msg.sender != operator && msg.sender != settler) revert NotOperatorOrSettler();
+        _;
+    }
+
     constructor(address operator_) {
         operator = operator_;
+    }
+
+    /// @notice Authorizes the settlement module once. Set-once, operator-only.
+    function setSettler(address settler_) external onlyOperator {
+        if (settler_ == address(0)) revert ZeroAddress();
+        if (settler != address(0)) revert SettlerAlreadySet();
+        settler = settler_;
+        emit SettlerSet(settler_);
     }
 
     /// @notice Registers a campaign to its owner before any funding. Only the
@@ -123,7 +146,7 @@ contract FleetCampaignEscrow {
     }
 
     /// @notice Reserves the maximum a pending sponsored request may cost.
-    function reserve(bytes32 campaign, bytes32 key, uint256 amount) external onlyOperator {
+    function reserve(bytes32 campaign, bytes32 key, uint256 amount) external onlyOperatorOrSettler {
         Campaign storage record = _requireCampaignStorage(campaign);
         if (record.closed) revert CampaignClosed();
         if (amount == 0) revert ZeroAmount();
@@ -146,7 +169,7 @@ contract FleetCampaignEscrow {
     ///      cannot claw the reservation back within LOCK_WINDOW, so a sponsored
     ///      op that has already been broadcast can still be committed. The window
     ///      bounds the operator's exclusivity so funds are never stranded.
-    function lock(bytes32 campaign, bytes32 key) external onlyOperator {
+    function lock(bytes32 campaign, bytes32 key) external onlyOperatorOrSettler {
         _requireCampaignStorage(campaign);
         Reservation storage reservation = _reservations[campaign][key];
         if (reservation.state != ReservationState.Reserved && reservation.state != ReservationState.Locked) {
@@ -158,7 +181,7 @@ contract FleetCampaignEscrow {
     }
 
     /// @notice Debits the request's actual cost and releases the remainder.
-    function commit(bytes32 campaign, bytes32 key, uint256 actual) external onlyOperator {
+    function commit(bytes32 campaign, bytes32 key, uint256 actual) external onlyOperatorOrSettler {
         Campaign storage record = _requireCampaignStorage(campaign);
         Reservation storage reservation = _reservations[campaign][key];
 
@@ -179,7 +202,7 @@ contract FleetCampaignEscrow {
     }
 
     /// @notice Releases a failed or expired reservation without charging it.
-    function rollback(bytes32 campaign, bytes32 key) public onlyOperator {
+    function rollback(bytes32 campaign, bytes32 key) public onlyOperatorOrSettler {
         Campaign storage record = _requireCampaignStorage(campaign);
         Reservation storage reservation = _reservations[campaign][key];
 

@@ -28,9 +28,12 @@ export type FleetDeployment = {
   sessionPolicy: Address;
   accountFactory: Address;
   campaignEscrow: Address;
+  paymaster: Address;
   sessionPolicyTx: Hex;
   accountFactoryTx: Hex;
   campaignEscrowTx: Hex;
+  paymasterTx: Hex;
+  setSettlerTx: Hex;
   deployedAt: string;
 };
 
@@ -38,6 +41,7 @@ const ARTIFACTS: Record<string, string> = {
   FleetSessionPolicy: "artifacts/contracts/fleet/FleetSessionPolicy.sol/FleetSessionPolicy.json",
   FleetAccountFactory: "artifacts/contracts/fleet/FleetAccountFactory.sol/FleetAccountFactory.json",
   FleetCampaignEscrow: "artifacts/contracts/fleet/FleetCampaignEscrow.sol/FleetCampaignEscrow.json",
+  FleetPaymaster: "artifacts/contracts/fleet/FleetPaymaster.sol/FleetPaymaster.json",
 };
 
 const loadArtifact = async (name: string): Promise<ContractArtifact> => {
@@ -68,12 +72,12 @@ export const deployFleet = async ({ wallet, publicClient, operator, network }: D
   if (!isAddress(operator)) throw new Error("operator is not an address");
   const chainId = await publicClient.getChainId();
 
-  const deploy = async (name: string): Promise<{ address: Address; tx: Hex }> => {
+  const deploy = async (name: string, args: readonly unknown[]): Promise<{ address: Address; tx: Hex }> => {
     const artifact = await loadArtifact(name);
     const tx = await wallet.deployContract({
       abi: artifact.abi,
       bytecode: artifact.bytecode,
-      args: [operator],
+      args,
       account: wallet.account ?? null,
       chain: wallet.chain,
     });
@@ -86,9 +90,23 @@ export const deployFleet = async ({ wallet, publicClient, operator, network }: D
     return { address: receipt.contractAddress, tx };
   };
 
-  const sessionPolicy = await deploy("FleetSessionPolicy");
-  const accountFactory = await deploy("FleetAccountFactory");
-  const campaignEscrow = await deploy("FleetCampaignEscrow");
+  const sessionPolicy = await deploy("FleetSessionPolicy", [operator]);
+  const accountFactory = await deploy("FleetAccountFactory", [operator]);
+  const campaignEscrow = await deploy("FleetCampaignEscrow", [operator]);
+  const paymaster = await deploy("FleetPaymaster", [ROBINHOOD_TESTNET_ENTRYPOINT, operator, campaignEscrow.address]);
+
+  // Authorize the paymaster to settle budget against the escrow (set-once).
+  const escrowArtifact = await loadArtifact("FleetCampaignEscrow");
+  const setSettlerTx = await wallet.writeContract({
+    address: campaignEscrow.address,
+    abi: escrowArtifact.abi,
+    functionName: "setSettler",
+    args: [paymaster.address],
+    account: wallet.account ?? null,
+    chain: wallet.chain,
+  });
+  const settlerReceipt = await publicClient.waitForTransactionReceipt({ hash: setSettlerTx, confirmations: 1, timeout: 180_000 });
+  if (settlerReceipt.status !== "success") throw new Error(`setSettler failed (${setSettlerTx})`);
 
   return {
     network,
@@ -99,9 +117,12 @@ export const deployFleet = async ({ wallet, publicClient, operator, network }: D
     sessionPolicy: sessionPolicy.address,
     accountFactory: accountFactory.address,
     campaignEscrow: campaignEscrow.address,
+    paymaster: paymaster.address,
     sessionPolicyTx: sessionPolicy.tx,
     accountFactoryTx: accountFactory.tx,
     campaignEscrowTx: campaignEscrow.tx,
+    paymasterTx: paymaster.tx,
+    setSettlerTx,
     deployedAt: new Date().toISOString(),
   };
 };

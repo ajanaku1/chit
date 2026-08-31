@@ -23,16 +23,24 @@ describe("Fleet deployment", () => {
       network: "local",
     });
 
-    for (const address of [record.sessionPolicy, record.accountFactory, record.campaignEscrow]) {
+    for (const address of [record.sessionPolicy, record.accountFactory, record.campaignEscrow, record.paymaster]) {
       assert.ok(isAddress(address), `deployed address malformed: ${address}`);
       const code = await publicClient.getCode({ address });
       assert.ok(code && code !== "0x", `no code at ${address}`);
     }
 
+    // The paymaster is authorized as the escrow's settler.
+    const escrow = await viem.getContractAt("FleetCampaignEscrow", record.campaignEscrow);
+    assert.equal(
+      (await escrow.read.settler()).toLowerCase(),
+      record.paymaster.toLowerCase(),
+      "paymaster set as escrow settler",
+    );
+
     assert.equal(record.operator, deployer!.account.address);
     assert.equal(record.entryPoint, ROBINHOOD_TESTNET_ENTRYPOINT);
     assert.equal(record.router, ROBINHOOD_TESTNET_ROUTER);
-    for (const tx of [record.sessionPolicyTx, record.accountFactoryTx, record.campaignEscrowTx]) {
+    for (const tx of [record.sessionPolicyTx, record.accountFactoryTx, record.campaignEscrowTx, record.paymasterTx, record.setSettlerTx]) {
       assert.match(tx, /^0x[0-9a-f]{64}$/);
     }
     assert.ok(!Number.isNaN(Date.parse(record.deployedAt)));
