@@ -365,3 +365,20 @@ underflow given the maintained invariants. `campaign-budget.ts` stays the pure
 arithmetic twin; the lock/registration/withdrawal are on-chain concurrency and
 access concerns the single-threaded model does not need, an intentional
 documented divergence.
+
+## Fleet deployment tooling — 2026-08-31
+
+Built the deploy path so the real testnet deploy is one command once a funded key
+is supplied. `src/fleet/deploy.ts` holds a transport-agnostic `deployFleet` that
+deploys the three hardened contracts (operator = deployer), waits for each
+receipt, verifies code landed, and returns a complete record. It runs against a
+local EVM in `test/fork/fleet-deploy.test.ts` (now part of `fleet-foundation`),
+so the live path is proven without a credential.
+
+`scripts/fleet-deploy-live.ts` is the thin wrapper for Robinhood testnet (46630):
+it reads `DEPLOYER_PRIVATE_KEY` and optional `ROBINHOOD_TESTNET_RPC_URL` from the
+environment — never invented — and writes `deployments/fleet-46630.json`. Run
+with `npm run fleet-deploy:live`.
+
+The actual on-chain deploy is a deliberate stop point per plan.md (outward
+action, requires a funded key and explicit go-ahead). It has not been run.
