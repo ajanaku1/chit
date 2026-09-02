@@ -95,7 +95,12 @@ contract FleetPaymaster {
         uint48 validUntil = uint48(bytes6(data[64:70]));
         uint48 validAfter = uint48(bytes6(data[70:76]));
 
-        bool signatureOk = _verify(userOpHash, campaign, key, maxCost, validUntil, validAfter, data[SIG_OFFSET:SIG_OFFSET + 65]);
+        // Sign over the operation's fields, never the EntryPoint userOpHash:
+        // userOpHash includes the full paymasterAndData (this signature), so
+        // signing it would be circular. Binding sender, nonce, callData and gas
+        // pins the exact op without that dependency. userOpHash is unused.
+        userOpHash;
+        bool signatureOk = _verify(userOp, campaign, key, maxCost, validUntil, validAfter, data[SIG_OFFSET:SIG_OFFSET + 65]);
 
         // Reserve the ceiling only for an authorized op; an invalid signature is
         // signalled to the EntryPoint through validationData, which drops the op.
@@ -107,9 +112,10 @@ contract FleetPaymaster {
         validationData = _packValidationData(!signatureOk, validUntil, validAfter);
     }
 
-    /// @dev Recovers the operator signature over the sponsorship digest.
+    /// @dev Recovers the operator signature over the sponsorship digest, hashed
+    ///      from the operation's fixed fields (no userOpHash, no signatures).
     function _verify(
-        bytes32 userOpHash,
+        PackedUserOperation calldata userOp,
         bytes32 campaign,
         bytes32 key,
         uint256 maxCost,
@@ -117,8 +123,19 @@ contract FleetPaymaster {
         uint48 validAfter,
         bytes calldata signature
     ) private view returns (bool) {
+        // Two-step hash keeps each abi.encode shallow enough to avoid stack-too-deep.
+        bytes32 opHash = keccak256(
+            abi.encode(
+                userOp.sender,
+                userOp.nonce,
+                keccak256(userOp.callData),
+                userOp.accountGasLimits,
+                userOp.preVerificationGas,
+                userOp.gasFees
+            )
+        );
         bytes32 digest = keccak256(
-            abi.encode(userOpHash, campaign, key, maxCost, validUntil, validAfter, block.chainid, address(this))
+            abi.encode(opHash, block.chainid, address(this), campaign, key, maxCost, validUntil, validAfter)
         ).toEthSignedMessageHash();
         return digest.recover(signature) == operator;
     }

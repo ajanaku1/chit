@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { network } from "hardhat";
-import { concat, encodeAbiParameters, keccak256, numberToHex, parseEther, type Address, type Hex } from "viem";
+import { encodeAbiParameters, parseEther, type Address, type Hex } from "viem";
+
+import { buildFleetPaymasterData } from "../../src/fleet/paymaster-data.js";
 
 /**
  * On-chain tests for FleetPaymaster and the escrow settler role. The test wallet
@@ -26,35 +28,33 @@ describe("FleetPaymaster + escrow settler", () => {
     signature: "0x" as Hex,
   });
 
+  const ZERO32 = `0x${"00".repeat(32)}` as Hex;
   const buildPaymasterData = async (
     paymaster: Address,
     operatorWallet: { signMessage: (a: { message: { raw: Hex } }) => Promise<Hex> },
     chainId: number,
-  ): Promise<Hex> => {
-    const validUntil = 0;
-    const validAfter = 0;
-    const digest = keccak256(
-      encodeAbiParameters(
-        [
-          { type: "bytes32" }, { type: "bytes32" }, { type: "bytes32" }, { type: "uint256" },
-          { type: "uint48" }, { type: "uint48" }, { type: "uint256" }, { type: "address" },
-        ],
-        [USEROP_HASH, CAMPAIGN, KEY, MAX_COST, validUntil, validAfter, BigInt(chainId), paymaster],
-      ),
+    sender: Address,
+  ): Promise<Hex> =>
+    // Production encoder under test: the contract must accept exactly these
+    // bytes, and the signed op fields must match the UserOp handed to validate.
+    buildFleetPaymasterData(
+      {
+        paymaster,
+        campaign: CAMPAIGN,
+        key: KEY,
+        maxCost: MAX_COST,
+        chainId,
+        operation: {
+          sender,
+          nonce: 0n,
+          callData: "0x",
+          accountGasLimits: ZERO32,
+          preVerificationGas: 0n,
+          gasFees: ZERO32,
+        },
+      },
+      (digest) => operatorWallet.signMessage({ message: { raw: digest } }),
     );
-    const signature = await operatorWallet.signMessage({ message: { raw: digest } });
-    // paymaster(20) | verGas(16) | postGas(16) | campaign(32) | key(32) | validUntil(6) | validAfter(6) | sig(65)
-    return concat([
-      paymaster,
-      numberToHex(200000n, { size: 16 }),
-      numberToHex(100000n, { size: 16 }),
-      CAMPAIGN,
-      KEY,
-      numberToHex(validUntil, { size: 6 }),
-      numberToHex(validAfter, { size: 6 }),
-      signature,
-    ]);
-  };
 
   const setup = async () => {
     const { viem } = await network.connect({ network: "default" });
@@ -75,7 +75,7 @@ describe("FleetPaymaster + escrow settler", () => {
 
   it("reserves on validate and commits actual cost on postOp, atomically", async () => {
     const { operator, entryPoint, fleetAccount, escrow, paymaster, chainId } = await setup();
-    const pmData = await buildPaymasterData(paymaster.address, operator, chainId);
+    const pmData = await buildPaymasterData(paymaster.address, operator, chainId, fleetAccount.account.address);
 
     await paymaster.write.validatePaymasterUserOp(
       [emptyUserOp(fleetAccount.account.address, pmData), USEROP_HASH, MAX_COST],
@@ -101,7 +101,7 @@ describe("FleetPaymaster + escrow settler", () => {
 
   it("rejects a call from anyone but the EntryPoint", async () => {
     const { operator, fleetAccount, paymaster, chainId } = await setup();
-    const pmData = await buildPaymasterData(paymaster.address, operator, chainId);
+    const pmData = await buildPaymasterData(paymaster.address, operator, chainId, fleetAccount.account.address);
     await assert.rejects(
       paymaster.write.validatePaymasterUserOp(
         [emptyUserOp(fleetAccount.account.address, pmData), USEROP_HASH, MAX_COST],
@@ -113,7 +113,7 @@ describe("FleetPaymaster + escrow settler", () => {
   it("a forged (non-operator) signature reserves nothing and signals failure", async () => {
     const { entryPoint, fleetAccount, escrow, paymaster, chainId } = await setup();
     // Sign with the wrong key (the fleet account, not the operator).
-    const pmData = await buildPaymasterData(paymaster.address, fleetAccount, chainId);
+    const pmData = await buildPaymasterData(paymaster.address, fleetAccount, chainId, fleetAccount.account.address);
     await paymaster.write.validatePaymasterUserOp(
       [emptyUserOp(fleetAccount.account.address, pmData), USEROP_HASH, MAX_COST],
       { account: entryPoint.account },
