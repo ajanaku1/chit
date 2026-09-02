@@ -407,3 +407,23 @@ Still pending before the app's "testnet pending" banners can go live:
 - Wiring the deployed escrow + paymaster into the hosted service (the API still
   uses the in-memory TS budget twin) and configuring it.
 - A seeded venue (a Uniswap v4 pool with liquidity, or the labelled test token).
+
+## Stage 1 gas model — operator-executes (2026-09-02)
+
+A fork surfaced that the fleet accounts and the gas-payment path had drifted: the
+verifying paymaster is a proper ERC-4337 component, but FleetAccount is an
+operator-gated executor with no `validateUserOp`, so the EntryPoint cannot drive
+it. The user chose the **operator-executes** model for Stage 1 over a full 4337
+rebuild.
+
+Model: the operator calls `FleetAccount.execute` (already policy-gated) directly,
+pays the gas, and settles it against the escrow — reserve the ceiling, run the
+call, commit the actual gas — so the trader's ETH budget reimburses the operator
+and the fleet's gas never comes from the trader's main wallet. No EntryPoint or
+paymaster at this stage; the 4337 paymaster + `paymaster-data.ts` are kept for
+the later decentralized model, not deleted.
+
+`src/fleet/operator-executor.ts` implements it; `test/fork/fleet-operator-executor.test.ts`
+proves it on a live EVM (approved call runs, budget debited by exactly the settled
+gas, unapproved call rolls back charging nothing) and is now in
+`verify.sh fleet-foundation`.
