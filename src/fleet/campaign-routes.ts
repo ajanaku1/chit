@@ -10,12 +10,13 @@
  */
 
 import { BudgetError, CampaignBudget } from "./campaign-budget.js";
-import { campaignKey, functionSelector, type ChainBuy, type FleetChain } from "./chain-service.js";
+import { campaignKey, type ChainBuy, type FleetChain } from "./chain-service.js";
 import { CampaignService, ServiceError, assertNoSecrets } from "./campaign-service.js";
 import { CampaignStateError, canSponsor, transition } from "./campaign-state.js";
 import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
+import { encodeBuyCall } from "./v4-swap.js";
 import {
   FleetValidationError,
   isHex32,
@@ -327,7 +328,7 @@ export class CampaignRouter {
     const permitted: ChainBuy[] = [];
     for (const account of requested) {
       if (this.#permitted(record, session, account, value, now)) {
-        permitted.push(this.#chainBuy(record, account, token, value));
+        permitted.push(this.#chainBuy(record, account, token, value, now));
       } else {
         refused.push({ account, status: "rejected", budget: this.#budget(record) });
       }
@@ -357,12 +358,11 @@ export class CampaignRouter {
     }
   }
 
-  #chainBuy(record: CampaignRecord, account: Address, token: string, value: Uint): ChainBuy {
-    const selector = functionSelector(record.policy.function);
+  #chainBuy(record: CampaignRecord, account: Address, token: string, value: Uint, now: Date): ChainBuy {
     const reservation = `${record.id}|buy|${account.toLowerCase()}|${value}|${token.toLowerCase()}`;
     return {
       account, key: campaignKey(reservation), value,
-      callData: `${selector}${encodeExecuteData(token as Address, value).slice(2)}` as Hex,
+      callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now),
       maxCost: record.policy.perAccountGas,
     };
   }
