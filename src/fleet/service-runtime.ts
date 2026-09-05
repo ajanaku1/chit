@@ -8,7 +8,7 @@
  * 503 instead of substituting a default fact.
  */
 
-import { createPublicClient, createWalletClient, defineChain, http, isHex } from "viem";
+import { createPublicClient, createWalletClient, defineChain, http, isHex, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { CampaignRouter, type RouterDeps } from "./campaign-routes.js";
@@ -56,7 +56,9 @@ const chainFromEnv = (): FleetChain | undefined => {
   });
   const transport = http(rpcUrl);
   const wallet = createWalletClient({ account: privateKeyToAccount(key), chain, transport });
-  const publicClient = createPublicClient({ chain, transport });
+  // Explicit PublicClient: Vercel's TypeScript pass infers a json-rpc account
+  // on this client and rejects the FleetChain call our local build accepts.
+  const publicClient: PublicClient = createPublicClient({ chain, transport });
   return createFleetChain(wallet, publicClient, { escrow, factory, policy });
 };
 
