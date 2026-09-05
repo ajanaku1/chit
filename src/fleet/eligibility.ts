@@ -62,6 +62,18 @@ export const createQuote = (config: FeeConfig, chitBalance: Uint, quoteId: strin
   };
 };
 
+/**
+ * Open access (Stage 1 testnet, decided 2026-09-02): no CHIT gate, no fee.
+ * Requiring CHIT on the primary wallet would fingerprint it as a Chit user,
+ * which defeats a privacy tool. The quote shape is unchanged so the wizard's
+ * contract holds; the facts are simply zero and always eligible.
+ */
+export const openQuote = (quoteId: string): FeeQuote => ({
+  quoteId, threshold: "0", baseFee: "0", discount: "0", netFee: "0", eligible: true,
+});
+
+export const OPEN_ACCESS_CHARGE = { feeAsset: "ETH", recipient: "0x0000000000000000000000000000000000000000", chargeEvidence: "open-access" } as const;
+
 /** Records the fee charge for an eligible quote. Never debits campaign ETH. */
 export const chargeQuote = (quote: FeeQuote, config: FeeConfig, chargeEvidence: string): FeeCharge => {
   if (!quote.eligible) throw new EligibilityError("ineligible", "quote_ineligible");
