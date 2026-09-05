@@ -97,15 +97,17 @@ Here's how we think about $CHIT, and the language we use around it. This section
 
 $CHIT's job is to connect you to the product:
 
-- **Eligibility.** Holding $CHIT above a threshold lets you create a fleet.
 - **Discounts.** Holders pay a lower service fee.
 - **Early access.** Holders get first access to new features, starting with the testnet early-access round.
+- **Governance, later.** Holders get a say in how verified service revenue is used, once there is any to talk about.
 
-The flywheel is simple and honest: as more people use Chit, more people need $CHIT to use it and to get better terms. Real usage creates real reasons to hold. That's a reason to hold that doesn't depend on anyone promising you a price.
+One thing $CHIT does not do: it does not gate the door. You do not need to hold $CHIT to create a fleet. We removed that on purpose. Requiring $CHIT on your main wallet would mark that wallet as a Chit user, which is exactly the kind of trail a privacy tool should not create. So holding is optional, and it only ever makes the product cheaper or earlier for you.
+
+The flywheel is simple and honest: as more people use Chit, more people want $CHIT for better terms. Real usage creates real reasons to hold. That's a reason to hold that doesn't depend on anyone promising you a price.
 
 ### It's cheap to qualify, on purpose
 
-The amount of $CHIT you need to hold to use the protocol is deliberately small. Low enough that a regular trader, not a whale, can comfortably hold it. Eligibility is a light touch that ties the token to the product. It isn't a paywall meant to price people out. The goal is for almost anyone who wants to use Chit to be able to afford to qualify.
+The amount of $CHIT you need to hold for the discount and early access is deliberately small. Low enough that a regular trader, not a whale, can comfortably hold it. It's a light touch that ties the token to the product, not a paywall. The goal is for almost anyone who wants better terms on Chit to be able to afford them.
 
 ### On buybacks and fees: the honest policy
 
@@ -149,7 +151,7 @@ Pick what fits the format. All of these stay truthful.
 - Stage 1 (now) is private gas. The full promise, funding your fleet with no trail back to you, is the funding-pool stage on the roadmap. Say which stage we're in, don't skip ahead.
 - Private, not anonymous. We hide the funding link, not your trades, and we say exactly what the operator can see.
 - Chit is not a mixer. We're building selective disclosure: hidden from the public, provable to an auditor you choose. Privacy with accountability.
-- $CHIT is about access and discounts, it's cheap to qualify, and the protocol funds itself before anything else.
+- $CHIT is optional: discounts and early access, never a gate on your main wallet. Cheap to qualify, and the protocol funds itself before anything else.
 
 **Suggested thread shape**
 1. Hook: we're live on testnet, and we're going to be straight about where things stand.

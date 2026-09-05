@@ -92,7 +92,7 @@ Chit removes the need for the funding transaction to exist at all. The gas comes
 
 The trader journey, start to finish:
 
-1. **Connect** your main wallet. Chit checks your $CHIT balance for eligibility and your discount, then asks your wallet to switch to the supported network. (The balance check is read-only and off-chain, it doesn't link your wallet to anything.)
+1. **Connect** your main wallet. Chit asks your wallet to switch to the supported network. No $CHIT is required to continue. If you hold $CHIT, a read-only, off-chain balance check applies your discount; it doesn't link your wallet to anything.
 2. **Size your fleet.** Pick how many wallets (5–50) and how much ETH to budget, and a duration. Everything technical (the router, the gas caps) is preset to a verified route.
 3. **Save your backup.** Chit generates the fleet's wallets *in your browser* and hands you one encrypted backup file. Only your wallet's signature can open it. You download it, then sign once more to prove it opens, before any money moves. Lose that file and your local browser data, and nobody can recover the fleet, not even Chit. That's the cost of being genuinely non-custodial.
 4. **Launch.** Fund the budget and switch the fleet on.
@@ -150,7 +150,7 @@ Be precise about this in public. Overstating readiness is the second-fastest way
 
 - The complete trader flow as a web app: connect → size fleet → generate wallets in-browser → download encrypted backup → confirm → dashboard.
 - The encryption for the recovery backup, generated and verified entirely in the browser (real cryptography, tested exhaustively).
-- The full engine behind it: eligibility/fee logic, the bounded session-key policy, the ETH budget accounting, and the lifecycle controls (pause / resume / stop / close-and-refund).
+- The full engine behind it: the optional-discount fee logic, the bounded session-key policy, the ETH budget accounting, and the lifecycle controls (pause / resume / stop / close-and-refund).
 - The on-chain contracts (fleet accounts, session policy, campaign escrow), **hardened against every issue our security review found**, and tested against a live blockchain environment.
 - Deployment tooling ready to push those contracts to testnet with one command.
 
@@ -223,7 +223,7 @@ Chit's fleet product targets a network with first-class ERC-4337 and EIP-7702 su
 
 ### 9.8 Token
 
-See [Section 10](#10-chit--the-token-and-its-utility). In brief: $CHIT gates eligibility and grants discounts and early access. Gas budgets are denominated in ETH, not $CHIT — the token is not required to pay for gas, which avoids forced conversions and sell pressure.
+See [Section 10](#10-chit--the-token-and-its-utility). In brief: $CHIT is optional. Holding it grants discounts and early access; it never gates fleet creation. Gas budgets are denominated in ETH, not $CHIT — the token is not required to pay for gas, which avoids forced conversions and sell pressure.
 
 ---
 
@@ -240,7 +240,7 @@ Because this is a Pons V2 launch, the token's supply, tax, and trading mechanics
 
 ### What $CHIT does (the utility plan)
 
-- **Eligibility.** Holding $CHIT above a published threshold unlocks the ability to create a fleet.
+- **No gate.** You do not need $CHIT to create a fleet. Requiring it on the main wallet would fingerprint that wallet as a Chit user, which defeats a privacy tool.
 - **Discounts.** Holders get a reduced service fee.
 - **Early access.** Holders get first access to new capabilities (the first of which is the testnet early-access round).
 - **Governance, later.** Whether any part of verified service revenue supports holder benefits, buybacks, or gas credits is a decision to be made transparently by the community, with runway and legal considerations weighed first, not an impulsive promise.
@@ -284,7 +284,7 @@ Print this. Pin it. This is the guardrail that keeps us out of trouble, reputati
 | "The operator can see the mapping in this version." (disclose it) | Implying nobody, including Chit, can link you. |
 | "Testnet-ready; deployment and early access coming soon." | "Live now." / "Trade on Chit today." (Not deployed yet.) |
 | "Hardened contracts, tested against a live chain." | "Audited." / "Audit-proof." (No third-party audit yet.) |
-| "$CHIT unlocks eligibility, discounts, and early access." | "$CHIT pays for gas." (Gas is ETH.) |
+| "$CHIT is optional: discounts and early access." | "You need $CHIT to use Chit." / "$CHIT pays for gas." (No gate; gas is ETH.) |
 | Point to shipped milestones. | Promise price, returns, buybacks, or distributions. |
 | "This is a testnet demonstration." | Present testnet as a production/mainnet integration. |
 
@@ -374,7 +374,7 @@ No, and we won't claim it does. Your fleet wallets and their trades are public. 
 No. It's non-custodial, the fleet keys are generated in your browser and never leave it. Chit never holds your keys. You set spend limits, and you can stop or close a campaign and reclaim unused ETH at any time.
 
 **Do I need $CHIT to use it?**
-You need to *hold* $CHIT above a threshold for eligibility and to get discounts and early access. You do **not** pay for gas in $CHIT, gas budgets are in ETH.
+No. Anyone can create a fleet. Holding $CHIT above a small threshold gets you discounts and early access, and that balance check is read-only. You do **not** pay for gas in $CHIT, gas budgets are in ETH.
 
 **What happens if I lose my backup?**
 If you lose the encrypted backup file *and* your local browser data, the fleet cannot be recovered, not even by us. That's the trade-off for being genuinely non-custodial. Keep the backup safe.
