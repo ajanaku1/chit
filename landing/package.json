@@ -1,0 +1,9 @@
+{
+  "name": "chit-fleet-landing",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node --test test/landing.test.mjs",
+    "verify": "node --test test/landing.test.mjs"
+  }
+}
