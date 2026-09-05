@@ -23,16 +23,29 @@ const DEFAULT_RPC = "https://rpc.testnet.chain.robinhood.com";
 const BALANCE_OF_SELECTOR = "0x70a08231";
 
 /**
- * Stage 1 on-chain wiring. Needs the operator's testnet signer and the three
- * deployed addresses (copy from deployments/fleet-46630.json). Any missing
- * value leaves fund and buy answering 503, never a substituted default.
- *   FLEET_OPERATOR_PRIVATE_KEY   server-side operator signer (testnet only)
- *   FLEET_ESCROW_ADDRESS, FLEET_FACTORY_ADDRESS, FLEET_POLICY_ADDRESS
+ * Deployed Stage 1 contracts on 46630, as recorded in deployments/fleet-46630.json
+ * (deployed 2026-08-31). Override with FLEET_*_ADDRESS only after a redeploy.
+ */
+const DEPLOYED_46630 = {
+  escrow: "0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325",
+  factory: "0x5c0e2ec619c11b66e0e0efb7931bccfa6b784ea6",
+  policy: "0x57c7436bbbb40b08adef5c84f0aeaee0c4f3e011",
+} as const;
+
+/**
+ * Stage 1 on-chain wiring. The only required secret is the operator's testnet
+ * signer, read from FLEET_OPERATOR_PRIVATE_KEY or, as the deployer is also the
+ * operator, DEPLOYER_PRIVATE_KEY. Without it, fund and buy answer 503.
  *   ROBINHOOD_TESTNET_RPC_URL    optional; defaults to the public testnet RPC
+ *   FLEET_ESCROW_ADDRESS, FLEET_FACTORY_ADDRESS, FLEET_POLICY_ADDRESS
+ *                                optional; default to the recorded deployment
  */
 const chainFromEnv = (): FleetChain | undefined => {
-  const { FLEET_OPERATOR_PRIVATE_KEY: key, FLEET_ESCROW_ADDRESS: escrow, FLEET_FACTORY_ADDRESS: factory, FLEET_POLICY_ADDRESS: policy } = process.env;
+  const key = process.env.FLEET_OPERATOR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY;
   if (!key || !isHex(key) || key.length !== 66) return undefined;
+  const escrow = process.env.FLEET_ESCROW_ADDRESS || DEPLOYED_46630.escrow;
+  const factory = process.env.FLEET_FACTORY_ADDRESS || DEPLOYED_46630.factory;
+  const policy = process.env.FLEET_POLICY_ADDRESS || DEPLOYED_46630.policy;
   if (!isAddress(escrow) || !isAddress(factory) || !isAddress(policy)) return undefined;
   const rpcUrl = process.env.ROBINHOOD_TESTNET_RPC_URL || DEFAULT_RPC;
   const chain = defineChain({
