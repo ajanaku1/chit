@@ -427,3 +427,35 @@ the later decentralized model, not deleted.
 proves it on a live EVM (approved call runs, budget debited by exactly the settled
 gas, unapproved call rolls back charging nothing) and is now in
 `verify.sh fleet-foundation`.
+
+## Step 0 — service wiring, open access (2026-09-05, verified)
+
+The router now takes an optional `chain: FleetChain` (`src/fleet/chain-service.ts`)
+that binds the deployed escrow, factory, and session policy behind the operator's
+signer. With it configured: create registers the campaign in the escrow; fund
+reads `escrow.budget` and refuses (422) until the escrow holds at least one
+per-account gas cap; activate creates the fleet through the factory and opens
+the bounded session; buy policy-checks each account off-chain, then settles the
+permitted ones through `runFleetBuy`. The response budget is the on-chain read,
+never a mirror. Without `chain`, the in-memory path is unchanged, so every
+existing route test still holds.
+
+Open access (decided 2026-09-02): `feeConfig`/`chitBalanceOf` are optional; absent,
+the quote is zero-fee and always eligible, and create charges nothing. The wizard
+is untouched (it only blocks on `eligible: false`, which never happens now), so its
+tests stand as written. The service no longer answers 503 for want of CHIT fee env.
+
+Runtime env (server-side, testnet only): `FLEET_OPERATOR_PRIVATE_KEY`,
+`FLEET_ESCROW_ADDRESS`, `FLEET_FACTORY_ADDRESS`, `FLEET_POLICY_ADDRESS`, optional
+`ROBINHOOD_TESTNET_RPC_URL`. Stage 1 control actions (pause/resume/revoke) stay
+service-side: the operator is the only executor, so a paused campaign sponsors
+nothing without an on-chain call. Deviation noted, conservative option.
+
+Done-check `test/fork/fleet-service-chain.test.ts` (added to `fleet-foundation`)
+drives the whole journey through the router on a live EVM. Once Rosetta was
+installed the check ran and surfaced one bug: the router's error mapper never
+handled `BudgetError`, so the deliberate "escrow unfunded" 422 escaped as a
+crash. Fixed by mapping `BudgetError` codes like the other typed errors.
+`./verify.sh` is green for every fleet phase (evidence, foundation, create,
+buy, control, acceptance). Step 0 is done; Steps 1–5 are outward (operator key
+in host env, pool seeding, Vercel deploy, first live buy) and wait for a go.

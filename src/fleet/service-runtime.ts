@@ -8,14 +8,44 @@
  * 503 instead of substituting a default fact.
  */
 
+import { createPublicClient, createWalletClient, defineChain, http, isHex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+
 import { CampaignRouter, type RouterDeps } from "./campaign-routes.js";
 import { CampaignService } from "./campaign-service.js";
+import { createFleetChain, type FleetChain } from "./chain-service.js";
 import { validateFeeConfig, type FeeConfig } from "./eligibility.js";
-import type { Address, Uint } from "./types.js";
+import { isAddress, type Address, type Uint } from "./types.js";
 
 const ORIGIN = "https://chit-kohl.vercel.app";
 const FLEET_CHAIN_ID = 46630; // Robinhood Chain testnet
+const DEFAULT_RPC = "https://rpc.testnet.chain.robinhood.com";
 const BALANCE_OF_SELECTOR = "0x70a08231";
+
+/**
+ * Stage 1 on-chain wiring. Needs the operator's testnet signer and the three
+ * deployed addresses (copy from deployments/fleet-46630.json). Any missing
+ * value leaves fund and buy answering 503, never a substituted default.
+ *   FLEET_OPERATOR_PRIVATE_KEY   server-side operator signer (testnet only)
+ *   FLEET_ESCROW_ADDRESS, FLEET_FACTORY_ADDRESS, FLEET_POLICY_ADDRESS
+ *   ROBINHOOD_TESTNET_RPC_URL    optional; defaults to the public testnet RPC
+ */
+const chainFromEnv = (): FleetChain | undefined => {
+  const { FLEET_OPERATOR_PRIVATE_KEY: key, FLEET_ESCROW_ADDRESS: escrow, FLEET_FACTORY_ADDRESS: factory, FLEET_POLICY_ADDRESS: policy } = process.env;
+  if (!key || !isHex(key) || key.length !== 66) return undefined;
+  if (!isAddress(escrow) || !isAddress(factory) || !isAddress(policy)) return undefined;
+  const rpcUrl = process.env.ROBINHOOD_TESTNET_RPC_URL || DEFAULT_RPC;
+  const chain = defineChain({
+    id: FLEET_CHAIN_ID,
+    name: "Robinhood Chain Testnet",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrls: { default: { http: [rpcUrl] } },
+  });
+  const transport = http(rpcUrl);
+  const wallet = createWalletClient({ account: privateKeyToAccount(key), chain, transport });
+  const publicClient = createPublicClient({ chain, transport });
+  return createFleetChain(wallet, publicClient, { escrow, factory, policy });
+};
 
 const feeConfigFromEnv = (): FeeConfig | undefined => {
   const { CHIT_FEE_THRESHOLD, CHIT_BASE_FEE, CHIT_FEE_DISCOUNT, CHIT_FEE_RECIPIENT } = process.env;
@@ -63,9 +93,6 @@ export const handleFleetRequest = async (
   allowedActions?: readonly string[],
 ): Promise<Response> => {
   const active = getFleetRouter();
-  if (!active) {
-    return Response.json({ code: "dependency_evidence_invalid", retryable: true }, { status: 503 });
-  }
   try {
     const body: unknown = await request.json();
     const action = (body as { action?: unknown }).action;
@@ -81,16 +108,20 @@ export const handleFleetRequest = async (
   }
 };
 
-export const getFleetRouter = (): CampaignRouter | undefined => {
+/**
+ * Open access on testnet (decided 2026-09-02): the router exists without any
+ * CHIT fee facts and quotes zero. Configuring the CHIT_FEE_* set restores the
+ * published-fee path; that is a later, privacy-preserving decision for mainnet.
+ */
+export const getFleetRouter = (): CampaignRouter => {
   if (router) return router;
   const feeConfig = feeConfigFromEnv();
-  if (!feeConfig) return undefined;
+  const chain = chainFromEnv();
   const deps: RouterDeps = {
     service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 300 }),
-    feeConfig,
-    chitBalanceOf,
-    // verifyFunding and submitter arrive with the on-chain wiring; until then
-    // fund and buy answer 503 dependency_evidence_invalid by design.
+    ...(feeConfig ? { feeConfig, chitBalanceOf } : {}),
+    // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
+    ...(chain ? { chain } : {}),
   };
   router = new CampaignRouter(deps);
   return router;
