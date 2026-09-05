@@ -94,6 +94,21 @@ function setStatus(message: string, isError = false): void {
   status.classList.toggle("error", isError);
 }
 
+function setCopyContractStatus(message: string, isError = false): void {
+  const status = element("copy-contract-status");
+  status.textContent = message;
+  status.classList.toggle("error", isError);
+}
+
+async function copyContractAddress(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(element("contract-address").textContent ?? "");
+    setCopyContractStatus("Copied.");
+  } catch {
+    setCopyContractStatus("Copy failed. Try again.", true);
+  }
+}
+
 function roundLabel(): string {
   return element<HTMLInputElement>("round-label").value;
 }
@@ -397,6 +412,7 @@ async function initialize(): Promise<void> {
 element("operator-address").textContent = short(LIVE_PROFILE.operator);
 element("factory-address").textContent = short(LIVE_PROFILE.factory);
 element("run").addEventListener("click", () => void run());
+element("copy-contract-address").addEventListener("click", () => void copyContractAddress());
 element("change-name").addEventListener("click", () => {
   void changeRoundName().catch((error: unknown) => setStatus(errorMessage(error), true));
 });

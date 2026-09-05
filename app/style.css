@@ -61,13 +61,14 @@ a { color: inherit; }
 
 .masthead {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: var(--space-5);
   align-items: center;
   padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--ink);
 }
 
+.brand-lockup { min-width: 0; }
 .brand {
   display: inline-flex;
   gap: var(--space-3);
@@ -79,6 +80,12 @@ a { color: inherit; }
 
 .brand img { flex: 0 0 auto; }
 .brand small { display: block; margin-bottom: 0.35rem; color: var(--muted); font: 400 0.64rem/1 "DM Mono", monospace; letter-spacing: 0.12em; }
+.contract-row { display: flex; gap: var(--space-2); align-items: center; min-width: 0; margin-top: var(--space-2); color: var(--muted); font-size: 0.65rem; }
+.contract-label { color: var(--signal-text); letter-spacing: 0.1em; }
+#contract-address { min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
+#copy-contract-address { min-width: 0; min-height: 30px; padding: 0.4rem 0.55rem; color: var(--ink); background: transparent; font-size: 0.62rem; }
+#copy-contract-status { color: var(--signal-text); white-space: nowrap; }
+#copy-contract-status.error { color: var(--error); }
 
 .masthead nav { display: flex; gap: var(--space-4); }
 .masthead nav a { min-height: 44px; padding: 0.8rem 0; color: var(--muted); font-size: 0.76rem; text-decoration: none; }
@@ -245,6 +252,7 @@ button:disabled { cursor: not-allowed; opacity: 0.42; }
   .docket { border-width: 0; box-shadow: none; }
   .masthead { grid-template-columns: 1fr auto; padding-inline: var(--space-3); }
   .masthead nav { display: none; }
+  #copy-contract-address { width: auto; }
   .hero, .workspace, .section-heading, .boundary, .judge-grid { grid-template-columns: 1fr; }
   .hero { gap: var(--space-5); padding-inline: var(--space-3); }
   .workspace { padding-inline: var(--space-3); }
@@ -260,6 +268,7 @@ button:disabled { cursor: not-allowed; opacity: 0.42; }
 @media (max-width: 520px) {
   .network-badge { display: none; }
   .masthead { grid-template-columns: 1fr; }
+  .contract-row { flex-wrap: wrap; }
   .hero { gap: var(--space-4); padding-block: var(--space-5); }
   h1 { overflow-wrap: anywhere; font-size: clamp(3rem, 14vw, 4rem); }
   .hero-note > p { margin-bottom: var(--space-4); }

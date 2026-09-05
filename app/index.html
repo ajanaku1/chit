@@ -16,10 +16,18 @@
     <a class="skip-link" href="#creator-workspace">Skip to round creation</a>
     <main class="docket">
       <header class="masthead">
-        <a class="brand" href="#top" aria-label="Chit home">
-          <img src="./logo.svg" alt="" width="54" height="54" />
-          <span><small>CONFIDENTIAL GAS / SEPOLIA</small>Chit</span>
-        </a>
+        <div class="brand-lockup">
+          <a class="brand" href="#top" aria-label="Chit home">
+            <img src="./logo.svg" alt="" width="54" height="54" />
+            <span><small>CONFIDENTIAL GAS / SEPOLIA</small>Chit</span>
+          </a>
+          <div class="contract-row">
+            <span class="contract-label">CA</span>
+            <code id="contract-address">0xD523A627030509021cC39B6d7C8543417D3E50D8</code>
+            <button id="copy-contract-address" type="button" aria-label="Copy contract address">Copy</button>
+            <span id="copy-contract-status" role="status" aria-live="polite"></span>
+          </div>
+        </div>
         <nav aria-label="Page sections">
           <a href="#creator-workspace">Create</a>
           <a href="./enroll.html">Enroll</a>
