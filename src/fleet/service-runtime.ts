@@ -56,9 +56,10 @@ const chainFromEnv = (): FleetChain | undefined => {
   });
   const transport = http(rpcUrl);
   const wallet = createWalletClient({ account: privateKeyToAccount(key), chain, transport });
-  // Explicit PublicClient: Vercel's TypeScript pass infers a json-rpc account
-  // on this client and rejects the FleetChain call our local build accepts.
-  const publicClient: PublicClient = createPublicClient({ chain, transport });
+  // Vercel's TypeScript pass infers a json-rpc account on this client and
+  // rejects the FleetChain call our local build accepts; the cast pins the
+  // account-less PublicClient viem documents for createPublicClient.
+  const publicClient = createPublicClient({ chain, transport }) as unknown as PublicClient;
   return createFleetChain(wallet, publicClient, { escrow, factory, policy });
 };
 
