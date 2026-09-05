@@ -10,5 +10,25 @@
   "sessionPolicyTx": "0x46d1f706251dd5aa0ddbc91bf1b591a1721016b66c7d837f7f4c06bf3cee2ec6",
   "accountFactoryTx": "0xd4ace2b2485394081dff2f8b78f6420c76eb973e9aa4d52a6036a97108155f02",
   "campaignEscrowTx": "0xf464fa2ef42d72d357ffed0557bae54cbfbf22e0fc327693f43d7d186dbf708d",
-  "deployedAt": "2026-08-31T19:55:42.312Z"
+  "deployedAt": "2026-08-31T19:55:42.312Z",
+  "venue": {
+    "poolManager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+    "token": "0x13283ab8e1f2bc4297e9ec6480c80c59674af554",
+    "seeder": "0x0b413aff3133019c0b87b95e9270fc4d50d1b08c",
+    "pool": {
+      "currency0": "0x0000000000000000000000000000000000000000",
+      "currency1": "0x13283ab8e1f2bc4297e9ec6480c80c59674af554",
+      "fee": 3000,
+      "tickSpacing": 60,
+      "hooks": "0x0000000000000000000000000000000000000000",
+      "sqrtPriceX96": "2505414483750479311864138015696",
+      "tickLower": -887220,
+      "tickUpper": 887220
+    },
+    "tokenTx": "0xe296552af70fc59cb677d9f045b6940b251eefe44dd5e060db1b5f5fefa8159d",
+    "seederTx": "0x206da986957c29adc90aed1aa4cd3cfa5f81dfadddf75be22b5fc25e8701bfa3",
+    "seedTx": "0x612a6854c4c0c7d6c7f14a09f37f446f1632d1a5b950d8cf05d2a30c10e1b898",
+    "seedEth": "5000000000000000",
+    "seededAt": "2026-09-05T23:07:13.402Z"
+  }
 }
