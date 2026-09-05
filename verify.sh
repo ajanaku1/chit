@@ -435,6 +435,17 @@ check active-sponsor "registered confidential handle resolved at the Nox gateway
 check fleet-evidence "Fleet dependency evidence or labelled fixture is tested" fleet_evidence_check
 checksh fleet-foundation "Fleet foundation outputs and tests pass" \
   'test -f contracts/fleet/FleetAccountFactory.sol && test -f contracts/fleet/FleetSessionPolicy.sol && test -f contracts/fleet/FleetCampaignEscrow.sol && test -f src/fleet/campaign-service.ts && test -f src/fleet/chain-service.ts && test -f test/fleet/campaign-state.test.ts && test -f test/fleet/session-policy.test.ts && test -f test/fleet/campaign-budget.test.ts && test -f test/fleet/campaign-service.test.ts && test -f test/fork/fleet-contracts.test.ts && npm run build:fleet && node --test dist-fleet/test/fleet/campaign-state.test.js dist-fleet/test/fleet/session-policy.test.js dist-fleet/test/fleet/campaign-budget.test.js dist-fleet/test/fleet/campaign-service.test.js && npx hardhat compile && npm run build && node --test dist/test/fork/fleet-contracts.test.js dist/test/fork/fleet-paymaster.test.js dist/test/fork/fleet-operator-executor.test.js dist/test/fork/fleet-chain-buy.test.js dist/test/fork/fleet-lifecycle.test.js dist/test/fork/fleet-service-chain.test.js dist/test/fork/fleet-deploy.test.js'
+# The venue fork test needs the public 46630 RPC, which drops requests under
+# load; three attempts of the same unchanged predicate, never a weaker one.
+fleet_venue_check() {
+  local i
+  test -f contracts/fleet/FleetVenueToken.sol && test -f contracts/fleet/FleetPoolSeeder.sol && test -f src/fleet/v4-swap.ts \
+    && test -f test/fleet/v4-swap.test.ts && test -f test/fork/fleet-venue.test.ts && test -f scripts/fleet-venue-live.ts || return 1
+  npm run build:fleet && node --test dist-fleet/test/fleet/v4-swap.test.js && npx hardhat compile && npm run build || return 1
+  for i in 1 2 3; do node --test dist/test/fork/fleet-venue.test.js && return 0; done
+  return 1
+}
+check fleet-venue "Fleet venue: v4 buy calldata unit tests and the 46630-fork seeded-pool buy pass" fleet_venue_check
 checksh fleet-create "Fleet CHIT fee and local-vault creation tests pass" \
   'test -f specs/001-fleet-mission/contracts/fleet-vault.md && test -f test/fleet/fee-charge.test.ts && test -f test/fleet/campaign-route.test.ts && test -f src/fleet/eligibility.ts && test -f api/fleet/campaign.ts && test -f app/src/fleet/vault.ts && test -f app/src/fleet/campaign-setup.ts && test -f app/test/fleet-vault.test.ts && test -f app/test/fixtures/fleet-vault-v1.json && test -f app/test/fleet-setup.test.ts && npm run build:fleet && node --test dist-fleet/test/fleet/fee-charge.test.js dist-fleet/test/fleet/campaign-route.test.js && npm --prefix app run verify'
 checksh fleet-buy "Fleet SDK and five-wallet sponsored-buy tests pass" \
