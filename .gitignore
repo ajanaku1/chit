@@ -31,3 +31,4 @@ video/
 .codex/
 .vercel
 .env*.local
+.env*
