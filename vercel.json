@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm ci && npm --prefix app ci",
-  "buildCommand": "npm --prefix app run build",
+  "buildCommand": "node scripts/assemble-site.mjs",
   "outputDirectory": "public",
   "framework": null
 }

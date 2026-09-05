@@ -1,8 +1,10 @@
 import { build } from "esbuild";
 import { copyFile, mkdir, rm } from "node:fs/promises";
 
-const output = process.env.VERCEL === "1"
-  ? new URL("../public/", import.meta.url)
+// APP_OUTPUT: explicit output directory (scripts/assemble-site.mjs sets it to
+// public/app/ so the app deploys beneath the landing). Default: ./dist.
+const output = process.env.APP_OUTPUT
+  ? new URL(`file://${process.env.APP_OUTPUT}`)
   : new URL("./dist/", import.meta.url);
 
 await rm(output, { recursive: true, force: true });
