@@ -31,6 +31,7 @@
     "test:fork:authorizer": "node --test --test-reporter spec dist/test/fork/service-authorizer.test.js",
     "test:fleet:contracts": "npm run build && node --test dist/test/fork/fleet-contracts.test.js",
     "fleet-deploy:live": "npm run build && node --env-file=.env dist/scripts/fleet-deploy-live.js",
+    "fleet-venue:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/fleet-venue-live.js",
     "test:fleet:deploy": "npm run build && node --test dist/test/fork/fleet-deploy.test.js"
   },
   "dependencies": {

@@ -459,3 +459,33 @@ crash. Fixed by mapping `BudgetError` codes like the other typed errors.
 `./verify.sh` is green for every fleet phase (evidence, foundation, create,
 buy, control, acceptance). Step 0 is done; Steps 1–5 are outward (operator key
 in host env, pool seeding, Vercel deploy, first live buy) and wait for a go.
+
+## Venue — real Uniswap v4 pool on 46630 (2026-09-05)
+
+Decided venue (2026-09-02): a seeded Uniswap v4 pool, not the labelled fixture.
+The v4 PoolManager `0x8366…0951` and Universal Router `0x8876…0904` are live on
+46630 (research.md), but no v4 PositionManager address is verified there, so
+seeding goes through a small contract of our own:
+
+- `contracts/fleet/FleetVenueToken.sol` — fixed-supply test ERC-20 "FLEET".
+- `contracts/fleet/FleetPoolSeeder.sol` — initialises the ETH/FLEET pool and
+  adds one full-range position inside the PoolManager's unlock callback,
+  paying ETH from msg.value and FLEET from the caller's approval. Inline
+  minimal v4 interfaces; no dependency added.
+- `src/fleet/v4-swap.ts` — Universal Router `execute` calldata for one exact-in
+  ETH -> FLEET swap (command V4_SWAP; actions SWAP_EXACT_IN_SINGLE, SETTLE_ALL,
+  TAKE_ALL). The router's on-chain buy path uses it whenever the campaign's
+  approved function is `execute(bytes,bytes[],uint256)`, which is the wizard's
+  preset; any other function keeps the fixture shape.
+- Stage 1 honesty holds in the mechanics: the trade principal is the fleet
+  account's own ETH (`value`); the escrow reimburses gas only.
+
+Done-check `./verify.sh fleet-venue`: encoder unit tests, then
+`test/fork/fleet-venue.test.ts` on a fork of 46630 seeds the pool through the
+live PoolManager and lands a sponsored buy through the live Universal Router
+into a policy-gated fleet account. Green. The public RPC drops requests under
+a fork's burst, so the fork is pinned to block 113731448 and the check retries
+the unchanged predicate up to three times.
+
+`npm run fleet-venue:live` (scripts/fleet-venue-live.ts) seeds the real pool and
+records it under `venue` in deployments/fleet-46630.json.
