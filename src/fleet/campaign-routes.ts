@@ -10,9 +10,10 @@
  */
 
 import { BudgetError, CampaignBudget } from "./campaign-budget.js";
+import { campaignKey, functionSelector, type ChainBuy, type FleetChain } from "./chain-service.js";
 import { CampaignService, ServiceError, assertNoSecrets } from "./campaign-service.js";
 import { CampaignStateError, canSponsor, transition } from "./campaign-state.js";
-import { EligibilityError, chargeQuote, createQuote, type FeeConfig } from "./eligibility.js";
+import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
 import {
@@ -22,6 +23,7 @@ import {
   parsePolicy,
   type Address,
   type AuthEnvelope,
+  type Budget,
   type CampaignState,
   type FeeCharge,
   type FleetAccountInit,
@@ -32,9 +34,12 @@ import {
 
 export type RouterDeps = {
   service: CampaignService;
-  feeConfig: FeeConfig;
+  /** Published CHIT fee facts; absent means open access (no gate, no fee). */
+  feeConfig?: FeeConfig;
   /** Read-only mainnet CHIT balance for one wallet, in base units. */
-  chitBalanceOf: (wallet: Address) => Promise<Uint>;
+  chitBalanceOf?: (wallet: Address) => Promise<Uint>;
+  /** Deployed contracts + operator signer; present means the chain is the budget's source of truth. */
+  chain?: FleetChain;
   /** Confirms a funding reference against chain evidence and returns its wei amount. */
   verifyFunding?: (reference: string) => Promise<Uint>;
   /** Lands authorized UserOperations; absent means sponsorship is not configured. */
@@ -55,6 +60,10 @@ type CampaignRecord = {
   state: CampaignState;
   fee: FeeCharge;
   budget: CampaignBudget;
+  /** Set once the fleet exists on-chain: the factory-created account addresses. */
+  chainAccounts?: Address[];
+  /** Last on-chain budget read; authoritative whenever `chain` is configured. */
+  chainBudget?: Budget;
 };
 
 const STATUS: Record<string, number> = {
@@ -65,6 +74,7 @@ const STATUS: Record<string, number> = {
   idempotency_conflict: 409,
   policy_rejected: 422,
   budget_exceeded: 422,
+  budget_invalid: 422,
   dependency_evidence_invalid: 503,
 };
 
@@ -107,8 +117,7 @@ export class CampaignRouter {
 
     if (action === "quote") {
       const wallet = String(body["primaryWallet"] ?? "");
-      const balance = await this.#deps.chitBalanceOf(wallet as Address);
-      return { status: 200, body: createQuote(this.#deps.feeConfig, balance, this.#randomId()) };
+      return { status: 200, body: await this.#quote(wallet as Address, this.#randomId()) };
     }
     if (action === "challenge") {
       return {
@@ -167,13 +176,16 @@ export class CampaignRouter {
     if (accounts.length !== policy.accounts) throw new FleetValidationError("account_count_mismatch");
 
     // Eligibility gates everything: no campaign, account, or budget state may
-    // exist for a blocked wallet (SC-002).
-    const balance = await this.#deps.chitBalanceOf(wallet as Address);
-    const quote = createQuote(this.#deps.feeConfig, balance, String(body["quoteId"] ?? this.#randomId()));
-    const fee = chargeQuote(quote, this.#deps.feeConfig, `charge-${this.#randomId()}`);
+    // exist for a blocked wallet (SC-002). Open access charges nothing.
+    const quote = await this.#quote(wallet as Address, String(body["quoteId"] ?? this.#randomId()));
+    const fee = this.#deps.feeConfig
+      ? chargeQuote(quote, this.#deps.feeConfig, `charge-${this.#randomId()}`)
+      : { ...quote, ...OPEN_ACCESS_CHARGE };
 
+    const id = this.#randomId();
+    if (this.#deps.chain) await this.#deps.chain.registerCampaign(campaignKey(id), wallet as Address);
     const record: CampaignRecord = {
-      id: this.#randomId(),
+      id,
       ownerWallet: wallet,
       policy,
       accounts,
@@ -184,6 +196,16 @@ export class CampaignRouter {
     };
     this.#campaigns.set(record.id, record);
     return { status: 201, body: this.#result(record, { fee: true }) };
+  }
+
+  async #quote(wallet: Address, quoteId: string) {
+    const { feeConfig, chitBalanceOf } = this.#deps;
+    if (!feeConfig || !chitBalanceOf) return openQuote(quoteId);
+    return createQuote(feeConfig, await chitBalanceOf(wallet), quoteId);
+  }
+
+  #budget(record: CampaignRecord): Budget {
+    return record.chainBudget ?? record.budget.snapshot();
   }
 
   #campaign(wallet: string, body: Record<string, unknown>): CampaignRecord {
@@ -207,9 +229,18 @@ export class CampaignRouter {
     // matter how the server is configured.
     const nextState = transition(record.state, "fund");
     if (nextState !== record.state) {
-      const verify = this.#deps.verifyFunding;
-      if (!verify) throw new ServiceError("dependency_evidence_invalid", "funding_verification_unconfigured");
-      record.budget = new CampaignBudget(await verify(String(body["fundingReference"] ?? "")));
+      if (this.#deps.chain) {
+        // Funding is what the escrow holds, read on-chain: never a claim.
+        const budget = await this.#deps.chain.readBudget(campaignKey(record.id));
+        if (BigInt(budget.unused) < BigInt(record.policy.perAccountGas)) {
+          throw new BudgetError("budget_exceeded", "campaign_unfunded");
+        }
+        record.chainBudget = budget;
+      } else {
+        const verify = this.#deps.verifyFunding;
+        if (!verify) throw new ServiceError("dependency_evidence_invalid", "funding_verification_unconfigured");
+        record.budget = new CampaignBudget(await verify(String(body["fundingReference"] ?? "")));
+      }
       record.state = nextState;
     }
     return { status: 200, body: this.#result(record) };
@@ -219,7 +250,7 @@ export class CampaignRouter {
     return {
       campaign: record.id,
       chainId: record.policy.chainId,
-      accounts: record.accounts.map((account) => account.ownerAddress),
+      accounts: record.chainAccounts ?? record.accounts.map((account) => account.ownerAddress),
       router: record.policy.router,
       function: record.policy.function,
       maxTradeValue: record.policy.maxTradeValue,
@@ -233,8 +264,8 @@ export class CampaignRouter {
   /** One bounded sponsored buy per listed account (FR-007 to FR-010). */
   async #buy(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = this.#campaign(wallet, body);
-    const submitter = this.#deps.submitter;
-    if (!submitter) throw new ServiceError("dependency_evidence_invalid", "submitter_unconfigured");
+    const { submitter, chain } = this.#deps;
+    if (!submitter && !chain) throw new ServiceError("dependency_evidence_invalid", "submitter_unconfigured");
     if (!canSponsor(record.state)) throw new PolicyRejection(`state_not_sponsorable:${record.state}`);
 
     const value = String(body["value"] ?? "");
@@ -255,22 +286,85 @@ export class CampaignRouter {
         target: record.policy.router, function: record.policy.function,
         value, gas: "0",
       },
-      state: record.state, spentGas: record.budget.snapshot().spent, now,
+      state: record.state, spentGas: this.#budget(record).spent, now,
     });
 
-    const results: Record<string, unknown>[] = [];
-    for (const account of requested) {
-      results.push(await this.#buyOne(record, session, account, token, value, now, submitter));
-    }
+    const results: Record<string, unknown>[] = chain
+      ? await this.#buyOnChain(record, session, chain, requested, token, value, now)
+      : await this.#buyInMemory(record, session, submitter!, requested, token, value, now);
 
     // FR edge case: the campaign depletes when the remainder cannot fund
     // another permitted request.
-    const remaining = record.budget.snapshot().unused;
+    const remaining = this.#budget(record).unused;
     if (record.state === "Active" && BigInt(remaining) < BigInt(record.policy.perAccountGas)) {
       record.state = transition(record.state, "deplete");
     }
 
     return { status: 200, body: { results } };
+  }
+
+  async #buyInMemory(
+    record: CampaignRecord, session: SessionKey, submitter: UserOperationSubmitter,
+    requested: Address[], token: string, value: Uint, now: Date,
+  ): Promise<Record<string, unknown>[]> {
+    const results: Record<string, unknown>[] = [];
+    for (const account of requested) {
+      results.push(await this.#buyOne(record, session, account, token, value, now, submitter));
+    }
+    return results;
+  }
+
+  /**
+   * Policy-checks each account here first (so an out-of-policy account is
+   * refused without a transaction), then settles the permitted ones on-chain.
+   * The escrow's reserve/commit/rollback is the budget; nothing is mirrored.
+   */
+  async #buyOnChain(
+    record: CampaignRecord, session: SessionKey, chain: FleetChain,
+    requested: Address[], token: string, value: Uint, now: Date,
+  ): Promise<Record<string, unknown>[]> {
+    const refused: Record<string, unknown>[] = [];
+    const permitted: ChainBuy[] = [];
+    for (const account of requested) {
+      if (this.#permitted(record, session, account, value, now)) {
+        permitted.push(this.#chainBuy(record, account, token, value));
+      } else {
+        refused.push({ account, status: "rejected", budget: this.#budget(record) });
+      }
+    }
+    if (permitted.length === 0) return refused;
+    const report = await chain.buy(campaignKey(record.id), record.policy.router, permitted);
+    record.chainBudget = report.budget;
+    return [...refused, ...report.results.map((r) => ({ ...r, budget: report.budget }))];
+  }
+
+  /** True when the session policy admits a buy for this account; false on a policy refusal. */
+  #permitted(record: CampaignRecord, session: SessionKey, account: Address, value: Uint, now: Date): boolean {
+    try {
+      authorize({
+        session,
+        request: {
+          campaign: record.id, chainId: record.policy.chainId, account, operation: "buy",
+          target: record.policy.router, function: record.policy.function,
+          value, gas: record.policy.perAccountGas,
+        },
+        state: record.state, spentGas: this.#budget(record).spent, now,
+      });
+      return true;
+    } catch (error) {
+      if (error instanceof PolicyRejection) return false;
+      throw error;
+    }
+  }
+
+  #chainBuy(record: CampaignRecord, account: Address, token: string, value: Uint): ChainBuy {
+    const selector = functionSelector(record.policy.function);
+    const reservation = `${record.id}|buy|${account.toLowerCase()}|${value}|${token.toLowerCase()}`;
+    return {
+      account, key: campaignKey(reservation), value,
+      callData: `${selector}${encodeExecuteData(token as Address, value).slice(2)}` as Hex,
+      maxCost: record.policy.perAccountGas,
+    };
   }
 
   async #buyOne(
@@ -336,14 +430,18 @@ export class CampaignRouter {
     return { status: 200, body: this.#result(record) };
   }
 
-  #activate(wallet: string, body: Record<string, unknown>): RouterResult {
+  async #activate(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = this.#campaign(wallet, body);
-    record.state = transition(record.state, "activate");
+    const nextState = transition(record.state, "activate");
+    if (this.#deps.chain && !record.chainAccounts) {
+      record.chainAccounts = await this.#deps.chain.activate(campaignKey(record.id), record.accounts, record.policy);
+    }
+    record.state = nextState;
     return {
       status: 200,
       body: {
         ...this.#result(record),
-        accounts: record.accounts.map((account) => account.ownerAddress),
+        accounts: record.chainAccounts ?? record.accounts.map((account) => account.ownerAddress),
       },
     };
   }
@@ -358,7 +456,7 @@ export class CampaignRouter {
       campaign: record.id,
       state: record.state,
       ...(options.fee ? { fee: record.fee } : {}),
-      budget: record.budget.snapshot(),
+      budget: this.#budget(record),
     };
   }
 }
@@ -371,7 +469,7 @@ const encodeExecuteData = (token: Address, value: Uint): `0x${string}` =>
 const errorResult = (error: unknown): RouterResult => {
   let code: string | undefined;
   let status: number | undefined;
-  if (error instanceof ServiceError || error instanceof CampaignStateError) {
+  if (error instanceof ServiceError || error instanceof CampaignStateError || error instanceof BudgetError) {
     code = error.code;
   } else if (error instanceof PolicyRejection) {
     code = "policy_rejected";
