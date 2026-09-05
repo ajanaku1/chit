@@ -9,7 +9,8 @@
 /node_modules/
 /proposals/
 /reports/
-/scripts/
+/scripts/*
+!/scripts/assemble-site.mjs
 /submission/
 /test/
 /video/
