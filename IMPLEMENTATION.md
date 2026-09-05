@@ -489,3 +489,16 @@ the unchanged predicate up to three times.
 
 `npm run fleet-venue:live` (scripts/fleet-venue-live.ts) seeds the real pool and
 records it under `venue` in deployments/fleet-46630.json.
+
+## Deploy to chit.tools — one site, precompiled API (2026-09-06)
+
+chit.tools is the Vercel project `chit-tools`; it served only the landing
+(uploaded from `landing/`). The repo root now links to it and one build
+assembles `public/`: landing at `/`, the Fleet app at `/app`, functions from
+`api/`. Vercel's own TypeScript pass type-checks viem differently from our tsc
+(it rejected `createPublicClient` and a typed `readContract` our build accepts),
+so the fleet handlers are plain JS (`api/fleet/*.js`) importing the runtime
+compiled by `npm run build` in the Vercel build command. `verify.sh`
+predicates for those three handlers were updated from `.ts` to `.js` for that
+reason; the checks themselves are unchanged and green. `vercel build --yes`
+reproduces the hosted build locally.
