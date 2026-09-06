@@ -11,6 +11,8 @@
  *                             DEPLOYER_PRIVATE_KEY for the first demo)
  *   FLEET_API_ORIGIN          optional, the served site the wallet signs for
  *   ROBINHOOD_TESTNET_RPC_URL optional
+ *   FLEET_RESUME_CAMPAIGN     optional: an already activated campaign id, with
+ *   FLEET_RESUME_ACCOUNT      its funded fleet account, to run only the buy
  *
  * Run:  npm run fleet-first-buy:live
  */
@@ -81,6 +83,14 @@ const main = async (): Promise<void> => {
     return api({ action, auth: { ...fields, signature }, body }, action);
   };
 
+  const resume = process.env.FLEET_RESUME_CAMPAIGN;
+  if (resume) {
+    const account = process.env.FLEET_RESUME_ACCOUNT as Address | undefined;
+    if (!account) throw new Error("FLEET_RESUME_ACCOUNT is required with FLEET_RESUME_CAMPAIGN");
+    await buyAndRecord(signed, record, { campaign: resume, key: campaignKey(resume), owner, fleet: [account], token, fundTx: "resumed", principalTx: "resumed" });
+    return;
+  }
+
   const quote = await api({ action: "quote", body: { primaryWallet } }, "quote");
   const accounts = Array.from({ length: 5 }, () => ({
     ownerAddress: privateKeyToAccount(generatePrivateKey()).address.toLowerCase() as Address,
@@ -115,14 +125,24 @@ const main = async (): Promise<void> => {
   await publicClient.waitForTransactionReceipt({ hash: principalTx });
   console.log(`principal sent to ${fleet[0]} (${principalTx})`);
 
-  const bought = await signed("buy", { campaign, accounts: [fleet[0]], token, value: AMOUNTS.buy.toString() });
+  await buyAndRecord(signed, record, { campaign, key, owner, fleet, token, fundTx, principalTx });
+};
+
+type Signed = (action: string, body: Record<string, unknown>) => Promise<{ body: Record<string, unknown> }>;
+type BuyContext = {
+  campaign: string; key: Hex; owner: { address: Address }; fleet: Address[]; token: Address; fundTx: string; principalTx: string;
+};
+
+const buyAndRecord = async (signed: Signed, record: Record<string, unknown>, ctx: BuyContext): Promise<void> => {
+  const bought = await signed("buy", { campaign: ctx.campaign, accounts: [ctx.fleet[0]], token: ctx.token, value: AMOUNTS.buy.toString() });
   const result = (bought.body["results"] as Record<string, unknown>[])[0]!;
   console.log(JSON.stringify(result, null, 2));
   if (result["status"] !== "sponsored") throw new Error("first buy was not sponsored");
 
   record["firstBuy"] = {
-    api: API, campaign, key, owner: owner.address, fleet, fundTx, principalTx,
-    buyTx: result["txHash"], account: fleet[0], token, budget: result["budget"], at: new Date().toISOString(),
+    api: API, campaign: ctx.campaign, key: ctx.key, owner: ctx.owner.address, fleet: ctx.fleet, fundTx: ctx.fundTx,
+    principalTx: ctx.principalTx, buyTx: result["txHash"], account: ctx.fleet[0], token: ctx.token,
+    budget: result["budget"], at: new Date().toISOString(),
   };
   await writeFile(RECORD, `${JSON.stringify(record, null, 2)}\n`);
   console.log(`recorded firstBuy in ${RECORD}`);

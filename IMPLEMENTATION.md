@@ -502,3 +502,39 @@ compiled by `npm run build` in the Vercel build command. `verify.sh`
 predicates for those three handlers were updated from `.ts` to `.js` for that
 reason; the checks themselves are unchanged and green. `vercel build --yes`
 reproduces the hosted build locally.
+
+## Stateless service across function instances (2026-09-06)
+
+The first live buy on chit.tools reached the buy route and got 401
+`challenge_invalid`: create/fund/activate had run on the campaign function,
+but `api/fleet/buy` is a separate function with its own memory, so it knew
+neither the challenge nonce nor the campaign. Fix, without a store or a new
+dependency:
+
+- Challenge nonces are HMAC-SHA256 over the signed fields (version, origin,
+  wallet, action, payload hash, issue time) under a secret every instance
+  derives the same way from the operator key already in env (domain-separated
+  keccak of `chit-fleet-challenge-v1|key`). Any instance verifies; a shifted
+  issue time or stretched expiry is refused; replay is refused within the
+  issuing instance and bounded by the 300 s TTL plus idempotency keys
+  elsewhere. Without a secret the old random, instance-local nonces remain
+  (`test/fleet/stateless-challenge.test.ts`, in `fleet-foundation`).
+- A campaign the instance never saw is rebuilt from the chain (escrow owner
+  and budget, policy session) once activated; the state is derived
+  (revoked/expired/depleted/paused/active). Enrolled accounts are confirmed
+  through `isEnrolled` on each buy. Before activation the policy exists only
+  in the creating instance; those steps run back-to-back on one function.
+- Control lands on-chain: pause/resume/revoke call the policy; close revokes
+  the session and reports `returnedEth: "0"`, because only the owner can call
+  the escrow's close and reclaim ETH. Deviation from the in-memory close,
+  conservative option: the service never moves the owner's ETH.
+- `test/fork/fleet-service-chain.test.ts` now serves buy, pause, resume, and
+  close from fresh router instances that share only the secret and the chain.
+- `fleet-first-buy:live` accepts `FLEET_RESUME_CAMPAIGN` + `FLEET_RESUME_ACCOUNT`
+  to finish the buy for the campaign already created and funded on 46630
+  (`d818c7b1-…`, account `0x37c0…d62c`).
+
+Known gap, still: idempotency records are per instance. A retry that lands
+elsewhere re-executes; on-chain settlement keys make a duplicate buy settle at
+most once per reservation key, so the exposure is a second attempt, not a
+double charge.
