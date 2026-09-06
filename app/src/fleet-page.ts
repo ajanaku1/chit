@@ -5,7 +5,7 @@
  * generated in this browser, the recovery backup is encrypted with the
  * connected wallet's signature, and confirmation re-decrypts it end to end.
  * Service-backed steps call the Fleet API and show an honest testnet-pending
- * banner until the service and paymaster exist on Robinhood testnet.
+ * banner whenever the hosted service cannot answer.
  *
  * Retail rules: ETH units only (wei stays internal), expert fields live behind
  * the Advanced disclosure with verified presets, and no hex is shown unless the

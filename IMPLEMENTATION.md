@@ -553,3 +553,12 @@ until an operator RPC exists; live mode also needs daily re-verification
 (`maxAgeSeconds`), which is an ops step, not a code one. The test's fixture
 mutations now target the venue (unverified with address) and the provider
 (verified, leaving no double).
+
+## Privacy boundary wording (2026-09-06, user-approved test change)
+
+FR-011's public fact "shared paymaster activity" named the 4337 component.
+Stage 1 has no paymaster: the public, observable fact is the operator's gas
+payments. `FLEET_PUBLIC_FACTS` and `FLEET_PRIVACY_CLAIM` now say so, and the
+boundary test matches. The claim stays as narrow as before: fleet accounts,
+trades, amounts, timing, gas, and the operator's gas payments are public; only
+the primary-wallet-to-fleet relationship is withheld, and the operator knows it.

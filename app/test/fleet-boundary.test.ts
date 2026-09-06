@@ -59,7 +59,7 @@ test("the published privacy claim stays narrow", () => {
     "amounts",
     "timing",
     "gas",
-    "shared paymaster activity",
+    "the operator's gas payments",
   ]);
   assert.match(FLEET_PRIVATE_FACT, /primary-wallet-to-fleet relationship/);
   assert.match(FLEET_PRIVACY_CLAIM, /operator knows/i);

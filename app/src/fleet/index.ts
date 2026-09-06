@@ -38,7 +38,7 @@ export const FLEET_PUBLIC_FACTS = [
   "amounts",
   "timing",
   "gas",
-  "shared paymaster activity",
+  "the operator's gas payments",
 ] as const;
 
 /** The single fact sponsorship withholds from a public observer (FR-011). */
@@ -47,7 +47,7 @@ export const FLEET_PRIVATE_FACT =
 
 /** The exact claim the product is entitled to publish while the operator holds the mapping. */
 export const FLEET_PRIVACY_CLAIM =
-  "Fleet accounts, their trades, amounts, timing, gas, and the shared paymaster stay publicly visible. " +
+  "Fleet accounts, their trades, amounts, timing, gas, and the operator's gas payments stay publicly visible. " +
   "Only the primary-wallet-to-fleet relationship is withheld from the chain, and the operator knows it.";
 
 /** Field names that identify local credential or recovery material. */
