@@ -21,18 +21,13 @@ We're building in the open, so here's the honest state.
 - Account factory: `0x5c0e2ec619c11b66e0e0efb7931bccfa6b784ea6`
 - Campaign escrow: `0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325`
 
-A verifying paymaster (the piece that actually sponsors gas and settles the cost) is built and tested against a live blockchain, and deploys next.
+Gas sponsorship runs on the operator-executes model for this stage: Chit's operator pays the gas for each fleet trade and settles it against the campaign's ETH escrow, so the fleet's gas never comes from your main wallet.
 
 **The app is built.** The full trader flow exists as a web app: connect wallet, size your fleet, generate your wallets in the browser, download an encrypted backup, and a dashboard to watch the budget and pause, stop, or refund. The wallet-generation and encrypted-backup steps already run for real, in your browser, with no backend.
 
-**What's left before you can do a full sponsored buy in the app.** Being straight about this matters more than hype:
+**The first end-to-end sponsored buy has landed.** The app is deployed at chit.tools, wired to the live contracts, with a seeded Uniswap v4 pool on Robinhood testnet to trade against. On 6 September a fleet wallet bought the test token through the real Uniswap router while Chit's operator paid the gas and the campaign escrow reimbursed it. The transaction is public: `0x62ced39074adaa0b922e558dbafdf8c6405b3c21fcf45b77d5d3afb3a53b2d71` on chain 46630. Testnet only, test token only, no real money.
 
-- Deposit gas into the paymaster so it can sponsor transactions.
-- Wire the app to the deployed contracts (right now the app runs on an internal test engine, not the live contracts yet).
-- Set up something to trade against on testnet.
-- Deploy the connected app so the buy flow is live end to end.
-
-So: the foundation is on-chain and the app is built, but a holder can't run an end-to-end sponsored buy today. That's the next milestone, and it's close. Early access for $CHIT holders opens when it lands.
+So: the foundation is on-chain, the app is live on testnet, and a sponsored buy has run end to end. Early access for $CHIT holders is the next step.
 
 ---
 
@@ -147,7 +142,7 @@ Pick what fits the format. All of these stay truthful.
 
 **Key messages to hit**
 - Core contracts are live and verified on Robinhood testnet, at published addresses. Real, not mock.
-- The app is built; end-to-end sponsored buys are the next milestone; early access for holders follows.
+- The app is live on testnet at chit.tools and the first end-to-end sponsored buy has landed (tx hash published). Early access for holders is next.
 - Stage 1 (now) is private gas. The full promise, funding your fleet with no trail back to you, is the funding-pool stage on the roadmap. Say which stage we're in, don't skip ahead.
 - Private, not anonymous. We hide the funding link, not your trades, and we say exactly what the operator can see.
 - Chit is not a mixer. We're building selective disclosure: hidden from the public, provable to an auditor you choose. Privacy with accountability.

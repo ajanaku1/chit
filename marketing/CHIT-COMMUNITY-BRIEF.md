@@ -162,7 +162,7 @@ Be precise about this in public. Overstating readiness is the second-fastest way
 
 ### The honest status line for public use
 
-> *"Chit is built and hardened. Testnet deployment and early access for $CHIT holders are coming soon."*
+> *"Chit is live on Robinhood testnet at chit.tools, and the first sponsored buy has run end to end. Early access for $CHIT holders is next."*
 
 ---
 
@@ -282,7 +282,7 @@ Print this. Pin it. This is the guardrail that keeps us out of trouble, reputati
 | "Private *funding*." | "Fleet-wide unlinkability." (We explicitly don't claim this.) |
 | "Non-custodial — we never hold your keys." | "We keep your funds safe." (Custody framing — we're not a custodian.) |
 | "The operator can see the mapping in this version." (disclose it) | Implying nobody, including Chit, can link you. |
-| "Testnet-ready; deployment and early access coming soon." | "Live now." / "Trade on Chit today." (Not deployed yet.) |
+| "Live on testnet at chit.tools; early access coming soon." | "Live now." / "Trade on Chit today." (Testnet and a test token only; no mainnet, no real money.) |
 | "Hardened contracts, tested against a live chain." | "Audited." / "Audit-proof." (No third-party audit yet.) |
 | "$CHIT is optional: discounts and early access." | "You need $CHIT to use Chit." / "$CHIT pays for gas." (No gate; gas is ETH.) |
 | Point to shipped milestones. | Promise price, returns, buybacks, or distributions. |
@@ -380,7 +380,7 @@ No. Anyone can create a fleet. Holding $CHIT above a small threshold gets you di
 If you lose the encrypted backup file *and* your local browser data, the fleet cannot be recovered, not even by us. That's the trade-off for being genuinely non-custodial. Keep the backup safe.
 
 **Is it live? Can I use it now?**
-Not yet. It's built and hardened, and testnet deployment plus early access for holders are coming soon. Watch announcements.
+On testnet, yes: the app is at chit.tools and the first sponsored buy has run end to end with a test token. It is not on mainnet and moves no real money. Early access for holders is next. Watch announcements.
 
 **Who can see that I'm using Chit?**
 The public can see the fleet wallets, their trades, and that a shared Chit paymaster sponsored them. The public cannot see that *you* are behind the fleet. Chit's operator can see the mapping in the current version, we disclose that openly.
