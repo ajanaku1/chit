@@ -9,6 +9,7 @@
  * and logs.
  */
 
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { keccak256, recoverMessageAddress, stringToBytes } from "viem";
 
 import type { Address, ApiErrorCode, AuthEnvelope, Hex } from "./types.js";
@@ -134,13 +135,46 @@ export class CampaignService {
   readonly #nonces = new Map<string, IssuedNonce>();
   readonly #results = new Map<string, IdempotencyRecord>();
 
-  constructor(config: ServiceConfig, deps: { now?: () => Date; randomNonce?: () => string } = {}) {
+  /**
+   * With a secret, nonces are HMACs over the challenge fields, so any service
+   * instance holding the same secret verifies a challenge another instance
+   * issued (stateless across serverless functions). Without one, nonces are
+   * random and live only in this instance's memory.
+   */
+  constructor(config: ServiceConfig, deps: { now?: () => Date; randomNonce?: () => string; nonceSecret?: string } = {}) {
     this.#config = config;
     this.#now = deps.now ?? (() => new Date());
     this.#randomNonce = deps.randomNonce ?? (() => crypto.randomUUID());
+    this.#nonceSecret = deps.nonceSecret;
   }
 
   readonly #randomNonce: () => string;
+  readonly #nonceSecret: string | undefined;
+
+  #macNonce(fields: { primaryWallet: string; action: string; payloadHash: Hex; issuedAt: string }): string {
+    return createHmac("sha256", this.#nonceSecret ?? "")
+      .update([CHALLENGE_VERSION, this.#config.origin, fields.primaryWallet.toLowerCase(), fields.action, fields.payloadHash, fields.issuedAt].join("|"))
+      .digest("hex");
+  }
+
+  /** Stateless verification: the nonce and the expiry must both derive from the signed fields. */
+  #verifyMacNonce(auth: AuthEnvelope): void {
+    const expected = this.#macNonce(auth);
+    const given = Buffer.from(auth.nonce, "utf8");
+    if (given.length !== expected.length || !timingSafeEqual(given, Buffer.from(expected, "utf8"))) {
+      throw new ServiceError("challenge_invalid", "nonce_unknown");
+    }
+    const issued = Date.parse(auth.issuedAt);
+    if (Number.isNaN(issued) || new Date(issued + this.#config.maxTtlSeconds * 1000).toISOString() !== auth.expiresAt) {
+      throw new ServiceError("challenge_invalid", "expiry_mismatch");
+    }
+    if (issued + this.#config.maxTtlSeconds * 1000 <= this.#now().getTime()) {
+      throw new ServiceError("challenge_invalid", "challenge_expired");
+    }
+    // Best-effort replay guard within this instance; a replay elsewhere is
+    // bounded by the TTL and the idempotency key on every state-changing action.
+    if (this.#nonces.get(auth.nonce)?.consumed) throw new ServiceError("challenge_invalid", "nonce_used");
+  }
 
   /** Drops challenges that can no longer be presented, consumed or not. */
   #sweepExpiredNonces(): void {
@@ -154,7 +188,10 @@ export class CampaignService {
     this.#sweepExpiredNonces();
     const issued = this.#now();
     const expires = new Date(issued.getTime() + this.#config.maxTtlSeconds * 1000);
-    const nonce = this.#randomNonce();
+    const issuedAt = issued.toISOString();
+    const nonce = this.#nonceSecret
+      ? this.#macNonce({ primaryWallet: input.primaryWallet, action: input.action, payloadHash: input.payloadHash, issuedAt })
+      : this.#randomNonce();
     const auth = {
       primaryWallet: input.primaryWallet,
       nonce,
@@ -195,6 +232,30 @@ export class CampaignService {
       throw new ServiceError("challenge_invalid", "payload_hash_mismatch");
     }
 
+    if (this.#nonceSecret) {
+      this.#verifyMacNonce(auth);
+    } else {
+      this.#verifyIssuedNonce(auth);
+    }
+
+    const recovered = await recoverMessageAddress({
+      message: challengeBytes(this.#config, auth),
+      signature: auth.signature,
+    });
+    if (recovered.toLowerCase() !== auth.primaryWallet.toLowerCase()) {
+      throw new ServiceError("challenge_invalid", "signature_mismatch");
+    }
+
+    // Kept, marked, rather than deleted: a replay must report reuse, not an
+    // unknown challenge, until the entry ages out with its own expiry.
+    this.#nonces.set(auth.nonce, {
+      primaryWallet: auth.primaryWallet.toLowerCase(), action: auth.action, payloadHash: auth.payloadHash,
+      expiresAt: Date.parse(auth.expiresAt), consumed: true,
+    });
+    return auth.primaryWallet.toLowerCase();
+  }
+
+  #verifyIssuedNonce(auth: AuthEnvelope): void {
     const issued = this.#nonces.get(auth.nonce);
     if (!issued) throw new ServiceError("challenge_invalid", "nonce_unknown");
     if (issued.consumed) throw new ServiceError("challenge_invalid", "nonce_used");
@@ -209,19 +270,6 @@ export class CampaignService {
     if (issued.primaryWallet !== auth.primaryWallet.toLowerCase()) {
       throw new ServiceError("challenge_invalid", "wallet_mismatch");
     }
-
-    const recovered = await recoverMessageAddress({
-      message: challengeBytes(this.#config, auth),
-      signature: auth.signature,
-    });
-    if (recovered.toLowerCase() !== auth.primaryWallet.toLowerCase()) {
-      throw new ServiceError("challenge_invalid", "signature_mismatch");
-    }
-
-    // Kept, marked, rather than deleted: a replay must report reuse, not an
-    // unknown challenge, until the entry ages out with its own expiry.
-    this.#nonces.set(auth.nonce, { ...issued, consumed: true });
-    return auth.primaryWallet.toLowerCase();
   }
 
   /**
