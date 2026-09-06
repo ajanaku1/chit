@@ -30,5 +30,26 @@
     "seedTx": "0x612a6854c4c0c7d6c7f14a09f37f446f1632d1a5b950d8cf05d2a30c10e1b898",
     "seedEth": "5000000000000000",
     "seededAt": "2026-09-05T23:07:13.402Z"
+  },
+  "firstBuy": {
+    "api": "https://chit.tools",
+    "campaign": "d818c7b1-b0b9-4c30-9a88-019f401db5b2",
+    "key": "0x78aaae9d18e4a6879b9da9f3555325c378b0e6226f563bb5f4d629f068392454",
+    "owner": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
+    "fleet": [
+      "0x37c0529e48bee943524e61e1e602c8650b64d62c"
+    ],
+    "fundTx": "resumed",
+    "principalTx": "resumed",
+    "buyTx": "0x62ced39074adaa0b922e558dbafdf8c6405b3c21fcf45b77d5d3afb3a53b2d71",
+    "account": "0x37c0529e48bee943524e61e1e602c8650b64d62c",
+    "token": "0x13283ab8e1f2bc4297e9ec6480c80c59674af554",
+    "budget": {
+      "funded": "2000000000000000",
+      "reserved": "0",
+      "spent": "1836810000000",
+      "unused": "1998163190000000"
+    },
+    "at": "2026-09-06T09:14:25.918Z"
   }
 }
