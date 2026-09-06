@@ -30,24 +30,34 @@ describe("Fleet service on-chain lifecycle (router-driven)", () => {
     const factory = await viem.deployContract("FleetAccountFactory", [operator!.account.address]);
     const counter = await viem.deployContract("ChitCounter", []);
 
-    const service = new CampaignService(serviceConfig);
-    const router = new CampaignRouter({
-      service,
-      chain: createFleetChain(operator!, publicClient, {
-        escrow: escrow.address, factory: factory.address, policy: policy.address,
-      }),
+    const chain = createFleetChain(operator!, publicClient, {
+      escrow: escrow.address, factory: factory.address, policy: policy.address,
     });
+    // Each router is a separate serverless instance: its own service memory,
+    // the same derived nonce secret, the same chain.
+    const instance = () => {
+      const service = new CampaignService(serviceConfig, { nonceSecret: "derived-from-operator-key" });
+      return { service, router: new CampaignRouter({ service, chain }) };
+    };
+    const first = instance();
+    const service = first.service;
+    const router = first.router;
 
-    const signed = async (action: string, body: Record<string, unknown>) => {
+    let calls = 0;
+    const signed = async (issuer: CampaignService, action: string, body: Record<string, unknown>) => {
       const hash = payloadHash(body);
-      const c = service.issueChallenge({ primaryWallet: owner!.account.address, action, payloadHash: hash });
+      const c = issuer.issueChallenge({ primaryWallet: owner!.account.address, action, payloadHash: hash });
       const fields = { primaryWallet: owner!.account.address, nonce: c.nonce, issuedAt: c.issuedAt, expiresAt: c.expiresAt, action, payloadHash: hash };
       const signature = await owner!.signMessage({ account: owner!.account, message: challengeBytes(serviceConfig, fields) });
       const auth: AuthEnvelope = { ...fields, signature };
       return { action, auth, body };
     };
     const call = async (action: string, body: Record<string, unknown>) =>
-      router.handle(await signed(action, body), `fleet-${action}-0000000000000000`);
+      router.handle(await signed(service, action, body), `fleet-${action}-${String(calls++).padStart(16, "0")}`);
+    // A request that lands on a different instance: challenge issued by the
+    // campaign function, verified and served by a fresh one.
+    const elsewhere = async (action: string, body: Record<string, unknown>) =>
+      instance().router.handle(await signed(service, action, body), `fleet-${action}-${String(calls++).padStart(16, "0")}`);
 
     // Open access: the quote is eligible with zero fee, no CHIT read.
     const quote = await router.handle({ action: "quote", body: { primaryWallet: owner!.account.address } });
@@ -94,7 +104,9 @@ describe("Fleet service on-chain lifecycle (router-driven)", () => {
       assert.equal(await policy.read.isEnrolled([key, a]), true);
     }
 
-    const bought = await call("buy", {
+    // The buy route is its own function: a fresh instance restores the campaign
+    // from the chain and still sponsors exactly the enrolled accounts.
+    const bought = await elsewhere("buy", {
       campaign, accounts: [fleet[0], fleet[1], "0x00000000000000000000000000000000000000ee"],
       token: "0x0000000000000000000000000000000000000001", value: "0",
     });
@@ -107,5 +119,20 @@ describe("Fleet service on-chain lifecycle (router-driven)", () => {
     const onChain = await escrow.read.budget([key]);
     assert.equal(results.find((r) => r.status === "sponsored")!.budget.spent, onChain[2].toString());
     assert.ok(onChain[2] > 0n && onChain[1] === 0n, "gas settled, nothing left reserved");
+
+    // Control from yet another instance lands on the policy itself.
+    const paused = await elsewhere("pause", { campaign });
+    assert.equal(paused.status, 200, JSON.stringify(paused.body));
+    assert.equal((await policy.read.sessionOf([key])).paused, true, "session paused on-chain");
+    const refused = await elsewhere("buy", { campaign, accounts: [fleet[2]], token: "0x0000000000000000000000000000000000000001", value: "0" });
+    assert.equal(refused.status, 403, "a paused campaign sponsors nothing, from any instance");
+    assert.equal(await counter.read.count(), 2n);
+    const resumed = await elsewhere("resume", { campaign });
+    assert.equal((resumed.body as { state: string }).state, "Active");
+    assert.equal((await policy.read.sessionOf([key])).paused, false);
+    const closed = await elsewhere("close", { campaign });
+    assert.equal(closed.status, 200, JSON.stringify(closed.body));
+    assert.equal((await policy.read.sessionOf([key])).revoked, true, "close revokes the session on-chain");
+    assert.equal((closed.body as { returnedEth: string }).returnedEth, "0", "the owner reclaims through the escrow, not the service");
   });
 });

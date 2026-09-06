@@ -10,13 +10,14 @@
  */
 
 import { BudgetError, CampaignBudget } from "./campaign-budget.js";
+import type { OnChainCampaign } from "./chain-campaign.js";
 import { campaignKey, type ChainBuy, type FleetChain } from "./chain-service.js";
 import { CampaignService, ServiceError, assertNoSecrets } from "./campaign-service.js";
 import { CampaignStateError, canSponsor, transition } from "./campaign-state.js";
 import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
-import { encodeBuyCall } from "./v4-swap.js";
+import { UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall } from "./v4-swap.js";
 import {
   FleetValidationError,
   isHex32,
@@ -209,23 +210,43 @@ export class CampaignRouter {
     return record.chainBudget ?? record.budget.snapshot();
   }
 
-  #campaign(wallet: string, body: Record<string, unknown>): CampaignRecord {
-    const record = this.#campaigns.get(String(body["campaign"] ?? ""));
+  async #campaign(wallet: string, body: Record<string, unknown>): Promise<CampaignRecord> {
+    const id = String(body["campaign"] ?? "");
+    const record = this.#campaigns.get(id) ?? (await this.#restore(id, wallet));
     if (!record || record.ownerWallet !== wallet) {
       throw new ServiceError("state_invalid", "campaign_unknown");
     }
     return record;
   }
 
-  #advance(wallet: string, body: Record<string, unknown>, event: "confirmRecovery" | "fund"): RouterResult {
-    const record = this.#campaign(wallet, body);
+  /**
+   * A campaign this instance never saw is rebuilt from the chain, so any
+   * serverless instance can serve buy, control, and read after activation.
+   * Before activation the policy exists only in the creating instance.
+   */
+  async #restore(id: string, wallet: string): Promise<CampaignRecord | undefined> {
+    const chain = this.#deps.chain;
+    if (!chain || !id) return undefined;
+    const found = await chain.loadCampaign(campaignKey(id));
+    if (!found?.session || found.owner.toLowerCase() !== wallet) return undefined;
+    const record = restoredRecord(id, wallet, found, this.#now());
+    this.#campaigns.set(id, record);
+    return record;
+  }
+
+  #now(): Date {
+    return (this.#deps.now ?? (() => new Date()))();
+  }
+
+  async #advance(wallet: string, body: Record<string, unknown>, event: "confirmRecovery" | "fund"): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
     record.state = transition(record.state, event);
     return { status: 200, body: this.#result(record) };
   }
 
   /** Funding is evidence-checked: the budget is the verified amount, never a claim. */
   async #fund(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
-    const record = this.#campaign(wallet, body);
+    const record = await this.#campaign(wallet, body);
     // State legality first: a skipped step is the caller's error (409) no
     // matter how the server is configured.
     const nextState = transition(record.state, "fund");
@@ -264,7 +285,7 @@ export class CampaignRouter {
 
   /** One bounded sponsored buy per listed account (FR-007 to FR-010). */
   async #buy(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
-    const record = this.#campaign(wallet, body);
+    const record = await this.#campaign(wallet, body);
     const { submitter, chain } = this.#deps;
     if (!submitter && !chain) throw new ServiceError("dependency_evidence_invalid", "submitter_unconfigured");
     if (!canSponsor(record.state)) throw new PolicyRejection(`state_not_sponsorable:${record.state}`);
@@ -275,10 +296,12 @@ export class CampaignRouter {
     const requested = Array.isArray(body["accounts"]) ? (body["accounts"] as Address[]) : [];
     if (requested.length === 0) throw new FleetValidationError("no_accounts");
 
+    if (chain) await this.#syncEnrolled(record, chain, requested);
+
     // Shared request facts are checked once, before any sponsorship, so a
     // request outside policy is refused whole (SC-006).
     const session = this.#session(record);
-    const now = (this.#deps.now ?? (() => new Date()))();
+    const now = this.#now();
     authorize({
       session,
       request: {
@@ -420,18 +443,41 @@ export class CampaignRouter {
     }
   }
 
-  #control(wallet: string, body: Record<string, unknown>, event: "pause" | "resume" | "revoke" | "close"): RouterResult {
-    const record = this.#campaign(wallet, body);
-    record.state = transition(record.state, event);
+  /**
+   * Control lands on-chain once a session exists: pause/resume/revoke call the
+   * policy, and close revokes the session so nothing more is sponsored. The
+   * owner reclaims unused ETH through the escrow's own close, which only the
+   * owner may call; the service never holds or moves that ETH.
+   */
+  async #control(wallet: string, body: Record<string, unknown>, event: "pause" | "resume" | "revoke" | "close"): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
+    const nextState = transition(record.state, event);
+    const chain = this.#deps.chain;
+    if (chain && record.chainAccounts && nextState !== record.state) {
+      await chain.control(campaignKey(record.id), event === "close" ? "revoke" : event);
+    }
+    record.state = nextState;
     if (event === "close") {
-      const returned = record.budget.close();
+      const returned = chain ? "0" : record.budget.close();
       return { status: 200, body: { ...this.#result(record), returnedEth: returned } };
     }
     return { status: 200, body: this.#result(record) };
   }
 
+  /** Accounts the chain says are enrolled join the record, so restored records can buy. */
+  async #syncEnrolled(record: CampaignRecord, chain: FleetChain, requested: readonly Address[]): Promise<void> {
+    const known = new Set((record.chainAccounts ?? []).map((account) => account.toLowerCase()));
+    for (const account of requested) {
+      if (known.has(account.toLowerCase())) continue;
+      if (await chain.isEnrolled(campaignKey(record.id), account)) {
+        record.chainAccounts = [...(record.chainAccounts ?? []), account.toLowerCase() as Address];
+        known.add(account.toLowerCase());
+      }
+    }
+  }
+
   async #activate(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
-    const record = this.#campaign(wallet, body);
+    const record = await this.#campaign(wallet, body);
     const nextState = transition(record.state, "activate");
     if (this.#deps.chain && !record.chainAccounts) {
       record.chainAccounts = await this.#deps.chain.activate(campaignKey(record.id), record.accounts, record.policy);
@@ -446,8 +492,8 @@ export class CampaignRouter {
     };
   }
 
-  #read(wallet: string, body: Record<string, unknown>): RouterResult {
-    const record = this.#campaign(wallet, body);
+  async #read(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
     return { status: 200, body: { ...this.#result(record), results: [] } };
   }
 
@@ -464,6 +510,42 @@ export class CampaignRouter {
 /** Approved-function calldata for the demo buy: router.function(token, value). */
 const encodeExecuteData = (token: Address, value: Uint): `0x${string}` =>
   `0x${token.slice(2).padStart(64, "0")}${BigInt(value).toString(16).padStart(64, "0")}` as `0x${string}`;
+
+const functionForSelector = (selector: string): string =>
+  selector.toLowerCase() === UNIVERSAL_ROUTER_EXECUTE_SELECTOR ? UNIVERSAL_ROUTER_EXECUTE : selector.toLowerCase();
+
+/** The state the chain implies for an activated campaign, terminal cases first. */
+const restoredState = (found: OnChainCampaign, now: Date): CampaignState => {
+  const session = found.session!;
+  if (session.revoked) return "Revoked";
+  if (Number(session.expiry) * 1000 <= now.getTime()) return "Expired";
+  if (found.budget.unused < session.perAccountGas) return "Depleted";
+  return session.paused ? "Paused" : "Active";
+};
+
+const restoredRecord = (id: string, owner: string, found: OnChainCampaign, now: Date): CampaignRecord => {
+  const session = found.session!;
+  const policy: Policy = {
+    chainId: Number(session.chainId), accounts: 0, router: session.router.toLowerCase() as Address,
+    function: functionForSelector(session.selector), maxTradeValue: session.maxTradeValue.toString(),
+    perAccountGas: session.perAccountGas.toString(), totalGas: session.totalGas.toString(),
+    expiry: new Date(Number(session.expiry) * 1000).toISOString(),
+  };
+  return {
+    id, ownerWallet: owner, policy, accounts: [],
+    // The vault commitment never touches the chain; a restored record cannot
+    // recover it and never needs it after activation.
+    recoveryVaultCommitment: `0x${"0".repeat(64)}` as Hex,
+    state: restoredState(found, now),
+    fee: { ...openQuote("restored"), ...OPEN_ACCESS_CHARGE },
+    budget: new CampaignBudget(found.budget.funded.toString()),
+    chainAccounts: [],
+    chainBudget: {
+      funded: found.budget.funded.toString(), reserved: found.budget.reserved.toString(),
+      spent: found.budget.spent.toString(), unused: found.budget.unused.toString(),
+    },
+  };
+};
 
 /** Maps every thrown domain error onto the fleet-api.md status table. */
 const errorResult = (error: unknown): RouterResult => {
