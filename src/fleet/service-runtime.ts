@@ -17,7 +17,10 @@ import { createFleetChain, type FleetChain } from "./chain-service.js";
 import { validateFeeConfig, type FeeConfig } from "./eligibility.js";
 import { isAddress, type Address, type Uint } from "./types.js";
 
-const ORIGIN = "https://chit-kohl.vercel.app";
+// The primary wallet signs challenges over the page origin it is on
+// (window.location.origin), so this must be the served site, chit.tools.
+// FLEET_ORIGIN overrides it for previews.
+const ORIGIN = process.env.FLEET_ORIGIN || "https://chit.tools";
 const FLEET_CHAIN_ID = 46630; // Robinhood Chain testnet
 const DEFAULT_RPC = "https://rpc.testnet.chain.robinhood.com";
 const BALANCE_OF_SELECTOR = "0x70a08231";
