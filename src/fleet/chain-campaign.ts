@@ -124,3 +124,67 @@ export const openSession = async (
   await publicClient.waitForTransactionReceipt({ hash: tx });
   return tx;
 };
+
+const READ_ABI = parseAbi([
+  "function ownerOf(bytes32 campaign) view returns (address)",
+  "function budget(bytes32 campaign) view returns (uint256 funded, uint256 reserved, uint256 spent, uint256 unused)",
+  "function sessionOf(bytes32 campaign) view returns ((uint256 chainId, address router, bytes4 selector, uint256 maxTradeValue, uint256 perAccountGas, uint256 totalGas, uint64 expiry, uint256 spentGas, bool paused, bool revoked, bool exists))",
+  "function isEnrolled(bytes32 campaign, address account) view returns (bool)",
+  "function pause(bytes32 campaign)",
+  "function resume(bytes32 campaign)",
+  "function revoke(bytes32 campaign)",
+]);
+
+export type OnChainSession = {
+  chainId: bigint; router: Address; selector: Hex; maxTradeValue: bigint; perAccountGas: bigint; totalGas: bigint;
+  expiry: bigint; spentGas: bigint; paused: boolean; revoked: boolean;
+};
+
+export type OnChainCampaign = {
+  owner: Address;
+  budget: { funded: bigint; reserved: bigint; spent: bigint; unused: bigint };
+  /** Absent until the fleet is activated and the session opened. */
+  session?: OnChainSession;
+};
+
+/**
+ * Everything the service needs to know about a campaign, read from the chain,
+ * so a fresh instance can serve it. Undefined when the escrow has no such
+ * campaign.
+ */
+export const readCampaign = async (
+  publicClient: PublicClient,
+  escrow: Address,
+  policy: Address,
+  campaign: Hex,
+): Promise<OnChainCampaign | undefined> => {
+  let owner: Address;
+  try {
+    owner = await publicClient.readContract({ address: escrow, abi: READ_ABI, functionName: "ownerOf", args: [campaign] });
+  } catch {
+    return undefined;
+  }
+  const [funded, reserved, spent, unused] = await publicClient.readContract({ address: escrow, abi: READ_ABI, functionName: "budget", args: [campaign] });
+  const session = await publicClient.readContract({ address: policy, abi: READ_ABI, functionName: "sessionOf", args: [campaign] });
+  return {
+    owner,
+    budget: { funded, reserved, spent, unused },
+    ...(session.exists ? { session: { ...session } } : {}),
+  };
+};
+
+export const isEnrolled = (publicClient: PublicClient, policy: Address, campaign: Hex, account: Address): Promise<boolean> =>
+  publicClient.readContract({ address: policy, abi: READ_ABI, functionName: "isEnrolled", args: [campaign, account] });
+
+/** Operator-side session control on-chain; the policy enforces it on every buy. */
+export const setSessionState = async (
+  wallet: WalletClient,
+  publicClient: PublicClient,
+  policy: Address,
+  campaign: Hex,
+  event: "pause" | "resume" | "revoke",
+): Promise<Hex> => {
+  const hash = await wallet.writeContract({ ...walletCtx(wallet), address: policy, abi: READ_ABI, functionName: event, args: [campaign] });
+  await publicClient.waitForTransactionReceipt({ hash });
+  return hash;
+};

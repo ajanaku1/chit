@@ -10,7 +10,7 @@
 import { keccak256, stringToBytes, toFunctionSelector, type Address as ViemAddress, type Hex as ViemHex, type PublicClient, type WalletClient } from "viem";
 
 import { runFleetBuy, type FleetBuyReport } from "./chain-buy.js";
-import { createFleet, openSession, registerCampaign } from "./chain-campaign.js";
+import { createFleet, isEnrolled, openSession, readCampaign, registerCampaign, setSessionState, type OnChainCampaign } from "./chain-campaign.js";
 import { readBudget } from "./operator-executor.js";
 import type { Address, Budget, FleetAccountInit, Hex, Policy, Uint } from "./types.js";
 
@@ -25,6 +25,11 @@ export type FleetChain = {
   /** Creates the fleet accounts and opens the session; returns the account addresses. */
   activate(campaign: Hex, inits: readonly FleetAccountInit[], policy: Policy): Promise<Address[]>;
   buy(campaign: Hex, router: Address, buys: readonly ChainBuy[]): Promise<{ results: ChainBuyOutcome[]; budget: Budget }>;
+  /** Owner, budget, and open session as the chain holds them; undefined if unregistered. */
+  loadCampaign(campaign: Hex): Promise<OnChainCampaign | undefined>;
+  isEnrolled(campaign: Hex, account: Address): Promise<boolean>;
+  /** Pause, resume, or revoke the session on-chain; returns the tx hash. */
+  control(campaign: Hex, event: "pause" | "resume" | "revoke"): Promise<Hex>;
 };
 
 export type ChainAddresses = { escrow: Address; factory: Address; policy: Address };
@@ -95,5 +100,17 @@ export const createFleetChain = (
       })),
       budget: toBudget(report.budget),
     };
+  },
+
+  loadCampaign(campaign) {
+    return readCampaign(publicClient, addresses.escrow, addresses.policy, campaign);
+  },
+
+  isEnrolled(campaign, account) {
+    return isEnrolled(publicClient, addresses.policy, campaign, account as ViemAddress);
+  },
+
+  async control(campaign, event) {
+    return (await setSessionState(wallet, publicClient, addresses.policy, campaign, event)) as Hex;
   },
 });

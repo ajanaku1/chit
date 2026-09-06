@@ -8,7 +8,7 @@
  * 503 instead of substituting a default fact.
  */
 
-import { createPublicClient, createWalletClient, defineChain, http, isHex, type PublicClient } from "viem";
+import { createPublicClient, createWalletClient, defineChain, http, isHex, keccak256, stringToBytes, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { CampaignRouter, type RouterDeps } from "./campaign-routes.js";
@@ -43,9 +43,25 @@ const DEPLOYED_46630 = {
  *   FLEET_ESCROW_ADDRESS, FLEET_FACTORY_ADDRESS, FLEET_POLICY_ADDRESS
  *                                optional; default to the recorded deployment
  */
-const chainFromEnv = (): FleetChain | undefined => {
+const operatorKeyFromEnv = (): `0x${string}` | undefined => {
   const key = process.env.FLEET_OPERATOR_PRIVATE_KEY || process.env.DEPLOYER_PRIVATE_KEY;
-  if (!key || !isHex(key) || key.length !== 66) return undefined;
+  return key && isHex(key) && key.length === 66 ? key : undefined;
+};
+
+/**
+ * Challenge nonces must verify on whichever function instance receives the
+ * signed action, so they are HMACs under a secret every instance derives the
+ * same way from the operator key already in the environment. Domain-separated;
+ * the key itself is never used directly.
+ */
+const nonceSecretFromEnv = (): string | undefined => {
+  const key = operatorKeyFromEnv();
+  return key ? keccak256(stringToBytes(`chit-fleet-challenge-v1|${key}`)) : undefined;
+};
+
+const chainFromEnv = (): FleetChain | undefined => {
+  const key = operatorKeyFromEnv();
+  if (!key) return undefined;
   const escrow = process.env.FLEET_ESCROW_ADDRESS || DEPLOYED_46630.escrow;
   const factory = process.env.FLEET_FACTORY_ADDRESS || DEPLOYED_46630.factory;
   const policy = process.env.FLEET_POLICY_ADDRESS || DEPLOYED_46630.policy;
@@ -136,8 +152,9 @@ export const getFleetRouter = (): CampaignRouter => {
   if (router) return router;
   const feeConfig = feeConfigFromEnv();
   const chain = chainFromEnv();
+  const nonceSecret = nonceSecretFromEnv();
   const deps: RouterDeps = {
-    service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 300 }),
+    service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 300 }, nonceSecret ? { nonceSecret } : {}),
     ...(feeConfig ? { feeConfig, chitBalanceOf } : {}),
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),

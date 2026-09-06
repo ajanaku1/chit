@@ -71,8 +71,11 @@ export const encodeV4EthBuy = ({ token, amountIn, minOut = 0n, deadline }: V4Buy
 };
 
 /** Legacy fixture shape: `selector(token, value)`, used by the labelled test-only venue. */
-const encodeFixtureBuy = (signature: string, token: Address, value: bigint): Hex =>
-  `${toFunctionSelector(signature)}${token.slice(2).padStart(64, "0")}${value.toString(16).padStart(64, "0")}` as Hex;
+const encodeFixtureBuy = (signature: string, token: Address, value: bigint): Hex => {
+  // A campaign restored from the chain knows only its selector, not the signature.
+  const selector = signature.startsWith("0x") ? signature : toFunctionSelector(signature);
+  return `${selector}${token.slice(2).padStart(64, "0")}${value.toString(16).padStart(64, "0")}` as Hex;
+};
 
 /** Calldata for one sponsored buy against the campaign's approved function. */
 export const encodeBuyCall = (signature: string, token: Address, value: bigint, now: Date): Hex =>
