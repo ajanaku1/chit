@@ -33,11 +33,11 @@ const liveRecord = () => ({
       source: "EntryPoint v0.7",
       provenance: "eth_getCode",
     },
-    paymaster: {
-      role: "paymaster",
+    escrow: {
+      role: "escrow",
       verified: true,
       address: "0x1111111111111111111111111111111111111111",
-      source: "Fleet paymaster",
+      source: "Fleet campaign escrow",
       provenance: "eth_getCode",
     },
     router: {
@@ -83,15 +83,15 @@ test("the committed fixture record is a valid test-only fixture", async () => {
     assert.ok(record.provenance.length > 0);
   }
 
-  // The roles Fleet will actually call on chain are verified deployments; the
-  // roles it has not deployed yet are doubles and carry no address.
+  // Every contract Fleet calls on chain is a verified deployment on 46630. The
+  // one double is the provider: the public testnet RPC is not an operator
+  // endpoint, so the record cannot claim verified-testnet until one exists.
   assert.equal(evidence.dependencies.entryPoint.address, "0x0000000071727de22e5e9d8baf0edac6f37da032");
+  assert.equal(evidence.dependencies.escrow.address, "0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325");
   assert.equal(evidence.dependencies.router.address, "0x8876789976decbfcbbbe364623c63652db8c0904");
+  assert.equal(evidence.dependencies.venue.address, "0x13283ab8e1f2bc4297e9ec6480c80c59674af554");
+  assert.equal(evidence.dependencies.provider.verified, false);
   assert.equal(evidence.dependencies.provider.address, undefined);
-  for (const role of ["paymaster", "venue"] as const) {
-    assert.equal(evidence.dependencies[role].verified, false);
-    assert.equal(evidence.dependencies[role].address, undefined);
-  }
 });
 
 test("a fixture double never carries an address, and a fixture must contain one", async () => {
@@ -103,7 +103,7 @@ test("a fixture double never carries an address, and a fixture must contain one"
       ...fixture,
       dependencies: {
         ...dependencies,
-        venue: { ...dependencies["venue"], address: "0x2222222222222222222222222222222222222222" },
+        venue: { ...dependencies["venue"], verified: false },
       },
     }),
     "unverified_address_forbidden:venue",
@@ -113,8 +113,7 @@ test("a fixture double never carries an address, and a fixture must contain one"
       ...fixture,
       dependencies: {
         ...dependencies,
-        paymaster: { ...dependencies["paymaster"], verified: true, address: "0x1111111111111111111111111111111111111111" },
-        venue: { ...dependencies["venue"], verified: true, address: "0x3333333333333333333333333333333333333333" },
+        provider: { ...dependencies["provider"], verified: true },
       },
     }),
     "fixture_without_double",

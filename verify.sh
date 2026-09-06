@@ -88,7 +88,7 @@ fleet_evidence_live() {
   curl -sS --max-time 10 -X POST "$rpc" -H 'content-type: application/json' \
     --data '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}' | \
     jq -er --arg expected "$(printf '0x%x' "$chain")" '.result == $expected' >/dev/null || return 1
-  for role in entryPoint paymaster router venue; do
+  for role in entryPoint escrow router venue; do
     address=$(jq -er --arg role "$role" '.dependencies[$role].address // empty' "$file") || return 1
     [ -n "$address" ] || return 1
     printf '%s' "$address" | grep -qE '^0x[0-9a-fA-F]{40}$' || return 1

@@ -3,15 +3,15 @@
   "mode": "fixture",
   "testOnly": true,
   "chainId": 46630,
-  "verifiedAt": "2026-08-30T00:00:00.000Z",
+  "verifiedAt": "2026-09-06T00:00:00.000Z",
   "maxAgeSeconds": 0,
   "allowedClaim": "test-only-fixture",
   "dependencies": {
     "provider": {
       "role": "provider",
-      "verified": true,
+      "verified": false,
       "source": "Robinhood Chain testnet public RPC (https://rpc.testnet.chain.robinhood.com)",
-      "provenance": "eth_chainId returned 0xb626 (46630) on 2026-08-30; public endpoint is rate-limited and not for production load"
+      "provenance": "eth_chainId returned 0xb626 (46630) on 2026-08-30 and the public endpoint served every Stage 1 deploy and buy, but it is rate-limited, drops requests under load, and is not an operator endpoint; the double stands until an operator RPC is provisioned"
     },
     "entryPoint": {
       "role": "entryPoint",
@@ -20,6 +20,13 @@
       "source": "ERC-4337 EntryPoint v0.7.0",
       "provenance": "listed at docs.robinhood.com/chain/account-abstraction; eth_getCode returned non-empty bytecode on chain 46630 on 2026-08-30"
     },
+    "escrow": {
+      "role": "escrow",
+      "verified": true,
+      "address": "0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325",
+      "source": "FleetCampaignEscrow (Stage 1 gas sponsorship, operator-executes)",
+      "provenance": "deployed 2026-08-31 from the operator, tx in deployments/fleet-46630.json; eth_getCode returned bytecode on 46630; settled the first live sponsored buy 0x62ced39074adaa0b922e558dbafdf8c6405b3c21fcf45b77d5d3afb3a53b2d71"
+    },
     "router": {
       "role": "router",
       "verified": true,
@@ -27,17 +34,12 @@
       "source": "Uniswap v4 Universal Router",
       "provenance": "listed for Robinhood Chain in Uniswap v4 deployments; eth_getCode returned 24546 bytes on chain 46630 on 2026-08-30"
     },
-    "paymaster": {
-      "role": "paymaster",
-      "verified": false,
-      "source": "FleetPaymaster (not yet deployed)",
-      "provenance": "test-only double; Stage 1 (operator-executes) sponsors gas without an ERC-4337 paymaster, so none is deployed on 46630. The FleetPaymaster contract is kept for the later decentralised model."
-    },
     "venue": {
       "role": "venue",
-      "verified": false,
-      "source": "FleetFixtureToken",
-      "provenance": "test-only double in this fixture; the live venue is a seeded Uniswap v4 ETH/FLEET pool on chain 46630 (FLEET token 0x13283ab8e1f2bc4297e9ec6480c80c59674af554, recorded in deployments/fleet-46630.json with the seed tx and the first sponsored buy tx 0x62ced39074adaa0b922e558dbafdf8c6405b3c21fcf45b77d5d3afb3a53b2d71). The fixture stays test-only because Stage 1 runs operator-executes and deploys no paymaster, which this evidence schema still requires for live mode."
+      "verified": true,
+      "address": "0x13283ab8e1f2bc4297e9ec6480c80c59674af554",
+      "source": "FLEET test token in a seeded Uniswap v4 ETH/FLEET pool on 46630",
+      "provenance": "token, seeder, pool key and seed tx recorded in deployments/fleet-46630.json (2026-09-06); the first sponsored buy swapped ETH for FLEET through the Universal Router in tx 0x62ced39074adaa0b922e558dbafdf8c6405b3c21fcf45b77d5d3afb3a53b2d71; test token, no value"
     }
   }
 }

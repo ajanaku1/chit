@@ -9,11 +9,12 @@
 
 import { isAddress, normalizeAddress, type Address } from "./types.js";
 
-export const EVIDENCE_ROLES = ["provider", "entryPoint", "paymaster", "router", "venue"] as const;
+// Stage 1 (operator-executes): the escrow is the gas-sponsoring contract; there is no paymaster.
+export const EVIDENCE_ROLES = ["provider", "entryPoint", "escrow", "router", "venue"] as const;
 export type EvidenceRole = (typeof EVIDENCE_ROLES)[number];
 
 /** Roles that name an on-chain deployment; `provider` names an endpoint, never an address. */
-const ADDRESS_ROLES: readonly EvidenceRole[] = ["entryPoint", "paymaster", "router", "venue"];
+const ADDRESS_ROLES: readonly EvidenceRole[] = ["entryPoint", "escrow", "router", "venue"];
 
 export type EvidenceMode = "live" | "fixture";
 export type AllowedClaim = "verified-testnet" | "test-only-fixture";

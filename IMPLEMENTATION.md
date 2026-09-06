@@ -538,3 +538,18 @@ Known gap, still: idempotency records are per instance. A retry that lands
 elsewhere re-executes; on-chain settlement keys make a duplicate buy settle at
 most once per reservation key, so the exposure is a second attempt, not a
 double charge.
+
+## Evidence schema for Stage 1 (2026-09-06, user-approved test change)
+
+The dependency-evidence roles were written for the 4337 model and required a
+paymaster. Stage 1 sponsors gas through the campaign escrow (operator-executes),
+so the `paymaster` role is replaced by `escrow` in `EVIDENCE_ROLES`, the fixture,
+the test's live record, and the `verify.sh` live loop. The committed record now
+carries every contract Fleet calls on 46630 as verified with its address
+(EntryPoint, escrow, Universal Router, FLEET venue) and one labelled double:
+the provider, because the public testnet RPC is rate-limited and not an
+operator endpoint. The record stays `mode: fixture` with the test-only claim
+until an operator RPC exists; live mode also needs daily re-verification
+(`maxAgeSeconds`), which is an ops step, not a code one. The test's fixture
+mutations now target the venue (unverified with address) and the provider
+(verified, leaving no double).
