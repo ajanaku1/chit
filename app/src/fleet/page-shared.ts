@@ -43,11 +43,13 @@ export const fleetApi = async (
 ): Promise<{ status: number; body: Record<string, unknown> }> => {
   const route = ["pause", "resume", "revoke", "close"].includes(action)
     ? "control"
-    : action === "buy"
-      ? "buy"
-      : "campaign";
+    : ["balance", "withdraw"].includes(action)
+      ? "balance"
+      : action === "buy"
+        ? "buy"
+        : "campaign";
   const headers: Record<string, string> = { "content-type": "application/json" };
-  if (!["quote", "challenge", "read"].includes(action)) {
+  if (!["quote", "challenge", "read", "balance"].includes(action)) {
     headers["idempotency-key"] = `fleet-${action}${Date.now()}`.padEnd(22, "0").slice(0, 40);
   }
   const response = await fetch(`/api/fleet/${route}`, {
