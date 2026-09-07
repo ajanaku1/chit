@@ -15,12 +15,15 @@ import { campaignKey, type ChainBuy, type FleetChain } from "./chain-service.js"
 import { CampaignService, ServiceError, assertNoSecrets } from "./campaign-service.js";
 import { CampaignStateError, canSponsor, transition } from "./campaign-state.js";
 import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
+import type { PoolPort } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
 import { UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall } from "./v4-swap.js";
 import {
   FleetValidationError,
+  isAddress,
   isHex32,
+  isUint,
   parseFleetAccounts,
   parsePolicy,
   type Address,
@@ -42,6 +45,8 @@ export type RouterDeps = {
   chitBalanceOf?: (wallet: Address) => Promise<Uint>;
   /** Deployed contracts + operator signer; present means the chain is the budget's source of truth. */
   chain?: FleetChain;
+  /** Stage 2 pool; absent means balance and withdrawal answer 503, never a guess. */
+  pool?: PoolPort;
   /** Confirms a funding reference against chain evidence and returns its wei amount. */
   verifyFunding?: (reference: string) => Promise<Uint>;
   /** Lands authorized UserOperations; absent means sponsorship is not configured. */
@@ -138,6 +143,7 @@ export class CampaignRouter {
     assertNoSecrets(body);
 
     if (action === "read") return this.#read(wallet, body);
+    if (action === "balance") return this.#balance(wallet);
 
     if (typeof idempotencyKey !== "string") {
       throw new ServiceError("idempotency_conflict", "key_required");
@@ -159,6 +165,8 @@ export class CampaignRouter {
           return this.#activate(wallet, body);
         case "buy":
           return this.#buy(wallet, body);
+        case "withdraw":
+          return this.#withdraw(wallet, body);
         case "pause":
         case "resume":
         case "revoke":
@@ -198,6 +206,44 @@ export class CampaignRouter {
     };
     this.#campaigns.set(record.id, record);
     return { status: 201, body: this.#result(record, { fee: true }) };
+  }
+
+  #pool(): PoolPort {
+    const pool = this.#deps.pool;
+    if (!pool) throw new ServiceError("dependency_evidence_invalid", "pool_unconfigured");
+    return pool;
+  }
+
+  /** What the trader holds, is holding back, and may still deposit (FR-002, FR-003). */
+  async #balance(wallet: string): Promise<RouterResult> {
+    return { status: 200, body: await this.#pool().balance(wallet as Address) };
+  }
+
+  /**
+   * Pays a signed withdrawal (FR-010). The balance is re-read here rather than
+   * trusted from the request, and a destination equal to the depositing wallet
+   * is warned about, not refused: it is the trader's privacy to spend.
+   */
+  async #withdraw(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const pool = this.#pool();
+    const destination = body["destination"];
+    if (!isAddress(destination)) throw new FleetValidationError("invalid_destination");
+    const amount = body["amount"];
+    if (!isUint(amount) || BigInt(amount) === 0n) throw new FleetValidationError("invalid_amount");
+
+    const before = await pool.balance(wallet as Address);
+    if (before.pool.paused) throw new CampaignStateError("state_invalid", "pool_paused");
+    if (BigInt(amount) > BigInt(before.available)) {
+      throw new BudgetError("budget_exceeded", "insufficient_balance");
+    }
+
+    const receipt = await pool.withdraw({ depositor: wallet as Address, amount, destination });
+    const after = await pool.balance(wallet as Address);
+    const samePayee = destination.toLowerCase() === wallet.toLowerCase();
+    return {
+      status: 200,
+      body: { ...receipt, available: after.available, ...(samePayee ? { warning: "destination_is_primary" } : {}) },
+    };
   }
 
   async #quote(wallet: Address, quoteId: string) {

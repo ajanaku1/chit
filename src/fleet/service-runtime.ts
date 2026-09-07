@@ -13,7 +13,10 @@ import { privateKeyToAccount } from "viem/accounts";
 
 import { CampaignRouter, type RouterDeps } from "./campaign-routes.js";
 import { CampaignService } from "./campaign-service.js";
+import { createFleetPool } from "./chain-pool.js";
 import { createFleetChain, type FleetChain } from "./chain-service.js";
+import { ledgerKey } from "./pool-ledger.js";
+import { createPoolService, type PoolPort } from "./pool-buy.js";
 import { validateFeeConfig, type FeeConfig } from "./eligibility.js";
 import { isAddress, type Address, type Uint } from "./types.js";
 
@@ -68,13 +71,20 @@ const poolAddressFromEnv = (): Address | undefined => {
   return isAddress(address) ? address : undefined;
 };
 
-const chainFromEnv = (): FleetChain | undefined => {
+/**
+ * Stage 2 pool service. Needs the operator signer and FLEET_POOL_ADDRESS; the
+ * ledger key derives from the operator key, so no new secret is introduced.
+ */
+const poolFromEnv = (): PoolPort | undefined => {
   const key = operatorKeyFromEnv();
-  if (!key) return undefined;
-  const escrow = process.env.FLEET_ESCROW_ADDRESS || DEPLOYED_46630.escrow;
-  const factory = process.env.FLEET_FACTORY_ADDRESS || DEPLOYED_46630.factory;
-  const policy = process.env.FLEET_POLICY_ADDRESS || DEPLOYED_46630.policy;
-  if (!isAddress(escrow) || !isAddress(factory) || !isAddress(policy)) return undefined;
+  const address = poolAddressFromEnv();
+  if (!key || !address) return undefined;
+  const { wallet, publicClient } = clients(key);
+  return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKey(key));
+};
+
+/** One operator-signed client pair for 46630, shared by every chain adapter. */
+const clients = (key: `0x${string}`) => {
   const rpcUrl = process.env.ROBINHOOD_TESTNET_RPC_URL || DEFAULT_RPC;
   const chain = defineChain({
     id: FLEET_CHAIN_ID,
@@ -83,11 +93,23 @@ const chainFromEnv = (): FleetChain | undefined => {
     rpcUrls: { default: { http: [rpcUrl] } },
   });
   const transport = http(rpcUrl);
-  const wallet = createWalletClient({ account: privateKeyToAccount(key), chain, transport });
-  // Vercel's TypeScript pass infers a json-rpc account on this client and
-  // rejects the FleetChain call our local build accepts; the cast pins the
-  // account-less PublicClient viem documents for createPublicClient.
-  const publicClient = createPublicClient({ chain, transport }) as unknown as PublicClient;
+  return {
+    wallet: createWalletClient({ account: privateKeyToAccount(key), chain, transport }),
+    // Vercel's TypeScript pass infers a json-rpc account on this client and
+    // rejects the adapter calls our local build accepts; the cast pins the
+    // account-less PublicClient viem documents for createPublicClient.
+    publicClient: createPublicClient({ chain, transport }) as unknown as PublicClient,
+  };
+};
+
+const chainFromEnv = (): FleetChain | undefined => {
+  const key = operatorKeyFromEnv();
+  if (!key) return undefined;
+  const escrow = process.env.FLEET_ESCROW_ADDRESS || DEPLOYED_46630.escrow;
+  const factory = process.env.FLEET_FACTORY_ADDRESS || DEPLOYED_46630.factory;
+  const policy = process.env.FLEET_POLICY_ADDRESS || DEPLOYED_46630.policy;
+  if (!isAddress(escrow) || !isAddress(factory) || !isAddress(policy)) return undefined;
+  const { wallet, publicClient } = clients(key);
   return createFleetChain(wallet, publicClient, { escrow, factory, policy });
 };
 
@@ -162,11 +184,14 @@ export const getFleetRouter = (): CampaignRouter => {
   const feeConfig = feeConfigFromEnv();
   const chain = chainFromEnv();
   const nonceSecret = nonceSecretFromEnv();
+  const pool = poolFromEnv();
   const deps: RouterDeps = {
     service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 300 }, nonceSecret ? { nonceSecret } : {}),
     ...(feeConfig ? { feeConfig, chitBalanceOf } : {}),
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
+    // Without the pool, balance and withdrawal answer 503 the same way.
+    ...(pool ? { pool } : {}),
   };
   router = new CampaignRouter(deps);
   return router;
