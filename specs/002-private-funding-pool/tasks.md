@@ -45,14 +45,14 @@ Every test is written and observed failing before its paired implementation (pro
 **Goal**: Activate with a draw, funded after a random delay by any instance, then a just-in-time sponsored buy.
 **Independent Test**: activate with 0.02 ETH draw, sweep from a fresh instance after due, one buy lands FLEET with principal and gas settled against the draw; no trader-wallet transaction.
 
-- [ ] T020 [P] [US2] Write failing route test for `activate` with draw (cap, short balance, paused pool) and `topUp` in `test/fleet/activate-draw-route.test.ts` (FR-004, FR-005, FR-013; COMP-103)
-- [ ] T021 [P] [US2] Write failing fork test: activation opens a Pending draw; a fresh router's sweep after dueAt seeds gas headroom and opens the session; a buy moves principal just in time and commits principal plus gas; a failing buy rolls principal back; queued spend posts after its due time in `test/fork/fleet-pool-fund.test.ts` (FR-006–FR-008, FR-012, SC-004, SC-005; COMP-106)
-- [ ] T022 [P] [US2] Write failing browser test for the activate step with draw and the "Funding your fleet" state in `app/test/fleet-activate-draw.test.ts` (FR-005, FR-006; COMP-104)
-- [ ] T023 [US2] Implement draw opening with random due time and restore-from-chain for draws in `src/fleet/campaign-routes.ts` and `src/fleet/chain-pool.ts` (FR-005–FR-007; COMP-102, COMP-103)
-- [ ] T024 [US2] Implement sweep (fund due draws, post due queued spend) in `src/fleet/pool-buy.ts` and `api/fleet/sweep.js`; call it at the start of state-changing actions (FR-007, FR-012; COMP-102, COMP-103)
-- [ ] T025 [US2] Implement just-in-time buy settlement (fundPrincipal, execute, commit or rollback, queueSpend) in `src/fleet/pool-buy.ts` and wire `#buyOnChain` for pool campaigns (FR-008; COMP-102)
-- [ ] T026 [US2] Implement wizard activate step with draw and "Funding your fleet" in `app/fleet.html` and `app/src/fleet-page.ts` (FR-005, FR-006; COMP-104)
-- [ ] T027 [US2] `./verify.sh pool-fund` green (SC-004, SC-005; COMP-106)
+- [x] T020 [P] [US2] Write failing route test for `activate` with draw (cap, short balance, paused pool) and `topUp` in `test/fleet/activate-draw-route.test.ts` (FR-004, FR-005, FR-013; COMP-103)
+- [x] T021 [P] [US2] Write failing fork test: activation opens a Pending draw; a fresh router's sweep after dueAt seeds gas headroom and opens the session; a buy moves principal just in time and commits principal plus gas; a failing buy rolls principal back; queued spend posts after its due time in `test/fork/fleet-pool-fund.test.ts` (FR-006–FR-008, FR-012, SC-004, SC-005; COMP-106)
+- [x] T022 [P] [US2] Write failing browser test for the activate step with draw and the "Funding your fleet" state in `app/test/fleet-activate-draw.test.ts` (FR-005, FR-006; COMP-104)
+- [x] T023 [US2] Implement draw opening with random due time and restore-from-chain for draws in `src/fleet/campaign-routes.ts` and `src/fleet/chain-pool.ts` (FR-005–FR-007; COMP-102, COMP-103)
+- [x] T024 [US2] Implement sweep (fund due draws, post due queued spend) in `src/fleet/pool-buy.ts` and `api/fleet/sweep.js`; call it at the start of state-changing actions (FR-007, FR-012; COMP-102, COMP-103)
+- [x] T025 [US2] Implement just-in-time buy settlement (fundPrincipal, execute, commit or rollback, queueSpend) in `src/fleet/pool-buy.ts` and wire `#buyOnChain` for pool campaigns (FR-008; COMP-102)
+- [x] T026 [US2] Implement wizard activate step with draw and "Funding your fleet" in `app/fleet.html` and `app/src/fleet-page.ts` (FR-005, FR-006; COMP-104)
+- [x] T027 [US2] `./verify.sh pool-fund` green (SC-004, SC-005; COMP-106)
 
 ## Phase 5: User Story 3 — Control and get money back privately (Priority: P3)
 

@@ -624,3 +624,42 @@ Two things found along the way:
 
 `./verify.sh pool-balance` is green; `pool-foundation` and every Stage 1 gate
 stay green.
+
+## Stage 2 Phase 4 — funding and buying from the pool (2026-09-07)
+
+Activation now commits a draw from the balance and opens it with a due time;
+any instance sweeps due draws, seeds the fleet's gas, and posts due charges. A
+buy takes its principal from the pool inside the buy itself and queues the
+charge against the depositor separately, so no transaction names both the
+campaign and the trader. `./verify.sh pool-fund` proves the whole path on a live
+EVM from instances that share only the chain.
+
+Decisions and corrections worth recording:
+
+- **The pool cannot simulate a buy before funding it.** The plan assumed a
+  pre-flight simulation would stop a doomed buy before principal moved, but the
+  fleet account does not hold the principal until the buy sends it, so the
+  simulation always fails. The order is now fund, execute, then commit or roll
+  back. A failed buy still charges the trader nothing; the operator absorbs the
+  principal, which lands in the trader's own fleet account and is theirs to
+  sweep with the owner escape hatch. Recorded as an operator-risk item for the
+  audit; a state-override simulation would remove it if the chain supports one.
+- **Due times come from chain time, not the service clock.** They are compared
+  against `block.timestamp`, so a service whose clock is behind would open draws
+  the contract refuses. Found by a fork test whose chain had travelled forward.
+- **A pooled campaign's state follows its draw**, not the Stage 1 escrow. A
+  fresh instance restoring a pooled campaign from the escrow's empty budget
+  reported `Depleted`; it now reads the draw (`drawnState`).
+- **`sessionOf` reverts before activation**, which crashed any restore attempt
+  on a registered-but-not-activated campaign. Now treated as "no session".
+- **The sweep reports campaign keys, not service ids.** A fresh instance cannot
+  recover an id from a keccak hash and should not pretend to.
+- **`topUpDraw` added to the contract.** FR-013 requires a depleted campaign to
+  top up from balance and the written interface had no way to do it.
+- **`contracts/fleet/FleetTestSink.sol`** is a test-only payable venue stand-in,
+  so pooled settlement can be proven on a local EVM without a seeded pool.
+- **The Stage 1 wizard now signs for real.** It previously sent a stub envelope
+  and expected 503. It now uses `signedFleetApi`, asks for the draw, and shows
+  the funding wait, so the page finally does what the API supports. The
+  "No trail back to you" headline is gone, replaced by wording that is true
+  today.
