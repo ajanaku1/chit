@@ -165,12 +165,52 @@ export const readCampaign = async (
     return undefined;
   }
   const [funded, reserved, spent, unused] = await publicClient.readContract({ address: escrow, abi: READ_ABI, functionName: "budget", args: [campaign] });
-  const session = await publicClient.readContract({ address: policy, abi: READ_ABI, functionName: "sessionOf", args: [campaign] });
+  // A campaign registered but not yet activated has no session, and the policy
+  // reverts rather than returning an empty one.
+  let session: Awaited<ReturnType<typeof publicClient.readContract>> | undefined;
+  try {
+    session = await publicClient.readContract({ address: policy, abi: READ_ABI, functionName: "sessionOf", args: [campaign] });
+  } catch {
+    session = undefined;
+  }
+  const open = session as { exists?: boolean } | undefined;
   return {
     owner,
     budget: { funded, reserved, spent, unused },
-    ...(session.exists ? { session: { ...session } } : {}),
+    ...(open?.exists ? { session: { ...(session as OnChainSession) } } : {}),
   };
+};
+
+/**
+ * The fleet accounts a campaign created, read from the factory's own event.
+ * An instance that never ran the activation still needs them to fund the fleet.
+ */
+export const accountsOf = async (
+  publicClient: PublicClient,
+  factory: Address,
+  campaign: Hex,
+): Promise<Address[]> => {
+  const logs = await publicClient.getLogs({
+    address: factory,
+    event: {
+      type: "event",
+      name: "FleetAccountCreated",
+      inputs: [
+        { type: "bytes32", name: "campaign", indexed: true },
+        { type: "address", name: "account", indexed: true },
+        { type: "address", name: "owner", indexed: true },
+        { type: "bytes32", name: "salt", indexed: false },
+      ],
+    },
+    args: { campaign },
+    fromBlock: 0n,
+    toBlock: "latest",
+  });
+  return logs
+    .map((log) => (log.args as { account?: Address }).account)
+    .filter((account): account is Address => Boolean(account))
+    .map((account) => account.toLowerCase() as Address)
+    .sort();
 };
 
 export const isEnrolled = (publicClient: PublicClient, policy: Address, campaign: Hex, account: Address): Promise<boolean> =>
