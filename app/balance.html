@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f5efe5" />
+    <meta
+      name="description"
+      content="Your Chit balance: deposit ETH into the shared pool, fund fleets from it, and withdraw to an address you choose."
+    />
+    <title>Chit Fleet · Your balance</title>
+    <link rel="icon" href="./favicon.svg" />
+    <link rel="stylesheet" href="./fleet.css" />
+  </head>
+  <body class="fleet-body">
+    <a class="skip-link" href="#balance">Skip to your balance</a>
+    <div class="fleet-shell">
+      <header class="fleet-top">
+        <a class="brand" href="./index.html" aria-label="Chit home">
+          <img src="./logo.svg" alt="" width="40" height="40" />
+          <span>Chit Fleet</span>
+        </a>
+        <nav aria-label="Fleet pages">
+          <a href="./balance.html" aria-current="page">Balance</a>
+          <a href="./fleet.html">Set up</a>
+          <a href="./fleet-dashboard.html">Dashboard</a>
+          <a href="./fleet-privacy.html">What's private</a>
+        </nav>
+        <div class="top-right">
+          <button id="hdr-wallet" type="button" class="wallet-btn" data-state="disconnected" aria-label="Connect wallet">Connect</button>
+        </div>
+      </header>
+
+      <main id="balance" class="wizard">
+        <div id="status-banner" class="status-banner" role="status" aria-live="polite" hidden></div>
+
+        <section class="wstep" aria-labelledby="balance-h">
+          <p class="kicker">Your ETH at Chit</p>
+          <h1 id="balance-h">One balance. Every fleet draws from it.</h1>
+          <dl class="balance-figures">
+            <div><dt>Available</dt><dd id="balance-available">—</dd></div>
+            <div><dt>Held by open fleets</dt><dd id="balance-draws">—</dd></div>
+            <div><dt>Deposited</dt><dd id="balance-deposited">—</dd></div>
+            <div><dt>Spent</dt><dd id="balance-spent">—</dd></div>
+          </dl>
+          <p class="fineprint">
+            Your deposit goes into a pool shared with other traders and carries no fleet marker, so
+            the chain does not show your wallet funding your fleet. Chit's operator can still see
+            which balance paid for which fleet, and we say so plainly.
+            <a href="./fleet-privacy.html">Exactly what's private →</a>
+          </p>
+        </section>
+
+        <section class="wstep" aria-labelledby="deposit-h">
+          <h2 id="deposit-h">Add ETH</h2>
+          <p class="lead">
+            Deposits come in fixed sizes so yours looks like everyone else's. Pick one.
+          </p>
+          <div id="deposit-sizes" class="deposit-sizes" role="group" aria-labelledby="deposit-h"></div>
+          <p id="deposit-note" class="fineprint" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="wstep" aria-labelledby="withdraw-h">
+          <h2 id="withdraw-h">Take ETH out</h2>
+          <form id="withdraw-form" class="withdraw-form">
+            <div class="field">
+              <label for="withdraw-amount">Amount (ETH)</label>
+              <input id="withdraw-amount" name="amount" type="text" inputmode="decimal" value="0.01" />
+            </div>
+            <div class="field">
+              <label for="withdraw-destination">Send to</label>
+              <input id="withdraw-destination" name="destination" type="text" placeholder="0x…" autocomplete="off" />
+            </div>
+            <p id="withdraw-note" class="fineprint" role="status" aria-live="polite"></p>
+            <button id="withdraw-submit" type="submit">Withdraw</button>
+          </form>
+        </section>
+
+        <section id="exit-card" class="wstep" aria-labelledby="exit-h">
+          <h2 id="exit-h">If Chit is ever unreachable</h2>
+          <p class="lead">
+            You can take your unspent deposit straight from the pool contract, without us. Ask for
+            it, wait 24 hours, then claim it. This works whether or not Chit is running.
+          </p>
+          <p id="exit-status" class="fineprint" role="status" aria-live="polite">—</p>
+          <button id="exit-request" type="button">Start a self-serve exit</button>
+          <button id="exit-execute" type="button" disabled>Claim it</button>
+        </section>
+      </main>
+
+      <footer class="fleet-foot">
+        <p>Testnet demonstration on Robinhood Chain. Test ETH and a test token only, no real money.</p>
+      </footer>
+    </div>
+    <script type="module" src="./balance-page.js"></script>
+  </body>
+</html>
