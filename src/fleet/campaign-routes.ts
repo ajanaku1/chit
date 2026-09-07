@@ -15,7 +15,7 @@ import { campaignKey, type ChainBuy, type FleetChain } from "./chain-service.js"
 import { CampaignService, ServiceError, assertNoSecrets } from "./campaign-service.js";
 import { CampaignStateError, canSponsor, transition } from "./campaign-state.js";
 import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
-import type { PoolPort } from "./pool-buy.js";
+import { DRAW_CAP, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
 import { UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall } from "./v4-swap.js";
@@ -71,6 +71,8 @@ type CampaignRecord = {
   chainAccounts?: Address[];
   /** Last on-chain budget read; authoritative whenever `chain` is configured. */
   chainBudget?: Budget;
+  /** Stage 2: this campaign's claim on the trader's pool balance. */
+  draw?: DrawSummary;
 };
 
 const STATUS: Record<string, number> = {
@@ -137,6 +139,8 @@ export class CampaignRouter {
       };
     }
 
+    if (action === "sweep") return this.#sweep();
+
     const auth = request["auth"] as AuthEnvelope | undefined;
     if (!auth) throw new ServiceError("challenge_invalid", "auth_missing");
     const wallet = await this.#deps.service.verify(String(action), { auth, body });
@@ -167,6 +171,8 @@ export class CampaignRouter {
           return this.#buy(wallet, body);
         case "withdraw":
           return this.#withdraw(wallet, body);
+        case "topUp":
+          return this.#topUp(wallet, body);
         case "pause":
         case "resume":
         case "revoke":
@@ -262,7 +268,56 @@ export class CampaignRouter {
     if (!record || record.ownerWallet !== wallet) {
       throw new ServiceError("state_invalid", "campaign_unknown");
     }
+    await this.#syncDraw(record);
     return record;
+  }
+
+  /**
+   * Brings a campaign's draw, and the state that follows from it, up to date
+   * with the chain. The instance that opened a draw is rarely the one that
+   * funds it, so every instance reads the answer rather than remembering it.
+   */
+  async #syncDraw(record: CampaignRecord): Promise<void> {
+    const pool = this.#deps.pool;
+    if (!pool) return;
+    const draw = await pool.drawOf(campaignKey(record.id));
+    if (!draw) return;
+    record.draw = draw;
+    if (record.state === "Activating" && draw.state === "Funded") {
+      record.state = transition(record.state, "activate");
+    }
+    if (record.state === "Active" && draw.state === "Pending") record.state = "Activating";
+  }
+
+  /** Funds every draw whose wait is over and posts every charge now due. */
+  async #sweep(): Promise<RouterResult> {
+    const pool = this.#pool();
+    const chain = this.#deps.chain;
+    const report = await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []));
+    return { status: 200, body: report };
+  }
+
+  /** The draw a trader may commit: within the cap and within their balance. */
+  async #requireDrawable(wallet: string, amount: unknown): Promise<Uint> {
+    const pool = this.#pool();
+    if (!isUint(amount) || BigInt(amount) === 0n) throw new FleetValidationError("invalid_draw");
+    if (BigInt(amount) > DRAW_CAP) throw new BudgetError("budget_exceeded", "draw_cap_exceeded");
+
+    const balance = await pool.balance(wallet as Address);
+    if (balance.pool.paused) throw new CampaignStateError("state_invalid", "pool_paused");
+    if (BigInt(amount) > BigInt(balance.available)) {
+      throw new BudgetError("budget_exceeded", "insufficient_balance");
+    }
+    return amount;
+  }
+
+  /** Raises a depleted campaign's draw from the balance (FR-013). */
+  async #topUp(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
+    const amount = await this.#requireDrawable(wallet, body["amount"]);
+    record.draw = await this.#pool().topUpDraw({ campaign: campaignKey(record.id), amount });
+    if (record.state === "Depleted") record.state = "Active";
+    return { status: 200, body: this.#result(record) };
   }
 
   /**
@@ -276,6 +331,11 @@ export class CampaignRouter {
     const found = await chain.loadCampaign(campaignKey(id));
     if (!found?.session || found.owner.toLowerCase() !== wallet) return undefined;
     const record = restoredRecord(id, wallet, found, this.#now());
+    const draw = await this.#deps.pool?.drawOf(campaignKey(id));
+    if (draw) {
+      record.draw = draw;
+      record.state = drawnState(draw, found, this.#now());
+    }
     this.#campaigns.set(id, record);
     return record;
   }
@@ -359,18 +419,56 @@ export class CampaignRouter {
       state: record.state, spentGas: this.#budget(record).spent, now,
     });
 
-    const results: Record<string, unknown>[] = chain
-      ? await this.#buyOnChain(record, session, chain, requested, token, value, now)
-      : await this.#buyInMemory(record, session, submitter!, requested, token, value, now);
+    const results: Record<string, unknown>[] = this.#deps.pool && record.draw
+      ? await this.#buyFromPool(record, session, requested, token, value, now, wallet)
+      : chain
+        ? await this.#buyOnChain(record, session, chain, requested, token, value, now)
+        : await this.#buyInMemory(record, session, submitter!, requested, token, value, now);
 
     // FR edge case: the campaign depletes when the remainder cannot fund
     // another permitted request.
-    const remaining = this.#budget(record).unused;
+    const remaining = record.draw ? record.draw.remaining : this.#budget(record).unused;
     if (record.state === "Active" && BigInt(remaining) < BigInt(record.policy.perAccountGas)) {
       record.state = transition(record.state, "deplete");
     }
 
     return { status: 200, body: { results } };
+  }
+
+  /**
+   * Pooled buys: each permitted account's principal leaves the pool only inside
+   * its own buy, and the charge against the depositor is queued separately so
+   * no transaction names both the campaign and the trader.
+   */
+  async #buyFromPool(
+    record: CampaignRecord, session: SessionKey, requested: Address[],
+    token: string, value: Uint, now: Date, wallet: string,
+  ): Promise<Record<string, unknown>[]> {
+    const pool = this.#pool();
+    const refused: Record<string, unknown>[] = [];
+    const buys: PooledBuy[] = [];
+    for (const account of requested) {
+      if (this.#permitted(record, session, account, value, now)) {
+        buys.push({
+          account,
+          value,
+          callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now),
+          maxCost: record.policy.perAccountGas,
+        });
+      } else {
+        refused.push({ account, status: "rejected", draw: record.draw });
+      }
+    }
+    if (buys.length === 0) return refused;
+
+    const report = await pool.buy({
+      campaign: campaignKey(record.id),
+      depositor: wallet as Address,
+      target: record.policy.router,
+      buys,
+    });
+    record.draw = report.draw;
+    return [...refused, ...report.results.map((result) => ({ ...result, draw: report.draw }))];
   }
 
   async #buyInMemory(
@@ -504,6 +602,14 @@ export class CampaignRouter {
     }
     record.state = nextState;
     if (event === "close") {
+      // With a pool, the unspent draw was never moved: closing releases it back
+      // to the balance and transfers nothing, so nothing is published.
+      if (this.#deps.pool) {
+        const closed = await this.#deps.pool.closeDraw(campaignKey(record.id));
+        const credited = record.draw?.remaining ?? "0";
+        if (closed) record.draw = closed;
+        return { status: 200, body: { ...this.#result(record), creditedToBalance: credited } };
+      }
       const returned = chain ? "0" : record.budget.close();
       return { status: 200, body: { ...this.#result(record), returnedEth: returned } };
     }
@@ -522,11 +628,24 @@ export class CampaignRouter {
     }
   }
 
+  /**
+   * Activation. With a pool, it commits a draw from the balance and the fleet
+   * is funded later by a sweep, so the campaign reports "Activating" until the
+   * wait is over. Without one, Stage 1's behaviour is unchanged.
+   */
   async #activate(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = await this.#campaign(wallet, body);
-    const nextState = transition(record.state, "activate");
+    const pool = this.#deps.pool;
+    const amount = pool ? await this.#requireDrawable(wallet, body["draw"]) : undefined;
+    const nextState = transition(record.state, pool ? "fund" : "activate");
+
     if (this.#deps.chain && !record.chainAccounts) {
       record.chainAccounts = await this.#deps.chain.activate(campaignKey(record.id), record.accounts, record.policy);
+    }
+    if (pool && amount) {
+      record.draw = await pool.openDraw({
+        campaign: campaignKey(record.id), depositor: wallet as Address, amount,
+      });
     }
     record.state = nextState;
     return {
@@ -548,6 +667,7 @@ export class CampaignRouter {
       campaign: record.id,
       state: record.state,
       ...(options.fee ? { fee: record.fee } : {}),
+      ...(record.draw ? { draw: record.draw } : {}),
       budget: this.#budget(record),
     };
   }
@@ -566,6 +686,20 @@ const restoredState = (found: OnChainCampaign, now: Date): CampaignState => {
   if (session.revoked) return "Revoked";
   if (Number(session.expiry) * 1000 <= now.getTime()) return "Expired";
   if (found.budget.unused < session.perAccountGas) return "Depleted";
+  return session.paused ? "Paused" : "Active";
+};
+
+/**
+ * The state a pooled campaign is in, read from its draw: the pool is the budget,
+ * so the Stage 1 escrow says nothing about it.
+ */
+const drawnState = (draw: DrawSummary, found: OnChainCampaign, now: Date): CampaignState => {
+  const session = found.session!;
+  if (session.revoked) return "Revoked";
+  if (draw.state === "Closed") return "Closed";
+  if (draw.state === "Pending") return "Activating";
+  if (Number(session.expiry) * 1000 <= now.getTime()) return "Expired";
+  if (BigInt(draw.remaining) < session.perAccountGas) return "Depleted";
   return session.paused ? "Paused" : "Active";
 };
 
