@@ -32,13 +32,13 @@ Every test is written and observed failing before its paired implementation (pro
 **Goal**: Deposit fixed sizes into the unkeyed pool, see balance and headroom, withdraw via Chit, see the exit path.
 **Independent Test**: deposit, read balance and headroom, withdraw to a fresh address, exit status; deposit event carries no campaign identifier.
 
-- [ ] T013 [P] [US1] Write failing route test for `balance` and `withdraw` (headroom, refuse over available, destination warning, queued spend) in `test/fleet/balance-route.test.ts` (FR-002, FR-003, FR-010; COMP-103)
-- [ ] T014 [P] [US1] Write failing browser test for the Balance page states (deposit picker, disabled reasons, pending, withdraw paid, exit states) in `app/test/fleet-balance.test.ts` (FR-003, FR-010, FR-011; COMP-104)
-- [ ] T015 [P] [US1] Write failing fork test: fresh router instance answers `balance` and pays a withdrawal from the operator wallet then queues spend in `test/fork/fleet-pool-balance.test.ts` (FR-010, FR-012, SC-006; COMP-106)
-- [ ] T016 [US1] Implement `balance`, `withdraw` actions and `api/fleet/balance.js` in `src/fleet/campaign-routes.ts` and `api/fleet/balance.js` (FR-002, FR-003, FR-010; COMP-103)
-- [ ] T017 [US1] Implement operator payout plus `queueSpend` in `src/fleet/pool-buy.ts` (withdrawal path) (FR-010, FR-012; COMP-102)
-- [ ] T018 [US1] Implement Balance page `app/balance.html`, `app/src/balance-page.ts`, `app/src/fleet/balance.ts`; add to `app/build.mjs` (FR-003, FR-010, FR-011; COMP-104)
-- [ ] T019 [US1] `./verify.sh pool-balance` green (SC-003, SC-006; COMP-106)
+- [x] T013 [P] [US1] Write failing route test for `balance` and `withdraw` (headroom, refuse over available, destination warning, queued spend) in `test/fleet/balance-route.test.ts` (FR-002, FR-003, FR-010; COMP-103)
+- [x] T014 [P] [US1] Write failing browser test for the Balance page states (deposit picker, disabled reasons, pending, withdraw paid, exit states) in `app/test/fleet-balance.test.ts` (FR-003, FR-010, FR-011; COMP-104)
+- [x] T015 [P] [US1] Write failing fork test: fresh router instance answers `balance` and pays a withdrawal from the operator wallet then queues spend in `test/fork/fleet-pool-balance.test.ts` (FR-010, FR-012, SC-006; COMP-106)
+- [x] T016 [US1] Implement `balance`, `withdraw` actions and `api/fleet/balance.js` in `src/fleet/campaign-routes.ts` and `api/fleet/balance.js` (FR-002, FR-003, FR-010; COMP-103)
+- [x] T017 [US1] Implement operator payout plus `queueSpend` in `src/fleet/pool-buy.ts` (withdrawal path) (FR-010, FR-012; COMP-102)
+- [x] T018 [US1] Implement Balance page `app/balance.html`, `app/src/balance-page.ts`, `app/src/fleet/balance.ts`; add to `app/build.mjs` (FR-003, FR-010, FR-011; COMP-104)
+- [x] T019 [US1] `./verify.sh pool-balance` green (SC-003, SC-006; COMP-106)
 
 ## Phase 4: User Story 2 — Fund a fleet from the balance and trade (Priority: P2)
 

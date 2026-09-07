@@ -597,3 +597,30 @@ for the audit: `_campaigns` grows without bound and the service iterates it,
 which is fine at testnet scale.
 
 `./verify.sh pool-foundation` is green; every Stage 1 `fleet-*` gate stays green.
+
+## Stage 2 Phase 3 — the Balance page (2026-09-07)
+
+A trader now holds one balance in the pool: deposits go straight from their
+wallet to the contract (Chit is not in the path of their own money), the balance
+is recomputed from chain state by whichever instance answers, and a withdrawal
+is paid from the operator's wallet and only then charged to the depositor,
+after a delay. A pool payout would have published depositor beside payee, which
+is the one thing the stage exists to prevent.
+
+Two things found along the way:
+
+- **The Stage 1 wizard never signed.** `app/src/fleet-page.ts` sends a stub auth
+  and expects 503, so the browser wizard on chit.tools cannot create a campaign
+  even though the API accepts real signed requests (proved by
+  `scripts/fleet-first-buy-live.ts`). Stage 2 adds a real browser signer,
+  `app/src/fleet/signed-request.ts`: it asks the service for a challenge, signs
+  the exact string the service returned, and sends the envelope, so the page
+  never reconstructs the challenge format or holds the origin and chain id.
+  The Balance page uses it. Rewiring the Stage 1 wizard onto it is a Stage 1
+  fix, not done here, and is worth doing before any demo of the wizard.
+- **`app/test/isolated-build.test.ts` needed `balance.html`** added to the files
+  it copies, or the isolated build would fail on a file the build now expects.
+  A fixture update, not a weakened check.
+
+`./verify.sh pool-balance` is green; `pool-foundation` and every Stage 1 gate
+stay green.
