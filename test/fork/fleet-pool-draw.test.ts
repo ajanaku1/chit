@@ -155,6 +155,16 @@ describe("FleetPool draws", () => {
     await assert.rejects(pool.write.commit([CAMPAIGN, parseEther("0.001")]), "nothing reserved to commit");
   });
 
+  it("raises a draw that ran out, without a new deposit and still inside the cap", async () => {
+    const pool = await fundedDraw();
+    await pool.write.topUpDraw([CAMPAIGN, parseEther("0.01")]);
+    assert.equal((await pool.read.drawOf([CAMPAIGN])).amount, parseEther("0.03"));
+
+    await assert.rejects(pool.write.topUpDraw([CAMPAIGN, parseEther("0.2")]), "the per-draw cap still holds");
+    await pool.write.closeDraw([CAMPAIGN]);
+    await assert.rejects(pool.write.topUpDraw([CAMPAIGN, parseEther("0.01")]), "a closed draw takes nothing more");
+  });
+
   it("closes a draw and leaves the unspent part in the pool", async () => {
     const pool = await fundedDraw();
     const publicClient = await viem.getPublicClient();
