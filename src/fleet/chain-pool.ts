@@ -19,6 +19,7 @@ const POOL_ABI = parseAbi([
   "function postQueued(uint256 id, address depositor)",
   "function claimOperator(uint256 amount)",
   "function openDraw(bytes32 campaign, uint256 amount, uint64 dueAt, bytes ownerRef)",
+  "function topUpDraw(bytes32 campaign, uint256 amount)",
   "function fund(bytes32 campaign, address[] accounts)",
   "function fundPrincipal(bytes32 campaign, address account, uint256 principal, uint256 gasCeiling)",
   "function commit(bytes32 campaign, uint256 actual)",
@@ -66,6 +67,7 @@ export type FleetPool = {
   /** Everything `availableBalance` needs, in one read pass. */
   ledgerInputs(depositor: Address): Promise<LedgerInputs>;
   openDraw(campaign: Hex, amount: bigint, dueAt: bigint, ownerRef: Hex): Promise<Hex>;
+  topUpDraw(campaign: Hex, amount: bigint): Promise<Hex>;
   fund(campaign: Hex, accounts: readonly Address[]): Promise<Hex>;
   fundPrincipal(campaign: Hex, account: Address, principal: bigint, gasCeiling: bigint): Promise<Hex>;
   commit(campaign: Hex, actual: bigint): Promise<Hex>;
@@ -166,6 +168,7 @@ export const createFleetPool = (
 
     openDraw: (campaign, amount, dueAt, ownerRef) =>
       write("openDraw", [campaign, amount, dueAt, ownerRef]),
+    topUpDraw: (campaign, amount) => write("topUpDraw", [campaign, amount]),
     fund: (campaign, accounts) => write("fund", [campaign, accounts]),
     fundPrincipal: (campaign, account, principal, gasCeiling) =>
       write("fundPrincipal", [campaign, account, principal, gasCeiling]),

@@ -98,6 +98,7 @@ contract FleetPool {
     event PrincipalSent(bytes32 indexed campaign, address indexed account, uint256 principal);
     event Committed(bytes32 indexed campaign, uint256 amount);
     event RolledBack(bytes32 indexed campaign, uint256 amount);
+    event DrawToppedUp(bytes32 indexed campaign, uint256 amount);
     event DrawClosed(bytes32 indexed campaign, uint256 unspent);
 
     error NotOperator();
@@ -273,6 +274,17 @@ contract FleetPool {
         for (uint256 i = 0; i < accounts.length; ++i) {
             _send(accounts[i], GAS_HEADROOM);
         }
+    }
+
+    /// @notice Raises an open draw so a campaign that ran out can keep trading
+    ///         without another deposit. The per-draw cap still binds.
+    function topUpDraw(bytes32 campaign, uint256 amount) external onlyOperator {
+        Draw storage draw = _draws[campaign];
+        if (draw.state != DrawState.Pending && draw.state != DrawState.Funded) revert DrawNotOpen();
+        if (amount == 0 || draw.amount + amount > DRAW_CAP) revert DrawCapExceeded();
+
+        draw.amount += amount;
+        emit DrawToppedUp(campaign, draw.amount);
     }
 
     /// @notice Sends one buy's principal to one fleet account, immediately
