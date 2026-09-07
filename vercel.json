@@ -3,5 +3,6 @@
   "installCommand": "npm ci && npm --prefix app ci",
   "buildCommand": "npm run build && node scripts/assemble-site.mjs",
   "outputDirectory": "public",
-  "framework": null
+  "framework": null,
+  "crons": [{ "path": "/api/fleet/sweep", "schedule": "* * * * *" }]
 }

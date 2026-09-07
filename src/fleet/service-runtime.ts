@@ -59,6 +59,15 @@ const nonceSecretFromEnv = (): string | undefined => {
   return key ? keccak256(stringToBytes(`chit-fleet-challenge-v1|${key}`)) : undefined;
 };
 
+/**
+ * Stage 2 pool address. Absent means the pool is not configured and the
+ * balance/draw actions answer 503 rather than substituting a default.
+ */
+const poolAddressFromEnv = (): Address | undefined => {
+  const address = process.env.FLEET_POOL_ADDRESS;
+  return isAddress(address) ? address : undefined;
+};
+
 const chainFromEnv = (): FleetChain | undefined => {
   const key = operatorKeyFromEnv();
   if (!key) return undefined;

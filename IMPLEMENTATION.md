@@ -562,3 +562,38 @@ payments. `FLEET_PUBLIC_FACTS` and `FLEET_PRIVACY_CLAIM` now say so, and the
 boundary test matches. The claim stays as narrow as before: fleet accounts,
 trades, amounts, timing, gas, and the operator's gas payments are public; only
 the primary-wallet-to-fleet relationship is withheld, and the operator knows it.
+
+## Stage 2 Phase 2 — pool foundation (2026-09-07)
+
+`FleetPool` holds every custody fact on chain, so Stage 2 needs no database and
+any Vercel instance can serve any trader. Deposits and posted spend are keyed by
+depositor; draws, funding, principal, and settlement are keyed by campaign; no
+function or event names both, and `test/fleet/pool-abi.test.ts` asserts that over
+the compiled ABI rather than trusting review.
+
+Three deviations from `contracts/pool-contract.md`, each the conservative option:
+
+- **`postCredit` dropped.** The interface had close release a campaign's
+  remainder by reducing the depositor's `spent`. It is unnecessary and would
+  double-count: a draw's amount is subtracted from the balance only while the
+  draw is open, so closing restores it by itself. One fewer operator power over
+  a trader's ledger.
+- **Queued spend expires.** A queued spend is postable only between its `dueAt`
+  and `queuedAt + POST_WINDOW` (12 h). Without it, `executeExit` would have to
+  refuse while any earlier spend was unposted, which hands a vanished operator
+  the power to block the exit forever — exactly the failure the exit exists to
+  survive. With it, a spend queued before an exit request is always either
+  posted or expired by the time the 24 h delay ends, and an unposted spend is
+  the operator's loss, never the trader's.
+- **`MIN_FUNDING_DELAY` added** (60 s, enforced in `openDraw`). The 1 to 15
+  minute wait is what stops a deposit and its fleet funding pairing by timing,
+  so the floor belongs in the contract rather than in the service that picks the
+  actual delay.
+
+The contract cannot decrypt `ownerRef` or `encDepositor`, so it cannot check
+that a posting names the right depositor. That is operator trust, disclosed in
+the product and auditable after the fact by anyone holding the ledger key. Also
+for the audit: `_campaigns` grows without bound and the service iterates it,
+which is fine at testnet scale.
+
+`./verify.sh pool-foundation` is green; every Stage 1 `fleet-*` gate stays green.

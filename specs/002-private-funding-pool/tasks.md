@@ -9,21 +9,21 @@ Every test is written and observed failing before its paired implementation (pro
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 Add `pool-*` verify tags scaffold (all red) to `./verify.sh` listing the test files below (SC-010; COMP-106)
-- [ ] T002 [P] Add pool env documentation and config parsing stub (`FLEET_POOL_ADDRESS`, ledger key derivation) in `src/fleet/service-runtime.ts` (FR-016; COMP-102)
-- [ ] T003 [P] Add per-minute cron entry for `/api/fleet/sweep` in `./vercel.json` (FR-007, FR-012; COMP-103)
+- [x] T001 Add `pool-*` verify tags scaffold (all red) to `./verify.sh` listing the test files below (SC-010; COMP-106)
+- [x] T002 [P] Add pool env documentation and config parsing stub (`FLEET_POOL_ADDRESS`, ledger key derivation) in `src/fleet/service-runtime.ts` (FR-016; COMP-102)
+- [x] T003 [P] Add per-minute cron entry for `/api/fleet/sweep` in `./vercel.json` (FR-007, FR-012; COMP-103)
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
-- [ ] T004 Write failing fork test for FleetPool deposits, allowed sizes, caps, pause in `test/fork/fleet-pool.test.ts` (FR-001, FR-004, FR-012; COMP-106)
-- [ ] T005 [P] Write failing fork test for exit request/execute after delay, blocked by unposted queued spend in `test/fork/fleet-pool-exit.test.ts` (FR-011, FR-012, SC-007; COMP-106)
-- [ ] T006 [P] Write failing fork test for draws: open with dueAt and ownerRef, fund after due, fundPrincipal/commit/rollback, closeDraw, claimOperator bound in `test/fork/fleet-pool-draw.test.ts` (FR-005–FR-008, FR-013; COMP-106)
-- [ ] T007 [P] Write failing ABI-scan test that no FleetPool function or event names both a depositor and a campaign in `test/fleet/pool-abi.test.ts` (FR-009; COMP-106)
-- [ ] T008 [P] Write failing ledger-math and ciphertext round-trip test in `test/fleet/pool-ledger.test.ts` (data-model Balance, Queued spend; COMP-102)
-- [ ] T009 Implement `contracts/fleet/FleetPool.sol` per `contracts/pool-contract.md` (FR-001, FR-004–FR-013; COMP-101)
-- [ ] T010 Implement `src/fleet/pool-ledger.ts`: AES-GCM helper keyed from the operator key, balance/headroom computation from chain reads (COMP-102)
-- [ ] T011 Implement `src/fleet/chain-pool.ts`: viem adapter for every FleetPool function and event scan (COMP-102)
-- [ ] T012 Compile-and-fork check: `./verify.sh pool-foundation` green (SC-010; COMP-106)
+- [x] T004 Write failing fork test for FleetPool deposits, allowed sizes, caps, pause in `test/fork/fleet-pool.test.ts` (FR-001, FR-004, FR-012; COMP-106)
+- [x] T005 [P] Write failing fork test for exit request/execute after delay, blocked by unposted queued spend in `test/fork/fleet-pool-exit.test.ts` (FR-011, FR-012, SC-007; COMP-106)
+- [x] T006 [P] Write failing fork test for draws: open with dueAt and ownerRef, fund after due, fundPrincipal/commit/rollback, closeDraw, claimOperator bound in `test/fork/fleet-pool-draw.test.ts` (FR-005–FR-008, FR-013; COMP-106)
+- [x] T007 [P] Write failing ABI-scan test that no FleetPool function or event names both a depositor and a campaign in `test/fleet/pool-abi.test.ts` (FR-009; COMP-106)
+- [x] T008 [P] Write failing ledger-math and ciphertext round-trip test in `test/fleet/pool-ledger.test.ts` (data-model Balance, Queued spend; COMP-102)
+- [x] T009 Implement `contracts/fleet/FleetPool.sol` per `contracts/pool-contract.md` (FR-001, FR-004–FR-013; COMP-101)
+- [x] T010 Implement `src/fleet/pool-ledger.ts`: AES-GCM helper keyed from the operator key, balance/headroom computation from chain reads (COMP-102)
+- [x] T011 Implement `src/fleet/chain-pool.ts`: viem adapter for every FleetPool function and event scan (COMP-102)
+- [x] T012 Compile-and-fork check: `./verify.sh pool-foundation` green (SC-010; COMP-106)
 
 **Checkpoint**: Pool contract and ledger proven on the 46630 fork.
 
