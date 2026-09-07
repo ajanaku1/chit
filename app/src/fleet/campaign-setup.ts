@@ -156,8 +156,9 @@ export class CampaignSetup {
     return this.#deps.submit("fund", { campaign, fundingReference });
   }
 
-  async activate(): Promise<{ campaign: string; state: string }> {
+  /** Stage 2 passes the draw this fleet may spend from the trader's balance. */
+  async activate(draw?: string): Promise<{ campaign: string; state: string }> {
     const campaign = this.#requireConfirmed();
-    return this.#deps.submit("activate", { campaign });
+    return this.#deps.submit("activate", { campaign, ...(draw ? { draw } : {}) });
   }
 }

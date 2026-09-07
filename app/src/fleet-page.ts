@@ -20,7 +20,9 @@ import {
   type SetupDeps,
   type SetupQuote,
 } from "./fleet/campaign-setup.js";
+import { drawIssue, fundingWait } from "./fleet/balance.js";
 import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initTheme, parseEth, saveFleetSnapshot, toEth } from "./fleet/page-shared.js";
+import { signedFleetApi } from "./fleet/signed-request.js";
 import { confirmRecovery, createRecoveryVault, type VaultContext } from "./fleet/vault.js";
 
 type Hex = `0x${string}`;
@@ -136,8 +138,9 @@ class FleetWizard {
       createVault: (accounts) => createRecoveryVault(this.#vaultContext(), accounts),
       confirmVault: (envelopeJson, commitment) => confirmRecovery(this.#vaultContext(), envelopeJson, commitment),
       submit: async (action, body) => {
-        const { status, body: result } = await fleetApi(action, { action, auth: this.#stubAuth(action), body });
-        if (status < 200 || status >= 300) throw new Error(String(result["code"] ?? `status_${status}`));
+        if (!this.#wallet) throw new Error("not_connected");
+        const result = await signedFleetApi(this.#wallet, action, body);
+        this.#lastResult = result;
         return {
           campaign: String(result["campaign"] ?? this.#campaign ?? "preview"),
           state: String(result["state"] ?? "Awaiting recovery confirmation"),
@@ -146,10 +149,11 @@ class FleetWizard {
     };
   }
 
-  /** The hosted service checks real signed challenges; this page sends a stub and expects 503 until then. */
-  #stubAuth(action: string): unknown {
-    return { primaryWallet: this.#wallet, action };
-  }
+  /** The most recent service response, so the launch step can read its draw. */
+  #lastResult: Record<string, unknown> = {};
+
+  /** The trader's spendable Chit balance, read when the wallet connects. */
+  #availableBalance = "0";
 
   async #connect(): Promise<void> {
     try {
@@ -160,6 +164,7 @@ class FleetWizard {
       }
       this.#wallet = address;
       this.#setup = new CampaignSetup(this.#deps());
+      this.#availableBalance = await this.#fetchBalance(address);
 
       const walletLine = el("wallet-line");
       walletLine.textContent = `Connected: ${address.slice(0, 6)}…${address.slice(-4)} · Robinhood testnet`;
@@ -286,15 +291,22 @@ class FleetWizard {
   async #launch(): Promise<void> {
     if (!this.#setup) return;
     this.#renderSummary();
+    const draw = parseEth((el("a-draw") as HTMLInputElement).value);
+    const issue = drawIssue(draw, this.#availableBalance);
+    if (issue) {
+      el("draw-note").textContent = issue;
+      return;
+    }
+    el("draw-note").textContent = "";
     try {
-      const funded = await this.#setup.fund(this.#budgetWei);
-      this.#campaign = funded.campaign;
-      const activated = await this.#setup.activate();
+      const activated = await this.#setup.activate(draw);
       this.#campaign = activated.campaign;
+      const dueAt = (this.#lastResult["draw"] as { dueAt?: string } | undefined)?.dueAt;
+      if (dueAt) el("funding-wait").textContent = fundingWait(dueAt, new Date()).message;
       saveFleetSnapshot({
         campaign: this.#campaign,
         state: "Active",
-        budget: { funded: this.#budgetWei, reserved: "0", spent: "0", unused: this.#budgetWei },
+        budget: { funded: draw, reserved: "0", spent: "0", unused: draw },
         accounts: this.#accounts.map((account) => account.ownerAddress),
       });
       this.#go("done");
@@ -309,6 +321,16 @@ class FleetWizard {
         accounts: this.#accounts.map((account) => account.ownerAddress),
       });
       this.#go("done");
+    }
+  }
+
+  /** The spendable balance, or zero while the pool is not configured yet. */
+  async #fetchBalance(wallet: Hex): Promise<string> {
+    try {
+      const body = await signedFleetApi(wallet, "balance", {});
+      return String(body["available"] ?? "0");
+    } catch {
+      return "0";
     }
   }
 

@@ -84,3 +84,42 @@ export const exitView = (
   const ready = Date.parse(availableAt) <= now.getTime();
   return { status: ready ? "available" : "waiting", availableAt, ...(amount ? { amount } : {}) };
 };
+
+/** Mirrors the pool's per-draw cap, so the wizard refuses what the chain would. */
+export const DRAW_CAP = "200000000000000000";
+
+/** The reason a draw cannot be committed, or undefined. */
+export const drawIssue = (amount: string, available: string): string | undefined => {
+  if (!DECIMAL.test(amount) || BigInt(amount) === 0n) return "Enter how much of your balance this fleet may spend.";
+  if (BigInt(amount) > BigInt(DRAW_CAP)) return `A fleet may hold at most ${toEth(DRAW_CAP)} ETH.`;
+  if (BigInt(amount) > BigInt(available)) {
+    return `That is more than your balance of ${toEth(available)} ETH. Add ETH on the Balance page.`;
+  }
+  return undefined;
+};
+
+/**
+ * The wait between activating and the fleet being funded. It is deliberate, and
+ * saying so is the difference between a privacy feature and a broken page.
+ */
+export const fundingWait = (dueAt: string, now: Date): { ready: boolean; message: string } => {
+  const remaining = Date.parse(dueAt) - now.getTime();
+  if (Number.isNaN(remaining) || remaining <= 0) {
+    return { ready: true, message: "Funding your fleet now." };
+  }
+  const minutes = Math.max(1, Math.ceil(remaining / 60_000));
+  return {
+    ready: false,
+    message:
+      `Funding your fleet in about ${minutes} ${minutes === 1 ? "minute" : "minutes"}. ` +
+      "The wait is deliberate: it keeps your deposit and your fleet from lining up in time.",
+  };
+};
+
+/** What a trader is shown for each internal campaign state. */
+export const stateLabel = (state: string): string =>
+  ({
+    "Awaiting recovery confirmation": "Awaiting backup confirmation",
+    "Awaiting funding": "Ready to activate",
+    Activating: "Funding your fleet",
+  })[state] ?? state;

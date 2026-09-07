@@ -42,11 +42,11 @@
         <!-- STEP 0: Welcome -->
         <section class="wstep" data-wstep="welcome" aria-labelledby="welcome-h">
           <p class="kicker">Private gas for your trading wallets</p>
-          <h1 id="welcome-h">One budget. Many wallets. No trail back to you.</h1>
+          <h1 id="welcome-h">One balance. Many wallets. Your main wallet stays out of it.</h1>
           <ul class="promises">
             <li><strong>You keep the keys.</strong> Your fleet's wallets are created in this browser and never leave it.</li>
-            <li><strong>One gas budget.</strong> Fund it once in ETH; every wallet trades from it.</li>
-            <li><strong>Your main wallet stays out of sight.</strong> The chain never shows it funding the fleet.</li>
+            <li><strong>One balance.</strong> Add ETH once; every fleet you run draws from it.</li>
+            <li><strong>Chit funds the fleet, not you.</strong> Your ETH goes into a shared pool that carries no fleet marker, and the fleet is funded from the pool, so no transaction joins the two.</li>
           </ul>
           <button id="start" type="button" class="primary big">Get started</button>
           <p class="fineprint">Testnet demonstration. <a href="./fleet-privacy.html">Exactly what's private →</a></p>
@@ -156,9 +156,15 @@
         <section class="wstep" data-wstep="launch" hidden aria-labelledby="launch-h">
           <p class="kicker">Step 4 of 4</p>
           <h2 id="launch-h">Launch your fleet</h2>
-          <p class="lead">Funds your gas budget and switches the fleet on. From then on, manage everything from the dashboard.</p>
+          <p class="lead">Commits part of your Chit balance to this fleet and switches it on. From then on, manage everything from the dashboard.</p>
           <dl class="summary" id="launch-summary"></dl>
+          <div class="field">
+            <label for="a-draw">How much of your balance may this fleet spend? (ETH)</label>
+            <input id="a-draw" name="draw" type="text" inputmode="decimal" value="0.02" />
+            <p id="draw-note" class="fineprint" role="status" aria-live="polite"></p>
+          </div>
           <button id="launch-fleet" type="button" class="primary big">Launch fleet</button>
+          <p id="funding-wait" class="fineprint" role="status" aria-live="polite"></p>
           <div class="wnav">
             <button type="button" class="back" data-back>Back</button>
           </div>
