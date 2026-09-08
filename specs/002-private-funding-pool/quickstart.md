@@ -21,5 +21,19 @@
 6. Withdraw to a fresh address; confirm payout and posted spend.
 7. Record every tx hash under `pooledBuy` in `deployments/fleet-46630.json`.
 
+## Evidence status — 2026-09-08
+
+Fork validation is complete and green: `pool-foundation`, `pool-balance`,
+`pool-fund`, `pool-control`, and `pool-acceptance` all pass, and every Stage 1
+`fleet-*` gate stays green. `test/fork/fleet-pool-observer.test.ts` runs the
+whole journey on a live EVM and then reads back every log and every transaction
+it produced, asserting that none joins the depositing wallet to the fleet or to
+the campaign. That test is what makes SC-002 an assertion rather than a claim.
+
+Live validation has not run. The pool is not deployed; `deployments/fleet-46630.json`
+has no `pool` record yet, and `FLEET_POOL_ADDRESS` is unset, so the hosted
+service answers 503 for every pool action. Steps 1 to 7 below are the outward
+work, and they need the operator's key and an explicit go-ahead.
+
 ## Expected outcomes
 Match SC-001 to SC-010 in `spec.md`. The observer check reads all pool, factory, and policy events for the run and must fail to join the depositing wallet to the fleet accounts.

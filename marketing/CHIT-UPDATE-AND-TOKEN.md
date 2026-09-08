@@ -57,7 +57,7 @@ The full promise, where even the trading capital leaves no trail, is a roadmap s
 The whole point of Chit is that funding a fleet shouldn't leak a trail back to you. Getting there is three stages, and we're honest about which one we're in.
 
 - **Stage 1 (now): private gas.** Chit sponsors the fleet's gas from a shared pool. This proves the plumbing and is what's live on testnet.
-- **Stage 2: private funding.** Chit funds the fleet's trading capital too, from one pooled deposit, so your main wallet never funds the fleet directly. This is the stage where "no trail back to you" actually becomes true. It means Chit briefly holds pooled capital, so it comes with strict limits, a security audit, and the accountable-privacy model below.
+- **Stage 2: private funding (built, not yet deployed).** Chit funds the fleet's trading capital too, from one shared pool, so your main wallet never funds the fleet directly. The contracts and the app are written and tested against a live blockchain, including a test that replays a whole journey and then checks every public record it produced to confirm nothing links your wallet to your fleet. It is not deployed yet. Because Chit briefly holds pooled capital, it comes with limits enforced by the contract, a way to withdraw your own deposit without us, a security audit before any real money, and the accountable-privacy model below.
 - **Stage 3 (the final product): trustless private funding.** A shielded pool where nobody, not even Chit, can link your deposit to your fleet, with a view key so you can still prove a flow to an auditor if you choose. This needs privacy tech that isn't on Robinhood yet, so it's the north star.
 
 Start narrow, prove it, then widen. We ship what's real at each stage and say plainly what's still ahead.
@@ -143,7 +143,7 @@ Pick what fits the format. All of these stay truthful.
 **Key messages to hit**
 - Core contracts are live and verified on Robinhood testnet, at published addresses. Real, not mock.
 - The app is live on testnet at chit.tools and the first end-to-end sponsored buy has landed (tx hash published). Early access for holders is next.
-- Stage 1 (now) is private gas. The full promise, funding your fleet with no trail back to you, is the funding-pool stage on the roadmap. Say which stage we're in, don't skip ahead.
+- Stage 1 (live on testnet) is private gas. Stage 2, the shared funding pool, is built and tested but not deployed. Say which stage we're in, don't skip ahead, and never call an untested thing live.
 - Private, not anonymous. We hide the funding link, not your trades, and we say exactly what the operator can see.
 - Chit is not a mixer. We're building selective disclosure: hidden from the public, provable to an auditor you choose. Privacy with accountability.
 - $CHIT is optional: discounts and early access, never a gate on your main wallet. Cheap to qualify, and the protocol funds itself before anything else.

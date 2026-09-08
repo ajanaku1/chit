@@ -68,12 +68,12 @@ Every test is written and observed failing before its paired implementation (pro
 
 ## Phase 6: Polish and cross-cutting
 
-- [ ] T034 [P] Write failing copy test that app, landing, and marketing carry the FR-015 claim and none of "anonymous", "untraceable", unqualified "no trail" in `app/test/fleet-claims.test.ts` and `landing/test/landing.test.mjs` (FR-015, SC-009; COMP-105)
-- [ ] T035 Update claim copy in `app/fleet.html`, `app/fleet-privacy.html`, `app/src/fleet/index.ts`, `landing/public/index.html`, `marketing/CHIT-UPDATE-AND-TOKEN.md`, `marketing/CHIT-COMMUNITY-BRIEF.md` (FR-015; COMP-105)
-- [ ] T036 [P] Write failing observer unlinkability test scanning pool, factory, and policy events on the fork for a full journey in `test/fork/fleet-pool-observer.test.ts` (FR-009, SC-002; COMP-106)
-- [ ] T037 Add `scripts/fleet-pool-deploy-live.ts` and `fleet-pool-deploy:live` npm script recording `pool` in `deployments/fleet-46630.json` (FR-016; COMP-102)
-- [ ] T038 Update `specs/002-private-funding-pool/quickstart.md` evidence section and `IMPLEMENTATION.md` (COMP-106)
-- [ ] T039 `./verify.sh pool-acceptance` green and every Stage 1 fleet tag green (FR-017, SC-009, SC-010; COMP-106)
+- [x] T034 [P] Write failing copy test that app, landing, and marketing carry the FR-015 claim and none of "anonymous", "untraceable", unqualified "no trail" in `app/test/fleet-claims.test.ts` and `landing/test/landing.test.mjs` (FR-015, SC-009; COMP-105)
+- [x] T035 Update claim copy in `app/fleet.html`, `app/fleet-privacy.html`, `app/src/fleet/index.ts`, `landing/public/index.html`, `marketing/CHIT-UPDATE-AND-TOKEN.md`, `marketing/CHIT-COMMUNITY-BRIEF.md` (FR-015; COMP-105)
+- [x] T036 [P] Write failing observer unlinkability test scanning pool, factory, and policy events on the fork for a full journey in `test/fork/fleet-pool-observer.test.ts` (FR-009, SC-002; COMP-106)
+- [x] T037 Add `scripts/fleet-pool-deploy-live.ts` and `fleet-pool-deploy:live` npm script recording `pool` in `deployments/fleet-46630.json` (FR-016; COMP-102)
+- [x] T038 Update `specs/002-private-funding-pool/quickstart.md` evidence section and `IMPLEMENTATION.md` (COMP-106)
+- [x] T039 `./verify.sh pool-acceptance` green and every Stage 1 fleet tag green (FR-017, SC-009, SC-010; COMP-106)
 - [ ] T040 Live: deploy the pool, run the quickstart live validation on chit.tools, record tx hashes under `pooledBuy` (outward; user go) (SC-001–SC-008)
 
 ## Dependencies

@@ -689,3 +689,37 @@ mostly proving it and giving the trader somewhere to see it.
 
 `./verify.sh pool-control` is green, as are `pool-balance`, `pool-fund`,
 `pool-foundation`, and every Stage 1 gate.
+
+## Stage 2 Phase 6 — claims and the observer proof (2026-09-08)
+
+`test/fork/fleet-pool-observer.test.ts` runs a whole journey on a live EVM and
+then reads back every log and every transaction it produced, asserting that no
+log puts the depositing wallet beside a fleet account or a campaign key, and
+that nothing the trader signed names either. It found a real leak on its first
+run, which is the reason it exists.
+
+- **The Stage 1 escrow was still publishing the link.** `create` registered
+  every campaign in `FleetCampaignEscrow`, whose `CampaignRegistered` event
+  emits the campaign key beside the owner's address. A pooled campaign does not
+  use the escrow for anything, so registering it published exactly the
+  relationship Stage 2 exists to hide. Pooled campaigns are no longer
+  registered. Restoring one now reads its session from the policy and its owner
+  from the draw's sealed reference (`chain.sessionOf`, `pool.ownerOf`), so the
+  escrow is never consulted and never writes.
+- **Stage 2 gets its own claim constants** rather than editing Stage 1's. The
+  Stage 1 boundary test pins `FLEET_PUBLIC_FACTS` exactly, and Stage 1's claim
+  is still correct for an escrow campaign, so `POOL_PUBLIC_FACTS`,
+  `POOL_PRIVATE_FACT`, and `POOL_PRIVACY_CLAIM` sit alongside it and the Control
+  Room picks by whether the campaign has a draw. No Stage 1 test was touched.
+- **The claims check now catches claims, not mentions.** A blanket ban on
+  "anonymous" and "mainnet" would have failed the exclusions list ("hidden
+  trades", "mainnet sponsorship") and the landing's own disclaimer. The test
+  bans "untraceable", "unlinkable", and "no trail" outright, and treats
+  "anonymous", "hidden trade", and "mainnet" as violations only on a line that
+  does not deny them. The `verify.sh` grep was narrowed to match, so
+  "private, not anonymous" can be said where it belongs.
+
+`./verify.sh pool-acceptance` is green, which also re-runs every Stage 1 gate.
+The pool is not deployed: `deployments/fleet-46630.json` has no `pool` record,
+`FLEET_POOL_ADDRESS` is unset, and the hosted service answers 503 for every pool
+action until both exist. T040 is outward and waits for a go-ahead.
