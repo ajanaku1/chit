@@ -59,12 +59,12 @@ Every test is written and observed failing before its paired implementation (pro
 **Goal**: Close credits balance, top-up restores Active, operator pause is honest in the app.
 **Independent Test**: close an Active campaign and see the balance rise with no public refund; paused campaign refuses buys; operator-paused pool refuses deposits and draws.
 
-- [ ] T028 [P] [US3] Write failing route test for `close` crediting balance and `topUp` from Depleted in `test/fleet/pool-control-route.test.ts` (FR-013; COMP-103)
-- [ ] T029 [P] [US3] Write failing fork test: closeDraw plus postCredit raise available with no transfer to the trader; operator pause blocks deposit, draw, and buy in `test/fork/fleet-pool-control.test.ts` (FR-012, FR-013, SC-008; COMP-106)
-- [ ] T030 [P] [US3] Write failing browser test for Control Room balance strip, per-campaign draw figures, close message, paused banner in `app/test/fleet-control-room.test.ts` (FR-013, FR-014; COMP-104)
-- [ ] T031 [US3] Implement close-to-balance and top-up in `src/fleet/campaign-routes.ts` and `src/fleet/chain-pool.ts` (FR-013; COMP-102, COMP-103)
-- [ ] T032 [US3] Implement Control Room changes in `app/fleet-dashboard.html` and `app/src/fleet-dashboard.ts` (FR-013, FR-014; COMP-104)
-- [ ] T033 [US3] `./verify.sh pool-control` green (SC-008; COMP-106)
+- [x] T028 [P] [US3] Write failing route test for `close` crediting balance and `topUp` from Depleted in `test/fleet/pool-control-route.test.ts` (FR-013; COMP-103)
+- [x] T029 [P] [US3] Write failing fork test: closeDraw plus postCredit raise available with no transfer to the trader; operator pause blocks deposit, draw, and buy in `test/fork/fleet-pool-control.test.ts` (FR-012, FR-013, SC-008; COMP-106)
+- [x] T030 [P] [US3] Write failing browser test for Control Room balance strip, per-campaign draw figures, close message, paused banner in `app/test/fleet-control-room.test.ts` (FR-013, FR-014; COMP-104)
+- [x] T031 [US3] Implement close-to-balance and top-up in `src/fleet/campaign-routes.ts` and `src/fleet/chain-pool.ts` (FR-013; COMP-102, COMP-103)
+- [x] T032 [US3] Implement Control Room changes in `app/fleet-dashboard.html` and `app/src/fleet-dashboard.ts` (FR-013, FR-014; COMP-104)
+- [x] T033 [US3] `./verify.sh pool-control` green (SC-008; COMP-106)
 
 ## Phase 6: Polish and cross-cutting
 

@@ -663,3 +663,29 @@ Decisions and corrections worth recording:
   the funding wait, so the page finally does what the API supports. The
   "No trail back to you" headline is gone, replaced by wording that is true
   today.
+
+## Stage 2 Phase 5 — control and recovery (2026-09-07)
+
+Closing a pooled campaign returns its unspent draw to the trader's balance and
+transfers nothing: the ETH never left the pool, so there is no refund to
+publish. The route already behaved correctly from Phase 4, so this phase was
+mostly proving it and giving the trader somewhere to see it.
+
+- **The pause now blocks principal.** `fundPrincipal` did not check `paused`, so
+  a paused pool would still have let buys move money. FR-012 says a paused pool
+  takes no deposits, draws, or buys, and now the contract agrees. A fork test
+  covers all three, plus the case that matters most: the self-serve exit still
+  works while the pool is paused, because that promise must survive the operator
+  choosing to stop.
+- **A depleted pooled campaign offers `topUp`, not just `close`.** With an
+  escrow, depleted was near-terminal; with a balance behind it, the trader can
+  refill without another deposit. The Control Room says so.
+- **`postCredit` stayed unnecessary.** A closed draw simply stops counting
+  against the balance, which a fork test checks directly rather than trusting
+  the arithmetic.
+- **The dashboard signs for real** and reads the live campaign instead of the
+  saved snapshot, the same gap fixed for the wizard in Phase 4. It shows the
+  balance, the draw, what is left, and a banner when Chit has paused the pool.
+
+`./verify.sh pool-control` is green, as are `pool-balance`, `pool-fund`,
+`pool-foundation`, and every Stage 1 gate.
