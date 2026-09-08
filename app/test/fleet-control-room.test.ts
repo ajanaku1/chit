@@ -61,3 +61,62 @@ test("the view is public-fact only and safe to render", () => {
   assert.equal(serialized.includes("privateKey"), false);
   assert.equal(serialized.includes("signature"), false);
 });
+
+/**
+ * Stage 2 additions: a fleet spends a draw from the trader's balance, so the
+ * Control Room must show what this fleet is holding, what closing gives back,
+ * and whether the pool itself has stopped.
+ */
+
+const draw = {
+  amount: "20000000000000000",
+  spent: "5000000000000000",
+  remaining: "15000000000000000",
+  dueAt: "2026-09-08T12:05:00.000Z",
+  state: "Funded" as const,
+};
+
+const pooled = (over: Partial<ControlRoomInput> = {}): ControlRoomInput => ({
+  campaign: "c-1",
+  state: "Active",
+  budget: { funded: "0", reserved: "0", spent: "0", unused: "0" },
+  draw,
+  balance: { available: "80000000000000000" },
+  pool: { paused: false },
+  ...over,
+});
+
+test("a pooled campaign reports its draw rather than an escrow budget", () => {
+  const view = buildControlRoomView(pooled());
+  assert.equal(view.draw?.remaining, "15000000000000000");
+  assert.equal(view.balance?.available, "80000000000000000");
+});
+
+test("closing a pooled campaign promises the balance, not a refund", () => {
+  const view = buildControlRoomView(pooled({ state: "Closed", creditedToBalance: "15000000000000000" }));
+  assert.equal(view.creditedToBalance, "15000000000000000");
+  assert.match(view.stateNote, /balance/i);
+  assert.doesNotMatch(view.stateNote, /returned to you/i);
+});
+
+test("a depleted pooled campaign can top up instead of only closing", () => {
+  const view = buildControlRoomView(pooled({ state: "Depleted" }));
+  assert.deepEqual(view.availableActions, ["topUp", "close"]);
+  assert.match(view.stateNote, /top up|add more/i);
+});
+
+test("a depleted campaign without a pool still only closes", () => {
+  const view = buildControlRoomView({
+    campaign: "c-1",
+    state: "Depleted",
+    budget: { funded: "1", reserved: "0", spent: "1", unused: "0" },
+  });
+  assert.deepEqual(view.availableActions, ["close"]);
+});
+
+test("a paused pool is announced, and stops every action that spends", () => {
+  const view = buildControlRoomView(pooled({ pool: { paused: true } }));
+  assert.equal(view.poolPaused, true);
+  assert.match(view.poolNote ?? "", /paused/i);
+  assert.deepEqual(view.availableActions, ["pause", "revoke", "close"], "stopping your own fleet still works");
+});
