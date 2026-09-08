@@ -10,7 +10,7 @@
 import { keccak256, stringToBytes, toFunctionSelector, type Address as ViemAddress, type Hex as ViemHex, type PublicClient, type WalletClient } from "viem";
 
 import { runFleetBuy, type FleetBuyReport } from "./chain-buy.js";
-import { accountsOf, createFleet, isEnrolled, openSession, readCampaign, registerCampaign, setSessionState, type OnChainCampaign } from "./chain-campaign.js";
+import { accountsOf, createFleet, isEnrolled, openSession, readCampaign, registerCampaign, sessionOf, setSessionState, type OnChainCampaign, type OnChainSession } from "./chain-campaign.js";
 import { readBudget } from "./operator-executor.js";
 import type { Address, Budget, FleetAccountInit, Hex, Policy, Uint } from "./types.js";
 
@@ -27,6 +27,8 @@ export type FleetChain = {
   buy(campaign: Hex, router: Address, buys: readonly ChainBuy[]): Promise<{ results: ChainBuyOutcome[]; budget: Budget }>;
   /** Owner, budget, and open session as the chain holds them; undefined if unregistered. */
   loadCampaign(campaign: Hex): Promise<OnChainCampaign | undefined>;
+  /** The session alone, for campaigns the escrow never knew about. */
+  sessionOf(campaign: Hex): Promise<OnChainSession | undefined>;
   isEnrolled(campaign: Hex, account: Address): Promise<boolean>;
   /** The fleet accounts this campaign created, from the factory's own event. */
   accountsOf(campaign: Hex): Promise<Address[]>;
@@ -106,6 +108,10 @@ export const createFleetChain = (
 
   loadCampaign(campaign) {
     return readCampaign(publicClient, addresses.escrow, addresses.policy, campaign);
+  },
+
+  sessionOf(campaign) {
+    return sessionOf(publicClient, addresses.policy, campaign);
   },
 
   isEnrolled(campaign, account) {

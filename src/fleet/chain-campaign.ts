@@ -213,6 +213,22 @@ export const accountsOf = async (
     .sort();
 };
 
+/** The open session for a campaign, or undefined if it has none yet. */
+export const sessionOf = async (
+  publicClient: PublicClient,
+  policy: Address,
+  campaign: Hex,
+): Promise<OnChainSession | undefined> => {
+  try {
+    const session = await publicClient.readContract({
+      address: policy, abi: READ_ABI, functionName: "sessionOf", args: [campaign],
+    });
+    return session.exists ? { ...session } : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 export const isEnrolled = (publicClient: PublicClient, policy: Address, campaign: Hex, account: Address): Promise<boolean> =>
   publicClient.readContract({ address: policy, abi: READ_ABI, functionName: "isEnrolled", args: [campaign, account] });
 

@@ -199,7 +199,12 @@ export class CampaignRouter {
       : { ...quote, ...OPEN_ACCESS_CHARGE };
 
     const id = this.#randomId();
-    if (this.#deps.chain) await this.#deps.chain.registerCampaign(campaignKey(id), wallet as Address);
+    // A pooled campaign is never registered in the Stage 1 escrow: that
+    // registration emits the campaign key beside the owner's address, which is
+    // exactly the link this stage exists to stop publishing (FR-009).
+    if (this.#deps.chain && !this.#deps.pool) {
+      await this.#deps.chain.registerCampaign(campaignKey(id), wallet as Address);
+    }
     const record: CampaignRecord = {
       id,
       ownerWallet: wallet,
@@ -328,16 +333,32 @@ export class CampaignRouter {
   async #restore(id: string, wallet: string): Promise<CampaignRecord | undefined> {
     const chain = this.#deps.chain;
     if (!chain || !id) return undefined;
-    const found = await chain.loadCampaign(campaignKey(id));
+    const key = campaignKey(id);
+    const pool = this.#deps.pool;
+    const found = pool ? await this.#pooledCampaign(chain, pool, key, wallet) : await chain.loadCampaign(key);
     if (!found?.session || found.owner.toLowerCase() !== wallet) return undefined;
+
     const record = restoredRecord(id, wallet, found, this.#now());
-    const draw = await this.#deps.pool?.drawOf(campaignKey(id));
+    const draw = await pool?.drawOf(key);
     if (draw) {
       record.draw = draw;
       record.state = drawnState(draw, found, this.#now());
     }
     this.#campaigns.set(id, record);
     return record;
+  }
+
+  /**
+   * A pooled campaign as the chain holds it: its session from the policy and
+   * its owner from the draw's sealed reference. The escrow is not consulted,
+   * because a pooled campaign was deliberately never registered there.
+   */
+  async #pooledCampaign(
+    chain: FleetChain, pool: PoolPort, key: Hex, wallet: string,
+  ): Promise<OnChainCampaign | undefined> {
+    const [session, owner] = await Promise.all([chain.sessionOf(key), pool.ownerOf(key)]);
+    if (!session || owner?.toLowerCase() !== wallet) return undefined;
+    return { owner: owner as Address, budget: { funded: 0n, reserved: 0n, spent: 0n, unused: 0n }, session };
   }
 
   #now(): Date {
