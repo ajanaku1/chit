@@ -34,13 +34,27 @@ export type CampaignState =
   | "Draft" | "Awaiting recovery confirmation" | "Awaiting funding" | "Activating"
   | "Active" | "Paused" | "Revoked" | "Depleted" | "Expired" | "Closed";
 
-export type ControlAction = "pause" | "resume" | "revoke" | "close";
+export type ControlAction = "pause" | "resume" | "revoke" | "close" | "topUp";
+
+/** A campaign's claim on the trader's pool balance (Stage 2). */
+export type DrawView = {
+  amount: string;
+  spent: string;
+  remaining: string;
+  dueAt: string;
+  state: "Pending" | "Funded" | "Closed";
+};
 
 export type ControlRoomInput = {
   campaign: string;
   state: CampaignState;
   budget: BudgetView;
   returnedEth?: string;
+  /** Present for a pooled campaign; the draw is its budget, not the escrow. */
+  draw?: DrawView;
+  balance?: { available: string };
+  pool?: { paused: boolean };
+  creditedToBalance?: string;
 };
 
 export type ControlRoomView = {
@@ -51,6 +65,11 @@ export type ControlRoomView = {
   terminal: boolean;
   budget: BudgetView;
   returnedEth?: string;
+  draw?: DrawView;
+  balance?: { available: string };
+  poolPaused?: boolean;
+  poolNote?: string;
+  creditedToBalance?: string;
   privacyNote: string;
 };
 
@@ -70,6 +89,13 @@ const ACTIONS_BY_STATE: Record<CampaignState, ControlAction[]> = {
 
 const TERMINAL_STATES: readonly CampaignState[] = ["Revoked", "Depleted", "Expired", "Closed"];
 
+/** What each state means once a pool, not an escrow, holds the money. */
+const POOLED_STATE_NOTES: Partial<Record<CampaignState, string>> = {
+  Activating: "Funding your fleet. The wait is deliberate: it keeps your deposit and your fleet from lining up in time.",
+  Depleted: "This fleet has spent its draw. Top up from your balance to keep trading, or close it.",
+  Closed: "Closed. Everything this fleet did not spend went back to your balance; nothing was paid out on chain.",
+};
+
 const STATE_NOTES: Partial<Record<CampaignState, string>> = {
   Active: "Sponsorship is live within the campaign policy.",
   Paused: "Sponsorship is blocked until you resume.",
@@ -81,14 +107,31 @@ const STATE_NOTES: Partial<Record<CampaignState, string>> = {
 
 /** The trader-facing lifecycle view: state, legal actions, budget, and claims. */
 export function buildControlRoomView(input: ControlRoomInput): ControlRoomView {
+  const pooled = input.draw !== undefined;
+  const actions = ACTIONS_BY_STATE[input.state];
   return {
     campaign: input.campaign,
     state: input.state,
-    stateNote: STATE_NOTES[input.state] ?? "Complete the setup journey to activate.",
-    availableActions: ACTIONS_BY_STATE[input.state],
+    stateNote:
+      (pooled ? POOLED_STATE_NOTES[input.state] : undefined) ??
+      STATE_NOTES[input.state] ??
+      "Complete the setup journey to activate.",
+    // A depleted pooled campaign is not finished: its balance can refill it.
+    availableActions: pooled && input.state === "Depleted" ? ["topUp", ...actions] : actions,
     terminal: TERMINAL_STATES.includes(input.state),
     budget: input.budget,
     ...(input.returnedEth === undefined ? {} : { returnedEth: input.returnedEth }),
+    ...(input.draw === undefined ? {} : { draw: input.draw }),
+    ...(input.balance === undefined ? {} : { balance: input.balance }),
+    ...(input.pool === undefined
+      ? {}
+      : {
+          poolPaused: input.pool.paused,
+          ...(input.pool.paused
+            ? { poolNote: "Chit has paused the pool. Deposits and new fleet funding are stopped; your self-serve exit still works." }
+            : {}),
+        }),
+    ...(input.creditedToBalance === undefined ? {} : { creditedToBalance: input.creditedToBalance }),
     privacyNote: FLEET_PRIVACY_CLAIM,
   };
 }
