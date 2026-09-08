@@ -50,6 +50,33 @@ export const FLEET_PRIVACY_CLAIM =
   "Fleet accounts, their trades, amounts, timing, gas, and the operator's gas payments stay publicly visible. " +
   "Only the primary-wallet-to-fleet relationship is withheld from the chain, and the operator knows it.";
 
+/**
+ * Stage 2 claims. Stage 1's constants above describe the gas-only product and
+ * are kept for campaigns that still run on the escrow; a pooled campaign is
+ * entitled to more, and to exactly this much.
+ */
+export const POOL_PUBLIC_FACTS = [
+  "fleet accounts",
+  "trades",
+  "amounts",
+  "timing",
+  "gas",
+  "deposits into the shared pool",
+  "fleets funded from that pool",
+] as const;
+
+/** What the pool withholds from a public observer (FR-009). */
+export const POOL_PRIVATE_FACT =
+  "no transaction links your main wallet to your fleet";
+
+/** The exact claim a pooled campaign is entitled to publish (FR-015). */
+export const POOL_PRIVACY_CLAIM =
+  "Your main wallet never funds your fleet. Your ETH goes into a shared pool that carries no fleet marker, " +
+  "and Chit funds fleets from that pool, so no transaction links the two. Fleet accounts, their trades, " +
+  "amounts, timing, gas, deposits into the pool, and fleets funded from it all stay publicly visible. " +
+  "Chit's operator knows which balance paid for which fleet, and while the pool is small, amounts and " +
+  "timing can still line up.";
+
 /** Field names that identify local credential or recovery material. */
 export const SERVICE_FORBIDDEN_FIELDS = [
   "privateKey",

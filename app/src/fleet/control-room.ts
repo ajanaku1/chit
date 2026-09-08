@@ -7,7 +7,7 @@
  * the narrow privacy claim — never an overclaim.
  */
 
-import { FLEET_PRIVACY_CLAIM } from "./index.js";
+import { FLEET_PRIVACY_CLAIM, POOL_PRIVACY_CLAIM } from "./index.js";
 
 type Hex = `0x${string}`;
 
@@ -132,7 +132,7 @@ export function buildControlRoomView(input: ControlRoomInput): ControlRoomView {
             : {}),
         }),
     ...(input.creditedToBalance === undefined ? {} : { creditedToBalance: input.creditedToBalance }),
-    privacyNote: FLEET_PRIVACY_CLAIM,
+    privacyNote: pooled ? POOL_PRIVACY_CLAIM : FLEET_PRIVACY_CLAIM,
   };
 }
 

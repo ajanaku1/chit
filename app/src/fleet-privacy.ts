@@ -9,6 +9,7 @@ import {
   FLEET_PRIVACY_CLAIM,
   FLEET_PRIVATE_FACT,
   FLEET_PUBLIC_FACTS,
+  POOL_PRIVACY_CLAIM,
 } from "./fleet/index.js";
 
 initTheme();
@@ -28,4 +29,5 @@ for (const fact of FLEET_PUBLIC_FACTS) {
 }
 el("private-fact").textContent = FLEET_PRIVATE_FACT;
 el("privacy-claim").textContent = FLEET_PRIVACY_CLAIM;
+el("pool-claim").textContent = POOL_PRIVACY_CLAIM;
 el("exclusions").textContent = `${FLEET_EXCLUDED_CAPABILITIES.join(", ")}.`;
