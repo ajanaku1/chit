@@ -59,6 +59,7 @@ const makeRouter = () => {
       return draw;
     },
     drawOf: async () => draw,
+    ownerOf: async () => trader.address.toLowerCase() as Address,
     closeDraw: async (campaign) => {
       closed.push(campaign);
       draw = { ...draw, state: "Closed" };
@@ -75,6 +76,7 @@ const makeRouter = () => {
     loadCampaign: async () => undefined,
     isEnrolled: async () => true,
     accountsOf: async () => [],
+    sessionOf: async () => undefined,
     control: async () => `0x${"c".repeat(64)}`,
   };
   const deps: RouterDeps = { service, pool, chain };

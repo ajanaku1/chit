@@ -38,12 +38,22 @@ const view = (over: Partial<BalanceView> = {}): BalanceView => ({
 const makeRouter = (over: Partial<BalanceView> = {}) => {
   const calls: { amount: string; destination: string }[] = [];
   const service = new CampaignService(serviceConfig);
+  const unused = () => {
+    throw new Error("not part of the balance journey");
+  };
   const pool: PoolPort = {
     balance: async () => view(over),
     withdraw: async ({ amount, destination }) => {
       calls.push({ amount, destination });
       return { payoutTx: `0x${"a".repeat(64)}` as Hex, queuedSpendTx: `0x${"b".repeat(64)}` as Hex };
     },
+    openDraw: unused,
+    topUpDraw: unused,
+    drawOf: async () => undefined,
+    ownerOf: async () => undefined,
+    closeDraw: async () => undefined,
+    sweep: async () => ({ funded: [], posted: [] }),
+    buy: unused,
   };
   const deps: RouterDeps = { service, pool };
   return { router: new CampaignRouter(deps), service, calls };

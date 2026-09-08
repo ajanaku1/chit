@@ -66,6 +66,7 @@ const makeRouter = (over: { available?: string; paused?: boolean } = {}) => {
     },
     topUpDraw: async ({ amount }) => drawSummary({ amount, remaining: amount, state: "Funded" }),
     drawOf: async () => drawSummary(),
+    ownerOf: async () => trader.address.toLowerCase() as Address,
     closeDraw: async () => drawSummary({ state: "Closed" }),
     sweep: async () => ({ funded: [], posted: [] }),
     buy: async () => ({ results: [], draw: drawSummary() }),
@@ -78,6 +79,7 @@ const makeRouter = (over: { available?: string; paused?: boolean } = {}) => {
     loadCampaign: async () => undefined,
     isEnrolled: async () => true,
     accountsOf: async () => [],
+    sessionOf: async () => undefined,
     control: async () => `0x${"c".repeat(64)}`,
   };
   const deps: RouterDeps = { service, pool, chain };
