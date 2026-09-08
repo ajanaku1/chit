@@ -6,7 +6,9 @@
  */
 
 import { buildBuyReport, buildControlRoomView, type AccountBuyResult, type CampaignState, type ControlAction } from "./fleet/control-room.js";
-import { fleetApi, initHeaderWallet, initTheme, loadFleetSnapshot, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
+import { getConnectedWallet, initHeaderWallet, initTheme, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
+import { signedFleetApi } from "./fleet/signed-request.js";
+import type { DrawView } from "./fleet/control-room.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -28,6 +30,10 @@ const KNOWN_STATES: readonly CampaignState[] = [
 
 class FleetDashboard {
   #snapshot: FleetSnapshot;
+  /** Live pool facts, refreshed from the service; absent before it answers. */
+  #draw: DrawView | undefined;
+  #available = "0";
+  #poolPaused = false;
 
   constructor(snapshot: FleetSnapshot) {
     this.#snapshot = snapshot;
@@ -40,6 +46,7 @@ class FleetDashboard {
       button.addEventListener("click", () => void this.#control(button.dataset["action"] as ControlAction));
     }
     el("run-buy").addEventListener("click", () => void this.#runBuy());
+    void this.#refresh();
     this.#render();
   }
 
@@ -64,7 +71,23 @@ class FleetDashboard {
       return;
     }
 
-    const view = buildControlRoomView({ campaign: this.#snapshot.campaign, state, budget: this.#snapshot.budget });
+    const view = buildControlRoomView({
+      campaign: this.#snapshot.campaign,
+      state,
+      budget: this.#snapshot.budget,
+      ...(this.#draw ? { draw: this.#draw, balance: { available: this.#available }, pool: { paused: this.#poolPaused } } : {}),
+    });
+    const strip = el("balance-strip");
+    strip.hidden = this.#draw === undefined;
+    if (this.#draw) {
+      el("bal-available").textContent = `${toEth(this.#available)} ETH`;
+      el("draw-amount").textContent = `${toEth(this.#draw.amount)} ETH`;
+      el("draw-spent").textContent = `${toEth(this.#draw.spent)} ETH`;
+      el("draw-remaining").textContent = `${toEth(this.#draw.remaining)} ETH`;
+    }
+    const poolBanner = el("pool-paused");
+    poolBanner.hidden = !view.poolPaused;
+    poolBanner.textContent = view.poolNote ?? "";
     el("state-note").textContent = view.stateNote;
     for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>("[data-action]"))) {
       button.disabled = !view.availableActions.includes(button.dataset["action"] as ControlAction);
@@ -78,7 +101,11 @@ class FleetDashboard {
     const funded = Number(budget.funded) || 1;
     el("seg-spent").style.width = `${(Number(budget.spent) / funded) * 100}%`;
     el("seg-reserved").style.width = `${(Number(budget.reserved) / funded) * 100}%`;
-    if (view.returnedEth !== undefined) {
+    if (view.creditedToBalance !== undefined) {
+      const returned = el("b-returned");
+      returned.textContent = `${toEth(view.creditedToBalance)} ETH went back to your Chit balance.`;
+      returned.hidden = false;
+    } else if (view.returnedEth !== undefined) {
       const returned = el("b-returned");
       returned.textContent = `${toEth(view.returnedEth)} ETH returned to your wallet.`;
       returned.hidden = false;
@@ -96,37 +123,64 @@ class FleetDashboard {
     }
   }
 
-  async #control(action: ControlAction): Promise<void> {
+  /** Reads the live campaign so the page shows the chain, not the snapshot. */
+  async #refresh(): Promise<void> {
+    const wallet = getConnectedWallet();
+    if (!wallet) return;
     try {
-      const { status, body } = await fleetApi(action, {
-        action,
-        auth: { action },
-        body: { campaign: this.#snapshot.campaign },
-      });
-      if (status < 200 || status >= 300) throw new Error(String(body["code"] ?? `status_${status}`));
-      const next: Record<ControlAction, string> = { pause: "Paused", resume: "Active", revoke: "Revoked", close: "Closed" };
+      const body = await signedFleetApi(wallet, "read", { campaign: this.#snapshot.campaign });
+      this.#draw = body["draw"] as DrawView | undefined;
+      const state = String(body["state"] ?? this.#snapshot.state);
+      this.#snapshot = { ...this.#snapshot, state };
+      const balance = await signedFleetApi(wallet, "balance", {});
+      this.#available = String(balance["available"] ?? "0");
+      this.#poolPaused = Boolean((balance["pool"] as { paused?: boolean } | undefined)?.paused);
+      this.#render();
+    } catch {
+      // The service may not be configured yet; the snapshot still renders.
+    }
+  }
+
+  async #control(action: ControlAction): Promise<void> {
+    if (action === "topUp") return this.#topUp();
+    try {
+      const wallet = getConnectedWallet();
+      if (!wallet) throw new Error("not_connected");
+      const body = await signedFleetApi(wallet, action, { campaign: this.#snapshot.campaign });
+      const next: Record<ControlAction, string> = { pause: "Paused", resume: "Active", revoke: "Revoked", close: "Closed", topUp: "Active" };
       this.#snapshot = { ...this.#snapshot, state: next[action] };
       saveFleetSnapshot(this.#snapshot);
-      banner(`Done — fleet is now ${next[action].toLowerCase()}.`, "ok");
-      this.#render();
+      banner(`Done. Fleet is now ${next[action].toLowerCase()}.`, "ok");
+      void this.#refresh();
     } catch (error) {
       this.#pendingOrError(action, error);
     }
   }
 
+  /** Raises this fleet's draw from the trader's balance (FR-013). */
+  async #topUp(): Promise<void> {
+    try {
+      const wallet = getConnectedWallet();
+      if (!wallet) throw new Error("not_connected");
+      const amount = parseEth((el<HTMLInputElement>("topup-amount")).value);
+      await signedFleetApi(wallet, "topUp", { campaign: this.#snapshot.campaign, amount });
+      banner("Topped up from your balance.", "ok");
+      void this.#refresh();
+    } catch (error) {
+      this.#pendingOrError("topUp", error);
+    }
+  }
+
   async #runBuy(): Promise<void> {
     try {
-      const { status, body } = await fleetApi("buy", {
-        action: "buy",
-        auth: { action: "buy" },
-        body: {
-          campaign: this.#snapshot.campaign,
-          accounts: this.#snapshot.accounts,
-          token: "0x0000000000000000000000000000000000000000",
-          value: "0",
-        },
+      const wallet = getConnectedWallet();
+      if (!wallet) throw new Error("not_connected");
+      const body = await signedFleetApi(wallet, "buy", {
+        campaign: this.#snapshot.campaign,
+        accounts: this.#snapshot.accounts,
+        token: "0x0000000000000000000000000000000000000000",
+        value: "0",
       });
-      if (status < 200 || status >= 300) throw new Error(String(body["code"] ?? `status_${status}`));
       this.#renderBuyReport((body["results"] as AccountBuyResult[] | undefined) ?? []);
     } catch (error) {
       this.#pendingOrError("buy", error);
