@@ -293,6 +293,7 @@ contract FleetPool {
         external
         onlyOperator
     {
+        if (paused) revert Paused();
         Draw storage draw = _draws[campaign];
         if (draw.state != DrawState.Funded) revert DrawNotFunded();
         if (draw.reserved != 0) revert ReservationOpen();
