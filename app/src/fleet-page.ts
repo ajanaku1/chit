@@ -22,6 +22,7 @@ import {
 } from "./fleet/campaign-setup.js";
 import { fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
 import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initTheme, parseEth, saveFleetSnapshot, toEth } from "./fleet/page-shared.js";
+import { readBalance } from "./fleet/balance-read.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
 import { confirmRecovery, createRecoveryVault, type VaultContext } from "./fleet/vault.js";
 
@@ -400,8 +401,7 @@ class FleetWizard {
   /** The spendable balance, or zero while the pool is not configured yet. */
   async #fetchBalance(wallet: Hex): Promise<string> {
     try {
-      const body = await signedFleetApi(wallet, "balance", {});
-      return String(body["available"] ?? "0");
+      return String((await readBalance(wallet)).available ?? "0");
     } catch {
       return "0";
     }

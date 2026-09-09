@@ -9,14 +9,13 @@ import { encodeFunctionData, type Hex } from "viem";
 import {
   depositOptions,
   exitView,
-  isFresh,
   loadCachedBalance,
   receiptOutcome,
-  saveCachedBalance,
   toEth,
   withdrawIssue,
   type BalanceState,
 } from "./fleet/balance.js";
+import { readBalance } from "./fleet/balance-read.js";
 import {
   getConnectedWallet,
   initHeaderWallet,
@@ -129,23 +128,15 @@ const renderWalletEth = async (): Promise<void> => {
   }
 };
 
-const refresh = async (): Promise<void> => {
+const load = async (force: boolean): Promise<void> => {
   if (!wallet) return;
   void renderWalletEth();
-  // A signature is what a read costs; a read from the last minute is enough.
-  const cached = loadCachedBalance(sessionStorage, wallet);
-  if (cached && isFresh(cached.savedAt, new Date())) {
-    state = cached;
-    poolAddress = (cached.poolAddress as Hex | undefined) ?? poolAddress;
-    render(cached);
-    return;
-  }
-  const body = await signedFleetApi(wallet, "balance", {});
-  state = body as unknown as BalanceState;
-  poolAddress = (body["poolAddress"] as Hex | undefined) ?? poolAddress;
-  saveCachedBalance(sessionStorage, wallet, state);
+  state = await readBalance(wallet, { force });
+  poolAddress = (state.poolAddress as Hex | undefined) ?? poolAddress;
   render(state);
 };
+
+const refresh = (): Promise<void> => load(false);
 
 /** Re-reads until the balance moves, so a confirmed deposit is never invisible. */
 const settle = async (was: string, what: string): Promise<void> => {
@@ -249,14 +240,8 @@ const onWalletChanged = async (): Promise<void> => {
 
 /** A signed read on demand, whatever the cache says. */
 const forceRefresh = async (): Promise<void> => {
-  if (!wallet) return;
   try {
-    const body = await signedFleetApi(wallet, "balance", {});
-    state = body as unknown as BalanceState;
-    poolAddress = (body["poolAddress"] as Hex | undefined) ?? poolAddress;
-    saveCachedBalance(sessionStorage, wallet, state);
-    render(state);
-    void renderWalletEth();
+    await load(true);
   } catch (error) {
     banner(describe(error), "error");
   }

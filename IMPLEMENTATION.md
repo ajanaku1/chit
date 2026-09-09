@@ -949,3 +949,17 @@ moving the trader, Start skips the connect step when there is nothing to
 connect, and the connect button on an already-adopted wallet just continues.
 The wiring test now requires every page to take up a wallet on load, whether
 directly or through a refresh that reads it.
+
+## Stage 2 — one signature, not three (2026-09-09)
+
+Reading the balance is a signed request, so it costs a wallet prompt. Each of
+the three pages signed for it on every load, and only the Balance page consulted
+the cache. Switching tabs therefore produced a wallet prompt every time, which
+is indistinguishable from being asked to connect again.
+
+`app/src/fleet/balance-read.ts` is now the only place that reads a balance: it
+returns the last minute's read unless forced, and every page uses it. Switching
+between Balance and Set up costs no prompt inside that minute; the dashboard
+still signs once for its live campaign read, which must not be cached because
+the campaign's state is what the trader is watching change. A test forbids any
+page from signing for a balance itself.

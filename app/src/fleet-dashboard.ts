@@ -7,6 +7,7 @@
 
 import { buildBuyReport, buildControlRoomView, type AccountBuyResult, type CampaignState, type ControlAction } from "./fleet/control-room.js";
 import { getConnectedWallet, initHeaderWallet, initTheme, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
+import { readBalance } from "./fleet/balance-read.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
 import type { DrawView } from "./fleet/control-room.js";
 import { pollDelayMs } from "./fleet/balance.js";
@@ -135,9 +136,9 @@ class FleetDashboard {
       this.#draw = body["draw"] as DrawView | undefined;
       const state = String(body["state"] ?? this.#snapshot.state);
       this.#snapshot = { ...this.#snapshot, state };
-      const balance = await signedFleetApi(wallet, "balance", {});
-      this.#available = String(balance["available"] ?? "0");
-      this.#poolPaused = Boolean((balance["pool"] as { paused?: boolean } | undefined)?.paused);
+      const balance = await readBalance(wallet);
+      this.#available = String(balance.available ?? "0");
+      this.#poolPaused = Boolean(balance.pool?.paused);
       this.#render();
       // A fleet still being funded is finished by requests like this one.
       const delay = pollDelayMs(state, this.#draw?.dueAt, new Date());

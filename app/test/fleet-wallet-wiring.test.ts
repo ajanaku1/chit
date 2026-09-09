@@ -161,3 +161,21 @@ test("every page takes up a remembered wallet on load, not only on the event", a
     assert.ok(direct || viaRefresh, `${page} does not take up an already-connected wallet when it loads`);
   }
 });
+
+/**
+ * Reading the balance costs a wallet signature. Three pages each signing on
+ * every load is what a trader experiences as "connect again on every tab". One
+ * cached read serves them all; only an explicit refresh signs again.
+ */
+test("no page signs for a balance directly; they share one cached read", async () => {
+  for (const page of PAGES) {
+    const text = await source(page);
+    assert.doesNotMatch(
+      text,
+      /signedFleetApi\([^)]*"balance"/,
+      `${page} signs for the balance itself instead of using the shared cached read`,
+    );
+    if (/readBalance\(/.test(text)) continue;
+    assert.fail(`${page} never reads the balance at all`);
+  }
+});
