@@ -100,6 +100,16 @@ const server = createServer((request, response) => {
   });
 });
 
+server.on("error", (error) => {
+  if (error.code === "EADDRINUSE") {
+    console.error(`Port ${PORT} is already in use, most likely by an earlier run of this server.`);
+    console.error(`  free it:        lsof -ti:${PORT} | xargs kill`);
+    console.error(`  or pick another: PORT=3100 npm run dev:local`);
+    process.exit(1);
+  }
+  throw error;
+});
+
 server.listen(PORT, () => {
   const pool = process.env.FLEET_POOL_ADDRESS ?? "(none recorded: pool actions will answer 503)";
   console.log(`Chit local server  http://localhost:${PORT}`);
