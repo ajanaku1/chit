@@ -939,3 +939,13 @@ A screenshot of the live page showed four things at once.
   emit `accountsChanged([])` while a page is still loading; the header dropped
   the stored wallet on it. It now confirms with `eth_accounts` before
   forgetting anything.
+
+## Stage 2 — the wizard and a remembered wallet (2026-09-09)
+
+A remembered wallet fires no connect event on load, and the wizard only took a
+wallet up when it heard that event, so it sat on "Connect your wallet" beside a
+header showing the address. On load it now adopts the remembered wallet without
+moving the trader, Start skips the connect step when there is nothing to
+connect, and the connect button on an already-adopted wallet just continues.
+The wiring test now requires every page to take up a wallet on load, whether
+directly or through a refresh that reads it.

@@ -144,3 +144,20 @@ test("a blocked launch links to the page that unblocks it", async () => {
   assert.ok(step, "no launch step to inspect");
   assert.match(step![0], /href="\.\/balance\.html"/, "the launch step names the Balance page but does not link it");
 });
+
+/**
+ * A remembered wallet fires no connect event on load, so a page that only
+ * listens for the event keeps asking. Every page must also look at start-up.
+ */
+test("every page takes up a remembered wallet on load, not only on the event", async () => {
+  for (const page of PAGES) {
+    const text = await source(page);
+    // Either the load path reads the wallet and hands it on, or it calls a
+    // refresh that reads the wallet itself. Both take the wallet up on load.
+    const direct = /getConnectedWallet\(\)[\s\S]{0,120}(#adopt|onWalletChanged)\(/.test(text);
+    const viaRefresh =
+      /start\(\): void \{[\s\S]*?void this\.#refresh\(\)/.test(text) &&
+      /async #refresh\(\)[\s\S]{0,200}getConnectedWallet\(\)/.test(text);
+    assert.ok(direct || viaRefresh, `${page} does not take up an already-connected wallet when it loads`);
+  }
+});

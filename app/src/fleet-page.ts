@@ -57,7 +57,8 @@ class FleetWizard {
   #history: Step[] = [];
 
   start(): void {
-    el("start").addEventListener("click", () => this.#go("connect"));
+    // A trader with a remembered wallet has nothing to connect; skip the step.
+    el("start").addEventListener("click", () => this.#go(this.#wallet ? "size" : "connect"));
     el("connect-wallet").addEventListener("click", () => void this.#connect());
     // Connecting from the header counts too; without this the wizard would sit
     // on step one beside a header that says the wallet is connected.
@@ -79,6 +80,11 @@ class FleetWizard {
       back.addEventListener("click", () => this.#back());
     }
     this.#bindQuickpicks();
+
+    // A wallet remembered from an earlier load fires no connect event, so it
+    // is taken up here; the event handler above covers wallets that arrive later.
+    const remembered = getConnectedWallet();
+    if (remembered) void this.#adopt(remembered, false);
   }
 
   /** Preset pills mirror into their input; the input stays the source of truth. */
@@ -169,7 +175,7 @@ class FleetWizard {
    * Takes up a wallet the header already connected. Calling connectWallet again
    * here would ask the wallet a second time for something it has just granted.
    */
-  async #adopt(address: Hex): Promise<void> {
+  async #adopt(address: Hex, advance = true): Promise<void> {
     this.#wallet = address;
     this.#setup ??= new CampaignSetup(this.#deps());
     this.#availableBalance = await this.#fetchBalance(address);
@@ -184,7 +190,7 @@ class FleetWizard {
     await this.#setup.connect(address);
     // Only move the trader on if they are waiting on this step; adopting a
     // wallet from the header must not yank them out of a later one.
-    if (this.#step === "connect" || this.#step === "welcome") this.#go("size");
+    if (advance && (this.#step === "connect" || this.#step === "welcome")) this.#go("size");
   }
 
   /** Keeps the launch button and its note telling the same story. */
@@ -199,6 +205,11 @@ class FleetWizard {
   }
 
   async #connect(): Promise<void> {
+    // Already taken up: the step has nothing left to ask for.
+    if (this.#wallet) {
+      this.#go("size");
+      return;
+    }
     try {
       const address = (await connectWallet()) ?? getConnectedWallet();
       if (!address) {
