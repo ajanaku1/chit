@@ -51,5 +51,17 @@
       "unused": "1998163190000000"
     },
     "at": "2026-09-06T09:14:25.918Z"
+  },
+  "pool": {
+    "address": "0xce92096098ae1e397b167292edad8f3bdb8200c9",
+    "operator": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
+    "deployTx": "0x9671b8022f416b276fb86daa4f2c113a12cc293f517a25ee6b75cc9fdb5e7afc",
+    "caps": {
+      "perDepositor": "500000000000000000",
+      "perDraw": "200000000000000000",
+      "pool": "5000000000000000000",
+      "gasHeadroom": "200000000000000"
+    },
+    "deployedAt": "2026-09-08T21:34:53.299Z"
   }
 }
