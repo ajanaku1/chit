@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { depositOptions, exitView, loadCachedBalance, receiptOutcome, saveCachedBalance, withdrawIssue, type BalanceState } from "../src/fleet/balance.js";
+import { depositOptions, exitView, isFresh, loadCachedBalance, receiptOutcome, saveCachedBalance, toEth, withdrawIssue, type BalanceState } from "../src/fleet/balance.js";
 
 /**
  * The Balance page decides what a trader is offered before any transaction is
@@ -145,4 +145,39 @@ test("the page is built from the shared components, not bare markup", async () =
   assert.match(html, /id="withdraw-submit"[^>]*class="primary"/, "the withdraw action is a primary button");
   const dashboard = await readFile(join(appRoot, "fleet-dashboard.html"), "utf8");
   assert.match(dashboard, /id="balance-strip"[\s\S]*?<dl class="summary/, "the dashboard strip uses the same tiles");
+});
+
+/** A tile is not a ledger: six decimals is plenty, and exact strings stay exact in logic. */
+test("figures are shown to six decimals and never overflow into noise", () => {
+  assert.equal(toEth("509263445375312000"), "0.509263");
+  assert.equal(toEth("10000000000000000"), "0.01");
+  assert.equal(toEth("1000000000000000000"), "1");
+  assert.equal(toEth("0"), "0");
+});
+
+/**
+ * Every balance read needs a signature. Re-signing on every page load reads as
+ * "connect again", so a recent read stands in for a minute and the trader can
+ * refresh by hand.
+ */
+test("a cached balance is fresh for a minute and stale after", () => {
+  const saved = Date.parse("2026-09-09T12:00:00Z");
+  assert.equal(isFresh(saved, new Date("2026-09-09T12:00:30Z")), true);
+  assert.equal(isFresh(saved, new Date("2026-09-09T12:01:01Z")), false);
+  assert.equal(isFresh(undefined, new Date()), false, "no timestamp is never fresh");
+});
+
+test("the cache records when it was saved", () => {
+  const store = new Map<string, string>();
+  const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+  const alice = "0x00000000000000000000000000000000000a11ce";
+  saveCachedBalance(storage, alice, state(), new Date("2026-09-09T12:00:00Z"));
+  const cached = loadCachedBalance(storage, alice);
+  assert.equal(cached?.savedAt, Date.parse("2026-09-09T12:00:00Z"));
+});
+
+test("the page offers a refresh and lays the tiles out as a grid", async () => {
+  const html = await readFile(join(appRoot, "balance.html"), "utf8");
+  assert.match(html, /id="balance-refresh"/, "the trader can refresh without a reload");
+  assert.match(html, /class="summary grid"/, "tiles share one width, whatever their count");
 });

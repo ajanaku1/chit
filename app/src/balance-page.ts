@@ -9,6 +9,7 @@ import { encodeFunctionData, type Hex } from "viem";
 import {
   depositOptions,
   exitView,
+  isFresh,
   loadCachedBalance,
   receiptOutcome,
   saveCachedBalance,
@@ -131,6 +132,14 @@ const renderWalletEth = async (): Promise<void> => {
 const refresh = async (): Promise<void> => {
   if (!wallet) return;
   void renderWalletEth();
+  // A signature is what a read costs; a read from the last minute is enough.
+  const cached = loadCachedBalance(sessionStorage, wallet);
+  if (cached && isFresh(cached.savedAt, new Date())) {
+    state = cached;
+    poolAddress = (cached.poolAddress as Hex | undefined) ?? poolAddress;
+    render(cached);
+    return;
+  }
   const body = await signedFleetApi(wallet, "balance", {});
   state = body as unknown as BalanceState;
   poolAddress = (body["poolAddress"] as Hex | undefined) ?? poolAddress;
@@ -143,7 +152,7 @@ const settle = async (was: string, what: string): Promise<void> => {
   for (let attempt = 0; attempt < 20; attempt += 1) {
     await new Promise((resolve) => globalThis.setTimeout(resolve, 3_000));
     try {
-      await refresh();
+      await forceRefresh();
       if (state && state.deposited !== was) {
         banner(`${what} confirmed.`, "ok");
         return;
@@ -238,7 +247,23 @@ const onWalletChanged = async (): Promise<void> => {
   }
 };
 
+/** A signed read on demand, whatever the cache says. */
+const forceRefresh = async (): Promise<void> => {
+  if (!wallet) return;
+  try {
+    const body = await signedFleetApi(wallet, "balance", {});
+    state = body as unknown as BalanceState;
+    poolAddress = (body["poolAddress"] as Hex | undefined) ?? poolAddress;
+    saveCachedBalance(sessionStorage, wallet, state);
+    render(state);
+    void renderWalletEth();
+  } catch (error) {
+    banner(describe(error), "error");
+  }
+};
+
 window.addEventListener("chit-wallet-changed", () => void onWalletChanged());
+el("balance-refresh").addEventListener("click", () => void forceRefresh());
 
 el("withdraw-form").addEventListener("submit", (event) => void withdraw(event));
 el("exit-request").addEventListener("click", () => {

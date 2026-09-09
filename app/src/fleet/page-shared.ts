@@ -272,7 +272,18 @@ export const initHeaderWallet = (): void => {
     const provider = eth as unknown as { on(event: string, handler: (...args: unknown[]) => void): void };
     provider.on("accountsChanged", (accounts) => {
       const list = accounts as string[];
-      setConnected(list[0] ? (list[0].toLowerCase() as Hex) : undefined);
+      if (list[0]) {
+        setConnected(list[0].toLowerCase() as Hex);
+        return;
+      }
+      // Some wallets emit an empty list while a page is still loading. Only a
+      // confirmed empty eth_accounts means the trader really disconnected.
+      void eth
+        .request({ method: "eth_accounts" })
+        .then((live) => {
+          if (!(live as string[])[0]) setConnected(undefined);
+        })
+        .catch(() => undefined);
     });
   }
   render();

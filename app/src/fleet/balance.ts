@@ -31,8 +31,9 @@ const DECIMAL = /^[0-9]+$/;
 /** Renders wei as ETH without trailing zeros: 10000000000000000 -> "0.01". */
 export const toEth = (wei: string): string => {
   const padded = wei.padStart(19, "0");
-  const whole = padded.slice(0, -18);
-  const frac = padded.slice(-18).replace(/0+$/, "");
+  const whole = padded.slice(0, -18).replace(/^0+(?=\d)/, "");
+  // Six decimals: a tile is a figure, not a ledger. Logic keeps the exact string.
+  const frac = padded.slice(-18).slice(0, 6).replace(/0+$/, "");
   return frac ? `${whole}.${frac}` : whole;
 };
 
@@ -162,22 +163,32 @@ export const receiptOutcome = (receipt: { status?: string } | null | undefined):
 type Storage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
 const CACHE_PREFIX = "chit-balance:";
 
+/** How long a signed read stands in before the page asks for another signature. */
+export const FRESH_MS = 60_000;
+
+export type CachedBalance = BalanceState & { savedAt?: number };
+
 /** Keeps the last figures per wallet, so a page never blanks while it re-reads. */
-export const saveCachedBalance = (storage: Storage, wallet: string, state: BalanceState): void => {
+export const saveCachedBalance = (storage: Storage, wallet: string, state: BalanceState, now = new Date()): void => {
   try {
-    storage.setItem(`${CACHE_PREFIX}${wallet.toLowerCase()}`, JSON.stringify(state));
+    const entry: CachedBalance = { ...state, savedAt: now.getTime() };
+    storage.setItem(`${CACHE_PREFIX}${wallet.toLowerCase()}`, JSON.stringify(entry));
   } catch {
     // Storage may be unavailable; the live read still works.
   }
 };
 
-export const loadCachedBalance = (storage: Storage, wallet: string): BalanceState | undefined => {
+export const loadCachedBalance = (storage: Storage, wallet: string): CachedBalance | undefined => {
   try {
     const raw = storage.getItem(`${CACHE_PREFIX}${wallet.toLowerCase()}`);
     if (!raw) return undefined;
-    const parsed = JSON.parse(raw) as BalanceState;
+    const parsed = JSON.parse(raw) as CachedBalance;
     return typeof parsed.available === "string" && parsed.headroom ? parsed : undefined;
   } catch {
     return undefined;
   }
 };
+
+/** Whether a cached read is recent enough to show without signing again. */
+export const isFresh = (savedAt: number | undefined, now: Date, maxAgeMs = FRESH_MS): boolean =>
+  savedAt !== undefined && now.getTime() - savedAt <= maxAgeMs;

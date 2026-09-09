@@ -923,3 +923,19 @@ A screenshot of the live page showed four things at once.
   Every pool transaction now waits for its receipt through the wallet's
   provider and reports the receipt's status, and an exit with nothing
   deposited is refused before a transaction is even offered.
+
+## Stage 2 — the Balance page, second look (2026-09-09)
+
+- **Figures overflowed.** The wallet tile showed fifteen decimals. The page's
+  `toEth` now caps display at six, matching the shared formatter; logic keeps
+  the exact strings.
+- **Tiles were uneven.** Flex wrapping stretched the second row. The tiles are
+  now a grid with one column width, and the dashboard strip uses the same.
+- **Every page load asked for a signature**, which reads as "connect again". A
+  balance read needs a signature; a read from the last minute now stands in,
+  with a Refresh button for a signed read on demand. Anything that waits for a
+  deposit to land reads live, never the cache.
+- **An empty account list on load was treated as a disconnect.** Some wallets
+  emit `accountsChanged([])` while a page is still loading; the header dropped
+  the stored wallet on it. It now confirms with `eth_accounts` before
+  forgetting anything.

@@ -511,8 +511,13 @@ button:focus-visible, .linkbtn:focus-visible, a:focus-visible {
   border-radius: var(--r-field);
   padding: 0.9rem 1.1rem;
 }
-.summary.wrap { flex-wrap: wrap; }
-.summary.wrap div { flex: 1 1 calc(33% - 1rem); min-width: 9rem; }
+.summary.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
+}
+.summary.grid div { min-width: 0; }
+.summary dd { overflow-wrap: anywhere; }
+.summary dd button { padding: 0.45rem 0.9rem; font-size: 0.8rem; }
 .summary dt { font-size: 0.72rem; font-weight: 600; color: var(--dim); }
 .summary dd { margin: 0.2rem 0 0; font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; }
 
