@@ -879,3 +879,21 @@ Reported from a real run, with the server log confirming both halves.
 - **A deposit now confirms itself.** It reported "sent" and never refreshed, so
   a confirmed deposit looked like a failure. It now shows the transaction hash
   and re-reads until the balance moves.
+
+## Stage 2 — the Balance page had no way in (2026-09-09)
+
+The launch step told the trader to add ETH "on the Balance page", and no page
+except the Balance page itself linked to it: the shared nav on the wizard, the
+dashboard, and the privacy page listed only Set up, Dashboard, and What's
+private. The instruction was a dead end reachable only by typing the URL, which
+is why a funded wallet still showed a zero Chit balance through several
+attempts. Every page now carries the link, and the launch step offers it inline.
+
+Confirmed against the chain first, so the page was not blamed for a contract
+problem: `deposit()` with 0.05 ETH estimates successfully from the trader's
+wallet, and an unpublished size reverts with `SizeNotAllowed`. The contract and
+the recorded address were correct throughout; the trader simply could not get
+to the page that uses them.
+
+Two tests keep it that way: every fleet page must link to the Balance page, and
+the launch step must link to the page it names.

@@ -126,3 +126,21 @@ test("the wizard prepares the same state however the wallet arrived", async () =
     assert.ok(adopt![0].includes(step), `adopting a wallet skips ${step}`);
   }
 });
+
+/**
+ * Somewhere to go. A page that tells a trader to add ETH "on the Balance page"
+ * has to offer a way there, or the instruction is a dead end.
+ */
+test("every fleet page can reach the Balance page", async () => {
+  for (const page of ["fleet.html", "fleet-dashboard.html", "fleet-privacy.html", "balance.html"]) {
+    const html = await readFile(join(appRoot, page), "utf8");
+    assert.match(html, /href="\.\/balance\.html"/, `${page} has no way to reach the Balance page`);
+  }
+});
+
+test("a blocked launch links to the page that unblocks it", async () => {
+  const html = await readFile(join(appRoot, "fleet.html"), "utf8");
+  const step = /data-wstep="launch"[\s\S]*?<\/section>/.exec(html);
+  assert.ok(step, "no launch step to inspect");
+  assert.match(step![0], /href="\.\/balance\.html"/, "the launch step names the Balance page but does not link it");
+});
