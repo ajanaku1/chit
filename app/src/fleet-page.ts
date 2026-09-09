@@ -20,7 +20,7 @@ import {
   type SetupDeps,
   type SetupQuote,
 } from "./fleet/campaign-setup.js";
-import { drawIssue, fundingWait, pollDelayMs } from "./fleet/balance.js";
+import { fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
 import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initTheme, parseEth, saveFleetSnapshot, toEth } from "./fleet/page-shared.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
 import { confirmRecovery, createRecoveryVault, type VaultContext } from "./fleet/vault.js";
@@ -62,8 +62,11 @@ class FleetWizard {
     // Connecting from the header counts too; without this the wizard would sit
     // on step one beside a header that says the wallet is connected.
     window.addEventListener("chit-wallet-changed", () => {
-      if (!this.#wallet && getConnectedWallet()) void this.#connect();
+      const address = getConnectedWallet();
+      if (address && address !== this.#wallet) void this.#adopt(address);
+      else if (!address) this.#wallet = undefined;
     });
+    el("a-draw").addEventListener("input", () => this.#renderLaunch());
     el("size-form").addEventListener("submit", (event) => {
       event.preventDefault();
       void this.#configure();
@@ -97,6 +100,8 @@ class FleetWizard {
   #go(step: Step): void {
     this.#history.push(this.#step);
     this.#show(step);
+    // Arriving at launch, the button must already say whether it can be used.
+    if (step === "launch") this.#renderLaunch();
   }
 
   #back(): void {
@@ -160,6 +165,28 @@ class FleetWizard {
   /** The trader's spendable Chit balance, read when the wallet connects. */
   #availableBalance = "0";
 
+  /**
+   * Takes up a wallet the header already connected. Calling connectWallet again
+   * here would ask the wallet a second time for something it has just granted.
+   */
+  async #adopt(address: Hex): Promise<void> {
+    this.#wallet = address;
+    this.#setup ??= new CampaignSetup(this.#deps());
+    this.#availableBalance = await this.#fetchBalance(address);
+    this.#renderLaunch();
+  }
+
+  /** Keeps the launch button and its note telling the same story. */
+  #renderLaunch(): void {
+    const input = document.getElementById("a-draw") as HTMLInputElement | null;
+    const button = document.getElementById("launch-fleet") as HTMLButtonElement | null;
+    const note = document.getElementById("draw-note");
+    if (!input || !button || !note) return;
+    const state = launchState(parseEth(input.value), this.#availableBalance);
+    button.disabled = state.disabled;
+    note.textContent = state.note;
+  }
+
   async #connect(): Promise<void> {
     try {
       const address = (await connectWallet()) ?? getConnectedWallet();
@@ -170,6 +197,7 @@ class FleetWizard {
       this.#wallet = address;
       this.#setup = new CampaignSetup(this.#deps());
       this.#availableBalance = await this.#fetchBalance(address);
+      this.#renderLaunch();
 
       const walletLine = el("wallet-line");
       walletLine.textContent = `Connected: ${address.slice(0, 6)}…${address.slice(-4)} · Robinhood testnet`;
@@ -297,12 +325,12 @@ class FleetWizard {
     if (!this.#setup) return;
     this.#renderSummary();
     const draw = parseEth((el("a-draw") as HTMLInputElement).value);
-    const issue = drawIssue(draw, this.#availableBalance);
-    if (issue) {
-      el("draw-note").textContent = issue;
+    const state = launchState(draw, this.#availableBalance);
+    if (state.disabled) {
+      this.#renderLaunch();
+      banner(state.note, "pending");
       return;
     }
-    el("draw-note").textContent = "";
     try {
       const activated = await this.#setup.activate(draw);
       this.#campaign = activated.campaign;

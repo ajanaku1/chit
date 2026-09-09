@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { drawIssue, fundingWait, pollDelayMs, stateLabel } from "../src/fleet/balance.js";
+import { drawIssue, fundingWait, launchState, pollDelayMs, stateLabel } from "../src/fleet/balance.js";
 
 /**
  * The activate step spends a trader's balance, and the wait that follows is the
@@ -92,4 +92,32 @@ test("keeps polling past the deadline, because the sweep is what finishes it", (
 
 test("polls even when the due time is unknown", () => {
   assert.ok(pollDelayMs("Activating", undefined, new Date()) !== undefined);
+});
+
+/**
+ * The launch button must say what it will do. A button that looks ready and
+ * then does nothing when clicked is worse than one that is plainly disabled,
+ * because the trader has no idea whether the app is broken or they are.
+ */
+
+test("launch is blocked and says why when the balance cannot cover the draw", () => {
+  const blocked = launchState(eth("0.01"), "0");
+  assert.equal(blocked.disabled, true);
+  assert.match(blocked.note, /balance/i);
+  assert.match(blocked.note, /Balance page/i, "and where to fix it");
+});
+
+test("launch is blocked for an empty or malformed draw", () => {
+  assert.equal(launchState("", eth("1")).disabled, true);
+  assert.equal(launchState("0", eth("1")).disabled, true);
+});
+
+test("launch is allowed, with the balance shown, when the draw fits", () => {
+  const ready = launchState(eth("0.02"), eth("0.1"));
+  assert.equal(ready.disabled, false);
+  assert.match(ready.note, /0\.1 ETH/, "the trader sees what they have to spend");
+});
+
+test("a zero balance is named as the reason, not left as a silent no-op", () => {
+  assert.match(launchState(eth("0.02"), "0").note, /0 ETH/);
 });

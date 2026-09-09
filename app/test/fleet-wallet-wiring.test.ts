@@ -40,6 +40,25 @@ test("every page that needs a wallet reacts when one connects", async () => {
   }
 });
 
+test("reacting to a wallet never asks for one again", async () => {
+  // Only the wizard initiates a connection, from its own step button. The other
+  // pages follow the header, so a reference to connectWallet there would mean a
+  // second prompt for a wallet the trader has already granted.
+  for (const page of ["balance-page.ts", "fleet-dashboard.ts"]) {
+    const text = await source(page);
+    assert.doesNotMatch(text, /connectWallet/, `${page} initiates its own connection`);
+  }
+
+  const wizard = await source("fleet-page.ts");
+  const at = wizard.indexOf('"chit-wallet-changed"');
+  assert.ok(at > 0, "the wizard does not react to wallet changes");
+  assert.doesNotMatch(
+    wizard.slice(at, at + 400),
+    /connectWallet\s*\(/,
+    "the wizard asks for a wallet while reacting to one that just connected",
+  );
+});
+
 test("the header wallet control is on every page that listens for it", async () => {
   for (const html of ["balance.html", "fleet.html", "fleet-dashboard.html"]) {
     const text = await readFile(join(appRoot, html), "utf8");

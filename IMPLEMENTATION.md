@@ -832,3 +832,28 @@ reading them. Each is now guarded by a test in `app/test/fleet-wallet-wiring.tes
 Verified by driving the exact path the browser takes over HTTP against the local
 server: challenge, `personal_sign`, then the action. `balance` answers 200 with
 live pool state.
+
+## Stage 2 — the wizard's launch step (2026-09-09)
+
+Reported from a real run: the wallet had to be connected several times, and the
+Launch button did nothing when clicked. Both were the wizard's.
+
+- **Reacting to a wallet asked for one again.** The wizard's
+  `chit-wallet-changed` handler called `#connect()`, which calls
+  `connectWallet()`, so a wallet connected from the header immediately triggered
+  a second `eth_requestAccounts`. It now adopts the address the header already
+  has. The wiring test asserts the rule directly: the Balance page and the
+  dashboard never reference `connectWallet` at all, and the wizard, which owns
+  its own connect button, must not call it while reacting to a change.
+- **Launch looked ready and silently returned.** With a zero balance,
+  `#launch()` wrote a note and returned, leaving a fully-styled orange button
+  that appeared to do nothing. `launchState` now drives the button's disabled
+  state and its note from the same answer, the draw input revalidates as it is
+  typed, and arriving at the step renders it immediately. A blocked launch also
+  raises the banner rather than only a line of small text.
+- **A zero balance says so.** "That is more than your balance of 0 ETH" now
+  reads "You have 0 ETH at Chit. Add some on the Balance page first."
+
+The underlying cause of the blocked launch is real and unchanged: the operator
+wallet holds about 0.0093 ETH, less than the smallest 0.01 deposit, so no
+deposit has been made and the balance is genuinely zero.

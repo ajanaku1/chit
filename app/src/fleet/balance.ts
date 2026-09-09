@@ -93,7 +93,9 @@ export const drawIssue = (amount: string, available: string): string | undefined
   if (!DECIMAL.test(amount) || BigInt(amount) === 0n) return "Enter how much of your balance this fleet may spend.";
   if (BigInt(amount) > BigInt(DRAW_CAP)) return `A fleet may hold at most ${toEth(DRAW_CAP)} ETH.`;
   if (BigInt(amount) > BigInt(available)) {
-    return `That is more than your balance of ${toEth(available)} ETH. Add ETH on the Balance page.`;
+    return BigInt(available) === 0n
+      ? "You have 0 ETH at Chit. Add some on the Balance page first."
+      : `That is more than your balance of ${toEth(available)} ETH. Add more on the Balance page.`;
   }
   return undefined;
 };
@@ -135,4 +137,15 @@ export const pollDelayMs = (state: string, dueAt: string | undefined, now: Date)
   if (Number.isNaN(remaining) || remaining <= 0) return 10_000;
   // Close to the deadline, check often; far from it, do not hammer the service.
   return Math.min(30_000, Math.max(5_000, remaining));
+};
+
+/**
+ * Whether the launch button may be pressed, and what to say beneath it. The
+ * same answer drives the button and the note, so a disabled button always has
+ * a reason next to it.
+ */
+export const launchState = (draw: string, available: string): { disabled: boolean; note: string } => {
+  const issue = drawIssue(draw, available);
+  if (issue) return { disabled: true, note: issue };
+  return { disabled: false, note: `Your balance is ${toEth(available)} ETH.` };
 };
