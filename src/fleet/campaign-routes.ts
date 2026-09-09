@@ -227,7 +227,9 @@ export class CampaignRouter {
 
   /** What the trader holds, is holding back, and may still deposit (FR-002, FR-003). */
   async #balance(wallet: string): Promise<RouterResult> {
-    return { status: 200, body: await this.#pool().balance(wallet as Address) };
+    const pool = this.#pool();
+    await this.#sweepOpportunistically();
+    return { status: 200, body: await pool.balance(wallet as Address) };
   }
 
   /**
@@ -268,6 +270,7 @@ export class CampaignRouter {
   }
 
   async #campaign(wallet: string, body: Record<string, unknown>): Promise<CampaignRecord> {
+    await this.#sweepOpportunistically();
     const id = String(body["campaign"] ?? "");
     const record = this.#campaigns.get(id) ?? (await this.#restore(id, wallet));
     if (!record || record.ownerWallet !== wallet) {
@@ -300,6 +303,21 @@ export class CampaignRouter {
     const chain = this.#deps.chain;
     const report = await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []));
     return { status: 200, body: report };
+  }
+
+  /**
+   * Sweeps as a side effect of ordinary traffic, so a fleet is funded when its
+   * wait is over even where the schedule is coarser than the wait. Best effort:
+   * the request it rides on must not fail because a sweep did.
+   */
+  async #sweepOpportunistically(): Promise<void> {
+    const { pool, chain } = this.#deps;
+    if (!pool) return;
+    try {
+      await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []));
+    } catch {
+      // The scheduled sweep will pick it up; nothing here is the caller's fault.
+    }
   }
 
   /** The draw a trader may commit: within the cap and within their balance. */

@@ -723,3 +723,25 @@ run, which is the reason it exists.
 The pool is not deployed: `deployments/fleet-46630.json` has no `pool` record,
 `FLEET_POOL_ADDRESS` is unset, and the hosted service answers 503 for every pool
 action until both exist. T040 is outward and waits for a go-ahead.
+
+## Stage 2 — the sweep on a Hobby plan (2026-09-09)
+
+The pool is deployed on 46630 at `0xce92…00c9` (recorded in
+deployments/fleet-46630.json) and `FLEET_POOL_ADDRESS` is set in the host
+environment. Two things surfaced when the first Stage 2 deploy was attempted.
+
+- **The Vercel project is on Hobby, not Pro.** The per-minute cron this plan
+  assumed is rejected outright, so no deploy succeeded at all until the schedule
+  changed. The cron is now daily (`0 3 * * *`) and is a backstop only.
+- **The opportunistic sweep was missing.** T024 called for sweeping at the start
+  of state-changing actions as well as on a schedule, and only the scheduled
+  half was built; the task was marked done anyway. With a daily cron that gap
+  would have left fleets unfunded for up to a day, breaking SC-004. Ordinary
+  traffic now sweeps: any campaign lookup and any balance read funds every due
+  draw and posts every due charge, best effort, so a failed sweep never fails
+  the request it rode on. A fork test covers it by funding a due fleet through
+  an ordinary `read` with no sweep call at all.
+
+The live journey has not run: the operator wallet holds about 0.0093 ETH, less
+than the smallest deposit size of 0.01 ETH, so the trader side cannot fund
+itself. It needs a faucet top-up before T040.

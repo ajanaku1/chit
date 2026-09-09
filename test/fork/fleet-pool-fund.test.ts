@@ -174,6 +174,21 @@ describe("Pooled funding and buys", () => {
     assert.equal(spent, draw.spent - HEADROOM * 5n, "the trader is charged what their buys cost");
   });
 
+  it("funds a due fleet on an ordinary request, without waiting for the cron", async () => {
+    const s = await setup();
+    const activated = await s.same("activate", { campaign: s.campaign, draw: parseEther("0.02").toString() });
+    const accounts = (activated.body as { accounts: Address[] }).accounts;
+    await travel(200);
+
+    // No sweep call: a trader opening the dashboard is enough. The scheduled
+    // sweep is a backstop, not the only way a fleet ever gets funded.
+    const read = await s.elsewhere("read", { campaign: s.campaign });
+    assert.equal((read.body as { state: string }).state, "Active", JSON.stringify(read.body));
+    for (const account of accounts) {
+      assert.equal(await s.publicClient.getBalance({ address: account }), HEADROOM, "seeded without a cron");
+    }
+  });
+
   it("charges nothing and returns the principal when a buy fails", async () => {
     const s = await setup();
     const activated = await s.same("activate", { campaign: s.campaign, draw: parseEther("0.02").toString() });
