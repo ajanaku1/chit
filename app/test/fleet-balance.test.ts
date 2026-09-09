@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { depositOptions, exitView, isFresh, loadCachedBalance, receiptOutcome, saveCachedBalance, toEth, withdrawIssue, type BalanceState } from "../src/fleet/balance.js";
+import { canAddFunds, depositOptions, exitView, isFresh, loadCachedBalance, receiptOutcome, saveCachedBalance, toEth, withdrawIssue, type BalanceState } from "../src/fleet/balance.js";
 
 /**
  * The Balance page decides what a trader is offered before any transaction is
@@ -180,4 +180,37 @@ test("the page offers a refresh and lays the tiles out as a grid", async () => {
   const html = await readFile(join(appRoot, "balance.html"), "utf8");
   assert.match(html, /id="balance-refresh"/, "the trader can refresh without a reload");
   assert.match(html, /class="summary grid"/, "tiles share one width, whatever their count");
+});
+
+/**
+ * Choosing an amount and committing to it are two different decisions. A row of
+ * buttons that each move money means a mis-click costs ETH; picking a size then
+ * pressing Add funds is one deliberate act.
+ */
+test("nothing can be added until a size is chosen", () => {
+  assert.equal(canAddFunds(state(), undefined), false);
+  assert.equal(canAddFunds(state(), ""), false);
+  assert.equal(canAddFunds(state(), eth("0.05")), true);
+});
+
+test("a size the caps refuse cannot be added, even if it is selected", () => {
+  const nearCap = state({
+    headroom: { sizes: [eth("0.01")], perTraderRemaining: eth("0.04"), poolRemaining: eth("4.9") },
+  });
+  assert.equal(canAddFunds(nearCap, eth("0.1")), false, "over the trader's own limit");
+  assert.equal(canAddFunds(nearCap, eth("0.01")), true);
+});
+
+test("nothing can be added while the pool is paused", () => {
+  assert.equal(canAddFunds(state({ pool: { paused: true } }), eth("0.05")), false);
+});
+
+test("an amount that is not a published size cannot be added", () => {
+  assert.equal(canAddFunds(state(), eth("0.03")), false);
+});
+
+test("the page has a separate, disabled-by-default Add funds control", async () => {
+  const html = await readFile(join(appRoot, "balance.html"), "utf8");
+  assert.match(html, /id="deposit-submit"[^>]*disabled/, "Add funds starts disabled until a size is picked");
+  assert.match(html, /id="deposit-submit"[^>]*class="[^"]*primary/, "Add funds is the page's primary action");
 });

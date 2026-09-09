@@ -7,6 +7,7 @@
 import { encodeFunctionData, type Hex } from "viem";
 
 import {
+  canAddFunds,
   depositOptions,
   exitView,
   loadCachedBalance,
@@ -54,6 +55,8 @@ let wallet: Hex | undefined;
 let state: BalanceState | undefined;
 /** The pool address the service reports, so the page never hardcodes it. */
 let poolAddress: Hex | undefined;
+/** The size the trader has picked, committed only when Add funds is pressed. */
+let selectedSize: string | undefined;
 
 const ethereum = (): Eip1193 => {
   const eth = (globalThis as { ethereum?: Eip1193 }).ethereum;
@@ -84,18 +87,30 @@ const renderFigures = (view: BalanceState): void => {
 
 const renderDeposits = (view: BalanceState): void => {
   const host = el("deposit-sizes");
+  const options = depositOptions(view);
+  if (selectedSize && !canAddFunds(view, selectedSize)) selectedSize = undefined;
+
   host.replaceChildren();
-  for (const option of depositOptions(view)) {
+  for (const option of options) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = option.label;
     button.disabled = option.disabled;
+    button.setAttribute("aria-pressed", String(selectedSize === option.size));
     if (option.reason) button.title = option.reason;
-    button.addEventListener("click", () => void deposit(option.size));
+    // Picking a size commits to nothing; Add funds is the decision.
+    button.addEventListener("click", () => {
+      selectedSize = option.size;
+      renderDeposits(view);
+    });
     host.appendChild(button);
   }
-  const blocked = depositOptions(view).find((option) => option.disabled);
-  el("deposit-note").textContent = blocked?.reason ?? "";
+
+  (el("deposit-submit") as HTMLButtonElement).disabled = !canAddFunds(view, selectedSize);
+  const blocked = options.find((option) => option.disabled);
+  el("deposit-note").textContent = selectedSize
+    ? `Adding ${toEth(selectedSize)} ETH to your Chit balance.`
+    : (blocked?.reason ?? "Pick an amount to add.");
 };
 
 const renderExit = (view: BalanceState): void => {
@@ -249,6 +264,9 @@ const forceRefresh = async (): Promise<void> => {
 
 window.addEventListener("chit-wallet-changed", () => void onWalletChanged());
 el("balance-refresh").addEventListener("click", () => void forceRefresh());
+el("deposit-submit").addEventListener("click", () => {
+  if (selectedSize) void deposit(selectedSize);
+});
 
 el("withdraw-form").addEventListener("submit", (event) => void withdraw(event));
 el("exit-request").addEventListener("click", () => {

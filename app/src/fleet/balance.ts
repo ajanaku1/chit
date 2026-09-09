@@ -192,3 +192,10 @@ export const loadCachedBalance = (storage: Storage, wallet: string): CachedBalan
 /** Whether a cached read is recent enough to show without signing again. */
 export const isFresh = (savedAt: number | undefined, now: Date, maxAgeMs = FRESH_MS): boolean =>
   savedAt !== undefined && now.getTime() - savedAt <= maxAgeMs;
+
+/** Whether the chosen deposit size may actually be added right now. */
+export const canAddFunds = (state: BalanceState, selected: string | undefined): boolean => {
+  if (!selected) return false;
+  const option = depositOptions(state).find((entry) => entry.size === selected);
+  return option !== undefined && !option.disabled;
+};

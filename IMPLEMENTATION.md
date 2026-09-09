@@ -963,3 +963,37 @@ between Balance and Set up costs no prompt inside that minute; the dashboard
 still signs once for its live campaign read, which must not be cached because
 the campaign's state is what the trader is watching change. A test forbids any
 page from signing for a balance itself.
+
+## Stage 2 — why every menu change asked for a signature (2026-09-09)
+
+The shared cached read was correct and was not the problem. The server log
+showed the reads themselves failing:
+
+```
+fleet route failed ContractFunctionExecutionError: HTTP request failed.
+URL: https://rpc.testnet.chain.robinhood.com/
+```
+
+The public testnet RPC was dropping requests, so the balance read returned 503,
+nothing was ever cached, and the next page load signed again and failed again.
+The prompt on every menu change was that loop, not a wallet or storage fault.
+
+The cause was volume. Each request swept, and a sweep reads every draw and every
+queued charge one call at a time; the balance read then walked the same state
+again. A single page load could make dozens of separate HTTP calls to a
+rate-limited endpoint.
+
+- **The sweep is throttled** to at most once every ten seconds per instance
+  (`createSweepGate`), which is far inside the one-to-fifteen minute funding
+  wait it exists to serve.
+- **The transport batches and retries**: `batch: true` collapses a page's reads
+  into one HTTP call, with five retries and a longer timeout to absorb the rest.
+- **The depositor record is read once** per balance, not twice.
+
+## Stage 2 — choosing an amount is not spending it (2026-09-09)
+
+The deposit row moved money on the click of a size, so a mis-click cost ETH.
+Picking a size now only selects it, shown with `aria-pressed`, and a separate
+Add funds button commits, disabled until a valid size is chosen. `canAddFunds`
+holds the rule, refusing an unpublished size, one over either cap, and anything
+at all while the pool is paused.
