@@ -857,3 +857,25 @@ Launch button did nothing when clicked. Both were the wizard's.
 The underlying cause of the blocked launch is real and unchanged: the operator
 wallet holds about 0.0093 ETH, less than the smallest 0.01 deposit, so no
 deposit has been made and the balance is genuinely zero.
+
+## Stage 2 — the wizard still asked for a connected wallet (2026-09-09)
+
+Reported from a real run, with the server log confirming both halves.
+
+- **Adopting a wallet did half the job.** `#adopt` set the address but skipped
+  everything else the connect step does: the wallet line, `setup.connect`, and
+  the move to the next step. So a trader who connected from the header was still
+  shown "Connect wallet" inside the wizard. Both routes now go through `#adopt`,
+  which advances only when the trader is actually waiting on the welcome or
+  connect step, so adopting never yanks anyone out of a later one. The wallet
+  line now also shows the Chit balance, which is the number the launch step
+  depends on. A test asserts the two routes share a path and that adopting
+  performs each step.
+- **The zero balance was correct.** The pool held 0 ETH and no deposit
+  transaction existed: the wallet had been funded on Ethereum Sepolia, not on
+  Robinhood testnet, which is a different chain with a different faucet. Once
+  funded on 46630 the check reports 0.509 ETH and reads ready. The Balance page
+  was right; the wizard just told the trader too late and too quietly.
+- **A deposit now confirms itself.** It reported "sent" and never refreshed, so
+  a confirmed deposit looked like a failure. It now shows the transaction hash
+  and re-reads until the balance moves.

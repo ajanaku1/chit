@@ -56,9 +56,10 @@ const ethereum = (): Eip1193 => {
   return eth;
 };
 
-const sendToPool = async (data: Hex, value?: bigint): Promise<void> => {
-  if (!wallet || !poolAddress) throw new Error("not_connected");
-  await ethereum().request({
+const sendToPool = async (data: Hex, value?: bigint): Promise<Hex> => {
+  if (!wallet) throw new Error("Connect your wallet first.");
+  if (!poolAddress) throw new Error("The pool is not configured yet.");
+  return (await ethereum().request({
     method: "eth_sendTransaction",
     params: [{
       from: wallet,
@@ -66,7 +67,7 @@ const sendToPool = async (data: Hex, value?: bigint): Promise<void> => {
       data,
       ...(value === undefined ? {} : { value: `0x${value.toString(16)}` }),
     }],
-  });
+  })) as Hex;
 };
 
 const renderFigures = (view: BalanceState): void => {
@@ -116,10 +117,29 @@ const refresh = async (): Promise<void> => {
   renderExit(state);
 };
 
+/** Re-reads until the balance moves, so a confirmed deposit is never invisible. */
+const settle = async (was: string, what: string): Promise<void> => {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    await new Promise((resolve) => globalThis.setTimeout(resolve, 3_000));
+    try {
+      await refresh();
+      if (state && state.deposited !== was) {
+        banner(`${what} confirmed.`, "ok");
+        return;
+      }
+    } catch {
+      // Keep waiting; the chain is the slow part, not the service.
+    }
+  }
+  banner(`${what} sent. It has not confirmed yet; reload in a moment.`, "pending");
+};
+
 const deposit = async (size: string): Promise<void> => {
+  const was = state?.deposited ?? "0";
   try {
-    await sendToPool(encodeFunctionData({ abi: POOL_ABI, functionName: "deposit" }), BigInt(size));
-    banner("Deposit sent. Your balance updates once it confirms.", "pending");
+    const hash = await sendToPool(encodeFunctionData({ abi: POOL_ABI, functionName: "deposit" }), BigInt(size));
+    banner(`Deposit sent (${hash.slice(0, 10)}…). Waiting for it to confirm.`, "pending");
+    await settle(was, "Deposit");
   } catch (error) {
     banner(describe(error), "error");
   }

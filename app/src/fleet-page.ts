@@ -174,6 +174,17 @@ class FleetWizard {
     this.#setup ??= new CampaignSetup(this.#deps());
     this.#availableBalance = await this.#fetchBalance(address);
     this.#renderLaunch();
+
+    const walletLine = el("wallet-line");
+    walletLine.textContent =
+      `Connected: ${address.slice(0, 6)}…${address.slice(-4)} · Robinhood testnet` +
+      ` · balance ${toEth(this.#availableBalance)} ETH`;
+    walletLine.hidden = false;
+
+    await this.#setup.connect(address);
+    // Only move the trader on if they are waiting on this step; adopting a
+    // wallet from the header must not yank them out of a later one.
+    if (this.#step === "connect" || this.#step === "welcome") this.#go("size");
   }
 
   /** Keeps the launch button and its note telling the same story. */
@@ -194,17 +205,8 @@ class FleetWizard {
         banner("Connect your wallet and approve the switch to Robinhood testnet to continue.", "pending");
         return;
       }
-      this.#wallet = address;
-      this.#setup = new CampaignSetup(this.#deps());
-      this.#availableBalance = await this.#fetchBalance(address);
-      this.#renderLaunch();
-
-      const walletLine = el("wallet-line");
-      walletLine.textContent = `Connected: ${address.slice(0, 6)}…${address.slice(-4)} · Robinhood testnet`;
-      walletLine.hidden = false;
-
-      await this.#setup.connect(this.#wallet);
-      this.#go("size");
+      // One route in, whether the wallet came from this button or the header.
+      await this.#adopt(address);
     } catch (error) {
       banner(`Couldn't connect: ${(error as Error).message}`, "error");
     }

@@ -108,3 +108,21 @@ test("each action the app sends is allowed by the route it goes to", async () =>
     );
   }
 });
+
+/**
+ * A wallet connected from the header must leave the wizard in the same state as
+ * one connected from its own button. Two routes that prepare different amounts
+ * of state is how a connected trader still gets asked to connect.
+ */
+test("the wizard prepares the same state however the wallet arrived", async () => {
+  const wizard = await source("fleet-page.ts");
+  const connect = /async #connect\(\)[\s\S]*?\n  \}/.exec(wizard);
+  assert.ok(connect, "no #connect to inspect");
+  assert.match(connect![0], /#adopt\(/, "#connect does not go through the shared route");
+
+  const adopt = /async #adopt\([\s\S]*?\n  \}/.exec(wizard);
+  assert.ok(adopt, "no #adopt to inspect");
+  for (const step of ["wallet-line", "#setup.connect", '#go("size")']) {
+    assert.ok(adopt![0].includes(step), `adopting a wallet skips ${step}`);
+  }
+});
