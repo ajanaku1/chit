@@ -9,6 +9,9 @@ import { encodeFunctionData, type Hex } from "viem";
 import {
   depositOptions,
   exitView,
+  loadCachedBalance,
+  receiptOutcome,
+  saveCachedBalance,
   toEth,
   withdrawIssue,
   type BalanceState,
@@ -18,6 +21,8 @@ import {
   initHeaderWallet,
   initTheme,
   parseEth,
+  waitForReceipt,
+  walletEth,
 } from "./fleet/page-shared.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 
@@ -107,14 +112,30 @@ const renderExit = (view: BalanceState): void => {
         : `Ready: claim ${toEth(exit.amount ?? "0")} ETH now.`;
 };
 
+const render = (view: BalanceState): void => {
+  renderFigures(view);
+  renderDeposits(view);
+  renderExit(view);
+};
+
+/** The wallet's own ETH: the number a trader expects to see first. */
+const renderWalletEth = async (): Promise<void> => {
+  if (!wallet) return;
+  try {
+    el("wallet-eth").textContent = `${toEth(await walletEth(wallet))} ETH`;
+  } catch {
+    el("wallet-eth").textContent = "—";
+  }
+};
+
 const refresh = async (): Promise<void> => {
   if (!wallet) return;
+  void renderWalletEth();
   const body = await signedFleetApi(wallet, "balance", {});
   state = body as unknown as BalanceState;
   poolAddress = (body["poolAddress"] as Hex | undefined) ?? poolAddress;
-  renderFigures(state);
-  renderDeposits(state);
-  renderExit(state);
+  saveCachedBalance(sessionStorage, wallet, state);
+  render(state);
 };
 
 /** Re-reads until the balance moves, so a confirmed deposit is never invisible. */
@@ -134,15 +155,24 @@ const settle = async (was: string, what: string): Promise<void> => {
   banner(`${what} sent. It has not confirmed yet; reload in a moment.`, "pending");
 };
 
-const deposit = async (size: string): Promise<void> => {
-  const was = state?.deposited ?? "0";
+/** Sends to the pool and reports only what the chain confirms. */
+const transact = async (what: string, data: Hex, value?: bigint): Promise<boolean> => {
   try {
-    const hash = await sendToPool(encodeFunctionData({ abi: POOL_ABI, functionName: "deposit" }), BigInt(size));
-    banner(`Deposit sent (${hash.slice(0, 10)}…). Waiting for it to confirm.`, "pending");
-    await settle(was, "Deposit");
+    const hash = await sendToPool(data, value);
+    banner(`${what} sent (${hash.slice(0, 10)}…). Waiting for the chain.`, "pending");
+    const outcome = receiptOutcome(await waitForReceipt(hash));
+    banner(`${what}: ${outcome.message}`, outcome.ok ? "ok" : "error");
+    return outcome.ok;
   } catch (error) {
     banner(describe(error), "error");
+    return false;
   }
+};
+
+const deposit = async (size: string): Promise<void> => {
+  const was = state?.deposited ?? "0";
+  const ok = await transact("Deposit", encodeFunctionData({ abi: POOL_ABI, functionName: "deposit" }), BigInt(size));
+  if (ok) await settle(was, "Deposit");
 };
 
 const withdraw = async (event: Event): Promise<void> => {
@@ -193,6 +223,14 @@ const onWalletChanged = async (): Promise<void> => {
     return;
   }
   wallet = address;
+  // Last known figures first, so nothing blanks while the fresh read waits on
+  // a signature; then the live read replaces them.
+  const cached = loadCachedBalance(sessionStorage, address);
+  if (cached) {
+    state = cached;
+    poolAddress = (cached.poolAddress as Hex | undefined) ?? poolAddress;
+    render(cached);
+  }
   try {
     await refresh();
   } catch (error) {
@@ -204,14 +242,18 @@ window.addEventListener("chit-wallet-changed", () => void onWalletChanged());
 
 el("withdraw-form").addEventListener("submit", (event) => void withdraw(event));
 el("exit-request").addEventListener("click", () => {
-  void sendToPool(encodeFunctionData({ abi: POOL_ABI, functionName: "requestExit" }))
-    .then(() => banner("Exit requested. You can claim your ETH in 24 hours.", "pending"))
-    .catch((error: unknown) => banner(describe(error), "error"));
+  if (state && BigInt(state.deposited) === 0n) {
+    banner("Nothing to exit: you have not deposited anything.", "pending");
+    return;
+  }
+  void transact("Exit request", encodeFunctionData({ abi: POOL_ABI, functionName: "requestExit" })).then((ok) => {
+    if (ok) void refresh();
+  });
 });
 el("exit-execute").addEventListener("click", () => {
-  void sendToPool(encodeFunctionData({ abi: POOL_ABI, functionName: "executeExit" }))
-    .then(() => banner("Claimed.", "ok"))
-    .catch((error: unknown) => banner(describe(error), "error"));
+  void transact("Claim", encodeFunctionData({ abi: POOL_ABI, functionName: "executeExit" })).then((ok) => {
+    if (ok) void refresh();
+  });
 });
 if (getConnectedWallet()) void onWalletChanged();
 else banner("Connect your wallet to see your balance.", "pending");

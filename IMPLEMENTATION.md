@@ -897,3 +897,29 @@ to the page that uses them.
 
 Two tests keep it that way: every fleet page must link to the Balance page, and
 the launch step must link to the page it names.
+
+## Stage 2 — the Balance page, looked at (2026-09-09)
+
+A screenshot of the live page showed four things at once.
+
+- **It was never styled.** The page's markup and logic were written, its CSS
+  was not, so the figures rendered as the browser's default definition list.
+  It now reuses the wizard's own components (`summary` tiles, the `quickpick`
+  row, `primary` and `ghost` buttons) with one added rule to let the tiles wrap.
+  The dashboard's balance strip uses the same tiles. A test asserts the shared
+  classes are present, so the page cannot quietly fall back to bare markup.
+- **It showed only the Chit balance.** A trader who has just funded a wallet
+  expects to see that number first; seeing "0 ETH" everywhere read as broken.
+  An "In your wallet" tile now sits beside "Available at Chit", read through
+  the wallet's own provider.
+- **It blanked on every navigation.** Reading the balance requires a signature,
+  and until that signature landed the figures were dashes, which read as
+  "gone". The last known figures are kept per wallet in session storage and
+  shown at once, then replaced by the live read. One trader's cache is never
+  shown to another.
+- **It announced success before the chain answered.** "Exit requested" appeared
+  the moment the wallet returned a hash. On chain, no exit had been requested:
+  the transaction had reverted (nothing deposited) and the page never checked.
+  Every pool transaction now waits for its receipt through the wallet's
+  provider and reports the receipt's status, and an exit with nothing
+  deposited is refused before a transaction is even offered.

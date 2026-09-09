@@ -16,6 +16,8 @@ export type BalanceState = {
   headroom: Headroom;
   exit: { requestedAt?: string; amount?: string; availableAt?: string };
   pool: { paused: boolean };
+  /** Where the trader's own deposit and exit transactions go; set by the service. */
+  poolAddress?: string;
 };
 
 export type DepositOption = { size: string; label: string; disabled: boolean; reason?: string };
@@ -148,4 +150,34 @@ export const launchState = (draw: string, available: string): { disabled: boolea
   const issue = drawIssue(draw, available);
   if (issue) return { disabled: true, note: issue };
   return { disabled: false, note: `Your balance is ${toEth(available)} ETH.` };
+};
+
+/** The only two answers a transaction can give, and the one it gives before it answers. */
+export const receiptOutcome = (receipt: { status?: string } | null | undefined): { ok: boolean; message: string } => {
+  if (!receipt) return { ok: false, message: "Sent, but not confirmed yet. Waiting on the chain." };
+  if (receipt.status === "0x1") return { ok: true, message: "Confirmed." };
+  return { ok: false, message: "The chain rejected it: the transaction reverted." };
+};
+
+type Storage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
+const CACHE_PREFIX = "chit-balance:";
+
+/** Keeps the last figures per wallet, so a page never blanks while it re-reads. */
+export const saveCachedBalance = (storage: Storage, wallet: string, state: BalanceState): void => {
+  try {
+    storage.setItem(`${CACHE_PREFIX}${wallet.toLowerCase()}`, JSON.stringify(state));
+  } catch {
+    // Storage may be unavailable; the live read still works.
+  }
+};
+
+export const loadCachedBalance = (storage: Storage, wallet: string): BalanceState | undefined => {
+  try {
+    const raw = storage.getItem(`${CACHE_PREFIX}${wallet.toLowerCase()}`);
+    if (!raw) return undefined;
+    const parsed = JSON.parse(raw) as BalanceState;
+    return typeof parsed.available === "string" && parsed.headroom ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
 };

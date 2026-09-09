@@ -37,9 +37,10 @@
         <section class="wstep" aria-labelledby="balance-h">
           <p class="kicker">Your ETH at Chit</p>
           <h1 id="balance-h">One balance. Every fleet draws from it.</h1>
-          <dl class="balance-figures">
-            <div><dt>Available</dt><dd id="balance-available">—</dd></div>
+          <dl class="summary wrap">
+            <div><dt>Available at Chit</dt><dd id="balance-available">—</dd></div>
             <div><dt>Held by open fleets</dt><dd id="balance-draws">—</dd></div>
+            <div><dt>In your wallet</dt><dd id="wallet-eth">—</dd></div>
             <div><dt>Deposited</dt><dd id="balance-deposited">—</dd></div>
             <div><dt>Spent</dt><dd id="balance-spent">—</dd></div>
           </dl>
@@ -56,7 +57,7 @@
           <p class="lead">
             Deposits come in fixed sizes so yours looks like everyone else's. Pick one.
           </p>
-          <div id="deposit-sizes" class="deposit-sizes" role="group" aria-labelledby="deposit-h"></div>
+          <div id="deposit-sizes" class="quickpick" role="group" aria-labelledby="deposit-h"></div>
           <p id="deposit-note" class="fineprint" role="status" aria-live="polite"></p>
         </section>
 
@@ -72,7 +73,7 @@
               <input id="withdraw-destination" name="destination" type="text" placeholder="0x…" autocomplete="off" />
             </div>
             <p id="withdraw-note" class="fineprint" role="status" aria-live="polite"></p>
-            <button id="withdraw-submit" type="submit">Withdraw</button>
+            <button id="withdraw-submit" type="submit" class="primary">Withdraw</button>
           </form>
         </section>
 
@@ -83,8 +84,10 @@
             it, wait 24 hours, then claim it. This works whether or not Chit is running.
           </p>
           <p id="exit-status" class="fineprint" role="status" aria-live="polite">—</p>
-          <button id="exit-request" type="button">Start a self-serve exit</button>
-          <button id="exit-execute" type="button" disabled>Claim it</button>
+          <div class="wnav">
+            <button id="exit-request" type="button" class="ghost">Start a self-serve exit</button>
+            <button id="exit-execute" type="button" class="primary" disabled>Claim it</button>
+          </div>
         </section>
       </main>
 

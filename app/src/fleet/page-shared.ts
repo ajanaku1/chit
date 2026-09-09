@@ -207,6 +207,35 @@ export const connectWallet = async (): Promise<Hex | undefined> => {
 
 export const disconnectWallet = (): void => setConnected(undefined);
 
+/** The wallet's own ETH on the current chain, as wei. */
+export const walletEth = async (wallet: Hex): Promise<string> => {
+  const eth = ethereum();
+  if (!eth) return "0";
+  const hex = (await eth.request({ method: "eth_getBalance", params: [wallet, "latest"] })) as string;
+  return BigInt(hex).toString();
+};
+
+/**
+ * Polls the wallet's provider for a receipt. A hash means the wallet sent it;
+ * only the receipt says whether the chain took it.
+ */
+export const waitForReceipt = async (
+  hash: Hex,
+  attempts = 30,
+  delayMs = 2_000,
+): Promise<{ status?: string } | null> => {
+  const eth = ethereum();
+  if (!eth) return null;
+  for (let i = 0; i < attempts; i += 1) {
+    const receipt = (await eth.request({ method: "eth_getTransactionReceipt", params: [hash] })) as
+      | { status?: string }
+      | null;
+    if (receipt) return receipt;
+    await new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
+  }
+  return null;
+};
+
 /**
  * Wires the header Connect/Disconnect control and keeps it in sync with wallet
  * events. This is a soft in-app disconnect: EIP-1193 has no revoke, so it forgets

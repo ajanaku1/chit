@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { depositOptions, exitView, withdrawIssue, type BalanceState } from "../src/fleet/balance.js";
+import { depositOptions, exitView, loadCachedBalance, receiptOutcome, saveCachedBalance, withdrawIssue, type BalanceState } from "../src/fleet/balance.js";
 
 /**
  * The Balance page decides what a trader is offered before any transaction is
@@ -97,4 +97,52 @@ test("the page carries the deposit, withdraw, and exit cards and the honest clai
   }
   assert.match(html, /operator/i, "the page says who can still see the mapping");
   assert.doesNotMatch(html, /anonymous|untraceable/i);
+});
+
+/**
+ * A transaction is not done when the wallet hands back a hash; it is done when
+ * the chain says so. Reporting "Exit requested" on the hash alone showed a
+ * trader a success the chain had refused.
+ */
+test("a receipt is judged by its status, not by the existence of a hash", () => {
+  assert.equal(receiptOutcome({ status: "0x1" }).ok, true);
+  assert.equal(receiptOutcome({ status: "0x0" }).ok, false);
+  assert.match(receiptOutcome({ status: "0x0" }).message, /reverted|rejected/i);
+  assert.equal(receiptOutcome(null).ok, false, "no receipt yet is not success");
+  assert.match(receiptOutcome(null).message, /not confirmed|waiting/i);
+});
+
+/**
+ * Every navigation re-signs to read the balance, and until that signature the
+ * page showed dashes, which read as "gone". The last known figures are kept per
+ * wallet so the page never blanks, then refreshed.
+ */
+test("the last known balance is kept per wallet and never shown to another", () => {
+  const store = new Map<string, string>();
+  const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+  const alice = "0x00000000000000000000000000000000000a11ce";
+  const bob = "0x00000000000000000000000000000000000b0b00";
+  assert.equal(loadCachedBalance(storage, alice), undefined);
+  saveCachedBalance(storage, alice, state({ available: eth("0.05") }));
+  assert.equal(loadCachedBalance(storage, alice)?.available, eth("0.05"));
+  assert.equal(loadCachedBalance(storage, bob), undefined, "one trader's figures are not another's");
+});
+
+test("a corrupt cache is ignored rather than crashing the page", () => {
+  const storage = { getItem: () => "{not json", setItem: () => undefined };
+  assert.equal(loadCachedBalance(storage, "0x00000000000000000000000000000000000a11ce"), undefined);
+});
+
+test("the page shows the wallet's own ETH beside the Chit balance", async () => {
+  const html = await readFile(join(appRoot, "balance.html"), "utf8");
+  assert.match(html, /id="wallet-eth"/, "a trader must see what is in the wallet, not only what is at Chit");
+});
+
+test("the page is built from the shared components, not bare markup", async () => {
+  const html = await readFile(join(appRoot, "balance.html"), "utf8");
+  assert.match(html, /class="summary[^"]*"[^>]*>\s*<div><dt>Available/, "figures use the summary tiles");
+  assert.match(html, /id="deposit-sizes" class="quickpick"/, "deposit sizes use the quickpick row");
+  assert.match(html, /id="withdraw-submit"[^>]*class="primary"/, "the withdraw action is a primary button");
+  const dashboard = await readFile(join(appRoot, "fleet-dashboard.html"), "utf8");
+  assert.match(dashboard, /id="balance-strip"[\s\S]*?<dl class="summary/, "the dashboard strip uses the same tiles");
 });
