@@ -59,6 +59,11 @@ class FleetWizard {
   start(): void {
     el("start").addEventListener("click", () => this.#go("connect"));
     el("connect-wallet").addEventListener("click", () => void this.#connect());
+    // Connecting from the header counts too; without this the wizard would sit
+    // on step one beside a header that says the wallet is connected.
+    window.addEventListener("chit-wallet-changed", () => {
+      if (!this.#wallet && getConnectedWallet()) void this.#connect();
+    });
     el("size-form").addEventListener("submit", (event) => {
       event.preventDefault();
       void this.#configure();

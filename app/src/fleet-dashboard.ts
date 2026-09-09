@@ -47,6 +47,8 @@ class FleetDashboard {
       button.addEventListener("click", () => void this.#control(button.dataset["action"] as ControlAction));
     }
     el("run-buy").addEventListener("click", () => void this.#runBuy());
+    // The header owns the wallet button; follow it rather than bind it again.
+    window.addEventListener("chit-wallet-changed", () => void this.#refresh());
     void this.#refresh();
     this.#render();
   }

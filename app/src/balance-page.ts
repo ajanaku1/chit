@@ -14,8 +14,6 @@ import {
   type BalanceState,
 } from "./fleet/balance.js";
 import {
-  connectWallet,
-  ensureRobinhoodTestnet,
   getConnectedWallet,
   initHeaderWallet,
   initTheme,
@@ -162,16 +160,27 @@ const describe = (error: unknown): string => {
   return error instanceof Error ? error.message : "Something went wrong.";
 };
 
-const connect = async (): Promise<void> => {
-  const address = (await connectWallet()) ?? getConnectedWallet();
+/**
+ * Follows the wallet the shared header owns. Binding our own click to that
+ * button would fire a second `eth_requestAccounts` alongside the header's, and
+ * wallets refuse a concurrent request, so connecting would appear to fail.
+ */
+const onWalletChanged = async (): Promise<void> => {
+  const address = getConnectedWallet();
   if (!address) {
+    wallet = undefined;
     banner("Connect your wallet to see your balance.", "pending");
     return;
   }
   wallet = address;
-  await ensureRobinhoodTestnet(ethereum());
-  await refresh();
+  try {
+    await refresh();
+  } catch (error) {
+    banner(describe(error), "error");
+  }
 };
+
+window.addEventListener("chit-wallet-changed", () => void onWalletChanged());
 
 el("withdraw-form").addEventListener("submit", (event) => void withdraw(event));
 el("exit-request").addEventListener("click", () => {
@@ -184,6 +193,5 @@ el("exit-execute").addEventListener("click", () => {
     .then(() => banner("Claimed.", "ok"))
     .catch((error: unknown) => banner(describe(error), "error"));
 });
-el("hdr-wallet").addEventListener("click", () => void connect());
-
-if (getConnectedWallet()) void connect();
+if (getConnectedWallet()) void onWalletChanged();
+else banner("Connect your wallet to see your balance.", "pending");

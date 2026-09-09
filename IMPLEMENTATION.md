@@ -806,3 +806,29 @@ rebuilding it, signing works on localhost with no other change.
 
 Verified: every page serves, `/api/fleet/sweep` answers 200 against the live
 pool on 46630, and a challenge names `http://localhost:3000` as its origin.
+
+## Stage 2 — why the frontend could not connect a wallet (2026-09-09)
+
+Three wiring faults, all found by running the real pages locally rather than by
+reading them. Each is now guarded by a test in `app/test/fleet-wallet-wiring.test.ts`.
+
+- **Two owners for one button.** `initHeaderWallet` owns `#hdr-wallet` on every
+  page, and the Balance page bound its own click to it as well. One click fired
+  two `eth_requestAccounts` at once, which wallets refuse ("already
+  processing"), so connecting failed with nothing on screen to explain it. Worse,
+  a second click had the header disconnecting while the page tried to connect.
+  Pages now follow the `chit-wallet-changed` event and never bind that button.
+- **Nothing noticed a wallet arriving.** The dashboard read the wallet once at
+  load and the wizard only through its own step button, so connecting from the
+  header left both empty beside a header that said "connected". Both now listen
+  for the same event.
+- **`topUp` was sent to a route that refused it.** The app posts it to
+  `/api/fleet/campaign`, whose allowlist did not include it, so the button
+  answered 409 with no clue which side was wrong. A test now derives both the
+  actions the pages can send and each route's allowlist from source and checks
+  they agree, which is the class of bug that only surfaces when someone clicks
+  the one button nobody tried.
+
+Verified by driving the exact path the browser takes over HTTP against the local
+server: challenge, `personal_sign`, then the action. `balance` answers 200 with
+live pool state.
