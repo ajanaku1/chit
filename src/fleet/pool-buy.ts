@@ -83,6 +83,21 @@ export type PoolPort = {
   buy(input: PooledBuyInput): Promise<PooledBuyReport>;
 };
 
+/**
+ * Admits one sweep per interval. A sweep reads every draw and every queued
+ * charge, so letting each request run one is how a public RPC gets exhausted;
+ * the work still happens often enough to fund a fleet inside its wait.
+ */
+export const createSweepGate = (intervalMs: number, now: () => number = Date.now): (() => boolean) => {
+  let last = -Infinity;
+  return () => {
+    const at = now();
+    if (at - last < intervalMs) return false;
+    last = at;
+    return true;
+  };
+};
+
 export type PoolServiceOptions = {
   now?: () => Date;
   /** Seconds to wait before a charge is posted; random inside the window by default. */
@@ -114,12 +129,12 @@ export const createPoolService = (
 
   return {
     async balance(depositor) {
-      const [inputs, headroom, paused] = await Promise.all([
+      const [inputs, headroom, paused, record] = await Promise.all([
         pool.ledgerInputs(depositor),
         pool.headroom(depositor),
         pool.paused(),
+        pool.depositorOf(depositor),
       ]);
-      const record = await pool.depositorOf(depositor);
 
       const mine = (ref: Hex): boolean =>
         openDepositor(ledgerKey, ref)?.toLowerCase() === depositor.toLowerCase();

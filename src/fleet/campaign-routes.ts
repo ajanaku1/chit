@@ -15,7 +15,7 @@ import { campaignKey, type ChainBuy, type FleetChain } from "./chain-service.js"
 import { CampaignService, ServiceError, assertNoSecrets } from "./campaign-service.js";
 import { CampaignStateError, canSponsor, transition } from "./campaign-state.js";
 import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
-import { DRAW_CAP, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
+import { DRAW_CAP, createSweepGate, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
 import { UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall } from "./v4-swap.js";
@@ -106,6 +106,8 @@ export class CampaignRouter {
   readonly #deps: RouterDeps;
   readonly #campaigns = new Map<string, CampaignRecord>();
   readonly #randomId: () => string;
+  /** Ordinary traffic sweeps, but not every request: a sweep is many reads. */
+  readonly #sweepGate = createSweepGate(10_000);
 
   constructor(deps: RouterDeps) {
     this.#deps = deps;
@@ -312,7 +314,7 @@ export class CampaignRouter {
    */
   async #sweepOpportunistically(): Promise<void> {
     const { pool, chain } = this.#deps;
-    if (!pool) return;
+    if (!pool || !this.#sweepGate()) return;
     try {
       await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []));
     } catch {

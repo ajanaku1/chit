@@ -92,7 +92,10 @@ const clients = (key: `0x${string}`) => {
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: { default: { http: [rpcUrl] } },
   });
-  const transport = http(rpcUrl);
+  // The public testnet RPC drops requests under a burst, and one dropped read
+  // fails the whole request. Batching turns a page's reads into one HTTP call,
+  // and a retry absorbs the rest.
+  const transport = http(rpcUrl, { batch: true, retryCount: 5, retryDelay: 250, timeout: 20_000 });
   return {
     wallet: createWalletClient({ account: privateKeyToAccount(key), chain, transport }),
     // Vercel's TypeScript pass infers a json-rpc account on this client and
