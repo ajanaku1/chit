@@ -793,3 +793,16 @@ so `FLEET_POOL_ADDRESS` in the host environment held the deployer address
 instead of the pool contract. The check refuses that case by name now, because
 two addresses in the same deployment file are easy to swap and the resulting
 failure looks like a service outage rather than a typo.
+
+## Stage 2 — clicking through the real pages locally (2026-09-09)
+
+`npm run dev:local` builds the site, assembles it, and serves the pages and the
+Fleet API on one origin at http://localhost:3000, using the same handlers Vercel
+runs. It takes the pool address from `deployments/fleet-46630.json` unless the
+environment names one, so a local run needs no edit to `.env` and cannot drift
+from what was actually deployed. `FLEET_ORIGIN` is set to the local server, and
+because the browser signs the challenge string the service returns rather than
+rebuilding it, signing works on localhost with no other change.
+
+Verified: every page serves, `/api/fleet/sweep` answers 200 against the live
+pool on 46630, and a challenge names `http://localhost:3000` as its origin.
