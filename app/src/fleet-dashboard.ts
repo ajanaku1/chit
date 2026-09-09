@@ -9,6 +9,7 @@ import { buildBuyReport, buildControlRoomView, type AccountBuyResult, type Campa
 import { getConnectedWallet, initHeaderWallet, initTheme, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
 import type { DrawView } from "./fleet/control-room.js";
+import { pollDelayMs } from "./fleet/balance.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -136,6 +137,9 @@ class FleetDashboard {
       this.#available = String(balance["available"] ?? "0");
       this.#poolPaused = Boolean((balance["pool"] as { paused?: boolean } | undefined)?.paused);
       this.#render();
+      // A fleet still being funded is finished by requests like this one.
+      const delay = pollDelayMs(state, this.#draw?.dueAt, new Date());
+      if (delay !== undefined) globalThis.setTimeout(() => void this.#refresh(), delay);
     } catch {
       // The service may not be configured yet; the snapshot still renders.
     }

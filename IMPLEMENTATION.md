@@ -745,3 +745,31 @@ environment. Two things surfaced when the first Stage 2 deploy was attempted.
 The live journey has not run: the operator wallet holds about 0.0093 ETH, less
 than the smallest deposit size of 0.01 ETH, so the trader side cannot fund
 itself. It needs a faucet top-up before T040.
+
+## Stage 2 — can the sweep live without a cron? (2026-09-09)
+
+Yes, and the daily cron stays only as a backstop. Two facts make a schedule
+optional rather than load-bearing:
+
+- **Every request sweeps.** Any campaign lookup or balance read funds due draws
+  and posts due charges, so ordinary use does the work.
+- **The page now polls while a fleet is being funded.** That was the missing
+  half: without it a trader sat on a static "Funding your fleet" screen and
+  nothing swept until they navigated. The wizard and the dashboard now re-read
+  until the campaign is Active, checking more often as the deadline nears
+  (`pollDelayMs`). Since each read sweeps, the trader's own open page is what
+  completes their activation. This is the case that actually mattered, because
+  it is exactly when someone is watching.
+
+What a long quiet period costs, if the site sees no traffic at all: a queued
+charge can pass its 12-hour posting window and expire. That is the operator's
+loss by design, never the trader's, and the balance shown to the trader is
+correct throughout because unposted queued spend is already subtracted from
+`available`. Funding is never lost either: a due draw simply funds on the next
+request.
+
+A dedicated scheduler was considered and is not needed. If one is wanted later,
+a GitHub Actions scheduled workflow hitting `/api/fleet/sweep` costs nothing and
+adds no vendor; a Render cron job would work equally well but introduces a
+second service for one HTTP call. Moving the app itself off Vercel for this
+reason would be a large change for a small problem.

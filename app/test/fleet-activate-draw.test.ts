@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { drawIssue, fundingWait, stateLabel } from "../src/fleet/balance.js";
+import { drawIssue, fundingWait, pollDelayMs, stateLabel } from "../src/fleet/balance.js";
 
 /**
  * The activate step spends a trader's balance, and the wait that follows is the
@@ -61,4 +61,35 @@ test("the wizard asks for a draw and explains the wait", async () => {
   assert.match(html, /id="a-draw"/, "the activate step asks how much of the balance to commit");
   assert.match(html, /id="funding-wait"/, "the wait has somewhere to speak");
   assert.doesNotMatch(html, /No trail back to you/i, "that claim is not true until the pool is live");
+});
+
+/**
+ * While a fleet is being funded the trader's own open page is what drives the
+ * work: every poll is a request, and every request sweeps. Without this the
+ * fleet waits for a schedule instead of for its own deadline.
+ */
+
+test("polls while a fleet is being funded, and stops once it is", () => {
+  const now = new Date("2026-09-09T12:00:00Z");
+  const soon = "2026-09-09T12:04:00.000Z";
+
+  const waiting = pollDelayMs("Activating", soon, now);
+  assert.ok(waiting !== undefined && waiting > 0, "a waiting fleet keeps checking");
+  assert.ok(waiting! <= 30_000, "and checks often enough to fund near its deadline");
+
+  assert.equal(pollDelayMs("Active", soon, now), undefined, "a funded fleet stops polling");
+  assert.equal(pollDelayMs("Closed", soon, now), undefined);
+  assert.equal(pollDelayMs("Revoked", soon, now), undefined);
+});
+
+test("keeps polling past the deadline, because the sweep is what finishes it", () => {
+  const now = new Date("2026-09-09T12:10:00Z");
+  const passed = "2026-09-09T12:04:00.000Z";
+  const delay = pollDelayMs("Activating", passed, now);
+  assert.ok(delay !== undefined && delay > 0, "due but not yet funded still needs a request");
+  assert.ok(delay! <= 15_000, "and a prompt one");
+});
+
+test("polls even when the due time is unknown", () => {
+  assert.ok(pollDelayMs("Activating", undefined, new Date()) !== undefined);
 });

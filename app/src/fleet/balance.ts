@@ -123,3 +123,16 @@ export const stateLabel = (state: string): string =>
     "Awaiting funding": "Ready to activate",
     Activating: "Funding your fleet",
   })[state] ?? state;
+
+/**
+ * How long to wait before asking the service again, or undefined when there is
+ * nothing left to wait for. Polling is not cosmetic here: each request sweeps,
+ * so an open page is what funds a fleet whose wait has run out.
+ */
+export const pollDelayMs = (state: string, dueAt: string | undefined, now: Date): number | undefined => {
+  if (state !== "Activating") return undefined;
+  const remaining = dueAt === undefined ? NaN : Date.parse(dueAt) - now.getTime();
+  if (Number.isNaN(remaining) || remaining <= 0) return 10_000;
+  // Close to the deadline, check often; far from it, do not hammer the service.
+  return Math.min(30_000, Math.max(5_000, remaining));
+};

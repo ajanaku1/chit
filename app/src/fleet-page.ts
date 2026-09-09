@@ -20,7 +20,7 @@ import {
   type SetupDeps,
   type SetupQuote,
 } from "./fleet/campaign-setup.js";
-import { drawIssue, fundingWait } from "./fleet/balance.js";
+import { drawIssue, fundingWait, pollDelayMs } from "./fleet/balance.js";
 import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initTheme, parseEth, saveFleetSnapshot, toEth } from "./fleet/page-shared.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
 import { confirmRecovery, createRecoveryVault, type VaultContext } from "./fleet/vault.js";
@@ -303,6 +303,7 @@ class FleetWizard {
       this.#campaign = activated.campaign;
       const dueAt = (this.#lastResult["draw"] as { dueAt?: string } | undefined)?.dueAt;
       if (dueAt) el("funding-wait").textContent = fundingWait(dueAt, new Date()).message;
+      this.#awaitFunding(activated.state, dueAt);
       saveFleetSnapshot({
         campaign: this.#campaign,
         state: "Active",
@@ -322,6 +323,32 @@ class FleetWizard {
       });
       this.#go("done");
     }
+  }
+
+  /**
+   * Keeps asking until the fleet is funded. Each ask sweeps on the service side,
+   * so the trader's open page is what completes their own activation.
+   */
+  #awaitFunding(state: string, dueAt: string | undefined): void {
+    const delay = pollDelayMs(state, dueAt, new Date());
+    if (delay === undefined || !this.#wallet || !this.#campaign) return;
+    globalThis.setTimeout(() => {
+      void (async () => {
+        try {
+          const body = await signedFleetApi(this.#wallet!, "read", { campaign: this.#campaign! });
+          const next = String(body["state"] ?? state);
+          const nextDue = (body["draw"] as { dueAt?: string } | undefined)?.dueAt;
+          if (next === "Activating") {
+            if (nextDue) el("funding-wait").textContent = fundingWait(nextDue, new Date()).message;
+          } else {
+            el("funding-wait").textContent = "Your fleet is funded and live.";
+          }
+          this.#awaitFunding(next, nextDue);
+        } catch {
+          this.#awaitFunding(state, dueAt);
+        }
+      })();
+    }, delay);
   }
 
   /** The spendable balance, or zero while the pool is not configured yet. */
