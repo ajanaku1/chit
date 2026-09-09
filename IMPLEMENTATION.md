@@ -773,3 +773,23 @@ a GitHub Actions scheduled workflow hitting `/api/fleet/sweep` costs nothing and
 adds no vendor; a Render cron job would work equally well but introduces a
 second service for one HTTP call. Moving the app itself off Vercel for this
 reason would be a large change for a small problem.
+
+## Stage 2 — testing the live configuration locally (2026-09-09)
+
+`npm run fleet-pool:check` reports the operator, the pool address recorded
+against the one configured, whether that address is a contract that answers,
+whether the pool is paused, and whether there is enough testnet ETH, and then
+lists what is blocking a run. `npm run fleet-pool:journey` runs the whole
+journey in process against the live chain: deposit, create, activate with a
+draw, wait out the delay, sweep, buy, close, withdraw to a fresh address, then
+records it under `pooledJourney` in the deployment file. Neither needs a
+deployment, which is the point: configuration can be proven before anything is
+promoted.
+
+It exists because the first production Stage 2 deploy answered 503 on every
+pool action for a reason nothing surfaced. The function log had it:
+`campaignCount()` was being called on `0x34b0…F724`, the operator's own wallet,
+so `FLEET_POOL_ADDRESS` in the host environment held the deployer address
+instead of the pool contract. The check refuses that case by name now, because
+two addresses in the same deployment file are easy to swap and the resulting
+failure looks like a service outage rather than a typo.
