@@ -22,7 +22,7 @@ import {
 } from "./fleet/campaign-setup.js";
 import { fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
 import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initTheme, parseEth, saveFleetSnapshot, toEth } from "./fleet/page-shared.js";
-import { readBalance } from "./fleet/balance-read.js";
+import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { readStatus } from "./fleet/status-read.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
 import { confirmRecovery, createRecoveryVault, type VaultContext } from "./fleet/vault.js";
@@ -348,6 +348,7 @@ class FleetWizard {
     }
     try {
       const activated = await this.#setup.activate(draw);
+      if (this.#wallet) invalidateBalance(this.#wallet);
       this.#campaign = activated.campaign;
       const dueAt = (this.#lastResult["draw"] as { dueAt?: string } | undefined)?.dueAt;
       if (dueAt) el("funding-wait").textContent = fundingWait(dueAt, new Date()).message;

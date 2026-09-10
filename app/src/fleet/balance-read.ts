@@ -9,7 +9,7 @@
 
 import type { Hex } from "viem";
 
-import { isFresh, loadCachedBalance, saveCachedBalance, type BalanceState, type CachedBalance } from "./balance.js";
+import { clearCachedBalance, isFresh, loadCachedBalance, saveCachedBalance, type BalanceState, type CachedBalance } from "./balance.js";
 import { signedFleetApi } from "./signed-request.js";
 
 export type ReadOptions = { force?: boolean; now?: Date };
@@ -25,3 +25,6 @@ export const readBalance = async (wallet: Hex, options: ReadOptions = {}): Promi
   saveCachedBalance(sessionStorage, wallet, body, now);
   return { ...body, savedAt: now.getTime() };
 };
+
+/** Call after anything that moves the balance, so the next read is live. */
+export const invalidateBalance = (wallet: Hex): void => clearCachedBalance(sessionStorage, wallet);

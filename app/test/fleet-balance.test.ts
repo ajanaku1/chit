@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { canAddFunds, depositOptions, exitView, isFresh, loadCachedBalance, receiptOutcome, saveCachedBalance, toEth, withdrawIssue, type BalanceState } from "../src/fleet/balance.js";
+import { FRESH_MS, canAddFunds, clearCachedBalance, depositOptions, exitView, isFresh, loadCachedBalance, receiptOutcome, saveCachedBalance, toEth, withdrawIssue, type BalanceState } from "../src/fleet/balance.js";
 
 /**
  * The Balance page decides what a trader is offered before any transaction is
@@ -160,10 +160,10 @@ test("figures are shown to six decimals and never overflow into noise", () => {
  * "connect again", so a recent read stands in for a minute and the trader can
  * refresh by hand.
  */
-test("a cached balance is fresh for a minute and stale after", () => {
+test("a cached balance is fresh inside its window and stale beyond it", () => {
   const saved = Date.parse("2026-09-09T12:00:00Z");
-  assert.equal(isFresh(saved, new Date("2026-09-09T12:00:30Z")), true);
-  assert.equal(isFresh(saved, new Date("2026-09-09T12:01:01Z")), false);
+  assert.equal(isFresh(saved, new Date(saved + FRESH_MS - 1_000)), true);
+  assert.equal(isFresh(saved, new Date(saved + FRESH_MS + 1_000)), false);
   assert.equal(isFresh(undefined, new Date()), false, "no timestamp is never fresh");
 });
 
@@ -213,4 +213,29 @@ test("the page has a separate, disabled-by-default Add funds control", async () 
   const html = await readFile(join(appRoot, "balance.html"), "utf8");
   assert.match(html, /id="deposit-submit"[^>]*disabled/, "Add funds starts disabled until a size is picked");
   assert.match(html, /id="deposit-submit"[^>]*class="[^"]*primary/, "Add funds is the page's primary action");
+});
+
+/**
+ * Reading the balance costs a signature, so the cache has to outlive a browsing
+ * session, not a minute of it. Correctness comes from clearing it whenever
+ * something actually moves the balance, not from letting it go stale quickly.
+ */
+test("a cached balance outlives ordinary browsing", () => {
+  assert.ok(FRESH_MS >= 5 * 60_000, "a minute of cache means a prompt every minute of use");
+  const saved = Date.parse("2026-09-10T12:00:00Z");
+  assert.equal(isFresh(saved, new Date("2026-09-10T12:04:00Z")), true);
+});
+
+test("clearing the cache forces the next read to be live", () => {
+  const store = new Map<string, string>();
+  const storage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => void store.set(k, v),
+    removeItem: (k: string) => void store.delete(k),
+  };
+  const alice = "0x00000000000000000000000000000000000a11ce";
+  saveCachedBalance(storage, alice, state());
+  assert.ok(loadCachedBalance(storage, alice));
+  clearCachedBalance(storage, alice);
+  assert.equal(loadCachedBalance(storage, alice), undefined);
 });

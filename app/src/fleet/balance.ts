@@ -160,11 +160,20 @@ export const receiptOutcome = (receipt: { status?: string } | null | undefined):
   return { ok: false, message: "The chain rejected it: the transaction reverted." };
 };
 
-type Storage = { getItem(key: string): string | null; setItem(key: string, value: string): void };
+type Storage = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem?(key: string): void;
+};
 const CACHE_PREFIX = "chit-balance:";
 
-/** How long a signed read stands in before the page asks for another signature. */
-export const FRESH_MS = 60_000;
+/**
+ * How long a signed read stands in before the page asks for another signature.
+ * Long, on purpose: a read costs a wallet prompt, so a short window means a
+ * prompt every minute of ordinary use. Anything that moves the balance clears
+ * the cache instead, which is what keeps it correct.
+ */
+export const FRESH_MS = 10 * 60_000;
 
 export type CachedBalance = BalanceState & { savedAt?: number };
 
@@ -198,4 +207,13 @@ export const canAddFunds = (state: BalanceState, selected: string | undefined): 
   if (!selected) return false;
   const option = depositOptions(state).find((entry) => entry.size === selected);
   return option !== undefined && !option.disabled;
+};
+
+/** Forgets a cached balance, so the next read is live. */
+export const clearCachedBalance = (storage: Storage, wallet: string): void => {
+  try {
+    storage.removeItem?.(`${CACHE_PREFIX}${wallet.toLowerCase()}`);
+  } catch {
+    // Nothing to forget if storage is unavailable.
+  }
 };

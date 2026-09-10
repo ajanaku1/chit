@@ -16,7 +16,7 @@ import {
   withdrawIssue,
   type BalanceState,
 } from "./fleet/balance.js";
-import { readBalance } from "./fleet/balance-read.js";
+import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import {
   getConnectedWallet,
   initHeaderWallet,
@@ -186,6 +186,7 @@ const transact = async (what: string, data: Hex, value?: bigint): Promise<boolea
 
 const deposit = async (size: string): Promise<void> => {
   const was = state?.deposited ?? "0";
+  if (wallet) invalidateBalance(wallet);
   const ok = await transact("Deposit", encodeFunctionData({ abi: POOL_ABI, functionName: "deposit" }), BigInt(size));
   if (ok) await settle(was, "Deposit");
 };
@@ -205,6 +206,7 @@ const withdraw = async (event: Event): Promise<void> => {
 
   try {
     const result = await signedFleetApi(wallet, "withdraw", { amount, destination });
+    invalidateBalance(wallet);
     banner(`Paid. Transaction ${String(result["payoutTx"]).slice(0, 10)}…`, "ok");
     await refresh();
   } catch (error) {

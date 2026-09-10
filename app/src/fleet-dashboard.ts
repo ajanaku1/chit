@@ -7,7 +7,7 @@
 
 import { buildBuyReport, buildControlRoomView, type AccountBuyResult, type CampaignState, type ControlAction } from "./fleet/control-room.js";
 import { clearFleetSnapshot, getConnectedWallet, initHeaderWallet, initTheme, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
-import { readBalance } from "./fleet/balance-read.js";
+import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { StatusUnavailable, readStatus } from "./fleet/status-read.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 import type { DrawView } from "./fleet/control-room.js";
@@ -171,6 +171,7 @@ class FleetDashboard {
       const wallet = getConnectedWallet();
       if (!wallet) throw new Error("not_connected");
       const body = await signedFleetApi(wallet, action, { campaign: this.#snapshot.campaign });
+      invalidateBalance(wallet);
       const next: Record<ControlAction, string> = { pause: "Paused", resume: "Active", revoke: "Revoked", close: "Closed", topUp: "Active" };
       this.#snapshot = { ...this.#snapshot, state: next[action] };
       saveFleetSnapshot(this.#snapshot);
@@ -188,6 +189,7 @@ class FleetDashboard {
       if (!wallet) throw new Error("not_connected");
       const amount = parseEth((el<HTMLInputElement>("topup-amount")).value);
       await signedFleetApi(wallet, "topUp", { campaign: this.#snapshot.campaign, amount });
+      invalidateBalance(wallet);
       banner("Topped up from your balance.", "ok");
       void this.#refresh();
     } catch (error) {

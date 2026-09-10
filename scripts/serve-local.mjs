@@ -75,7 +75,17 @@ const server = createServer((request, response) => {
         }),
       );
       const text = await result.text();
-      console.log(`${request.method} ${url.pathname} -> ${result.status} ${text.slice(0, 120)}`);
+      // Name the action, and the action a challenge is for: a challenge is one
+      // wallet prompt, and knowing which one is the whole diagnosis.
+      let label = "";
+      try {
+        const parsed = JSON.parse(body ?? "{}");
+        label = String(parsed.action ?? "");
+        if (label === "challenge") label = `challenge:${String(parsed.body?.action ?? "?")}`;
+      } catch {
+        label = "?";
+      }
+      console.log(`${request.method} ${url.pathname} [${label}] -> ${result.status} ${text.slice(0, 90)}`);
       response.writeHead(result.status, { "content-type": "application/json" }).end(text);
       return;
     }

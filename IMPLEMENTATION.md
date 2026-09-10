@@ -1037,3 +1037,24 @@ asserts the owner never appears in the response. The dashboard and the wizard
 now watch with it, so a dashboard load and a full funding wait cost no
 signatures at all. Actions that change something, and the balance itself, stay
 signed.
+
+## Stage 2 — the balance cache was too short to help (2026-09-10)
+
+After `status` removed the polling and dashboard signatures, one signed read
+was left: the balance. Its cache lasted sixty seconds, so any browsing beyond a
+minute signed again, which still reads as "asked to sign on every menu switch".
+
+The balance cannot be unsigned. Deposits and posted spend are public on chain,
+but the figure the page shows also aggregates which open draws belong to the
+depositor, and that attribution is operator knowledge. An unsigned endpoint
+would publish, per address, how much is committed to fleets.
+
+So the window is now ten minutes and correctness comes from clearing the cache
+whenever something actually moves the balance: a deposit, a withdrawal, an
+activation that commits a draw, a close that returns one, and a top-up. The
+freshness test now expresses the rule in terms of the window rather than a
+hardcoded minute, since the old test pinned the value it was checking.
+
+The dev server also now logs the action behind each request, and the action a
+challenge is for, because a challenge is exactly one wallet prompt and knowing
+which one is the whole diagnosis.
