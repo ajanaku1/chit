@@ -8,6 +8,7 @@
 import { buildBuyReport, buildControlRoomView, type AccountBuyResult, type CampaignState, type ControlAction } from "./fleet/control-room.js";
 import { clearFleetSnapshot, getConnectedWallet, initHeaderWallet, initTheme, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
 import { readBalance } from "./fleet/balance-read.js";
+import { StatusUnavailable, readStatus } from "./fleet/status-read.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 import type { DrawView } from "./fleet/control-room.js";
 import { pollDelayMs } from "./fleet/balance.js";
@@ -132,9 +133,9 @@ class FleetDashboard {
     const wallet = getConnectedWallet();
     if (!wallet) return;
     try {
-      const body = await signedFleetApi(wallet, "read", { campaign: this.#snapshot.campaign });
-      this.#draw = body["draw"] as DrawView | undefined;
-      const state = String(body["state"] ?? this.#snapshot.state);
+      const body = await readStatus(this.#snapshot.campaign);
+      this.#draw = body.draw as DrawView | undefined;
+      const state = body.state;
       this.#snapshot = { ...this.#snapshot, state };
       const balance = await readBalance(wallet);
       this.#available = String(balance.available ?? "0");
@@ -147,7 +148,10 @@ class FleetDashboard {
       // A campaign the service cannot find is one that was created but never
       // activated: it lived only in the memory of the instance that made it.
       // Keeping it would sign for a read that fails on every single load.
-      if (error instanceof RequestFailed && error.code === "state_invalid") {
+      if (
+        (error instanceof RequestFailed || error instanceof StatusUnavailable) &&
+        error.code === "state_invalid"
+      ) {
         clearFleetSnapshot();
         el("fleet-view").hidden = true;
         el("no-fleet").hidden = false;

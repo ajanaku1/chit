@@ -1019,3 +1019,21 @@ and leaves the snapshot alone.
 
 Also confirmed from the same log: the deposit landed. The trader's balance reads
 0.05 ETH deposited and available.
+
+## Stage 2 — watching a fleet should not cost a signature (2026-09-10)
+
+"Only after creating a fleet" was the clue. With no fleet there is nothing to
+watch and the pages were quiet. With one, both the dashboard's routine refresh
+and the wizard's funding poll called the signed `read` action, so every tab
+switch and every poll tick, five to thirty seconds apart, raised a wallet
+prompt. The cached balance read hid its own share of this and made the
+remaining prompts look arbitrary.
+
+`status` is a new unsigned action: given a campaign id it returns that
+campaign's state and draw, computed from the pool and the session policy alone.
+It can afford to be unsigned because everything it returns is already readable
+on chain by anyone holding the campaign id, and it names no depositor; a test
+asserts the owner never appears in the response. The dashboard and the wizard
+now watch with it, so a dashboard load and a full funding wait cost no
+signatures at all. Actions that change something, and the balance itself, stay
+signed.

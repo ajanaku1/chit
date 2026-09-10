@@ -195,3 +195,20 @@ test("the dashboard forgets a campaign the service can no longer find", async ()
     "the dashboard swallows every failure alike, so it cannot tell a lost campaign from a hiccup",
   );
 });
+
+/**
+ * Watching a fleet must be free. Polling with a signed read means a wallet
+ * prompt every few seconds, which is what a trader experiences as being asked
+ * to sign the same thing over and over.
+ */
+test("pages watch a campaign with the unsigned status read, not a signed one", async () => {
+  for (const page of ["fleet-page.ts", "fleet-dashboard.ts"]) {
+    const text = await source(page);
+    assert.doesNotMatch(
+      text,
+      /signedFleetApi\([^)]*"read"/,
+      `${page} signs to watch a campaign; polling would prompt on every tick`,
+    );
+    assert.match(text, /readStatus\(/, `${page} never reads the campaign's status`);
+  }
+});
