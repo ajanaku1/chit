@@ -142,6 +142,7 @@ export class CampaignRouter {
     }
 
     if (action === "sweep") return this.#sweep();
+    if (action === "status") return this.#status(body);
 
     const auth = request["auth"] as AuthEnvelope | undefined;
     if (!auth) throw new ServiceError("challenge_invalid", "auth_missing");
@@ -297,6 +298,31 @@ export class CampaignRouter {
       record.state = transition(record.state, "activate");
     }
     if (record.state === "Active" && draw.state === "Pending") record.state = "Activating";
+  }
+
+  /**
+   * A campaign's public state, unsigned (FR-006). Watching a fleet be funded
+   * polls, and a signature per tick is unusable; everything returned here is
+   * already readable on chain by anyone holding the campaign id, and no
+   * depositor is named.
+   */
+  async #status(body: Record<string, unknown>): Promise<RouterResult> {
+    const id = String(body["campaign"] ?? "");
+    if (!id) throw new FleetValidationError("invalid_campaign");
+    const pool = this.#pool();
+    const chain = this.#deps.chain;
+    const key = campaignKey(id);
+
+    await this.#sweepOpportunistically();
+    const [draw, session] = await Promise.all([pool.drawOf(key), chain?.sessionOf(key)]);
+    if (!draw || !session) throw new ServiceError("state_invalid", "campaign_unknown");
+
+    const found: OnChainCampaign = {
+      owner: `0x${"0".repeat(40)}` as Address,
+      budget: { funded: 0n, reserved: 0n, spent: 0n, unused: 0n },
+      session,
+    };
+    return { status: 200, body: { campaign: id, state: drawnState(draw, found, this.#now()), draw } };
   }
 
   /** Funds every draw whose wait is over and posts every charge now due. */
