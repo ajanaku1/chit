@@ -69,6 +69,15 @@ export const saveFleetSnapshot = (snapshot: FleetSnapshot): void => {
   }
 };
 
+/** Forgets the saved fleet, for a campaign the service can no longer serve. */
+export const clearFleetSnapshot = (): void => {
+  try {
+    sessionStorage.removeItem(SNAPSHOT_KEY);
+  } catch {
+    // Nothing to forget if storage is unavailable.
+  }
+};
+
 export const loadFleetSnapshot = (): FleetSnapshot | undefined => {
   try {
     const raw = sessionStorage.getItem(SNAPSHOT_KEY);

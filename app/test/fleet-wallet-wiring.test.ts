@@ -179,3 +179,19 @@ test("no page signs for a balance directly; they share one cached read", async (
     assert.fail(`${page} never reads the balance at all`);
   }
 });
+
+/**
+ * A fleet created but never activated exists only in the memory of the service
+ * instance that made it. Once that instance is gone the campaign cannot be
+ * read, and a dashboard that keeps a stale snapshot signs for it on every load
+ * and fails: a wallet prompt every time the trader opens the tab, for nothing.
+ */
+test("the dashboard forgets a campaign the service can no longer find", async () => {
+  const text = await source("fleet-dashboard.ts");
+  assert.match(text, /clearFleetSnapshot\(/, "a campaign that cannot be read is never cleared");
+  assert.match(
+    text,
+    /RequestFailed/,
+    "the dashboard swallows every failure alike, so it cannot tell a lost campaign from a hiccup",
+  );
+});

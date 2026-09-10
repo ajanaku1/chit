@@ -6,9 +6,9 @@
  */
 
 import { buildBuyReport, buildControlRoomView, type AccountBuyResult, type CampaignState, type ControlAction } from "./fleet/control-room.js";
-import { getConnectedWallet, initHeaderWallet, initTheme, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
+import { clearFleetSnapshot, getConnectedWallet, initHeaderWallet, initTheme, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
 import { readBalance } from "./fleet/balance-read.js";
-import { signedFleetApi } from "./fleet/signed-request.js";
+import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 import type { DrawView } from "./fleet/control-room.js";
 import { pollDelayMs } from "./fleet/balance.js";
 
@@ -143,8 +143,21 @@ class FleetDashboard {
       // A fleet still being funded is finished by requests like this one.
       const delay = pollDelayMs(state, this.#draw?.dueAt, new Date());
       if (delay !== undefined) globalThis.setTimeout(() => void this.#refresh(), delay);
-    } catch {
-      // The service may not be configured yet; the snapshot still renders.
+    } catch (error) {
+      // A campaign the service cannot find is one that was created but never
+      // activated: it lived only in the memory of the instance that made it.
+      // Keeping it would sign for a read that fails on every single load.
+      if (error instanceof RequestFailed && error.code === "state_invalid") {
+        clearFleetSnapshot();
+        el("fleet-view").hidden = true;
+        el("no-fleet").hidden = false;
+        banner(
+          "That fleet was never activated, so it could not be resumed. Your Chit balance is untouched; start a new fleet from Set up.",
+          "pending",
+        );
+        return;
+      }
+      // Anything else is a hiccup; the snapshot still renders.
     }
   }
 

@@ -997,3 +997,25 @@ Picking a size now only selects it, shown with `aria-pressed`, and a separate
 Add funds button commits, disabled until a valid size is chosen. `canAddFunds`
 holds the rule, refusing an unpublished size, one over either cap, and anything
 at all while the pool is paused.
+
+## Stage 2 — a lost campaign kept asking to be signed for (2026-09-10)
+
+With the RPC failures gone, the log showed what was left: a signature prompt,
+then `409 state_invalid`, repeated on every visit to the dashboard.
+
+A fleet that is created but never activated exists only in the memory of the
+service instance that made it; nothing about it reaches the chain until
+activation opens its session. The dashboard kept the saved snapshot, signed for
+a read of that campaign on every load, and got `campaign_unknown` every time.
+Each of those failures cost the trader a wallet prompt and delivered nothing.
+Restarting the local server, which this session did repeatedly, is enough to
+lose such a campaign.
+
+The dashboard now distinguishes that failure from a transient one: on
+`state_invalid` it forgets the snapshot, shows the no-fleet view, and says
+plainly that the fleet was never activated, that the Chit balance is untouched,
+and that a new fleet can be started. Anything else is still treated as a hiccup
+and leaves the snapshot alone.
+
+Also confirmed from the same log: the deposit landed. The trader's balance reads
+0.05 ETH deposited and available.
