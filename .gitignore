@@ -1,9 +1,4 @@
 # Local build notes
-/Goal.md
-/prompt.md
-/plan.md
-/design.md
-/design-stage2.md
 *.done-when.md
 ai/
 
@@ -13,6 +8,7 @@ ai/
 !.env.example
 
 # build output
+public/
 node_modules/
 artifacts/
 cache/
@@ -26,6 +22,7 @@ app/node_modules/
 video/
 
 # Local tooling
+*.mov
 .DS_Store
 *.log
 .vercel/
