@@ -4,6 +4,10 @@ Chit is a canonical ERC-4337 paymaster that privately attributes authorised gas 
 
 CA: 0xD523A627030509021cC39B6d7C8543417D3E50D8
 
+> **Project status.** This repository is the hackathon submission: the confidential gas sponsorship paymaster described below, deployed on Ethereum Sepolia. It is kept as submitted.
+>
+> Chit has since continued as a private funding layer for trading fleets, live at **[chit.tools](https://chit.tools)** on Robinhood Chain testnet. The idea carried forward is the one this submission proves: a sponsor can pay for someone else's transaction without publishing who they are funding. What changed is the mechanism, the chain, and the honest scope of the claim. That work lives in a separate repository.
+
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.28-363636?logo=solidity)](https://soliditylang.org/)
 [![Network](https://img.shields.io/badge/network-Ethereum%20Sepolia-6B7280)](https://sepolia.dev/)
