@@ -27,6 +27,3 @@ video/
 *.log
 .vercel/
 .codex/
-.vercel
-.env*.local
-.env*
