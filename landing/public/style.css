@@ -86,8 +86,8 @@ button{background:none;border:0;color:inherit;cursor:pointer}
 
 /* ── 4. MASTHEAD ────────────────────────────────────────── */
 .masthead{position:absolute; z-index:5; left:var(--gutter); right:var(--gutter); top:calc(46 * var(--u));
-  display:grid; grid-template-columns:1fr auto 1fr; align-items:center;
-  grid-template-areas:"brand nav action" "contract contract contract";
+  display:grid; grid-template-columns:minmax(0,1fr); align-items:start;
+  grid-template-areas:"brand" "contract";
   gap:calc(24 * var(--u))}
 .brand-lockup{grid-area:brand}
 .nav{grid-area:nav}
@@ -176,6 +176,10 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
 .btn{inline-size:calc(177 * var(--u)); block-size:calc(62 * var(--u)); border-radius:var(--radius-control);
   font-size:calc(18 * var(--u)); letter-spacing:var(--track-narrow);
   display:inline-flex; align-items:center; justify-content:center; transition:background .2s, border-color .2s}
+.btn[disabled]{cursor:not-allowed; opacity:.34}
+.btn[disabled]:hover{background:inherit; border-color:inherit}
+.hero__pending{margin:calc(18 * var(--u)) auto 0; font-size:calc(13 * var(--u));
+  line-height:1.4; text-align:center; color:var(--text-muted); opacity:.72}
 .btn--solid{background:var(--paper); color:var(--ink)}
 .btn--solid:hover{background:var(--soft-paper)}
 .btn--ghost{border:var(--hairline) solid rgba(245,239,229,.14)}
@@ -302,8 +306,9 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
   box-shadow:0 1px 0 rgba(245,239,229,.5) inset, 0 1px 3px rgba(40,18,10,.10);
   font-size:calc(14 * var(--cu)); letter-spacing:calc(-.25 * var(--cu));
   transition:transform .18s ease, box-shadow .18s ease}
-.learn-more:hover{transform:translateX(-50%) translateY(calc(-2 * var(--cu)));
+.learn-more:hover:not([disabled]){transform:translateX(-50%) translateY(calc(-2 * var(--cu)));
   box-shadow:0 8px 20px rgba(40,18,10,.20)}
+.learn-more[disabled]{cursor:not-allowed; opacity:.45}
 .learn-more:focus-visible{outline:3px solid var(--coral); outline-offset:3px}
 
 /* 6.3 CARD 1 — funding delay */

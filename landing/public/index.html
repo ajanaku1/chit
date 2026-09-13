@@ -64,15 +64,6 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
       <span class="brand__name">Chit</span>
       </a>
     </div>
-    <nav class="nav" aria-label="Primary">
-      <ul>
-        <li><a href="/app/fleet-privacy.html">Boundary </a></li>
-        <li><a href="/app/balance.html"> Balance </a></li>
-        <li><a href="/app/fleet-dashboard.html">Control Room</a></li>
-      </ul>
-    </nav>
-    <button class="burger" type="button" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
-    <a class="btn-nav" href="/app/fleet.html">Open the app</a>
     <div class="contract-row">
       <span class="contract-row__label">CA</span>
       <code id="contract-address">0xD523A627030509021cC39B6d7C8543417D3E50D8</code>
@@ -97,9 +88,10 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
             </h1>
             <p class="hero__sub" data-reveal style="--rv-delay:833ms; --rv-dur:617ms">Chit's operator pays your fleet's gas and settles it against your balance. Trades stay public; only the funding relationship is withheld.</p>
             <div class="hero__actions" data-reveal style="--rv-delay:833ms; --rv-dur:600ms">
-              <a class="btn btn--solid" href="/app/fleet.html">Open the app</a>
-              <a class="btn btn--ghost" href="#boundary">Read the boundary</a>
+              <button class="btn btn--solid" type="button" disabled aria-disabled="true">Open the app</button>
+              <button class="btn btn--ghost" type="button" disabled aria-disabled="true">Read the boundary</button>
             </div>
+            <p class="hero__pending" data-reveal style="--rv-delay:900ms; --rv-dur:600ms">The app is in private testing and runs locally only.</p>
           </div>
         </div>
         <div class="trusted" data-reveal style="--rv-delay:850ms; --rv-dur:600ms">
@@ -246,7 +238,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
 
         <p class="metric metric--delay"><span class="dot-number" data-dots="15" aria-label="15"></span><span class="metric__unit">min</span></p>
         <p class="caption">Maximum wait<br>before funding</p>
-        <button class="learn-more" type="button">Learn More</button>
+        <button class="learn-more" type="button" disabled aria-disabled="true">Learn More</button>
       </article>
 
       <!-- CARD 2 — draw cap -->
@@ -299,7 +291,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
 
         <p class="metric metric--draw"><span class="dot-number" data-dots="0.2" aria-label="0.2"></span><span class="metric__unit">ETH</span></p>
         <p class="caption">Refused on chain<br>above this</p>
-        <button class="learn-more" type="button">Learn More</button>
+        <button class="learn-more" type="button" disabled aria-disabled="true">Learn More</button>
       </article>
 
       <!-- CARD 3 — self-serve exit -->
@@ -331,7 +323,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
 
         <p class="metric metric--exit"><span class="dot-number" data-dots="24" aria-label="24"></span><span class="metric__unit">h</span></p>
         <p class="caption">Works with the<br>service offline</p>
-        <button class="learn-more" type="button">Learn More</button>
+        <button class="learn-more" type="button" disabled aria-disabled="true">Learn More</button>
       </article>
     </div>
   </section>

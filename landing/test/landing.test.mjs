@@ -116,6 +116,23 @@ test("keeps unsupported product claims off the landing", async () => {
   }
 });
 
+test("does not link into the app, which is not public", async () => {
+  const html = await source("index.html");
+
+  // The Fleet app runs locally while it is in private testing. A link here
+  // would publish the Control Room and Balance pages to anyone who lands.
+  assert.doesNotMatch(html, /href="\/app/);
+  assert.doesNotMatch(html, /href="[^"]*(fleet|balance|dashboard)[^"]*\.html"/i);
+
+  // And the calls to action are inert until it is public.
+  // Every call to action is inert. The only live controls are the contract
+  // copy and the in-page morph cue, neither of which leaves the landing.
+  for (const button of html.match(/<button[^>]*>/g) ?? []) {
+    if (/id="copy-contract-address"|class="morph-cue"/.test(button)) continue;
+    assert.match(button, /\bdisabled\b/, `${button} is still clickable`);
+  }
+});
+
 test("loads no third-party assets", async () => {
   const html = await source("index.html");
 
@@ -155,7 +172,7 @@ test("copies the complete contract address with inline button feedback", async (
 test("keeps the contract group cohesive and screen-reader-only where it should be", async () => {
   const css = await source("style.css");
 
-  assert.match(css, /\.masthead\s*\{[^}]*grid-template-areas:\s*"brand nav action"\s*"contract contract contract"/);
+  assert.match(css, /\.masthead\s*\{[^}]*grid-template-areas:\s*"brand"\s*"contract"/);
   assert.match(css, /\.contract-row\s*\{[^}]*justify-self:\s*start/);
   assert.match(css, /\.contract-row\s*\{[^}]*width:\s*fit-content/);
   assert.match(css, /\.contract-row\s*\{[^}]*max-width:\s*100%/);

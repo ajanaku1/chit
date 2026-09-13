@@ -271,11 +271,14 @@
     seen.observe(metricsSection);
   }
 
-  /* Mobile nav */
+  /* Mobile nav, if the masthead has one. The landing currently does not:
+     every destination it had was inside the app, which is not public yet. */
   const burger = document.querySelector('.burger');
   const nav = document.querySelector('.nav');
-  burger.addEventListener('click', () => {
-    const open = nav.classList.toggle('is-open');
-    burger.setAttribute('aria-expanded', String(open));
-  });
+  if (burger && nav) {
+    burger.addEventListener('click', () => {
+      const open = nav.classList.toggle('is-open');
+      burger.setAttribute('aria-expanded', String(open));
+    });
+  }
 })();
