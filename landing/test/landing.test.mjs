@@ -150,6 +150,12 @@ test("uses the canonical Chit mark and exposes a copyable contract address", asy
 
   assert.equal(logo, canonical);
   assert.equal(favicon, canonical);
+
+  // Declared, not merely present: the previous revision served favicon.svg
+  // while the page linked nothing, so browsers fell back to a 404 favicon.ico.
+  assert.match(html, /<link rel="icon" href="favicon\.svg" type="image\/svg\+xml">/);
+  assert.match(html, /<link rel="icon" href="favicon\.ico"/);
+  assert.match(html, /<link rel="apple-touch-icon" href="apple-touch-icon\.png">/);
   assert.match(html, /class="brand-lockup"/);
   assert.match(html, new RegExp(`<code id="contract-address">${contractAddress}</code>`));
   assert.match(html, /<button id="copy-contract-address" type="button">Copy<\/button>/);
