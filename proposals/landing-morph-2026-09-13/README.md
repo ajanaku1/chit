@@ -65,10 +65,10 @@ denied form, as the claims gate requires.
 The brief pinned one background video, three card videos and five logo PNGs to
 two CloudFront distributions under someone else's user path. All are gone.
 
-- **Background video** is now a CSS ambient field: layered radial gradients
-  with a slow drift, greyscaled, under the same clip-path morph. It plays the
-  same structural role (one element, shared by both screens, its clip is the
-  morph's spine) without an external asset.
+- **Background video** is now a CSS ambient field: layered radial gradients on
+  a paper-to-ink ramp, desaturated and slowly drifting, under the same clip-path
+  morph. It plays the same structural role (one element, shared by both screens,
+  its clip is the morph's spine) without an external asset.
 - **Card videos** are dropped entirely. They sat at `z-index:0` beneath the
   gradient stack, the grain layer and the SVG art, all of which are kept, so
   the cards still read as intended.
@@ -79,21 +79,47 @@ which carries no borrowed-credibility problem.
 
 ## Deviations from the brief, in full
 
-1. **Palette is the brief's, not chit's.** The metric cards are magenta,
-   purple and orange per the brief's exact gradient stacks. Chit's brand truth
-   is cream with `#FF5A3C`. These clash. I kept the brief faithfully because
-   re-tuning a palette is a brand decision, not an implementation one. **This
-   is the main thing to decide before this goes anywhere near production.**
-2. **Brand mark** is a gradient-filled mark in the brief's 29×24 slot, shaped
+1. **Palette is chit's, not the brief's.** Every colour now comes from
+   `brand/BRAND-TRUTH.md`: signal coral `#FF5A3C`, paper `#F5EFE5`, soft paper
+   `#DED6CA`, ink `#171513`, muted ink `#6F6860`. This is the ink surface, which
+   the brand truth explicitly supports ("works on paper and ink surfaces"), so
+   paper carries the type and coral is the single accent.
+
+   The brief's three cards were three different hues (magenta, lavender,
+   orange). Brand truth says **one accent hue**, so all three are now coral at
+   different depths: ember for the delay card, sand-to-coral for the draw cap,
+   full coral for the exit card. The layer *structure* of each gradient stack
+   is unchanged, so the light behaves as the brief designed it.
+
+   Audited: 52 hex and 59 rgb() literals, zero saturated colours outside the
+   coral/paper hue band.
+
+2. **Unresolved: the brand truth forbids what this design is made of.**
+   `BRAND-TRUTH.md` constraints end with "no letters, coins, gas pumps,
+   padlocks, shields, eyes, fingerprints, chain links, hexagons, nodes,
+   **gradients, glow**, or generic crypto imagery."
+
+   This design is gradients and glow. Gradient-clipped hero type, nineteen-layer
+   radial stacks per card, a glow wash, backdrop blur, a radar gauge. Using
+   chit's colours does not fix that; it makes a coral version of something the
+   brand truth says chit does not do. The live landing at chit.tools is flat
+   paper, hairline rules and one accent, which is what that document describes.
+
+   So the palette question is settled and a larger one is not: **is chit's
+   visual language changing, or is this design the wrong shape for chit?** That
+   is a brand-direction call, and `plan.md` makes it yours. Nothing here ships
+   until it is answered.
+
+3. **Brand mark** is a gradient-filled mark in the brief's 29×24 slot, shaped
    after chit's seam logo. It is not `brand/logo.svg`, which is a solid orange
    rounded square and does not take the white-to-grey gradient treatment.
-3. **Marquee shift.** The brief hardcodes `--marquee-shift:-644.104u`, measured
+4. **Marquee shift.** The brief hardcodes `--marquee-shift:-644.104u`, measured
    from its five logo PNGs. Text wordmarks are not those widths, so the track
    is duplicated and animates to `-50%`, which is width-independent.
-4. **Glyph table** gained `c` and `o`. The brief's table covers its own copy
+5. **Glyph table** gained `c` and `o`. The brief's table covers its own copy
    ("Intelligent") and ours needs "contract". Construction is identical: 7 rows,
    5 columns, same lowercase baseline as `a`/`e`/`n`.
-5. **Four files, not three.** The brief demands exactly `index.html`,
+6. **Four files, not three.** The brief demands exactly `index.html`,
    `css/style.css`, `js/main.js`. This README is the fourth, because a proposal
    directory with no explanation of what it is would be worse.
 
