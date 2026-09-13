@@ -41,7 +41,7 @@ export default defineConfig({
         url: process.env.ROBINHOOD_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com",
         // Pinned so EDR caches remote state on disk; the public RPC drops
         // requests under the burst an unpinned fork makes. Bump deliberately.
-        blockNumber: 113731448,
+        blockNumber: 118812840,
       },
     },
     // Fork of Ethereum Sepolia. chainId stays 11155111 so Nox's hardcoded

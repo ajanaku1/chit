@@ -1132,3 +1132,56 @@ Signal coral also reaches screen A for the first time: the live-status pill and
 its dot, the reached steps on the funding timeline, and the balance delta. It
 marks things that are live or have happened, which keeps it to one accent hue
 doing one job.
+
+## The fork pin is not stale, it is unpinnable (2026-09-13)
+
+Bumped `hardhat.config.ts` from 113731448 to 118812840 and re-ran every gate
+cold, with `cache/` moved aside so the machine looked like a fresh clone.
+
+Cold, on the old pin, exactly two gates failed: `fleet-venue`, and
+`pool-acceptance` because it runs every fleet gate. Ten others passed cold,
+because they deploy fresh contracts and never read aged remote state. That
+matches the report exactly. Every gate passed on the new pin, the full sweep
+taking about three and a half minutes.
+
+But bumping is not the fix, and the reason is worth recording. The public 46630
+RPC serves state for roughly the last 6,900 blocks; past that it answers
+`-32000: metadata is not found` and names its own horizon. Blocks arrive every
+0.16 seconds. So the servable window is **about eighteen minutes wide**, and any
+committed block number is unservable long before anyone clones the repo. The
+gates were green here only because this machine had 804 cached RPC files built
+up over two days, and `cache/` is gitignored, so nobody else inherits it.
+
+That makes the fork gates reproducible only on a machine that already ran them.
+A cold sweep needs ~3.5 minutes inside an ~18 minute window, which is plenty —
+the problem is purely that the pin ages. Options, none taken: commit the EDR
+cache (3.4MB) so a clone starts warm; fork unpinned from the tip, which the
+existing comment warns the public RPC rate-limits; or point the fork at an
+archive endpoint, which is a new external dependency. This needs a decision.
+
+## What the rest of a full verify.sh run actually says (2026-09-13)
+
+44 passed, 59 failed. All twelve fleet and pool gates are in the passing set.
+The failures sort into three causes, none of them a fleet regression.
+
+About fifty-one are the legacy Sepolia project's. `https://sepolia.drpc.org`,
+the default in `verify.sh` and `hardhat.config.ts`, now answers
+`chain is not available on free plan, please upgrade to paid plan`. Every
+"has code on Sepolia" and "tx landed on Sepolia" check fails on that, as does
+`phase-1`, whose predicate is `npx hardhat test` and so includes the Sepolia
+fork suite. The contracts have not moved; the endpoint stopped being free.
+
+One is `demo video is at most 4:00`: `submission/demo.mp4` does not exist.
+
+Four are mine, and they are the interesting ones. `phase-4` asserts that
+README.md carries the phrase "privately attributes authorized gas sponsorship",
+states a public/private/trusted boundary, and lists the Sepolia EntryPoint, and
+that `/Goal.md`, `/prompt.md` and `/plan.md` are gitignored. All four were true
+until this session, when the README was rewritten for the fleet build and the
+build-contract files were un-ignored so a second developer could read them. Both
+changes were asked for. The predicates now describe the public submission's
+README, not this repository's.
+
+Left failing rather than fixed. The law says a wrong predicate gets corrected
+deliberately, not quietly, and `verify.sh` has the final vote — so which of the
+two is wrong here is the user's call, not mine.
