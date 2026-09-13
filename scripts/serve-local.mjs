@@ -99,7 +99,16 @@ const server = createServer((request, response) => {
     }
     try {
       const content = await readFile(file);
-      response.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" }).end(content);
+      // No cache headers meant a plain reload could silently keep serving a
+      // build from before the last code change — every fix looked "not
+      // fixed" until someone thought to hard-reload. This is a local dev
+      // server; nothing here should ever survive a reload.
+      response
+        .writeHead(200, {
+          "content-type": TYPES[extname(file)] ?? "application/octet-stream",
+          "cache-control": "no-store",
+        })
+        .end(content);
     } catch {
       console.log(`404 ${url.pathname}`);
       response.writeHead(404, { "content-type": "text/plain" }).end("not found");
