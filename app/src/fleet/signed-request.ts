@@ -9,9 +9,7 @@
 
 import { keccak256, stringToBytes, type Hex } from "viem";
 
-import { fleetApi } from "./page-shared.js";
-
-type Eip1193 = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
+import { fleetApi, walletProvider, type Eip1193 } from "./page-shared.js";
 
 /** Recursively key-sorted JSON with no whitespace; mirrors the service exactly. */
 export const canonicalJson = (value: unknown): string => {
@@ -41,7 +39,7 @@ export class RequestFailed extends Error {
 }
 
 const ethereum = (): Eip1193 => {
-  const eth = (globalThis as { ethereum?: Eip1193 }).ethereum;
+  const eth = walletProvider();
   if (!eth) throw new RequestFailed(0, "wallet_unavailable");
   return eth;
 };

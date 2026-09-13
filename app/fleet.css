@@ -214,6 +214,49 @@ main.privacy-page > * {
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-weight: 500;
 }
+.wallet-btn[data-state="error"] {
+  background: var(--coral-soft);
+  color: var(--coral-note);
+  border-color: var(--coral-text);
+}
+.wallet-chooser {
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 1.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+.wallet-chooser::backdrop { background: rgba(0, 0, 0, 0.45); }
+.wallet-chooser h2 { margin: 0 0 1rem; font-size: 1.15rem; }
+.wallet-chooser-list { display: grid; gap: 0.5rem; }
+.wallet-chooser-list button {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-btn);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.wallet-chooser-list button:disabled { opacity: 0.55; cursor: progress; }
+.wallet-chooser-list img { width: 28px; height: 28px; border-radius: 8px; }
+.wallet-chooser-status { min-height: 1.25em; margin: 0.75rem 0 0; color: var(--coral-note); font-size: 0.9rem; }
+.wallet-chooser-cancel {
+  margin-top: 0.75rem;
+  padding: 0.25rem 0;
+  border: 0;
+  background: none;
+  color: var(--dim);
+  font: inherit;
+  cursor: pointer;
+}
 @media (prefers-reduced-motion: no-preference) {
   .wallet-btn { transition: filter 0.12s ease; }
   .wallet-btn:hover { filter: brightness(0.97); }

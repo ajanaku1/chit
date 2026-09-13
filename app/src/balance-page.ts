@@ -18,16 +18,17 @@ import {
 } from "./fleet/balance.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import {
+  ensureRobinhoodTestnet,
   getConnectedWallet,
   initHeaderWallet,
   initTheme,
   parseEth,
   waitForReceipt,
   walletEth,
+  walletProvider,
+  type Eip1193,
 } from "./fleet/page-shared.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
-
-type Eip1193 = { request: (args: { method: string; params?: unknown[] }) => Promise<unknown> };
 
 initTheme();
 initHeaderWallet();
@@ -59,7 +60,7 @@ let poolAddress: Hex | undefined;
 let selectedSize: string | undefined;
 
 const ethereum = (): Eip1193 => {
-  const eth = (globalThis as { ethereum?: Eip1193 }).ethereum;
+  const eth = walletProvider();
   if (!eth) throw new Error("wallet_unavailable");
   return eth;
 };
@@ -67,7 +68,11 @@ const ethereum = (): Eip1193 => {
 const sendToPool = async (data: Hex, value?: bigint): Promise<Hex> => {
   if (!wallet) throw new Error("Connect your wallet first.");
   if (!poolAddress) throw new Error("The pool is not configured yet.");
-  return (await ethereum().request({
+  const eth = ethereum();
+  // The pool exists only on 46630. A wallet moved to another network since it
+  // connected would send this there, to an address with no pool behind it.
+  if (!(await ensureRobinhoodTestnet(eth))) throw new Error("Switch your wallet to Robinhood testnet first.");
+  return (await eth.request({
     method: "eth_sendTransaction",
     params: [{
       from: wallet,
