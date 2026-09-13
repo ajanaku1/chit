@@ -1086,3 +1086,27 @@ dependency proposal goes, and this repository had no `loop/` tree at all; it
 keeps its log here and its contract in the four root files. The conservative
 reading was to create the path the law names rather than file the proposal
 somewhere of my own choosing, so that is what happened.
+
+## Stage 2 — T040 live validation, the last open task (2026-09-13)
+
+Ran the quickstart's live journey against testnet 46630 with the operator's
+explicit go-ahead: 0.05 ETH deposit, five-account fleet, 0.02 ETH draw, one
+sponsored buy, close-to-balance, withdrawal to a fresh address. All five
+transactions landed; `npm run fleet-pool:journey` recorded every hash under a
+`pooledJourney` key in `deployments/fleet-46630.json` — the implementation
+writes that key name, not the `pooledBuy` name in T040's task text; the task
+is marked done on the recorded evidence, not the exact key name.
+`specs/002-private-funding-pool/tasks.md` T040 and quickstart.md's evidence
+section are updated accordingly.
+
+Separately, re-running the fork gates before this went live turned up that
+`pool-acceptance` (and standalone `fleet-venue`) now fail. Root cause isn't a
+code regression: `hardhat.config.ts:44` pins the 46630 fork to
+`blockNumber: 113731448`, which is now roughly five million blocks behind the
+live chain tip; the public RPC returns `-32000: metadata is not found` for
+state queries at that block for addresses the venue test needs fresh state on.
+Confirmed across three retries, different addresses each time, same error. The
+privacy-relevant checks inside `pool-acceptance` — the observer unlinkability
+test and the FR-015 claims grep — pass on their own when run in isolation.
+Bumping the pinned fork block is the fix; deliberately left undone for now
+since it touches shared fork config other gates also depend on.

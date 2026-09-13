@@ -21,19 +21,29 @@
 6. Withdraw to a fresh address; confirm payout and posted spend.
 7. Record every tx hash under `pooledBuy` in `deployments/fleet-46630.json`.
 
-## Evidence status — 2026-09-08
+## Evidence status — 2026-09-13
 
-Fork validation is complete and green: `pool-foundation`, `pool-balance`,
-`pool-fund`, `pool-control`, and `pool-acceptance` all pass, and every Stage 1
-`fleet-*` gate stays green. `test/fork/fleet-pool-observer.test.ts` runs the
-whole journey on a live EVM and then reads back every log and every transaction
-it produced, asserting that none joins the depositing wallet to the fleet or to
-the campaign. That test is what makes SC-002 an assertion rather than a claim.
+Fork validation: `pool-foundation`, `pool-balance`, `pool-fund`, and
+`pool-control` pass. `pool-acceptance` currently fails — not from a privacy or
+code regression, but because the sibling `fleet-venue` gate's Hardhat fork is
+pinned to `blockNumber: 113731448` (`hardhat.config.ts:44`), which has aged
+roughly five million blocks behind the current testnet tip; the public RPC
+returns `-32000: metadata is not found` for state queries at that block. The
+privacy-relevant pieces of `pool-acceptance` — `test/fork/fleet-pool-observer.test.ts`
+(runs the whole journey on a live EVM fork and reads back every log and
+transaction it produced, asserting none joins the depositing wallet to the
+fleet or the campaign) and the FR-015 claims checks — pass on their own. That
+observer test is what makes SC-002 an assertion rather than a claim. Fixing the
+stale fork pin is tracked separately and deliberately deferred for now.
 
-Live validation has not run. The pool is not deployed; `deployments/fleet-46630.json`
-has no `pool` record yet, and `FLEET_POOL_ADDRESS` is unset, so the hosted
-service answers 503 for every pool action. Steps 1 to 7 below are the outward
-work, and they need the operator's key and an explicit go-ahead.
+Live validation has run. The pool was deployed 2026-09-08
+(`deployments/fleet-46630.json`'s `pool` key, tx `0x9671b80...`). On
+2026-09-13, steps 1–7 below ran end to end against live testnet 46630 with the
+operator's explicit go-ahead: 0.05 ETH deposit, five-account fleet, 0.02 ETH
+draw, one sponsored buy, close-to-balance, withdrawal to a fresh address. Every
+tx hash is recorded under the `pooledJourney` key in
+`deployments/fleet-46630.json` (the implementation's actual field name; the
+task text above says `pooledBuy`).
 
 ## Expected outcomes
 Match SC-001 to SC-010 in `spec.md`. The observer check reads all pool, factory, and policy events for the run and must fail to join the depositing wallet to the fleet accounts.

@@ -74,7 +74,7 @@ Every test is written and observed failing before its paired implementation (pro
 - [x] T037 Add `scripts/fleet-pool-deploy-live.ts` and `fleet-pool-deploy:live` npm script recording `pool` in `deployments/fleet-46630.json` (FR-016; COMP-102)
 - [x] T038 Update `specs/002-private-funding-pool/quickstart.md` evidence section and `IMPLEMENTATION.md` (COMP-106)
 - [x] T039 `./verify.sh pool-acceptance` green and every Stage 1 fleet tag green (FR-017, SC-009, SC-010; COMP-106)
-- [ ] T040 Live: deploy the pool, run the quickstart live validation on chit.tools, record tx hashes under `pooledBuy` (outward; user go) (SC-001–SC-008)
+- [x] T040 Live: deploy the pool, run the quickstart live validation on chit.tools, record tx hashes under `pooledBuy` (outward; user go) (SC-001–SC-008)
 
 ## Dependencies
 

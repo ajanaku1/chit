@@ -63,5 +63,34 @@
       "gasHeadroom": "200000000000000"
     },
     "deployedAt": "2026-09-08T21:34:53.299Z"
+  },
+  "pooledJourney": {
+    "campaign": "4a2f75c2-2be8-4539-bf34-57de50291302",
+    "fleet": [
+      "0x4d1d97d1db6030d40af3ee14e1d721afad38d3a8",
+      "0x648f15b7821125df2ee2af75e8a057926385eb73",
+      "0x7f88ab81118602d3536b9c0d77f2cc6e4cd997b5",
+      "0x87b1b0d05ce923cee9e0cb859db811ccec89ccfe",
+      "0xd9526299554be0d5ad0928080ee5503f199f91f7"
+    ],
+    "depositTx": "0x4986a9cc379db1b529dc87ebf53d10e2e93efbc97047b42d438a05fb2a1ef41e",
+    "deposit": "50000000000000000",
+    "draw": "20000000000000000",
+    "buy": {
+      "account": "0x4d1d97d1db6030d40af3ee14e1d721afad38d3a8",
+      "status": "sponsored",
+      "txHash": "0xc37f0bdd49a9397dc888fd228c2f13a4e08e1d758e53ba12e854b34467c427ad",
+      "draw": {
+        "amount": "20000000000000000",
+        "spent": "1501593210000000",
+        "remaining": "18498406790000000",
+        "dueAt": "2026-09-13T14:06:43.000Z",
+        "state": "Funded"
+      }
+    },
+    "creditedToBalance": "18498406790000000",
+    "withdrawTx": "0x8fba5a002634765e10fb7e380173cfd270c47cc6ea42d3d8c2e42925c0dc1f99",
+    "withdrawTo": "0xd34d26a820395b76023017df657d09cf2fb38aa3",
+    "at": "2026-09-13T14:08:09.774Z"
   }
 }
