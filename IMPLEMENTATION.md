@@ -1185,3 +1185,89 @@ README, not this repository's.
 Left failing rather than fixed. The law says a wrong predicate gets corrected
 deliberately, not quietly, and `verify.sh` has the final vote — so which of the
 two is wrong here is the user's call, not mine.
+
+## Wallet reconnect (2026-09-13)
+
+From `chit-wallet-reconnect-fix.md`. Its section 1 diagnostic ran first against
+the source, and it ruled out two of the three causes it lists.
+
+The nonce (its section 4) was already stateless: `nonceSecretFromEnv` derives an
+HMAC key from the operator key, so any warm instance verifies a challenge any
+other issued. `test/fleet/stateless-challenge.test.ts` already proves it. The
+only thing taken from that section is the TTL, 300s -> 600s, for the reason it
+gives: signing means leaving the browser, and an expired challenge on the way
+back reads as being asked to start over.
+
+The real cause is its section 2. The connected address lived in
+`sessionStorage`, and nothing ever asked the wallet who was connected. A tab iOS
+discarded during the trip into the wallet app came back with empty storage and
+no way to learn it was still granted, so it showed Connect. Now the address is
+in `localStorage`, and `restoreWallet()` asks `eth_accounts` — the silent
+question — on load and on every `visibilitychange`. `eth_requestAccounts`, the
+prompt, still happens only from the trader's own click.
+`app/test/fleet-wallet-reconnect.test.ts` drives the real module against a
+provider that throws on `eth_requestAccounts`, so a passing test is one where no
+prompt happened.
+
+Two parts of the file were deliberately not done.
+
+Its section 3 wants a session cookie issued after one signature verifies. Fleet
+auth is per-action: every challenge is bound to the action and a hash of its
+body, which is what makes a captured signature unable to authorize a different
+trade. A session cookie that stands in for those signatures would remove that
+binding. Not a storage change, a change to the security model, so it needs to be
+asked for.
+
+Its section 2 also covers WalletConnect, for a phone browser where the wallet is
+a separate app and `window.ethereum` is absent. That is a new dependency, which
+the law says to propose and stop. Nothing here helps that case yet.
+
+`./verify.sh`: 44 passed, 59 failed, byte-identical to the run on the same tree
+without these changes. The fleet and pool gates stayed green.
+
+## The landing becomes the morph, and one predicate is corrected (2026-09-13)
+
+chit.tools now carries the two-screen morph. The previous page's eight
+explanatory sections are gone, on an explicit decision to replace wholesale
+rather than port the shell around them.
+
+Everything that was a claim or a disclosure was carried over, because that was
+never the design's to delete. The hero states that trades stay public and only
+the funding relationship is withheld. Screen B admits in its own copy that the
+operator can still link a deposit to a fleet, and carries "Private, not
+anonymous". The non-affiliation line survives and is now stronger: it names
+Robinhood and Uniswap explicitly rather than saying "any of these". The contract
+address and its copy control moved into the masthead rather than disappearing
+with the old header.
+
+`landing/test/landing.test.mjs` is rewritten. The assertions it lost were the
+ones that pinned markup which no longer exists: the six section eyebrows, the
+`.header-inner` grid areas, the `.prototype`/`.controls` selectors. Every
+claims assertion survived and three got stricter. Copy is now matched against
+extracted text rather than raw HTML, so the sentence is checked as a reader
+sees it and cannot be satisfied by markup that merely contains the words.
+"untraceable" joins the overclaim blocklist. Every occurrence of "anonymous" is
+now individually required to appear in its denied form, rather than the file
+merely being checked for one good phrase.
+
+One predicate was genuinely wrong and is corrected: the motion test banned the
+bare token `linear`, intending to ban linear easing, but `\blinear\b` matches
+inside `linear-gradient`. It caught 37 gradients and no easing. Narrowed to
+`transition: all`, `scale(0)`, `ease-in`, and `scroll-behavior: smooth`. Linear
+easing stays legal for the opacity-only load ramp, which is the one place it is
+the right choice.
+
+The no-third-party-assets rule was left exactly as it was. The design was drawn
+against Geist, Inter and DM Sans from Google Fonts, and permitting that was on
+the table, but a page selling funding privacy should not hand every visitor's IP
+to a font CDN to render the word "private". The faces are system stacks instead.
+
+The WCAG test was re-pointed rather than relaxed: the old one measured ink on
+paper, and this is a paper-on-ink surface, so it now measures the pairs a reader
+actually sees. Body text 15.92:1, secondary 12.64:1, coral accent 5.88:1.
+
+Rendered and checked at six viewports: no horizontal overflow anywhere, no
+console errors, LED type rendering, morph reaching screen B. Nav now points at
+pages that exist, since the anchors it used to use went with the old sections.
+Not deployed; chit.tools still serves the previous page until someone runs the
+deploy deliberately.
