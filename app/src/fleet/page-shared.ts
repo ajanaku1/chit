@@ -351,20 +351,24 @@ const adopt = (wallet: InstalledWallet | undefined, address: Hex): void => {
   setConnected(address);
 };
 
-// Only the latest connect takes effect: an abandoned attempt approved in the
-// wallet later must not replace a newer one.
-let latestConnect = 0;
+// A connect that lands after a newer one already connected was abandoned and
+// must not replace it. A newer attempt that failed supersedes nothing: wallets
+// refuse a duplicate request with -32002 while the first popup is still open,
+// and approving that popup must still connect.
+let connectCalls = 0;
+let lastAdopted = 0;
 
 /**
  * Connects a wallet and moves it onto Robinhood testnet. With more than one
  * installed, the trader chooses which. Returns the address.
  */
 export const connectWallet = async (): Promise<Hex | undefined> => {
-  const call = ++latestConnect;
+  const call = ++connectCalls;
   const wallets = [...installed.values()];
   if (wallets.length > 1) {
     const picked = await chooseWallet(wallets, (wallet) => connectWith(wallet.provider));
-    if (!picked || call !== latestConnect) return undefined;
+    if (!picked || call < lastAdopted) return undefined;
+    lastAdopted = call;
     adopt(picked.wallet, picked.address);
     return picked.address;
   }
@@ -375,7 +379,8 @@ export const connectWallet = async (): Promise<Hex | undefined> => {
     return undefined;
   }
   const address = await connectWith(eth);
-  if (call !== latestConnect) return undefined;
+  if (call < lastAdopted) return undefined;
+  lastAdopted = call;
   adopt(only, address);
   return address;
 };
