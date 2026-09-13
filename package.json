@@ -54,6 +54,7 @@
     "@types/node": "^22.11.0",
     "forge-std": "github:foundry-rs/forge-std#v1.9.4",
     "hardhat": "^3.4.0",
+    "playwright": "^1.63.0",
     "typescript": "~5.8.0"
   },
   "overrides": {

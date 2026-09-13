@@ -2,13 +2,14 @@
 
 Standing proposals and blockers that need a human decision. One entry per item.
 `CLAUDE.md` requires a dependency to be proposed here and the work to stop until
-the answer comes back. Nothing in this file has been acted on.
+the answer comes back. Each entry records its own status; nothing marked OPEN
+has been acted on.
 
 ---
 
-## OPEN — Dependency proposal: `playwright` (dev only)
+## ACCEPTED — Dependency: `playwright` (dev only)
 
-**Raised** 2026-09-13 · **Status** awaiting decision · **Nothing installed**
+**Raised** 2026-09-13 · **Approved** 2026-09-13 · **Installed** `playwright@^1.63.0`, root devDependencies
 
 ### What it is
 
@@ -59,17 +60,20 @@ Browser binaries (~150 MB for Chromium) download separately into
 `~/Library/Caches/ms-playwright`, outside the repo. They are not committed and
 do not enter `node_modules`.
 
-### The cost I want to flag
+### The cost I flagged, and the correction
 
-`vercel.json` runs `npm ci && npm --prefix app ci`, which installs
-devDependencies. Left alone, **every production build would download ~150 MB of
-browsers it never uses.** If this is accepted, it needs
-`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` set in the Vercel project environment at
-the same time. That is a production env change, which `plan.md` also makes a
-stop-and-ask, so the two decisions travel together.
+**The warning was wrong and no Vercel change is needed.** I said every
+production build would pull ~150 MB of browsers, because `@playwright/test` and
+older `playwright` releases carried a browser-downloading postinstall. Checked
+after installing: at 1.63.0 both `playwright` and `playwright-core` declare
+`"scripts": {}`. Nothing runs on install. Browsers arrive only from an explicit
+`npx playwright install`, and land in `~/Library/Caches/ms-playwright`.
 
-It also adds entries to `package-lock.json`, which may push that commit past the
-200-line limit. Say if you want the lockfile change committed separately.
+So the Vercel cost is 18.5 MB of extra install, not 150 MB of browsers, and
+`PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1` is unnecessary. `vercel.json` is untouched.
+
+It does add entries to `package-lock.json`, committed separately from the source
+change.
 
 ### Alternatives considered
 
@@ -97,13 +101,16 @@ request path.
 
 ### Rollback
 
-`npm rm playwright`, delete `~/Library/Caches/ms-playwright`, unset the Vercel
-env var. No source depends on it, so nothing else changes.
+`npm rm playwright` and delete `~/Library/Caches/ms-playwright`. No shipped
+source imports it; only `proposals/landing-morph-2026-09-13/shots.mjs` uses it,
+and that is a capture tool, not part of any build or test path.
 
-### Decision needed
+### Outcome
 
-Approve as proposed (root devDependency plus the Vercel env var), approve in the
-separate-package-json form, or decline and keep design review manual.
+Approved and installed. Chromium 153.0.8010.12 (94.3 MiB) fetched to the local
+cache. First use found four layout defects in the landing proposal that static
+checking could not see, including a 5px mobile overflow the brief forbids; all
+four are fixed and the capture is committed as evidence.
 
 ---
 
