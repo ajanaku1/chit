@@ -77,3 +77,39 @@ test("a remembered wallet that is no longer installed is neither shown nor swapp
   assert.equal(shared.walletProvider(), undefined, "another wallet was handed the remembered one's calls");
   assert.equal(shared.getConnectedWallet(), undefined, "an unreachable wallet still shows as connected");
 });
+
+// A remembered wallet can announce after the page script ran. Unless the page
+// takes it up then, the header says Connect while getConnectedWallet() already
+// returns the address, and the first click on "Connect" disconnects.
+test("a remembered wallet that announces after load is taken up and watched", async () => {
+  const shared = await import("../src/fleet/page-shared.js");
+  shared.disconnectWallet();
+  const store = new Map([
+    ["chit-fleet-wallet", TRADER],
+    ["chit-fleet-provider", "io.late"],
+  ]);
+  (globalThis as unknown as { sessionStorage: Pick<Storage, "getItem" | "setItem" | "removeItem"> }).sessionStorage = {
+    getItem: (key) => store.get(key) ?? null,
+    setItem: (key, value) => void store.set(key, value),
+    removeItem: (key) => void store.delete(key),
+  };
+  const seen: unknown[] = [];
+  page.addEventListener("chit-wallet-changed", (event) => seen.push((event as CustomEvent).detail.address));
+  const watched: string[] = [];
+  const late = { request: async (): Promise<unknown> => null, on: (event: string) => void watched.push(event) };
+  page.dispatchEvent(
+    new CustomEvent("eip6963:announceProvider", {
+      detail: { info: { uuid: "late", name: "Late Wallet", icon: "", rdns: "io.late" }, provider: late },
+    }),
+  );
+  assert.equal(shared.walletProvider(), late);
+  assert.deepEqual(seen, [TRADER.toLowerCase()], "pages were never told the remembered wallet arrived");
+  assert.deepEqual(watched, ["accountsChanged"], "account changes on the late wallet are never followed");
+});
+
+// A switch request that resolves is not proof: the deposit guard must see 46630.
+test("a wallet that accepts the switch but stays on another chain is not treated as switched", async () => {
+  const { ensureRobinhoodTestnet } = await import("../src/fleet/page-shared.js");
+  const stubborn = { request: async ({ method }: Request) => (method === "eth_chainId" ? "0x1" : null) };
+  assert.equal(await ensureRobinhoodTestnet(stubborn), false);
+});
