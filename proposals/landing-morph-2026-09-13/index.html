@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chit — a private funding layer for trading fleets</title>
+<meta name="description" content="Chit funds a trader's fleet so no transaction links their main wallet to it. Stage 1 live on Robinhood Chain testnet 46630.">
+<script>document.documentElement.className += ' js entrance-active';
+window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.remove('entrance-active'), 3200);</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500&family=DM+Sans:wght@500&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<svg class="filter-defs" aria-hidden="true">
+  <filter id="cardNoise">
+    <feTurbulence type="fractalNoise" baseFrequency=".54" numOctaves="3" seed="27" stitchTiles="stitch"/>
+    <feColorMatrix type="saturate" values="0"/>
+    <feComponentTransfer>
+      <feFuncR type="linear" slope="1.8" intercept="-.25"/>
+      <feFuncG type="linear" slope="1.8" intercept="-.25"/>
+      <feFuncB type="linear" slope="1.8" intercept="-.25"/>
+      <feFuncA type="table" tableValues="0 .52"/>
+    </feComponentTransfer>
+  </filter>
+  <filter id="wallNoise">
+    <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="3" seed="71" stitchTiles="stitch"/>
+    <feColorMatrix type="saturate" values="0"/>
+  </filter>
+  <filter id="bandNoise">
+    <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="3" seed="57" stitchTiles="stitch"/>
+    <feColorMatrix type="saturate" values="0"/>
+  </filter>
+  <filter id="windowNoise">
+    <feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="3" seed="13" stitchTiles="stitch"/>
+    <feColorMatrix type="saturate" values="0"/>
+  </filter>
+  <filter id="radarSoft"><feGaussianBlur stdDeviation="1.35"/></filter>
+  <filter id="radarHalo"><feGaussianBlur stdDeviation="5.2"/></filter>
+  <filter id="gaugeBlur"><feGaussianBlur stdDeviation="11"/></filter>
+  <filter id="tileSoft"><feGaussianBlur stdDeviation="3.4"/></filter>
+  <filter id="groutSoft"><feGaussianBlur stdDeviation="6.5"/></filter>
+</svg>
+
+<div class="page" data-screen="hero">
+
+  <!-- ONE ambient field, shared by both screens. Its clip is the morph's spine. -->
+  <div class="wash" data-reveal style="--rv-delay:90ms; --rv-dur:970ms">
+    <div class="wash__field" aria-hidden="true"></div>
+  </div>
+
+  <!-- ONE masthead, shared, never moves -->
+  <header class="masthead" data-reveal style="--rv-delay:70ms; --rv-dur:615ms">
+    <a class="brand" href="/">
+      <svg class="brand__mark" viewBox="0 0 29 24" aria-hidden="true">
+        <defs>
+          <linearGradient id="brandGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#999999"/>
+          </linearGradient>
+        </defs>
+        <path fill="url(#brandGrad)" d="M4.6 0h19.8l2.2 2.2v19.6L24.4 24H4.6L2.4 21.8V2.2Z" opacity=".18"/>
+        <path fill="url(#brandGrad)" d="M11.3 0h6.4v4.6l-2.9 2.4 2.9 2.6-2.9 2.6 2.9 2.4V24h-6.4v-4.8l-2.9-2.8 2.9-2.4-2.9-2.6 2.9-2.8Z"/>
+      </svg>
+      <span class="brand__name">Chit</span>
+    </a>
+    <nav class="nav" aria-label="Primary">
+      <ul>
+        <li><a href="#mechanism">Mechanism </a></li>
+        <li><a href="#boundary"> Boundary </a></li>
+        <li><a href="#status">Status</a></li>
+        <li><a href="#evidence">Evidence</a></li>
+      </ul>
+    </nav>
+    <button class="burger" type="button" aria-label="Menu" aria-expanded="false"><span></span><span></span><span></span></button>
+    <a class="btn-nav" href="/app/fleet.html">Open the app</a>
+  </header>
+
+  <!-- ══════════════ SCREEN A — HERO ══════════════ -->
+  <section class="screen screen--hero">
+    <div class="hero__grid">
+      <div class="hero__content">
+        <div class="hero__body">
+          <div class="hero__head">
+            <p class="pill" data-reveal style="--rv-delay:1017ms; --rv-dur:50ms">Stage 1 live on testnet 46630</p>
+            <h1 class="hero__title">
+              <span class="hero__line" data-reveal style="--rv-delay:267ms; --rv-dur:483ms">A private line </span>
+              <span class="hero__line" data-reveal style="--rv-delay:417ms; --rv-dur:450ms">for a public</span>
+              <span class="hero__line" data-reveal style="--rv-delay:567ms; --rv-dur:467ms">fleet</span>
+            </h1>
+            <p class="hero__sub" data-reveal style="--rv-delay:833ms; --rv-dur:617ms">Chit's operator pays your fleet's gas and settles it against your balance. Trades stay public; only the funding relationship is withheld.</p>
+            <div class="hero__actions" data-reveal style="--rv-delay:833ms; --rv-dur:600ms">
+              <a class="btn btn--solid" href="/app/fleet.html">Open the app</a>
+              <a class="btn btn--ghost" href="#boundary">Read the boundary</a>
+            </div>
+          </div>
+        </div>
+        <div class="trusted" data-reveal style="--rv-delay:850ms; --rv-dur:600ms">
+          <p class="trusted__label">Runs on</p>
+          <div class="marquee">
+            <ul class="marquee__track">
+              <li class="marquee__word">ERC-4337 EntryPoint v0.7</li>
+              <li class="marquee__word">Uniswap v4 Universal Router</li>
+              <li class="marquee__word">Robinhood Chain testnet 46630</li>
+              <li class="marquee__word">viem</li>
+              <li class="marquee__word">Vercel</li>
+              <li class="marquee__word" aria-hidden="true">ERC-4337 EntryPoint v0.7</li>
+              <li class="marquee__word" aria-hidden="true">Uniswap v4 Universal Router</li>
+              <li class="marquee__word" aria-hidden="true">Robinhood Chain testnet 46630</li>
+              <li class="marquee__word" aria-hidden="true">viem</li>
+              <li class="marquee__word" aria-hidden="true">Vercel</li>
+            </ul>
+          </div>
+          <p class="trusted__note">Chit is independent and not affiliated with, sponsored by, or endorsed by any of these.</p>
+        </div>
+      </div>
+
+      <div class="hero__panel">
+        <div class="panel">
+          <!-- CARD 1 — fleet policy -->
+          <div class="card-glass card-glass--allocation" data-reveal style="--rv-delay:1783ms; --rv-dur:350ms">
+            <span class="dot dot--filled card__item" style="--x:28; --y:29" data-reveal data-rv="2000/300"></span>
+            <p class="card__label card__item" style="--x:63; --y:34" data-reveal data-rv="2000/300">Fleet policy</p>
+            <span class="tl-line card__item" style="--x:38.5; --y:55; --len:185" data-reveal data-rv="2133/333"></span>
+
+            <p class="stat fig-box card__item" style="--x:63; --y:78; --w:72" data-reveal data-rv="2383/100">0.2</p>
+            <p class="stat fig-box card__item" style="--x:161; --y:78; --w:13; --o:.3" data-reveal data-rv="2383/100">/</p>
+            <p class="stat fig-box card__item" style="--x:200; --y:78; --w:72" data-reveal data-rv="2383/100">0.5</p>
+            <p class="stat__unit fig-box card__item" style="--x:63; --y:120; --w:38" data-reveal data-rv="2467/50">draw</p>
+            <p class="stat__unit fig-box card__item" style="--x:200; --y:120; --w:52" data-reveal data-rv="2467/50">balance</p>
+
+            <p class="pill pill--card card__item" style="--x:63; --y:166" data-reveal data-rv="2550/50">Caps enforced on chain</p>
+            <p class="card__note card__item" style="--x:63; --y:203; --o:.4" data-reveal data-rv="2683/183">Refused before any ETH moves</p>
+
+            <span class="dot dot--filled card__item" style="--x:28; --y:247" data-reveal data-rv="2117/417"></span>
+            <p class="card__label card__item" style="--x:63; --y:252" data-reveal data-rv="2117/417">Deposit confirmed</p>
+            <span class="tl-line card__item" style="--x:38.5; --y:274; --len:12; --o:.2" data-reveal data-rv="2367/417"></span>
+            <span class="dot dot--hollow card__item" style="--x:28; --y:290" data-reveal data-rv="2367/417"></span>
+            <p class="card__label card__label--dim card__item" style="--x:63; --y:295" data-reveal data-rv="2367/417">funding delay 1&ndash;15 min</p>
+            <span class="tl-line card__item" style="--x:38.5; --y:316; --len:12" data-reveal data-rv="2600/383"></span>
+            <span class="dot dot--hollow card__item" style="--x:28; --y:333" data-reveal data-rv="2600/383"></span>
+            <p class="card__label card__label--dim card__item" style="--x:63; --y:338" data-reveal data-rv="2600/383">exit opens after 24 h</p>
+          </div>
+
+          <!-- CARD 2 — Chit balance -->
+          <div class="card-glass card-glass--value" data-reveal style="--rv-delay:1867ms; --rv-dur:350ms">
+            <p class="card__label card__item" style="--x:28; --y:29" data-reveal data-rv="2317/350">Chit balance</p>
+            <p class="value fig-box card__item" style="--x:28; --y:70; --w:178" data-reveal data-rv="2533/350">0.0500 ETH</p>
+            <p class="delta fig-box card__item" style="--x:216; --y:79; --w:50" data-reveal data-rv="2533/350">&#9650; 0.05</p>
+
+            <svg class="chart-grid card__item" style="--x:28; --y:121; --o:.45" viewBox="0 0 274 120" preserveAspectRatio="none" aria-hidden="true" data-reveal data-rv="2667/367">
+              <g stroke="rgba(255,255,255,.18)" stroke-width="1">
+                <line x1="0" y1="0" x2="274" y2="0"/><line x1="0" y1="30" x2="274" y2="30"/>
+                <line x1="0" y1="60" x2="274" y2="60"/><line x1="0" y1="90" x2="274" y2="90"/>
+                <line x1="0" y1="120" x2="274" y2="120"/>
+                <line x1="0" y1="0" x2="0" y2="120"/><line x1="68.5" y1="0" x2="68.5" y2="120"/>
+                <line x1="137" y1="0" x2="137" y2="120"/><line x1="205.5" y1="0" x2="205.5" y2="120"/>
+                <line x1="274" y1="0" x2="274" y2="120"/>
+              </g>
+            </svg>
+
+            <svg class="chart card__item" style="--x:19; --y:132" viewBox="0 0 290 117" overflow="visible" aria-hidden="true" data-reveal data-rv="2667/367">
+              <defs>
+                <linearGradient id="chartFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0" stop-color="#D9D9D9" stop-opacity=".1"/>
+                  <stop offset="1" stop-color="#737373" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <path fill="url(#chartFill)" d="M0 78C16 74 28 52 44 50c17-2 25 26 42 24 16-2 21-38 38-40 16-2 26 30 43 28 16-2 22-32 39-33 16-1 27 20 43 18l41-6v98H0Z"/>
+              <path fill="none" stroke="#FFFFFF" stroke-opacity=".6" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"
+                    d="M0 78C16 74 28 52 44 50c17-2 25 26 42 24 16-2 21-38 38-40 16-2 26 30 43 28 16-2 22-32 39-33 16-1 27 20 43 18l41-6"/>
+            </svg>
+          </div>
+
+          <p class="panel__title" data-reveal style="--rv-delay:1675ms; --rv-dur:760ms">Deposits carry no campaign key</p>
+          <p class="panel__caption" data-reveal style="--rv-delay:1675ms; --rv-dur:760ms">The chain shows a deposit into Chit, and fleets funded by Chit.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════ SCREEN B — THE NUMBERS ══════════════ -->
+  <section class="screen screen--metrics" aria-label="Contract-enforced limits">
+    <div class="metrics__head">
+      <h2 class="headline">
+        <span class="headline__line">Bounded by&nbsp;<span class="dot-word" data-dots="contract" aria-label="contract"></span></span>
+        <span class="headline__line">not by promise</span>
+      </h2>
+      <p class="intro">Every limit below is enforced by the pool contract on Robinhood Chain<br class="desktop-break"> testnet 46630, and refused before any ETH moves. Chit's operator can<br class="desktop-break"> still link a deposit to a fleet. Private, not anonymous.</p>
+    </div>
+
+    <div class="cards">
+      <!-- CARD 1 — funding delay -->
+      <article class="card card--delay">
+        <svg class="card__grain" viewBox="0 0 429 554" preserveAspectRatio="none" aria-hidden="true"><rect width="429" height="554" filter="url(#cardNoise)"/></svg>
+        <h3 class="card__title">Funding Delay<br>Deposit to fleet</h3>
+
+        <svg class="gauge" viewBox="0 0 326 326" aria-hidden="true">
+          <defs>
+            <linearGradient id="gaugeArc" gradientUnits="userSpaceOnUse" x1="7" y1="136" x2="312" y2="109">
+              <stop offset="0" stop-color="#ff9ab7" stop-opacity=".06"/>
+              <stop offset=".08" stop-color="#ff8caf" stop-opacity=".44"/>
+              <stop offset=".34" stop-color="#ff6796" stop-opacity=".94"/>
+              <stop offset=".58" stop-color="#ff6796" stop-opacity="1"/>
+              <stop offset=".82" stop-color="#ffe7ed" stop-opacity=".74"/>
+              <stop offset=".94" stop-color="#fff8fa" stop-opacity=".28"/>
+              <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+            </linearGradient>
+            <linearGradient id="gaugeShadow" gradientUnits="userSpaceOnUse" x1="11" y1="136" x2="308" y2="110">
+              <stop offset="0" stop-color="#6e1639" stop-opacity=".04"/>
+              <stop offset=".09" stop-color="#6e1639" stop-opacity=".17"/>
+              <stop offset=".52" stop-color="#72163d" stop-opacity=".18"/>
+              <stop offset=".78" stop-color="#7b1a43" stop-opacity=".1"/>
+              <stop offset="1" stop-color="#7b1a43" stop-opacity="0"/>
+            </linearGradient>
+            <radialGradient id="radarBeam" gradientUnits="userSpaceOnUse" cx="163" cy="163" r="145">
+              <stop offset=".3" stop-color="#650f35" stop-opacity="0"/>
+              <stop offset=".45" stop-color="#650f35" stop-opacity=".025"/>
+              <stop offset=".7" stop-color="#650f35" stop-opacity=".065"/>
+              <stop offset=".9" stop-color="#650f35" stop-opacity=".08"/>
+              <stop offset="1" stop-color="#650f35" stop-opacity=".05"/>
+            </radialGradient>
+            <linearGradient id="radarBeamEdge" gradientUnits="userSpaceOnUse" x1="238" y1="33" x2="190.5" y2="115.4">
+              <stop offset="0" stop-color="#ffe7ef" stop-opacity=".19"/>
+              <stop offset=".48" stop-color="#ffd1df" stop-opacity=".11"/>
+              <stop offset=".82" stop-color="#ffc6d7" stop-opacity=".045"/>
+              <stop offset="1" stop-color="#ffc6d7" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+          <path d="M11.34 136.26A154 154 0 0 1 307.71 110.33" fill="none" stroke="url(#gaugeShadow)" stroke-width="3.2" stroke-linecap="round"/>
+          <path d="M6.91 135.48A158.5 158.5 0 0 1 311.94 108.79" fill="none" stroke="url(#gaugeArc)" stroke-width="2.2" stroke-linecap="round"/>
+          <path d="M19.22 137.65A146 146 0 0 1 236 36.56" fill="none" stroke="rgba(255,166,194,.31)" stroke-width="1.15"/>
+          <path d="M238 33.1A150 150 0 0 1 277.9 66.6L199.8 119.5A55 55 0 0 0 190.5 115.4Z" fill="#6a1238" opacity=".022" filter="url(#radarHalo)"/>
+          <path d="M238 33.1A150 150 0 0 1 277.9 66.6L199.8 119.5A55 55 0 0 0 190.5 115.4Z" fill="url(#radarBeam)" filter="url(#radarSoft)"/>
+          <path d="M238 33.1L190.5 115.4" stroke="url(#radarBeamEdge)" stroke-width="1.25" stroke-linecap="round" filter="url(#radarSoft)"/>
+          <g id="gaugeTicks"></g>
+          <ellipse cx="225" cy="166" rx="92" ry="76" fill="#fff" opacity=".055" filter="url(#gaugeBlur)"/>
+        </svg>
+
+        <p class="metric metric--delay"><span class="dot-number" data-dots="15" aria-label="15"></span><span class="metric__unit">min</span></p>
+        <p class="caption">Maximum wait<br>before funding</p>
+        <button class="learn-more" type="button">Learn More</button>
+      </article>
+
+      <!-- CARD 2 — draw cap -->
+      <article class="card card--draw">
+        <svg class="context-backdrop" viewBox="0 0 429 554" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="tileTL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d4b0ee" stop-opacity=".05"/><stop offset="1" stop-color="#c6bbff" stop-opacity=".18"/></linearGradient>
+            <linearGradient id="tileTC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#d5c2ff" stop-opacity=".22"/><stop offset=".38" stop-color="#e0bdff" stop-opacity=".26"/><stop offset=".72" stop-color="#f2a0ee" stop-opacity=".32"/><stop offset="1" stop-color="#ff96da" stop-opacity=".34"/></linearGradient>
+            <linearGradient id="tileTR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe8da" stop-opacity=".56"/><stop offset=".5" stop-color="#f9c6d0" stop-opacity=".26"/><stop offset="1" stop-color="#eba4bf" stop-opacity=".08"/></linearGradient>
+            <linearGradient id="tileML" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#efd6ff" stop-opacity=".30"/><stop offset="1" stop-color="#c9a0e6" stop-opacity=".14"/></linearGradient>
+            <linearGradient id="tileMC" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f5d6ef" stop-opacity=".20"/><stop offset="1" stop-color="#e9a6d0" stop-opacity=".10"/></linearGradient>
+            <linearGradient id="tileMR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e858b8" stop-opacity=".52"/><stop offset=".46" stop-color="#e6459c" stop-opacity=".46"/><stop offset="1" stop-color="#de74ba" stop-opacity=".16"/></linearGradient>
+            <linearGradient id="tileSheen" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".12"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+            <linearGradient id="deepBand" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#5a0f2e"/><stop offset=".38" stop-color="#ff7a6b"/><stop offset=".68" stop-color="#ff9ad6"/><stop offset="1" stop-color="#9ab8ff"/></linearGradient>
+            <linearGradient id="bandFade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000" stop-opacity="0"/><stop offset=".25" stop-color="#000"/><stop offset=".8" stop-color="#000"/><stop offset="1" stop-color="#000" stop-opacity="0"/></linearGradient>
+            <mask id="bandMask"><rect x="-24" y="384" width="480" height="170" fill="url(#bandFade)"/></mask>
+          </defs>
+          <g filter="url(#tileSoft)">
+            <rect x="-24" y="22" width="106" height="149" rx="15" fill="url(#tileTL)"/>
+            <rect x="88" y="22" width="247" height="150" rx="15" fill="url(#tileTC)"/>
+            <rect x="88" y="22" width="247" height="46" rx="15" fill="url(#tileSheen)"/>
+            <rect x="346" y="22" width="111" height="147" rx="15" fill="url(#tileTR)"/>
+            <rect x="346" y="22" width="111" height="46" rx="15" fill="url(#tileSheen)"/>
+            <rect x="-24" y="177" width="108" height="174" rx="15" fill="url(#tileML)"/>
+            <rect x="-24" y="177" width="108" height="52" rx="15" fill="url(#tileSheen)"/>
+            <rect x="88" y="177" width="247" height="174" rx="15" fill="url(#tileMC)"/>
+            <rect x="344" y="175" width="113" height="176" rx="15" fill="url(#tileMR)"/>
+          </g>
+          <rect x="-24" y="384" width="480" height="170" fill="url(#deepBand)" mask="url(#bandMask)"/>
+          <g filter="url(#groutSoft)" fill="#4a1244" fill-opacity=".35">
+            <rect x="81" y="30" width="8" height="150"/><rect x="338" y="30" width="8" height="322"/><rect x="0" y="167" width="429" height="12"/>
+          </g>
+          <g>
+            <ellipse cx="352" cy="86" rx="140" ry="108" fill="#ffd9ea" opacity=".28" filter="url(#tileSoft)"/>
+            <ellipse cx="75" cy="150" rx="82" ry="54" fill="#fff" opacity=".22" filter="url(#tileSoft)"/>
+            <ellipse cx="8" cy="334" rx="76" ry="58" fill="#3c0d38" opacity=".35" filter="url(#tileSoft)"/>
+            <ellipse cx="56" cy="215" rx="56" ry="62" fill="#b98cff" opacity=".30" filter="url(#tileSoft)"/>
+          </g>
+          <rect width="429" height="384" filter="url(#wallNoise)" opacity=".34" style="mix-blend-mode:soft-light"/>
+          <rect y="384" width="429" height="170" filter="url(#bandNoise)" opacity=".22" style="mix-blend-mode:soft-light"/>
+        </svg>
+
+        <svg class="card__grain" viewBox="0 0 429 554" preserveAspectRatio="none" aria-hidden="true"><rect width="429" height="554" filter="url(#cardNoise)"/></svg>
+        <h3 class="card__title">Draw Cap<br>Per campaign</h3>
+
+        <div class="context-window">
+          <svg class="window-grain" viewBox="0 0 252 166" preserveAspectRatio="none" aria-hidden="true"><rect width="252" height="166" filter="url(#windowNoise)" opacity=".24" style="mix-blend-mode:soft-light"/></svg>
+          <div class="window-lines"><span></span><span></span><span></span></div>
+        </div>
+
+        <p class="metric metric--draw"><span class="dot-number" data-dots="0.2" aria-label="0.2"></span><span class="metric__unit">ETH</span></p>
+        <p class="caption">Refused on chain<br>above this</p>
+        <button class="learn-more" type="button">Learn More</button>
+      </article>
+
+      <!-- CARD 3 — self-serve exit -->
+      <article class="card card--exit">
+        <svg class="card__grain" viewBox="0 0 429 554" preserveAspectRatio="none" aria-hidden="true"><rect width="429" height="554" filter="url(#cardNoise)"/></svg>
+        <h3 class="card__title">Self-Serve Exit<br>Recovery without Chit</h3>
+
+        <svg class="connections-map" viewBox="0 0 429 238" preserveAspectRatio="none" aria-hidden="true">
+          <g fill="none" stroke="#fff" stroke-width="1">
+            <path opacity=".20" d="M0 5H128c27 0 36 7 39 26 2 16 9 22 24 22h106c16 0 23-8 25-25 2-16 10-23 31-23h76"/>
+            <path opacity=".30" d="M0 117h46c15 0 22 8 26 25 5 23 12 31 31 31h174c18 0 25-8 30-31 4-17 11-25 26-25h96"/>
+            <path opacity=".34" d="M0 173h87c15 0 22 7 27 25 4 15 11 22 28 22h140c17 0 25-7 29-22 5-18 12-25 28-25h90"/>
+            <path opacity=".16" d="M0 228h120c17 0 25-5 28-18 4-15 10-20 28-20h81c18 0 25 6 28 20 4 13 11 18 28 18h116"/>
+            <path opacity=".26" d="M0 5H429M0 61H429M0 117H429"/>
+            <path opacity=".09" d="M0 173H429"/>
+          </g>
+          <g fill="none" stroke="#fff8dd" stroke-width="1.15">
+            <path opacity=".52" d="M0 61h95c14 0 22-6 27-20 4-13 12-20 27-20h115c15 0 23 6 27 20 5 14 13 20 28 20h110"/>
+            <path opacity=".94" d="M0 117h88c15 0 22-8 25-25 4-24 12-31 31-31h129c20 0 27 7 31 31 3 17 10 25 26 25h99"/>
+          </g>
+          <g>
+            <circle cx="45" cy="117" r="6.5" fill="#fff"/>
+            <circle cx="133" cy="61" r="6.5" fill="#fff4a7"/>
+            <circle cx="189" cy="61" r="6.5" fill="#fff1a4"/>
+            <circle cx="319" cy="61" r="6.5" fill="#fff4a6"/>
+            <circle cx="319" cy="117" r="6.5" fill="#fff2a0"/>
+          </g>
+        </svg>
+
+        <p class="metric metric--exit"><span class="dot-number" data-dots="24" aria-label="24"></span><span class="metric__unit">h</span></p>
+        <p class="caption">Works with the<br>service offline</p>
+        <button class="learn-more" type="button">Learn More</button>
+      </article>
+    </div>
+  </section>
+
+  <button class="morph-cue" type="button" aria-label="See the numbers">
+    <span class="morph-cue__ring">
+      <svg class="morph-cue__chevron" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5 6 8.5 10 4.5" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </span>
+    <span class="morph-cue__label">the numbers</span>
+  </button>
+
+</div>
+
+<script src="js/main.js"></script>
+</body>
+</html>
