@@ -1271,3 +1271,36 @@ console errors, LED type rendering, morph reaching screen B. Nav now points at
 pages that exist, since the anchors it used to use went with the old sections.
 Not deployed; chit.tools still serves the previous page until someone runs the
 deploy deliberately.
+
+## Stage 2 — Connect reached the wrong wallet (2026-09-13)
+
+The header Connect button did nothing on a browser with four wallets installed:
+Rabby, OKX, MetaMask and Flow. Only one can own `window.ethereum`, and Rabby
+won the race. It held no account, so it answered every request, even
+`eth_chainId`, with `4001 wallet must has at least one account`. The app read
+`window.ethereum` in four separate places (connect, signed requests, deposits,
+the backup signature), so it only ever talked to Rabby and never reached the
+MetaMask that held the trader's account. The two red `Cannot redefine property:
+ethereum` errors in the console were the wallets fighting over that global.
+
+Three wrong turns first, recorded so nobody repeats them. The header's click
+handler did swallow every failure (`.catch(() => undefined)` into an event
+nothing listened for), so errors were made visible; true, but not the cause.
+The local server sent no cache headers, so a reload could run a stale build; it
+now sends `no-store`, also true and also not the cause. And a Brave Wallet
+theory was wrong: Rabby reports `isMetaMask: true`, which made the provider
+look like MetaMask. What settled it was asking the page directly which
+provider owned the global and what every installed wallet announced.
+
+The fix is EIP-6963. Wallets announce their own providers by event; the app
+collects them and, with more than one installed, asks the trader which to use.
+The chooser stays open through the attempt, so a wallet that refuses says why
+and the trader can pick another. Every wallet call now goes through one
+`walletProvider()`, the wallet that connected, remembered per tab by rdns. Four
+more defects turned up on the way: Flow Wallet answers `eth_chainId` with a
+number, not a hex string; a remembered address whose wallet could no longer be
+reached still showed as connected, or had its calls handed to a different
+wallet; closing the chooser mid-connect discarded an approval given afterwards;
+and a deposit was sent on whatever network the wallet was on, so a wallet moved
+to mainnet after connecting would have sent real ETH to an address with no
+pool. Deposits and exits now confirm Robinhood testnet first.
