@@ -114,6 +114,29 @@ four are fixed and the capture is committed as evidence.
 
 ---
 
+## OPEN — Connect GitHub autodeploy once the app is complete
+
+**Raised** 2026-09-13 · **Status** deliberately deferred · **Owner** founder
+
+The `chit-tools` Vercel project is not connected to GitHub. Every release is a
+deliberate `npx vercel --prod` from the repo root, and production deploys stay a
+stop-and-ask under `plan.md`.
+
+That is on purpose while only the landing page is public-facing. The Fleet app
+under `/app` ships from the same repo and the same build output, so autodeploy
+today would push half-finished app work to chit.tools on any commit to `main`.
+
+**Do this when the whole app is complete:** `vercel git connect`, or connect the
+repository from the Vercel dashboard, so pushes to the private repo's `main`
+deploy on their own. Revisit the stop-and-ask in `plan.md` at the same time,
+since it would no longer describe how releases happen.
+
+Known side effect of the current arrangement: a live deployment has no git commit
+behind it, so a rollback is redeploying an earlier deployment from the dashboard
+rather than reverting here.
+
+---
+
 ## Note on this file's path
 
 `CLAUDE.md` names `loop/memory/STATE.md` as where dependency proposals go. That
