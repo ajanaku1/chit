@@ -133,7 +133,17 @@ export const ROBINHOOD_TESTNET = {
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
 } as const;
 
-type Eip1193 = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
+export type Eip1193 = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
+
+/** The wallet's chain id as lowercase hex. EIP-695 says a hex string; Flow Wallet answers with a number. */
+const chainIdOf = async (eth: Eip1193): Promise<string> => {
+  const id = await eth.request({ method: "eth_chainId" });
+  try {
+    return `0x${BigInt(id as string | number).toString(16)}`;
+  } catch {
+    return String(id).toLowerCase();
+  }
+};
 
 /**
  * Switches the wallet to Robinhood Chain testnet, offering to add it first if
@@ -141,8 +151,7 @@ type Eip1193 = { request(args: { method: string; params?: unknown[] }): Promise<
  * on 46630 afterwards.
  */
 export const ensureRobinhoodTestnet = async (eth: Eip1193): Promise<boolean> => {
-  const current = (await eth.request({ method: "eth_chainId" })) as string;
-  if (current.toLowerCase() === ROBINHOOD_TESTNET.chainId) return true;
+  if ((await chainIdOf(eth)) === ROBINHOOD_TESTNET.chainId) return true;
   try {
     await eth.request({
       method: "wallet_switchEthereumChain",
@@ -154,8 +163,7 @@ export const ensureRobinhoodTestnet = async (eth: Eip1193): Promise<boolean> => 
     if ((error as { code?: number }).code !== 4902) return false;
     try {
       await eth.request({ method: "wallet_addEthereumChain", params: [ROBINHOOD_TESTNET] });
-      const after = (await eth.request({ method: "eth_chainId" })) as string;
-      return after.toLowerCase() === ROBINHOOD_TESTNET.chainId;
+      return (await chainIdOf(eth)) === ROBINHOOD_TESTNET.chainId;
     } catch {
       return false;
     }
@@ -166,11 +174,55 @@ export const ensureRobinhoodTestnet = async (eth: Eip1193): Promise<boolean> => 
 
 type Hex = `0x${string}`;
 
-const ethereum = (): Eip1193 | undefined => (window as unknown as { ethereum?: Eip1193 }).ethereum;
 const WALLET_KEY = "chit-fleet-wallet";
+const PROVIDER_KEY = "chit-fleet-provider";
 let connected: Hex | undefined;
 
+/** A wallet as it announces itself under EIP-6963. */
+export type InstalledWallet = { name: string; icon: string; rdns: string; provider: Eip1193 };
+
+// Only one wallet can own window.ethereum, and with several installed it need
+// not be the trader's: Rabby without an account holds it and answers every
+// request with 4001. Each wallet announces its own provider instead. Keyed by
+// rdns, which is stable across loads; the announced uuid is not.
+const installed = new Map<string, InstalledWallet>();
+let chosen: InstalledWallet | undefined;
+if (typeof window !== "undefined") {
+  window.addEventListener("eip6963:announceProvider", (event) => {
+    const { info, provider } = (event as CustomEvent<{ info: InstalledWallet; provider: Eip1193 }>).detail;
+    installed.set(info.rdns, { name: info.name, icon: info.icon, rdns: info.rdns, provider });
+  });
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+}
+
+const legacyProvider = (): Eip1193 | undefined => (window as unknown as { ethereum?: Eip1193 }).ethereum;
+
+/**
+ * The provider every wallet call goes through: the wallet that connected (or
+ * was remembered for this tab), else the only one installed. With several
+ * installed and none chosen there is no answer until the trader picks one.
+ * Wallets too old for EIP-6963 announce nothing and fall back to window.ethereum.
+ */
+export const walletProvider = (): Eip1193 | undefined => {
+  if (chosen) return chosen.provider;
+  let rdns: string | null = null;
+  try {
+    rdns = sessionStorage.getItem(PROVIDER_KEY);
+  } catch {
+    // Nothing remembered.
+  }
+  const remembered = rdns ? installed.get(rdns) : undefined;
+  if (remembered) return remembered.provider;
+  // The remembered wallet is gone. Never hand its calls to another wallet,
+  // which would be asked to sign for an address it does not hold.
+  if (rdns) return undefined;
+  if (installed.size === 1) return [...installed.values()][0]!.provider;
+  return installed.size === 0 ? legacyProvider() : undefined;
+};
+
+/** The remembered address, but only while its wallet can still be reached. */
 const readStoredWallet = (): Hex | undefined => {
+  if (!walletProvider()) return undefined;
   try {
     const v = sessionStorage.getItem(WALLET_KEY);
     return v && /^0x[0-9a-fA-F]{40}$/.test(v) ? (v.toLowerCase() as Hex) : undefined;
@@ -194,31 +246,141 @@ const setConnected = (address: Hex | undefined): void => {
   window.dispatchEvent(new CustomEvent("chit-wallet-changed", { detail: { address } }));
 };
 
-/** Connects the wallet and moves it onto Robinhood testnet. Returns the address. */
+const WALLET_ERROR_TEXT: Record<string, string> = {
+  no_wallet: "No wallet found — install one to connect",
+  wrong_network: "Switch to Robinhood testnet to connect",
+};
+
+/** Asks one wallet for its account and moves it onto Robinhood testnet. */
+const connectWith = async (eth: Eip1193): Promise<Hex> => {
+  const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
+  const first = accounts[0];
+  if (!first) throw new Error("The wallet shared no account");
+  if (!(await ensureRobinhoodTestnet(eth))) throw new Error(WALLET_ERROR_TEXT["wrong_network"]);
+  return first.toLowerCase() as Hex;
+};
+
+type Chosen = { wallet: InstalledWallet; address: Hex };
+
+/**
+ * Lets the trader pick which installed wallet to connect. The dialog stays open
+ * through the attempt, so a wallet that refuses says why right there and the
+ * trader can pick another. Resolves undefined if they close it.
+ */
+const chooseWallet = (
+  wallets: InstalledWallet[],
+  attempt: (wallet: InstalledWallet) => Promise<Hex>,
+): Promise<Chosen | undefined> =>
+  new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "wallet-chooser";
+    dialog.setAttribute("aria-label", "Choose a wallet");
+    const heading = document.createElement("h2");
+    heading.textContent = "Choose a wallet";
+    const list = document.createElement("div");
+    list.className = "wallet-chooser-list";
+    const status = document.createElement("p");
+    status.className = "wallet-chooser-status";
+    status.setAttribute("role", "status");
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "wallet-chooser-cancel";
+    cancel.textContent = "Cancel";
+
+    let settled = false;
+    // An attempt outlives the dialog: if the trader closes it and then
+    // approves in the wallet popup, the connect still lands.
+    let inFlight: Promise<Chosen | undefined> | undefined;
+    const finish = (result?: Chosen | Promise<Chosen | undefined>): void => {
+      if (settled) return;
+      settled = true;
+      dialog.close();
+      dialog.remove();
+      resolve(result);
+    };
+    const setBusy = (busy: boolean): void => {
+      for (const option of list.querySelectorAll("button")) option.disabled = busy;
+    };
+
+    for (const wallet of wallets) {
+      const option = document.createElement("button");
+      option.type = "button";
+      if (/^data:image\//.test(wallet.icon)) {
+        const icon = document.createElement("img");
+        icon.src = wallet.icon;
+        icon.alt = "";
+        option.append(icon);
+      }
+      option.append(document.createTextNode(wallet.name));
+      option.addEventListener("click", () => {
+        status.textContent = `Waiting for ${wallet.name}…`;
+        setBusy(true);
+        const pending = attempt(wallet).then((address) => ({ wallet, address }));
+        inFlight = pending.catch(() => undefined);
+        pending.then(finish, (error: unknown) => {
+          inFlight = undefined;
+          status.textContent = `${wallet.name}: ${(error as Error)?.message || "didn't connect"}`;
+          setBusy(false);
+        });
+      });
+      list.append(option);
+    }
+    const close = (): void => finish(inFlight);
+    cancel.addEventListener("click", close);
+    dialog.addEventListener("close", close);
+    dialog.append(heading, list, status, cancel);
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+
+const adopt = (wallet: InstalledWallet | undefined, address: Hex): void => {
+  chosen = wallet;
+  try {
+    if (wallet) sessionStorage.setItem(PROVIDER_KEY, wallet.rdns);
+    else sessionStorage.removeItem(PROVIDER_KEY);
+  } catch {
+    // In-memory choice still drives this tab.
+  }
+  watchAccounts(walletProvider());
+  setConnected(address);
+};
+
+/**
+ * Connects a wallet and moves it onto Robinhood testnet. With more than one
+ * installed, the trader chooses which. Returns the address.
+ */
 export const connectWallet = async (): Promise<Hex | undefined> => {
-  const eth = ethereum();
+  const wallets = [...installed.values()];
+  if (wallets.length > 1) {
+    const picked = await chooseWallet(wallets, (wallet) => connectWith(wallet.provider));
+    if (!picked) return undefined;
+    adopt(picked.wallet, picked.address);
+    return picked.address;
+  }
+  const only = wallets[0];
+  const eth = only?.provider ?? legacyProvider();
   if (!eth) {
     window.dispatchEvent(new CustomEvent("chit-wallet-error", { detail: { reason: "no_wallet" } }));
     return undefined;
   }
-  const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
-  const first = accounts[0];
-  if (!first) return undefined;
-  const address = first.toLowerCase() as Hex;
-  const onTestnet = await ensureRobinhoodTestnet(eth);
-  if (!onTestnet) {
-    window.dispatchEvent(new CustomEvent("chit-wallet-error", { detail: { reason: "wrong_network" } }));
-    return undefined;
-  }
-  setConnected(address);
+  const address = await connectWith(eth);
+  adopt(only, address);
   return address;
 };
 
-export const disconnectWallet = (): void => setConnected(undefined);
+export const disconnectWallet = (): void => {
+  chosen = undefined;
+  try {
+    sessionStorage.removeItem(PROVIDER_KEY);
+  } catch {
+    // Nothing to forget.
+  }
+  setConnected(undefined);
+};
 
 /** The wallet's own ETH on the current chain, as wei. */
 export const walletEth = async (wallet: Hex): Promise<string> => {
-  const eth = ethereum();
+  const eth = walletProvider();
   if (!eth) return "0";
   const hex = (await eth.request({ method: "eth_getBalance", params: [wallet, "latest"] })) as string;
   return BigInt(hex).toString();
@@ -233,7 +395,7 @@ export const waitForReceipt = async (
   attempts = 30,
   delayMs = 2_000,
 ): Promise<{ status?: string } | null> => {
-  const eth = ethereum();
+  const eth = walletProvider();
   if (!eth) return null;
   for (let i = 0; i < attempts; i += 1) {
     const receipt = (await eth.request({ method: "eth_getTransactionReceipt", params: [hash] })) as
@@ -244,6 +406,31 @@ export const waitForReceipt = async (
   }
   return null;
 };
+
+const watched = new WeakSet<object>();
+
+/** Follows account changes on the connected wallet only. */
+function watchAccounts(eth: Eip1193 | undefined): void {
+  if (!eth || !("on" in eth) || watched.has(eth)) return;
+  watched.add(eth);
+  const provider = eth as unknown as { on(event: string, handler: (...args: unknown[]) => void): void };
+  provider.on("accountsChanged", (accounts) => {
+    if (eth !== walletProvider()) return;
+    const list = accounts as string[];
+    if (list[0]) {
+      setConnected(list[0].toLowerCase() as Hex);
+      return;
+    }
+    // Some wallets emit an empty list while a page is still loading. Only a
+    // confirmed empty eth_accounts means the trader really disconnected.
+    void eth
+      .request({ method: "eth_accounts" })
+      .then((live) => {
+        if (!(live as string[])[0]) setConnected(undefined);
+      })
+      .catch(() => undefined);
+  });
+}
 
 /**
  * Wires the header Connect/Disconnect control and keeps it in sync with wallet
@@ -270,30 +457,33 @@ export const initHeaderWallet = (): void => {
     }
   };
 
+  const showError = (message: string): void => {
+    button.textContent = "Try again";
+    button.dataset["state"] = "error";
+    button.title = message;
+    button.setAttribute("aria-label", message);
+    window.setTimeout(() => {
+      if (button.dataset["state"] === "error") render();
+    }, 8_000);
+  };
+
   button.addEventListener("click", () => {
     if (getConnectedWallet()) disconnectWallet();
-    else void connectWallet().catch(() => undefined);
+    else
+      void connectWallet().catch((error: unknown) => {
+        window.dispatchEvent(
+          new CustomEvent("chit-wallet-error", {
+            detail: { reason: "rejected", message: (error as Error)?.message },
+          }),
+        );
+      });
   });
   window.addEventListener("chit-wallet-changed", render);
+  window.addEventListener("chit-wallet-error", ((event: Event) => {
+    const detail = (event as CustomEvent<{ reason: string; message?: string }>).detail;
+    showError(WALLET_ERROR_TEXT[detail.reason] ?? detail.message ?? "Couldn't connect");
+  }) as EventListener);
 
-  const eth = ethereum();
-  if (eth && "on" in (eth as object)) {
-    const provider = eth as unknown as { on(event: string, handler: (...args: unknown[]) => void): void };
-    provider.on("accountsChanged", (accounts) => {
-      const list = accounts as string[];
-      if (list[0]) {
-        setConnected(list[0].toLowerCase() as Hex);
-        return;
-      }
-      // Some wallets emit an empty list while a page is still loading. Only a
-      // confirmed empty eth_accounts means the trader really disconnected.
-      void eth
-        .request({ method: "eth_accounts" })
-        .then((live) => {
-          if (!(live as string[])[0]) setConnected(undefined);
-        })
-        .catch(() => undefined);
-    });
-  }
+  watchAccounts(walletProvider());
   render();
 };
