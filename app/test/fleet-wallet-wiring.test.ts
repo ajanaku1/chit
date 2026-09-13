@@ -67,6 +67,77 @@ test("the header wallet control is on every page that listens for it", async () 
 });
 
 /**
+ * One wallet for every call. Signing a challenge, sending a deposit and signing
+ * the backup must reach the same wallet that connected; a module that reads
+ * window.ethereum itself talks to whichever wallet won the injection race.
+ */
+test("no page talks to window.ethereum behind the chosen wallet's back", async () => {
+  const shared = await source("fleet/page-shared.ts");
+  assert.match(shared, /addEventListener\(\s*["']eip6963:announceProvider["']/, "wallets are never discovered");
+  assert.match(shared, /dispatchEvent\(new Event\(\s*["']eip6963:requestProvider["']/, "installed wallets are never asked to announce");
+  for (const name of ["fleet/signed-request.ts", "balance-page.ts", "fleet-page.ts"]) {
+    const text = await source(name);
+    assert.doesNotMatch(text, /\.ethereum\b/, `${name} reads window.ethereum itself`);
+    assert.match(text, /walletProvider\(\)/, `${name} does not go through walletProvider()`);
+  }
+});
+
+test("with more than one wallet installed, connecting asks which one", async () => {
+  const shared = await source("fleet/page-shared.ts");
+  const connect = /export const connectWallet[\s\S]*?\n\};/.exec(shared);
+  assert.ok(connect, "no connectWallet to inspect");
+  assert.match(connect![0], /chooseWallet\(/, "connectWallet picks for the trader when several wallets are installed");
+});
+
+/**
+ * Closing the chooser while a wallet popup is still open must not throw away
+ * an approval the trader then gives in the wallet: the wallet would be
+ * connected while the page still says Connect.
+ */
+test("closing the chooser mid-connect still honours a later wallet approval", async () => {
+  const shared = await source("fleet/page-shared.ts");
+  const chooser = /const chooseWallet[\s\S]*?\n  \}\);/.exec(shared);
+  assert.ok(chooser, "no chooseWallet to inspect");
+  assert.match(chooser![0], /finish\(\s*inFlight/, "cancelling mid-connect discards the attempt still in flight");
+});
+
+/**
+ * The pool exists only on 46630. A wallet switched to another network after
+ * connecting would send the deposit there, to an address with no pool behind it.
+ */
+test("no transaction is sent before the wallet is confirmed on Robinhood testnet", async () => {
+  const text = await source("balance-page.ts");
+  const send = /const sendToPool[\s\S]*?\n\};/.exec(text);
+  assert.ok(send, "no sendToPool to inspect");
+  const guard = send![0].indexOf("ensureRobinhoodTestnet(");
+  assert.ok(
+    guard > 0 && guard < send![0].indexOf("eth_sendTransaction"),
+    "sendToPool sends on whatever network the wallet happens to be on",
+  );
+});
+
+/**
+ * A failed connect from the header must be visible. `connectWallet` dispatches
+ * `chit-wallet-error` when no wallet is installed, and throws when the trader
+ * rejects the account prompt or the network switch — a header click that only
+ * does `.catch(() => undefined)` discards every one of those with no trace, so
+ * the button looks broken instead of telling the trader why.
+ */
+test("the header button surfaces a failed connect instead of discarding it", async () => {
+  const text = await source("fleet/page-shared.ts");
+  assert.doesNotMatch(
+    text,
+    /connectWallet\(\)\.catch\(\(\)\s*=>\s*undefined\)/,
+    "the header click handler still swallows a failed connect silently",
+  );
+  assert.match(
+    text,
+    /addEventListener\(\s*["']chit-wallet-error["']/,
+    "initHeaderWallet never listens for chit-wallet-error, so no failure reaches the trader",
+  );
+});
+
+/**
  * Every action the pages can send must be allowed by the route they send it to.
  * A mismatch answers 409 with no clue which side is wrong, and only shows up
  * when a trader clicks the one button nobody tried.
