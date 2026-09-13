@@ -73,7 +73,7 @@ Read them in this order. **`Goal.md` wins on any conflict.**
 | [specs/002-private-funding-pool/](specs/002-private-funding-pool/) | Stage 2, same shape. `tasks.md` shows T001–T040 status. |
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | The running build log. ~60KB, newest at the bottom. Read the tail before starting work — it explains most of the "why is it like this" questions. |
 | [verify.sh](verify.sh) | The done predicates. Has the final vote. |
-| [CLAUDE.md](../CLAUDE.md) | The workspace laws (one directory up). |
+| The workspace laws | Not in this repo. They live one level up in the workspace and govern every project in it, so the parts that bind this build are reproduced in [§7](#7-the-rules). Ask the founder for the file itself. |
 
 Traceability runs: approved design → FR/SC numbers in the spec → COMP components
 → T-numbered tasks → a `verify.sh` tag. Every change should be locatable in that
@@ -306,7 +306,7 @@ non-mutating dry run — start there).
 
 ## 7. The rules
 
-These are not style preferences. From `CLAUDE.md` and `plan.md`.
+These are not style preferences. They come from the workspace laws and from [plan.md](plan.md).
 
 **Laws:**
 - **Done means `verify.sh` exits 0.** Not a summary, not a checked-off task,
