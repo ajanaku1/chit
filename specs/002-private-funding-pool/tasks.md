@@ -74,7 +74,20 @@ Every test is written and observed failing before its paired implementation (pro
 - [x] T037 Add `scripts/fleet-pool-deploy-live.ts` and `fleet-pool-deploy:live` npm script recording `pool` in `deployments/fleet-46630.json` (FR-016; COMP-102)
 - [x] T038 Update `specs/002-private-funding-pool/quickstart.md` evidence section and `IMPLEMENTATION.md` (COMP-106)
 - [x] T039 `./verify.sh pool-acceptance` green and every Stage 1 fleet tag green (FR-017, SC-009, SC-010; COMP-106)
-- [x] T040 Live: deploy the pool, run the quickstart live validation on chit.tools, record tx hashes under `pooledBuy` (outward; user go) (SC-001–SC-008)
+- [ ] T040 Live: deploy the pool, run the quickstart live validation on chit.tools, record tx hashes under `pooledBuy` (outward; user go) (SC-001–SC-008)
+  - Done: the pool is deployed at `0xce92096098ae1e397b167292edad8f3bdb8200c9`, and a
+    full journey landed on 46630 — deposit `0x4986a9cc…`, sponsored buy `0xc37f0bdd…`,
+    withdrawal `0x8fba5a00…`, all three confirmed successful on chain and recorded
+    under `pooledJourney` in `deployments/fleet-46630.json`.
+  - Not done: that journey did not run **on chit.tools**. The hosted service could
+    not reach the pool at all until 2026-09-13, because `FLEET_POOL_ADDRESS` in the
+    Vercel production environment held the operator address instead of the pool's,
+    so every signed action answered 503. The run was therefore against a local
+    service pointed at the live chain. Re-marked open on that basis: done means the
+    predicate passed, and the predicate names chit.tools.
+  - Unblocked 2026-09-13: the environment variable is corrected and production now
+    serves the pool (`sweep` returns, challenges issue). The journey can be re-run
+    against chit.tools and this closed properly.
 
 ## Dependencies
 

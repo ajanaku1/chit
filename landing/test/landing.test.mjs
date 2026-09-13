@@ -89,6 +89,10 @@ test("publishes the truthful Fleet story in semantic landmarks", async () => {
 test("states the privacy boundary honestly and admits what the operator sees", async () => {
   const copy = text(await source("index.html"));
 
+  // The FR-015 claim Stage 2 earns, now that the pool serves in production.
+  assert.match(copy, /Your main wallet never funds your fleet/i);
+  assert.match(copy, /no transaction links the two/i);
+
   // Trades stay public. This is the half a reader is most likely to miss.
   assert.match(copy, /Trades stay public/i);
   assert.match(copy, /only the funding relationship is withheld/i);

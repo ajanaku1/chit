@@ -145,7 +145,7 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
 .hero__head{margin-bottom:calc(54 * var(--u))}
 
 /* PILL */
-.pill{position:relative; display:block; inline-size:calc(279 * var(--u)); margin-inline:auto;
+.pill{position:relative; display:block; inline-size:calc(346 * var(--u)); margin-inline:auto; white-space:nowrap;
   padding:calc(10 * var(--u)); text-align:left;
   font-size:calc(12 * var(--u)); line-height:1.05; letter-spacing:var(--track-wide); text-transform:uppercase;
   background:linear-gradient(90deg, rgba(255,90,60,.10), rgba(255,90,60,.24) 45.55%, rgba(255,90,60,.10))}

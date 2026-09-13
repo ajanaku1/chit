@@ -1304,3 +1304,35 @@ wallet; closing the chooser mid-connect discarded an approval given afterwards;
 and a deposit was sent on whatever network the wallet was on, so a wallet moved
 to mainnet after connecting would have sent real ETH to an address with no
 pool. Deposits and exits now confirm Robinhood testnet first.
+
+## Stage 2 reaches production, the claim follows it, and T040 goes back to open (2026-09-13)
+
+`FLEET_POOL_ADDRESS` in the Vercel production environment held the operator
+address, `0x34b0Ba...F724`, instead of the pool's. That address is an EOA with no
+code, so every read of `campaignCount()` came back `0x` and the route's catch-all
+answered 503 `dependency_evidence_invalid`. Sweep, challenges and balance had all
+been down since the pool shipped; the daily cron had been failing silently.
+
+The founder corrected the variable and a redeploy picked it up. `sweep` now
+returns `{"funded":[],"posted":[]}` and challenges issue. Worth recording that my
+own probes were malformed throughout the investigation — they sent `owner` where
+the service reads `primaryWallet` — which made the challenge endpoints look
+broken after the fix when they were not. The environment bug was real and is
+proven by sweep alone, which changed behaviour on nothing but the address.
+
+With the pool actually serving, the hero moved from the Stage 1 narrowing to the
+FR-015 claim: "Your main wallet never funds your fleet. The chain shows a deposit
+into Chit and fleets funded by Chit, and no transaction links the two." The two
+honesty lines that sentence replaced were kept rather than dropped, so trades
+stay public and the withheld relationship are both still stated, and screen B
+still carries the operator admission and "Private, not anonymous". The eyebrow
+changed from "Stage 1 live" to "Private funding pool live", and the gate now
+asserts the FR-015 wording so it cannot quietly regress.
+
+T040 is re-marked open. Its predicate names chit.tools, and the hosted service
+could not reach the pool at all until today, so the journey that was recorded
+ran against a local service pointed at the live chain. What it genuinely proved
+is kept in the task: three transactions confirmed successful on 46630, deposit,
+sponsored buy and withdrawal. What it did not prove is the hosted path. Done
+means the predicate passed, and this one names a host it never touched. It is
+now unblocked and can be closed by re-running against chit.tools.
