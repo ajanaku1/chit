@@ -1,6 +1,7 @@
 # Local build notes
 *.done-when.md
 ai/
+landing-brief.md
 
 # secrets — never committed, not even a testnet burn key
 .env

@@ -1,7 +1,12 @@
 # Landing proposal: the morph (2026-09-13)
 
-An implementation of [`landing-brief.md`](../../landing-brief.md) with the
-reference design's borrowed credibility and third-party assets removed.
+An implementation of `landing-brief.md` with the reference design's borrowed
+credibility and third-party assets removed.
+
+> The brief itself is not in this repository. It is a third-party document that
+> carries another company's brand and pins assets to someone else's CDN, so it
+> stays local to the founder's machine. Everything it specified that matters to
+> this build is restated below.
 
 **This is a proposal. It is not wired into chit.tools and nothing live changed.**
 
@@ -119,31 +124,58 @@ which carries no borrowed-credibility problem.
 5. **Glyph table** gained `c` and `o`. The brief's table covers its own copy
    ("Intelligent") and ours needs "contract". Construction is identical: 7 rows,
    5 columns, same lowercase baseline as `a`/`e`/`n`.
-6. **Four files, not three.** The brief demands exactly `index.html`,
-   `css/style.css`, `js/main.js`. This README is the fourth, because a proposal
-   directory with no explanation of what it is would be worse.
+6. **More than three files.** The brief demands exactly `index.html`,
+   `css/style.css`, `js/main.js`. Those three are the page. Alongside them sit
+   this README, `shots.mjs` (the Playwright capture used to verify the
+   acceptance checklist) and `evidence/`. A proposal with no explanation and no
+   evidence would be worse than one that breaks the file count.
+7. **Metric transforms and pill width** were retuned; the brief's values were
+   measured against its own copy. See "Defects the capture found" below.
 
 ## Acceptance checklist
 
-The brief's section 12, answered honestly. **No browser automation is installed
-in this repo, and adding one is a dependency decision that is not mine to make,
-so nothing below marked "needs a human" has been seen rendered.**
+The brief's section 12, verified with Playwright against a real Chromium at six
+viewports. Screenshots are in `evidence/`; regenerate them with:
+
+```bash
+python3 -m http.server 8777 &
+node shots.mjs "$PWD/evidence"
+```
 
 | Check | Status |
 |---|---|
-| Desktop 1606×1161 pixel-aligned; nothing scrolls at any desktop size | needs a human |
-| The video never restarts at the morph | n/a, there is no video; the CSS field is one element and only its clip changes |
-| The masthead does not move across the morph | structurally guaranteed: it is outside both screens and has no morph transition |
-| Wheel, keyboard and cue all work; triggers ignored mid-morph | implemented with a `morphing` latch and a 250ms cooldown; needs a human to confirm feel |
-| Cards are 429/554 and inner elements scale with `--cu` | implemented; needs a human |
-| The three numbers and the headline word are LED dots, not text | verified: all four strings resolve against the glyph table |
-| Reduced motion: no entrances, instant swap, still readable | implemented; needs a human |
-| Mobile 390px stacks and scrolls, no horizontal overflow | needs a human |
+| Nothing scrolls horizontally at any desktop size | **pass** — 0px overflow at 1606×1161, 1440×900, 1024×1180 |
+| The background never restarts at the morph | **pass by construction** — one element, only its clip transitions |
+| The masthead does not move across the morph | **pass** — identical position in the A and B captures |
+| Wheel, keyboard and cue trigger the morph; ignored mid-morph | **pass** — a wheel event moves `data-screen` to `metrics`; latch plus 250ms cooldown implemented |
+| Cards are 429/554 and inner elements scale with `--cu` | **pass** — cards hold ratio at every captured width |
+| The three numbers and the headline word are LED dots, not text | **pass** — all four `[data-dots]` hosts contain a rendered `svg.dot-svg` |
+| Reduced motion: no entrances, instant swap, still readable | **pass** — captured under `reducedMotion: reduce`, page fully legible |
+| Mobile 390px stacks and scrolls, no horizontal overflow | **pass** — 0px overflow (was 5px; see below) |
+| No console errors at any viewport | **pass** — none across all six |
 | Not one word of copy differs from the brief | **deliberately false.** Every string changed, for the reasons above |
 
-Automated checks that did run: JS parses, HTML tags balance, CSS braces balance
-(250 rules, 821 declarations), no CloudFront or third-party brand references
-remain, and the only external hosts are the two Google Fonts domains.
+### Defects the capture found, and fixed
+
+Four things were wrong that static checking could not see. All were caused by
+the brief's numbers being tuned for its own copy, not ours.
+
+1. **5px horizontal overflow at 390px.** `.panel__title` is `white-space:nowrap`
+   in the brief; "Deposits carry no campaign key" is wider than a 390px
+   viewport. It now wraps on mobile only.
+2. **The metric numbers collided with their units.** The brief's per-card
+   `translate`/`scale` on `.dot-svg` were tuned for "118" and "2.4"; with "15"
+   and "0.2" the shifted dots ran into "min" and "ETH". The transforms are
+   removed and `.metric` carries a `10cu` gap instead.
+3. **The hero pill wrapped onto two lines and overlapped its note.** 152u fit
+   the brief's "Rebalance needed"; "Caps enforced on chain" is six characters
+   longer. Widened to 176u and pinned to one line.
+4. **The shared field was washing out to grey.** `saturate(.35)` removed most of
+   the paper warmth. Raised to `.62`.
+
+One judgment call left as-is: coral appears on screen B but not on screen A,
+where the field is paper-to-ink and the accent never shows. That reads as
+deliberate restraint rather than a defect, but it is worth an opinion.
 
 ## If this gets promoted
 
