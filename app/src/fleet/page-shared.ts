@@ -157,7 +157,7 @@ export const ensureRobinhoodTestnet = async (eth: Eip1193): Promise<boolean> => 
       method: "wallet_switchEthereumChain",
       params: [{ chainId: ROBINHOOD_TESTNET.chainId }],
     });
-    return true;
+    return (await chainIdOf(eth)) === ROBINHOOD_TESTNET.chainId;
   } catch (error) {
     // 4902: the chain isn't in the wallet yet — add, which usually switches too.
     if ((error as { code?: number }).code !== 4902) return false;
@@ -188,11 +188,17 @@ export type InstalledWallet = { name: string; icon: string; rdns: string; provid
 const installed = new Map<string, InstalledWallet>();
 let chosen: InstalledWallet | undefined;
 if (typeof window !== "undefined") {
+  let loading = true;
   window.addEventListener("eip6963:announceProvider", (event) => {
-    const { info, provider } = (event as CustomEvent<{ info: InstalledWallet; provider: Eip1193 }>).detail;
-    installed.set(info.rdns, { name: info.name, icon: info.icon, rdns: info.rdns, provider });
+    const { info, provider } =
+      (event as CustomEvent<{ info?: Partial<InstalledWallet>; provider?: Eip1193 }>).detail ?? {};
+    if (typeof info?.rdns !== "string" || typeof provider?.request !== "function") return;
+    const known = installed.has(info.rdns);
+    installed.set(info.rdns, { name: String(info.name ?? info.rdns), icon: String(info.icon ?? ""), rdns: info.rdns, provider });
+    if (!loading && !known) takeUpLateWallet(provider);
   });
   window.dispatchEvent(new Event("eip6963:requestProvider"));
+  loading = false;
 }
 
 const legacyProvider = (): Eip1193 | undefined => (window as unknown as { ethereum?: Eip1193 }).ethereum;
@@ -345,15 +351,20 @@ const adopt = (wallet: InstalledWallet | undefined, address: Hex): void => {
   setConnected(address);
 };
 
+// Only the latest connect takes effect: an abandoned attempt approved in the
+// wallet later must not replace a newer one.
+let latestConnect = 0;
+
 /**
  * Connects a wallet and moves it onto Robinhood testnet. With more than one
  * installed, the trader chooses which. Returns the address.
  */
 export const connectWallet = async (): Promise<Hex | undefined> => {
+  const call = ++latestConnect;
   const wallets = [...installed.values()];
   if (wallets.length > 1) {
     const picked = await chooseWallet(wallets, (wallet) => connectWith(wallet.provider));
-    if (!picked) return undefined;
+    if (!picked || call !== latestConnect) return undefined;
     adopt(picked.wallet, picked.address);
     return picked.address;
   }
@@ -364,6 +375,7 @@ export const connectWallet = async (): Promise<Hex | undefined> => {
     return undefined;
   }
   const address = await connectWith(eth);
+  if (call !== latestConnect) return undefined;
   adopt(only, address);
   return address;
 };
@@ -406,6 +418,18 @@ export const waitForReceipt = async (
   }
   return null;
 };
+
+/**
+ * A remembered wallet that announces after the page script ran. Taken up now,
+ * or the header says Connect while a click on it would disconnect.
+ */
+function takeUpLateWallet(provider: Eip1193): void {
+  if (walletProvider() !== provider) return;
+  const address = readStoredWallet();
+  if (!address) return;
+  watchAccounts(provider);
+  setConnected(address);
+}
 
 const watched = new WeakSet<object>();
 
