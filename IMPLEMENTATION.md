@@ -1110,3 +1110,25 @@ privacy-relevant checks inside `pool-acceptance` — the observer unlinkability
 test and the FR-015 claims grep — pass on their own when run in isolation.
 Bumping the pinned fork block is the fix; deliberately left undone for now
 since it touches shared fork config other gates also depend on.
+
+## The brand constraint I had over-read (2026-09-13)
+
+The landing proposal carried an open question: `BRAND-TRUTH.md` ends its
+constraints with "no ... gradients, glow", and the proposed design is built from
+both, so I had recorded a conflict and stopped.
+
+The direction came back that the visual language may change while the branding
+and palette stay. Re-reading the document on the back of that, the conflict was
+narrower than I had written. That constraint list is scoped to the mark:
+"Favicon-first vector mark; readable at 16px; one accent hue; works on paper and
+ink surfaces; no letters, coins, ... gradients, glow ...". Those govern the
+logo, not the site. The page was never in breach.
+
+The masthead was. I had drawn a gradient-filled approximation of the seam mark
+rather than using `brand/logo.svg`, which is the one place the rule did apply.
+It now inlines the real mark, flat coral on ink.
+
+Signal coral also reaches screen A for the first time: the live-status pill and
+its dot, the reached steps on the funding timeline, and the balance delta. It
+marks things that are live or have happened, which keeps it to one accent hue
+doing one job.

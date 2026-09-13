@@ -54,14 +54,12 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
   <!-- ONE masthead, shared, never moves -->
   <header class="masthead" data-reveal style="--rv-delay:70ms; --rv-dur:615ms">
     <a class="brand" href="/">
-      <svg class="brand__mark" viewBox="0 0 29 24" aria-hidden="true">
-        <defs>
-          <linearGradient id="brandGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#F5EFE5"/><stop offset="1" stop-color="#8A8279"/>
-          </linearGradient>
-        </defs>
-        <path fill="url(#brandGrad)" d="M4.6 0h19.8l2.2 2.2v19.6L24.4 24H4.6L2.4 21.8V2.2Z" opacity=".18"/>
-        <path fill="url(#brandGrad)" d="M11.3 0h6.4v4.6l-2.9 2.4 2.9 2.6-2.9 2.6 2.9 2.4V24h-6.4v-4.8l-2.9-2.8 2.9-2.4-2.9-2.6 2.9-2.8Z"/>
+      <!-- chit's own seam mark, verbatim from brand/logo.svg. Flat coral on
+           ink: the brand truth's mark constraints forbid gradients and glow. -->
+      <svg class="brand__mark" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#171513"/>
+        <path fill="#FF5A3C" d="M14 14h36l4 4v28l-4 4H14l-4-4V18l4-4Z"/>
+        <path fill="#171513" d="M28 14h8v9l-4 4 4 5-4 5 4 4v9h-8v-7l-4-6 4-5-4-5 4-6v-7Z"/>
       </svg>
       <span class="brand__name">Chit</span>
     </a>
@@ -83,7 +81,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
       <div class="hero__content">
         <div class="hero__body">
           <div class="hero__head">
-            <p class="pill" data-reveal style="--rv-delay:1017ms; --rv-dur:50ms">Stage 1 live on testnet 46630</p>
+            <p class="pill" data-reveal style="--rv-delay:1017ms; --rv-dur:50ms"><span class="pill__dot" aria-hidden="true"></span>Stage 1 live on testnet 46630</p>
             <h1 class="hero__title">
               <span class="hero__line" data-reveal style="--rv-delay:267ms; --rv-dur:483ms">A private line </span>
               <span class="hero__line" data-reveal style="--rv-delay:417ms; --rv-dur:450ms">for a public</span>

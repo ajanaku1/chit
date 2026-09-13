@@ -99,25 +99,27 @@ which carries no borrowed-credibility problem.
    Audited: 52 hex and 59 rgb() literals, zero saturated colours outside the
    coral/paper hue band.
 
-2. **Unresolved: the brand truth forbids what this design is made of.**
-   `BRAND-TRUTH.md` constraints end with "no letters, coins, gas pumps,
-   padlocks, shields, eyes, fingerprints, chain links, hexagons, nodes,
-   **gradients, glow**, or generic crypto imagery."
+2. **Resolved: the visual language may change; the branding and palette may not.**
+   Decided 2026-09-13. The brief's gradient-and-glow treatment is accepted as a
+   direction for the page, so nothing here is held back on that account.
 
-   This design is gradients and glow. Gradient-clipped hero type, nineteen-layer
-   radial stacks per card, a glow wash, backdrop blur, a radar gauge. Using
-   chit's colours does not fix that; it makes a coral version of something the
-   brand truth says chit does not do. The live landing at chit.tools is flat
-   paper, hairline rules and one accent, which is what that document describes.
+   I had also read `BRAND-TRUTH.md`'s constraint list as governing the whole
+   site, and flagged a conflict that did not exist. Re-reading it, that list is
+   scoped to the **mark**: "Favicon-first vector mark; readable at 16px; one
+   accent hue; works on paper and ink surfaces; no letters, coins, ... gradients,
+   glow, or generic crypto imagery." Those are rules for the logo, not the page.
+   The page was never in conflict. The masthead mark was, because I had drawn a
+   gradient-filled stand-in.
 
-   So the palette question is settled and a larger one is not: **is chit's
-   visual language changing, or is this design the wrong shape for chit?** That
-   is a brand-direction call, and `plan.md` makes it yours. Nothing here ships
-   until it is answered.
+3. **Brand mark is now chit's own.** `brand/logo.svg` inlined verbatim: the
+   coral seam mark on ink, flat, no gradient, in a 26u square. It replaces the
+   gradient approximation, which broke the one constraint that genuinely applied.
 
-3. **Brand mark** is a gradient-filled mark in the brief's 29×24 slot, shaped
-   after chit's seam logo. It is not `brand/logo.svg`, which is a solid orange
-   rounded square and does not take the white-to-grey gradient treatment.
+   Signal coral now also appears on screen A, where it previously did not show
+   at all: the live-status pill and its dot, the reached steps on the funding
+   timeline, and the balance delta. One accent hue, used where something is
+   actually live or has actually happened.
+
 4. **Marquee shift.** The brief hardcodes `--marquee-shift:-644.104u`, measured
    from its five logo PNGs. Text wordmarks are not those widths, so the track
    is duplicated and animates to `-50%`, which is width-independent.
@@ -182,4 +184,9 @@ deliberate restraint rather than a defect, but it is worth an opinion.
 It is not a drop-in replacement for `landing/public/`. That directory has its
 own test (`landing/test/landing.test.mjs`) which asserts the FR-015 claim copy
 and forbids the overclaim vocabulary. This page would need to be run against
-that gate, and the palette question settled, before it could ship.
+that gate before it could ship.
+
+The direction question is settled: the visual language may change, the branding
+and palette stay. What remains is a straight product decision about whether this
+replaces the current landing, and a copy pass once Stage 2 is live, since the
+hero currently states the Stage 1 claim rather than the FR-015 one.
