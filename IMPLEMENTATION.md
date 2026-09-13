@@ -1058,3 +1058,31 @@ hardcoded minute, since the old test pinned the value it was checking.
 The dev server also now logs the action behind each request, and the action a
 challenge is for, because a challenge is exactly one wallet prompt and knowing
 which one is the whole diagnosis.
+
+## Dependency proposal raised: Playwright, and a path that did not exist (2026-09-13)
+
+Design work in this repo can be asserted but not verified. The landing proposal
+in `proposals/landing-morph-2026-09-13/` carries nine acceptance checks from its
+brief and five of them read "needs a human", because nothing here can render a
+page. Colour audits, tag balance and parse checks are not the same as seeing the
+layout land.
+
+So `playwright` is proposed as a dev-only dependency: two packages, 18.5 MB, no
+third-party transitive dependencies, browsers cached outside the repo. Not
+`@playwright/test`, which would duplicate the `node --test` runner already in
+use.
+
+The cost worth knowing about is not the install. `vercel.json` installs
+devDependencies on every build, so without `PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1`
+in the project environment each production build would pull about 150 MB of
+browsers it never opens. That makes it two decisions, not one, and a production
+env change is its own stop-and-ask.
+
+Nothing was installed. The proposal, its measured figures and six alternatives
+are in `loop/memory/STATE.md`.
+
+That file is also new. `CLAUDE.md` names `loop/memory/STATE.md` as the place a
+dependency proposal goes, and this repository had no `loop/` tree at all; it
+keeps its log here and its contract in the four root files. The conservative
+reading was to create the path the law names rather than file the proposal
+somewhere of my own choosing, so that is what happened.
