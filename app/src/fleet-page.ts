@@ -21,14 +21,13 @@ import {
   type SetupQuote,
 } from "./fleet/campaign-setup.js";
 import { fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
-import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initTheme, parseEth, saveFleetSnapshot, toEth } from "./fleet/page-shared.js";
+import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initTheme, parseEth, saveFleetSnapshot, toEth, walletProvider } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { readStatus } from "./fleet/status-read.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
 import { confirmRecovery, createRecoveryVault, type VaultContext } from "./fleet/vault.js";
 
 type Hex = `0x${string}`;
-type Eip1193 = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
 
 const FLEET_CHAIN_ID = "46630";
 const STEPS = ["welcome", "connect", "size", "backup", "launch", "done"] as const;
@@ -39,8 +38,6 @@ const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   if (!node) throw new Error(`missing element: ${id}`);
   return node as T;
 };
-
-const ethereum = (): Eip1193 | undefined => (window as unknown as { ethereum?: Eip1193 }).ethereum;
 
 const banner = (message: string, tone: "pending" | "error" | "ok"): void => {
   const node = el("status-banner");
@@ -134,7 +131,7 @@ class FleetWizard {
   }
 
   #signMessage = async (message: string): Promise<Hex> => {
-    const eth = ethereum();
+    const eth = walletProvider();
     if (!eth || !this.#wallet) throw new Error("wallet_unavailable");
     return (await eth.request({ method: "personal_sign", params: [message, this.#wallet] })) as Hex;
   };
