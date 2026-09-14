@@ -17,3 +17,35 @@ a { color: inherit; }
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
+
+/* ---- Shell: page frame, masthead, nav, phone menu ---- */
+.skip-link { position: absolute; left: 1rem; top: -3rem; z-index: 20; padding: 0.5rem 0.75rem; border-radius: var(--radius-control); background: var(--paper); color: var(--ink); }
+.skip-link:focus { top: 1rem; }
+.fleet-shell { max-width: 72rem; margin-inline: auto; padding-inline: clamp(1rem, 4vw, 2.25rem); padding-block-end: 3rem; }
+.fleet-shell > main { width: 100%; margin-inline: auto; }
+main.wizard, main.privacy-page { max-width: 46rem; }
+main.dash { max-width: 60rem; }
+
+.masthead {
+  display: grid; grid-template-columns: auto 1fr auto;
+  grid-template-areas: "brand nav action" "contract contract contract";
+  align-items: center; gap: 0.75rem 1.5rem; padding-block: 1.25rem 1rem;
+}
+.brand-lockup { grid-area: brand; display: inline-flex; align-items: center; gap: 0.6rem; font-size: 1.25rem; letter-spacing: var(--track-snug); text-decoration: none; }
+.brand-lockup img { width: 1.75rem; height: 1.75rem; }
+.nav { grid-area: nav; display: flex; justify-content: center; gap: clamp(1rem, 3vw, 2.25rem); }
+.nav a { padding-block: 0.4rem; border-bottom: 1px solid transparent; color: var(--text-muted); font-size: 0.95rem; text-decoration: none; }
+.nav a[aria-current="page"] { color: var(--paper); border-bottom-color: var(--paper); }
+.wallet-btn { grid-area: action; padding: 0.55rem 1rem; border: 0; border-radius: var(--radius-control); background: var(--paper); color: var(--ink); font: inherit; font-size: 0.9rem; white-space: nowrap; cursor: pointer; }
+.wallet-btn[data-state="connected"] { border: 1px solid var(--glass-line); background: transparent; color: var(--paper); font-family: var(--font-mono); }
+.wallet-btn[data-state="error"] { background: var(--coral-deep); color: var(--paper); }
+.burger { display: none; }
+
+@media (max-width: 720px) {
+  .masthead { grid-template-columns: 1fr auto auto; grid-template-areas: "brand action burger" "nav nav nav" "contract contract contract"; }
+  .burger { grid-area: burger; display: grid; place-content: center; gap: 5px; width: 2.5rem; height: 2.5rem; border: 1px solid var(--glass-line); border-radius: var(--radius-control); background: transparent; }
+  .burger span { display: block; width: 18px; height: 1.5px; background: var(--paper); }
+  .nav { display: none; flex-direction: column; gap: 0; }
+  .nav[data-open="true"] { display: flex; }
+  .nav a { padding-block: 0.8rem; border-bottom: 1px solid rgba(245, 239, 229, 0.08); }
+}

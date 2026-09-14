@@ -537,3 +537,26 @@ export const initHeaderWallet = (): void => {
     if (document.visibilityState === "visible") void restoreWallet().catch(() => undefined);
   });
 };
+
+/** The phone menu: the burger opens the nav sheet it controls; Escape or a link closes it. */
+export const initMenu = (): void => {
+  const burger = document.querySelector<HTMLButtonElement>(".burger");
+  const nav = document.getElementById("fleet-nav");
+  if (!burger || !nav) return;
+  const set = (open: boolean): void => {
+    burger.setAttribute("aria-expanded", String(open));
+    nav.dataset["open"] = String(open);
+  };
+  burger.addEventListener("click", () => set(burger.getAttribute("aria-expanded") !== "true"));
+  nav.addEventListener("click", (event) => {
+    if ((event.target as HTMLElement).closest("a")) set(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") set(false);
+  });
+};
+
+/** Wires the shared page frame. */
+export const initShell = (): void => {
+  initMenu();
+};

@@ -21,6 +21,7 @@ import {
   ensureRobinhoodTestnet,
   getConnectedWallet,
   initHeaderWallet,
+  initShell,
   parseEth,
   waitForReceipt,
   walletEth,
@@ -30,6 +31,7 @@ import {
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 
 initHeaderWallet();
+initShell();
 
 const el = (id: string): HTMLElement => {
   const node = document.getElementById(id);
