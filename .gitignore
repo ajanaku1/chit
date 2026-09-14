@@ -28,3 +28,7 @@ video/
 *.log
 .vercel/
 .codex/
+
+app/evidence/*
+!app/evidence/*-1440.png
+!app/evidence/*-390.png

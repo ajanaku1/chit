@@ -1336,3 +1336,53 @@ is kept in the task: three transactions confirmed successful on 46630, deposit,
 sponsored buy and withdrawal. What it did not prove is the hosted path. Done
 means the predicate passed, and this one names a host it never touched. It is
 now unblocked and can be closed by re-running against chit.tools.
+
+## App redesign, step 1: the landing's look, tuned for an app (2026-09-14)
+
+The four app pages now wear the landing's look: ink surfaces, glass and warm
+cards, LED dot figures, pill tags, the landing's masthead and its motion rules.
+Design: `design-app-redesign.md`; plan:
+`docs/superpowers/plans/2026-09-14-app-redesign-step1.md`. This replaces the
+fleet pages' "Soft Receipt" styles and the older "Public Docket" direction;
+journeys and screens from `design.md`/`design-stage2.md` are unchanged.
+
+The old stylesheet was wrapped in a lowest-priority `legacy` cascade layer and
+shrunk task by task as new `tokens`/`components`/`pages` layers replaced it, so
+no page was ever unstyled and no commit passed 200 lines. It is now gone:
+`app/fleet.css` is a four-line manifest, and removing the last of it changed no
+pixel on any page at 1600 or 390 wide. The app is dark-only like the landing.
+Coral marks only what is live or has happened and primary buttons are paper, as
+the landing's are; a test enforces the coral rule. The status pill shows the
+pool's state only from the cached balance read, so it never costs a signature
+and never asserts "live" unread. Revoke and Close now confirm in a dialog first,
+and a dialog that fails to open reaches the error banner instead of vanishing.
+
+Looking at the rendered pages found what the tests did not. Author rules that
+set `display` beat the browser's own `[hidden] { display: none }`, so the empty
+status pill showed on every page and the Control Room showed its fleet controls
+with no fleet. One global `[hidden] { display: none !important }` in the
+components layer ends that class of bug. The top bar was boxed into a 72rem
+column, which left the wallet button short of the top-right; it now runs edge
+to edge like the landing's, and everything below it shares one column.
+
+Two ideas were tried and reverted at the user's request, and are recorded so
+nobody rebuilds them: a landing-style live panel beside Set up (a warm wash
+with a fleet-policy timeline), and the welcome promises as tiles in a row. The
+panel's review also found its text at 2 to 3.3:1 contrast on glass over the
+light wash, below the 4.5:1 this app holds text to. Then, from the user's
+reference screenshots, a fit pass: labels in mono capitals tracked out, titles
+sized to their card rather than the page, figures as label-and-value rows
+instead of boxed tiles, and the Boundary blocks in one column so each is as
+tall as its own text.
+
+Two defects predate this work and are still open. After Launch the wizard goes
+straight to its last screen, which hides the launch step, so its funding gauge
+and "Funding your fleet" line are never seen. And an empty or half-typed draw
+amount makes the launch step throw, leaving the button in its last state.
+
+Evidence: `npm run app:shots` renders every page at 1606x1161, 1440x900,
+1024x1180, 390x844, 320x640 and 1440x900 reduced-motion with no overflow and no
+console errors, scrolling each page first so its once-only reveals are shown;
+the 1440 and 390 shots are kept in `app/evidence/`. They show the pages without
+a connected wallet; connected states were looked at by hand on localhost, not
+scripted.
