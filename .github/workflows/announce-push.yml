@@ -16,6 +16,9 @@ name: Announce pushes to Telegram
 on:
   push:
     branches: [main]
+  # Run by hand once after setting the secrets: the bot says hello in the
+  # group, which proves the token and the chat id before the first push.
+  workflow_dispatch:
 
 permissions:
   contents: read

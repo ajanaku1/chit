@@ -150,6 +150,15 @@ async function send(text) {
 }
 
 const event = eventPath ? JSON.parse(await readFile(eventPath, "utf8")) : null;
+
+/* Run by hand from the Actions tab, there is no push to report; say hello
+   instead, so the wiring can be checked the moment the secrets are set. */
+if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch") {
+  await send(`🔌 <b>${esc(REPO_NAME)}</b> announcer connected. from now on every push to <code>main</code> lands here: what shipped, the dev's notes, new contracts on chain.`);
+  console.log("said hello");
+  process.exit(0);
+}
+
 if (!event || !Array.isArray(event.commits)) { console.log("no push event to announce"); process.exit(0); }
 
 const commits = event.commits.filter((c) => c && typeof c.id === "string" && c.distinct !== false);
