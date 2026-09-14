@@ -20,9 +20,10 @@ import {
   type SetupDeps,
   type SetupQuote,
 } from "./fleet/campaign-setup.js";
-import { fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
+import { drawShare, fundingProgress, fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
 import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initShell, parseEth, saveFleetSnapshot, toEth, walletProvider } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
+import { prefersReducedMotion } from "./fleet/motion.js";
 import { readStatus } from "./fleet/status-read.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
 import { confirmRecovery, createRecoveryVault, type VaultContext } from "./fleet/vault.js";
@@ -198,9 +199,32 @@ class FleetWizard {
     const button = document.getElementById("launch-fleet") as HTMLButtonElement | null;
     const note = document.getElementById("draw-note");
     if (!input || !button || !note) return;
-    const state = launchState(parseEth(input.value), this.#availableBalance);
+    const drawWei = parseEth(input.value);
+    const state = launchState(drawWei, this.#availableBalance);
     button.disabled = state.disabled;
     note.textContent = state.note;
+    el("draw-fill").style.setProperty("--fill", String(drawShare(drawWei)));
+    el("draw-meter").setAttribute("aria-valuenow", String(drawShare(drawWei)));
+  }
+
+  /**
+   * The needle turns in real time through the wait, using a transform-only
+   * transition that runs until the due time. Under reduced motion it just
+   * sits at the current point.
+   */
+  #showFunding(dueAt: string | undefined): void {
+    const gauge = el("funding-gauge");
+    gauge.hidden = dueAt === undefined;
+    if (!dueAt) return;
+    const needle = el("funding-needle");
+    const now = new Date();
+    needle.style.transition = "none";
+    needle.style.setProperty("--p", String(fundingProgress(dueAt, now)));
+    if (prefersReducedMotion()) return;
+    const remaining = Math.max(0, Date.parse(dueAt) - now.getTime());
+    void needle.getBoundingClientRect();
+    needle.style.transition = `transform ${remaining}ms linear`;
+    needle.style.setProperty("--p", "1");
   }
 
   async #connect(): Promise<void> {
@@ -349,6 +373,7 @@ class FleetWizard {
       this.#campaign = activated.campaign;
       const dueAt = (this.#lastResult["draw"] as { dueAt?: string } | undefined)?.dueAt;
       if (dueAt) el("funding-wait").textContent = fundingWait(dueAt, new Date()).message;
+      this.#showFunding(dueAt);
       this.#awaitFunding(activated.state, dueAt);
       saveFleetSnapshot({
         campaign: this.#campaign,
@@ -386,8 +411,10 @@ class FleetWizard {
           const nextDue = body.draw?.dueAt;
           if (next === "Activating") {
             if (nextDue) el("funding-wait").textContent = fundingWait(nextDue, new Date()).message;
+            this.#showFunding(nextDue);
           } else {
             el("funding-wait").textContent = "Your fleet is funded and live.";
+            this.#showFunding(undefined);
           }
           this.#awaitFunding(next, nextDue);
         } catch {

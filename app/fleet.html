@@ -40,6 +40,14 @@
       <main id="wizard" class="wizard">
         <div id="status-banner" class="status-banner" role="status" aria-live="polite" hidden></div>
 
+        <ol class="dots" id="dots" aria-label="Setup progress">
+          <li data-dot="welcome" aria-current="step"><span>Start</span></li>
+          <li data-dot="connect"><span>Connect</span></li>
+          <li data-dot="size"><span>Size</span></li>
+          <li data-dot="backup"><span>Backup</span></li>
+          <li data-dot="launch"><span>Launch</span></li>
+        </ol>
+
         <!-- STEP 0: Welcome -->
         <section class="wstep" data-wstep="welcome" aria-labelledby="welcome-h">
           <p class="kicker">Private gas for your trading wallets</p>
@@ -135,17 +143,14 @@
             Your fleet's keys exist only in this browser. We'll hand you one encrypted backup file — only your wallet's
             signature can ever open it.
           </p>
-          <div class="seam-card">
-            <div class="seam-edge" aria-hidden="true"></div>
-            <div class="seam-inner">
-              <button id="generate-vault" type="button" class="primary big">Create fleet &amp; download backup</button>
-              <p id="vault-line" class="mono-line" hidden></p>
-              <p class="warnbox" id="vault-warn" hidden>
-                Keep this file safe. If you lose it and this browser's data, nobody can recover the fleet — not even Chit.
-              </p>
-              <button id="confirm-vault" type="button" class="ghost big" disabled>Sign to prove it opens</button>
-              <p id="confirm-line" class="mono-line" hidden></p>
-            </div>
+          <div class="card-glass backup-card">
+            <button id="generate-vault" type="button" class="primary big">Create fleet &amp; download backup</button>
+            <p id="vault-line" class="mono-line" hidden></p>
+            <p class="warnbox" id="vault-warn" hidden>
+              Keep this file safe. If you lose it and this browser's data, nobody can recover the fleet — not even Chit.
+            </p>
+            <button id="confirm-vault" type="button" class="ghost big" disabled>Sign to prove it opens</button>
+            <p id="confirm-line" class="mono-line" hidden></p>
           </div>
           <div class="wnav">
             <button type="button" class="back" data-back>Back</button>
@@ -162,23 +167,19 @@
           <div class="field">
             <label for="a-draw">How much of your balance may this fleet spend? (ETH)</label>
             <input id="a-draw" name="draw" type="text" inputmode="decimal" value="0.02" />
+            <div class="meter" id="draw-meter" role="meter" aria-label="This draw against the 0.2 ETH cap" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"><span class="meter__fill" id="draw-fill"></span></div>
             <p id="draw-note" class="fineprint" role="status" aria-live="polite"></p>
             <p class="fineprint">Your fleet spends from your Chit balance. <a href="./balance.html">Add ETH on the Balance page →</a></p>
           </div>
           <button id="launch-fleet" type="button" class="primary big">Launch fleet</button>
+          <div class="gauge" id="funding-gauge" hidden aria-hidden="true">
+            <svg viewBox="0 0 120 66"><path class="gauge__track" d="M10 60 A50 50 0 0 1 110 60" /><line class="gauge__needle" id="funding-needle" x1="60" y1="60" x2="60" y2="16" /></svg>
+          </div>
           <p id="funding-wait" class="fineprint" role="status" aria-live="polite"></p>
           <div class="wnav">
             <button type="button" class="back" data-back>Back</button>
           </div>
         </section>
-
-        <ol class="dots" id="dots" aria-label="Setup progress">
-          <li data-dot="welcome" aria-current="step"></li>
-          <li data-dot="connect"></li>
-          <li data-dot="size"></li>
-          <li data-dot="backup"></li>
-          <li data-dot="launch"></li>
-        </ol>
 
         <!-- DONE -->
         <section class="wstep" data-wstep="done" hidden aria-labelledby="done-h">

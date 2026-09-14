@@ -243,6 +243,20 @@ export const balanceDelta = (previous: string | undefined, next: string): { up: 
   return after > before ? { up: true, eth: toEth((after - before).toString()) } : { up: false, eth: toEth((before - after).toString()) };
 };
 
+/** How much of the per-fleet draw cap an amount uses, 0..1. */
+export const drawShare = (amount: string): number => {
+  const cap = BigInt(DRAW_CAP);
+  const value = BigInt(amount);
+  return value >= cap ? 1 : Number((value * 10_000n) / cap) / 10_000;
+};
+
+/** How far through the funding wait we are, 0..1, measured against its 15-minute ceiling. */
+export const fundingProgress = (dueAt: string, now: Date, windowMs = 15 * 60_000): number => {
+  const remaining = Date.parse(dueAt) - now.getTime();
+  if (Number.isNaN(remaining)) return 0;
+  return Math.min(1, Math.max(0, 1 - remaining / windowMs));
+};
+
 /** What the header's status pill says: only what the last balance read showed, never a guess. */
 export const poolStatus = (state: Pick<BalanceState, "pool"> | undefined): { text: string; live: boolean } | undefined =>
   state === undefined
