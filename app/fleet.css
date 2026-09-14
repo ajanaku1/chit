@@ -536,12 +536,6 @@ button:focus-visible, .linkbtn:focus-visible, a:focus-visible {
   margin: 0 auto 1.6rem;
 }
 
-.fleet-foot {
-  font-size: 0.75rem;
-  text-align: center;
-  line-height: 1.6;
-}
-
 @media (max-width: 480px) {
   .wstep { padding: 1.6rem 1.2rem; }
   .control-list, .summary { grid-template-columns: 1fr; flex-direction: column; }
