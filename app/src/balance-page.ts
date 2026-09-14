@@ -109,7 +109,9 @@ const renderFigures = (view: BalanceState): void => {
   const used = capShare(view.headroom.perTraderRemaining, TRADER_CAP);
   el("headroom-fill").style.setProperty("--fill", String(used));
   el("headroom-meter").setAttribute("aria-valuenow", String(used));
-  el("headroom-note").textContent = `${toEth(capUsed(view.headroom.perTraderRemaining, TRADER_CAP))} of 0.5 ETH held`;
+  const headroomNote = `${toEth(capUsed(view.headroom.perTraderRemaining, TRADER_CAP))} of 0.5 ETH held`;
+  el("headroom-meter").setAttribute("aria-valuetext", headroomNote);
+  el("headroom-note").textContent = headroomNote;
 
   el("balance-draws").textContent = `${toEth(view.openDraws)} ETH`;
   el("balance-deposited").textContent = `${toEth(view.deposited)} ETH`;

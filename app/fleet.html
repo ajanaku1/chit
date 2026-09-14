@@ -172,10 +172,6 @@
             <p class="fineprint">Your fleet spends from your Chit balance. <a href="./balance.html">Add ETH on the Balance page →</a></p>
           </div>
           <button id="launch-fleet" type="button" class="primary big">Launch fleet</button>
-          <div class="gauge" id="funding-gauge" hidden aria-hidden="true">
-            <svg viewBox="0 0 120 66"><path class="gauge__track" d="M10 60 A50 50 0 0 1 110 60" /><line class="gauge__needle" id="funding-needle" x1="60" y1="60" x2="60" y2="16" /></svg>
-          </div>
-          <p id="funding-wait" class="fineprint" role="status" aria-live="polite"></p>
           <div class="wnav">
             <button type="button" class="back" data-back>Back</button>
           </div>
@@ -185,6 +181,10 @@
         <section class="wstep" data-wstep="done" hidden aria-labelledby="done-h">
           <p class="kicker">All set</p>
           <h2 id="done-h">Your fleet is ready.</h2>
+          <div class="gauge" id="funding-gauge" hidden aria-hidden="true">
+            <svg viewBox="0 0 120 66"><path class="gauge__track" d="M10 60 A50 50 0 0 1 110 60" /><line class="gauge__needle" id="funding-needle" x1="60" y1="60" x2="60" y2="16" /></svg>
+          </div>
+          <p id="funding-wait" class="fineprint" role="status" aria-live="polite"></p>
           <p class="lead">Watch the budget, pause or stop anytime, and get unused ETH back whenever you close.</p>
           <a class="primary big linkbtn" href="./fleet-dashboard.html">Open the dashboard</a>
         </section>

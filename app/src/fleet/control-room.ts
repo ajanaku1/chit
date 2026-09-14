@@ -141,7 +141,7 @@ export const confirmationFor = (action: ControlAction): { title: string; body: s
   action === "revoke"
     ? { title: "Stop this fleet for good?", body: "Sponsorship ends now and cannot be resumed. Close is the only action left afterwards.", confirm: "Stop for good" }
     : action === "close"
-      ? { title: "Close this fleet?", body: "Whatever it did not spend goes back to your Chit balance.", confirm: "Close fleet" }
+      ? { title: "Close this fleet?", body: "Whatever it did not spend comes back to you.", confirm: "Close fleet" }
       : undefined;
 
 /** States with something happening right now, which earn the live dot. */

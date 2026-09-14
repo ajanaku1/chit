@@ -94,6 +94,7 @@ class FleetDashboard {
       const used = capShare(this.#draw.remaining, this.#draw.amount);
       el("draw-used-fill").style.setProperty("--fill", String(used));
       el("draw-used-meter").setAttribute("aria-valuenow", String(used));
+      el("draw-used-meter").setAttribute("aria-valuetext", `${Math.round(used * 100)}% of this fleet's draw spent`);
     }
     const poolBanner = el("pool-paused");
     poolBanner.hidden = !view.poolPaused;

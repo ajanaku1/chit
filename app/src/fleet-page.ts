@@ -20,7 +20,7 @@ import {
   type SetupDeps,
   type SetupQuote,
 } from "./fleet/campaign-setup.js";
-import { drawShare, fundingProgress, fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
+import { DRAW_CAP, drawShare, fundingProgress, fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
 import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initShell, parseEth, saveFleetSnapshot, toEth, walletProvider } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { prefersReducedMotion } from "./fleet/motion.js";
@@ -207,6 +207,7 @@ class FleetWizard {
     const share = drawShare(drawWei);
     el("draw-fill").style.setProperty("--fill", String(share));
     el("draw-meter").setAttribute("aria-valuenow", String(share));
+    el("draw-meter").setAttribute("aria-valuetext", `${Math.round(share * 100)}% of the ${toEth(DRAW_CAP)} ETH cap`);
   }
 
   /**

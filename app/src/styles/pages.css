@@ -8,6 +8,7 @@
 #balance .summary.grid > div:first-child > dd:first-of-type { font-size: clamp(2rem, 5vw, 2.75rem); text-align: left; }
 .delta { margin: 0.35rem 0 0; color: var(--text-muted); font-size: 0.85rem; }
 .delta[data-up="true"] { color: var(--coral); }
+[aria-busy="true"] .led__unit, [aria-busy="true"] .delta { color: transparent; }
 @keyframes delta-in { from { opacity: 0; } to { opacity: 1; } }
 @media (prefers-reduced-motion: no-preference) {
   .delta:not([hidden]) { animation: delta-in 400ms var(--ease-out); }
@@ -21,7 +22,7 @@
 .withdraw-form { display: grid; gap: 0.25rem; }
 
 /* ---- Setup wizard ---- */
-.dots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; margin: 0 0 1.5rem; padding: 0; list-style: none; counter-reset: step; }
+.dots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; margin: 0 0 1.5rem; padding: 0; list-style: none; counter-reset: step -1; }
 .dots li { position: relative; padding-top: 0.6rem; border-top: 2px solid rgba(245, 239, 229, 0.16); color: var(--text-muted); counter-increment: step; font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
 .dots li::before { content: counter(step, decimal-leading-zero) " "; font-family: var(--font-mono); }
 .dots li[data-done="true"], .dots li[aria-current="step"] { color: var(--paper); }
@@ -74,6 +75,7 @@
 
 /* ---- Boundary ---- */
 main.privacy-page h1 { font-size: clamp(2.25rem, 6vw, 3.75rem); }
+/* One column, so each block is as tall as its own text rather than its neighbour's. */
 .boundary-grid { display: grid; gap: 1rem; margin-block: 1.5rem 2.5rem; }
 .boundary-block { margin: 0; }
 .boundary-block h2 { font-size: 1.25rem; }
@@ -83,5 +85,5 @@ main.privacy-page h1 { font-size: clamp(2.25rem, 6vw, 3.75rem); }
 .boundary-block.held p { color: var(--paper); font-size: 1.1rem; }
 .ex-h { margin-top: 2.5rem; }
 .exclusions { color: var(--text-muted); line-height: 1.6; }
-/* One column, so each block is as tall as its own text rather than its neighbour's. */
+/* The call to action sizes to its label. */
 .privacy-page > .linkbtn { align-self: flex-start; width: auto; }
