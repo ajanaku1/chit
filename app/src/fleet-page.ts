@@ -21,7 +21,7 @@ import {
   type SetupQuote,
 } from "./fleet/campaign-setup.js";
 import { fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
-import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initTheme, parseEth, saveFleetSnapshot, toEth, walletProvider } from "./fleet/page-shared.js";
+import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, parseEth, saveFleetSnapshot, toEth, walletProvider } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { readStatus } from "./fleet/status-read.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
@@ -449,6 +449,5 @@ class FleetWizard {
   }
 }
 
-initTheme();
 initHeaderWallet();
 new FleetWizard().start();

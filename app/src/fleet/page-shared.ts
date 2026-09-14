@@ -90,41 +90,6 @@ export const loadFleetSnapshot = (): FleetSnapshot | undefined => {
   }
 };
 
-const THEME_KEY = "chit-fleet-theme";
-
-/** Applies the saved theme and wires the header toggle. System preference is the default. */
-export const initTheme = (): void => {
-  const root = document.documentElement;
-  let saved: string | null = null;
-  try {
-    saved = localStorage.getItem(THEME_KEY);
-  } catch {
-    // Storage unavailable; fall back to system preference.
-  }
-  if (saved === "dark" || saved === "light") root.dataset["theme"] = saved;
-
-  const toggle = document.getElementById("theme-toggle");
-  if (!toggle) return;
-  const dark = (): boolean =>
-    root.dataset["theme"] === "dark" ||
-    (root.dataset["theme"] !== "light" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  const paint = (): void => {
-    toggle.textContent = dark() ? "☀" : "☾";
-    toggle.setAttribute("aria-pressed", String(dark()));
-  };
-  toggle.addEventListener("click", () => {
-    const next = dark() ? "light" : "dark";
-    root.dataset["theme"] = next;
-    try {
-      localStorage.setItem(THEME_KEY, next);
-    } catch {
-      // Preference simply won't persist.
-    }
-    paint();
-  });
-  paint();
-};
-
 /** Robinhood Chain testnet, as verified live by eth_chainId (0xb626 = 46630). */
 export const ROBINHOOD_TESTNET = {
   chainId: "0xb626",

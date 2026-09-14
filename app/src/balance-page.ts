@@ -21,7 +21,6 @@ import {
   ensureRobinhoodTestnet,
   getConnectedWallet,
   initHeaderWallet,
-  initTheme,
   parseEth,
   waitForReceipt,
   walletEth,
@@ -30,7 +29,6 @@ import {
 } from "./fleet/page-shared.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 
-initTheme();
 initHeaderWallet();
 
 const el = (id: string): HTMLElement => {

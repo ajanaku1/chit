@@ -6,7 +6,7 @@
  */
 
 import { buildBuyReport, buildControlRoomView, type AccountBuyResult, type CampaignState, type ControlAction } from "./fleet/control-room.js";
-import { clearFleetSnapshot, getConnectedWallet, initHeaderWallet, initTheme, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
+import { clearFleetSnapshot, getConnectedWallet, initHeaderWallet, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { StatusUnavailable, readStatus } from "./fleet/status-read.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
@@ -240,7 +240,6 @@ class FleetDashboard {
   }
 }
 
-initTheme();
 initHeaderWallet();
 const snapshot = loadFleetSnapshot();
 if (snapshot) new FleetDashboard(snapshot).start();

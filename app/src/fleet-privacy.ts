@@ -3,7 +3,7 @@
  * tests enforce, so the page can never drift from the claims the code makes.
  */
 
-import { initHeaderWallet, initTheme } from "./fleet/page-shared.js";
+import { initHeaderWallet } from "./fleet/page-shared.js";
 import {
   FLEET_EXCLUDED_CAPABILITIES,
   FLEET_PRIVACY_CLAIM,
@@ -12,7 +12,6 @@ import {
   POOL_PRIVACY_CLAIM,
 } from "./fleet/index.js";
 
-initTheme();
 initHeaderWallet();
 
 const el = (id: string): HTMLElement => {

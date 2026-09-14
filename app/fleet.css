@@ -9,40 +9,17 @@
 @layer legacy {
 
 /* Fleet pages — "Soft Receipt" production styles (selected proposal 3).
-   Neo-bank calm: warm cream, white cards, pill controls, one coral accent.
-   Dark mode is Soft Receipt's own sibling on warm charcoal — same shapes,
-   same calm, chosen by the header toggle or the system preference. */
+   Neo-bank calm on warm charcoal, pill controls, one coral accent.
+   Dark only, matching the landing. */
 
 :root {
-  --bg: #f4f1eb;
-  --surface: #f9f7f3;
-  --dim-outer: #6f6a62;
-  --card: #ffffff;
-  --text: #1c1a17;
-  --dim: #77726a;
-  --coral: #ff5a3c;
-  --on-coral: #1c1a17;
-  --coral-text: #b43d29;
-  --coral-soft: #ffe9e3;
-  --coral-note: #8a3122;
-  --mint: #e7f4ec;
-  --mint-text: #1f7a4d;
-  --line: #ece7de;
-  --shadow: 0 2px 24px rgba(28, 26, 23, 0.06);
-  --focus: #0b64d8;
-  --r-card: 24px;
-  --r-field: 16px;
-  --r-btn: 16px;
-}
-
-/* Dark tokens, applied by explicit choice… */
-:root[data-theme="dark"] {
   --bg: #121016;
   --surface: #151318;
   --dim-outer: #9b968e;
   --card: #1d1a20;
   --text: #f2efe9;
   --dim: #9b968e;
+  --coral: #ff5a3c;
   --on-coral: #1c1a17;
   --coral-text: #ff7d64;
   --coral-soft: #35201c;
@@ -52,26 +29,9 @@
   --line: #2b2830;
   --shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
   --focus: #7db4f5;
-}
-/* …or by system preference when no choice was made. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #121016;
-    --surface: #151318;
-    --dim-outer: #9b968e;
-    --card: #1d1a20;
-    --text: #f2efe9;
-    --dim: #9b968e;
-    --on-coral: #1c1a17;
-    --coral-text: #ff7d64;
-    --coral-soft: #35201c;
-    --coral-note: #ffb3a3;
-    --mint: #173226;
-    --mint-text: #3ddc97;
-    --line: #2b2830;
-    --shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
-    --focus: #7db4f5;
-  }
+  --r-card: 24px;
+  --r-field: 16px;
+  --r-btn: 16px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -271,27 +231,6 @@ main.privacy-page > * {
   .wallet-btn { transition: filter 0.12s ease; }
   .wallet-btn:hover { filter: brightness(0.97); }
 }
-.theme-toggle {
-  position: fixed;
-  left: 1.2rem;
-  bottom: 1.2rem;
-  z-index: 20;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--text);
-  border-radius: 999px;
-  width: 2.7rem;
-  height: 2.7rem;
-  padding: 0;
-  font-size: 1.05rem;
-  font-weight: 400;
-  cursor: pointer;
-  line-height: 1;
-  display: grid;
-  place-items: center;
-  box-shadow: var(--shadow);
-}
-
 /* Cards / wizard steps */
 .wizard,
 .dash,
