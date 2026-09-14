@@ -292,3 +292,19 @@ test("the welcome promises sit as tiles in a row, not boxes stacked in a box", a
   const components = await read("src/styles/components.css");
   assert.match(components, /\.promises\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit, minmax\(12rem, 1fr\)\)/);
 });
+
+test("Set up carries a live panel: the landing's wash, a policy timeline and the balance", async () => {
+  const html = await read("fleet.html");
+  const panel = /<aside class="live-panel"[\s\S]*?<\/aside>/.exec(html);
+  assert.ok(panel, "no live panel");
+  assert.ok(html.indexOf('<aside class="live-panel"') > html.indexOf("</main>"), "the panel must follow the wizard, so a phone reads the step first");
+  assert.deepEqual([...panel[0].matchAll(/data-row="([a-z]+)"/g)].map((match) => match[1]), ["wallet", "size", "backup", "draw", "funding"]);
+  assert.match(panel[0], /class="wash" aria-hidden="true"/);
+  assert.match(panel[0], /id="panel-balance"/);
+  const components = await read("src/styles/components.css");
+  assert.match(components, /\.fleet-shell:has\(> \.live-panel\)\s*\{[^}]*grid-template-areas/, "the panel does not sit beside the content on wide screens");
+  assert.match(components, /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.wash__field\s*\{\s*animation:/, "the wash must only drift when motion is welcome");
+  const script = await read("src/fleet-page.ts");
+  assert.match(script, /policyRows\(/, "the panel is not driven by the wizard's state");
+  assert.match(script, /renderLed\(el\("panel-balance"\)/, "the panel's balance is not an LED figure");
+});
