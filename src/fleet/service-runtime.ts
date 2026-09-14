@@ -189,7 +189,10 @@ export const getFleetRouter = (): CampaignRouter => {
   const nonceSecret = nonceSecretFromEnv();
   const pool = poolFromEnv();
   const deps: RouterDeps = {
-    service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 300 }, nonceSecret ? { nonceSecret } : {}),
+    // Ten minutes, not five: signing means leaving the browser for the wallet
+    // app, and a trader who takes longer than the TTL comes back to an expired
+    // challenge, which reads as "it asked me to start over again".
+    service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 600 }, nonceSecret ? { nonceSecret } : {}),
     ...(feeConfig ? { feeConfig, chitBalanceOf } : {}),
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),

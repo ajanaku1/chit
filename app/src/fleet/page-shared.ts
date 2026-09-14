@@ -175,6 +175,7 @@ export const ensureRobinhoodTestnet = async (eth: Eip1193): Promise<boolean> => 
 type Hex = `0x${string}`;
 
 const WALLET_KEY = "chit-fleet-wallet";
+const WALLET_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const PROVIDER_KEY = "chit-fleet-provider";
 let connected: Hex | undefined;
 
@@ -201,6 +202,44 @@ if (typeof window !== "undefined") {
   loading = false;
 }
 
+/**
+ * What the page remembers about the wallet, kept where the trip into the wallet
+ * app cannot lose it.
+ *
+ * The wallet's own grant outlives the tab, so the page's memory of it has to as
+ * well. iOS discards a backgrounded tab, and sessionStorage goes with it: the
+ * trader came back to a page that had forgotten both the address and which
+ * wallet held it, and asked them to connect again. localStorage survives that;
+ * sessionStorage is still read, second, to carry over a session that began
+ * before this move.
+ */
+const remember = (key: string, value: string | undefined): void => {
+  try {
+    if (value) localStorage.setItem(key, value);
+    else localStorage.removeItem(key);
+  } catch {
+    // Non-persistent; the in-memory value still drives this tab.
+  }
+  try {
+    sessionStorage.removeItem(key);
+  } catch {
+    // Nothing carried over to clear.
+  }
+};
+
+const recall = (key: string): string | null => {
+  const reads = [(): string | null => localStorage.getItem(key), (): string | null => sessionStorage.getItem(key)];
+  for (const read of reads) {
+    try {
+      const value = read();
+      if (value) return value;
+    } catch {
+      // Storage unavailable (private mode); try the next one.
+    }
+  }
+  return null;
+};
+
 const legacyProvider = (): Eip1193 | undefined => (window as unknown as { ethereum?: Eip1193 }).ethereum;
 
 /**
@@ -211,12 +250,7 @@ const legacyProvider = (): Eip1193 | undefined => (window as unknown as { ethere
  */
 export const walletProvider = (): Eip1193 | undefined => {
   if (chosen) return chosen.provider;
-  let rdns: string | null = null;
-  try {
-    rdns = sessionStorage.getItem(PROVIDER_KEY);
-  } catch {
-    // Nothing remembered.
-  }
+  const rdns = recall(PROVIDER_KEY);
   const remembered = rdns ? installed.get(rdns) : undefined;
   if (remembered) return remembered.provider;
   // The remembered wallet is gone. Never hand its calls to another wallet,
@@ -229,12 +263,8 @@ export const walletProvider = (): Eip1193 | undefined => {
 /** The remembered address, but only while its wallet can still be reached. */
 const readStoredWallet = (): Hex | undefined => {
   if (!walletProvider()) return undefined;
-  try {
-    const v = sessionStorage.getItem(WALLET_KEY);
-    return v && /^0x[0-9a-fA-F]{40}$/.test(v) ? (v.toLowerCase() as Hex) : undefined;
-  } catch {
-    return undefined;
-  }
+  const v = recall(WALLET_KEY);
+  return v && WALLET_ADDRESS.test(v) ? (v.toLowerCase() as Hex) : undefined;
 };
 
 export const getConnectedWallet = (): Hex | undefined => connected ?? readStoredWallet();
@@ -243,12 +273,7 @@ const shortWallet = (address: Hex): string => `${address.slice(0, 6)}…${addres
 
 const setConnected = (address: Hex | undefined): void => {
   connected = address;
-  try {
-    if (address) sessionStorage.setItem(WALLET_KEY, address);
-    else sessionStorage.removeItem(WALLET_KEY);
-  } catch {
-    // Non-persistent; in-memory value still drives this tab.
-  }
+  remember(WALLET_KEY, address);
   window.dispatchEvent(new CustomEvent("chit-wallet-changed", { detail: { address } }));
 };
 
@@ -341,12 +366,7 @@ const chooseWallet = (
 
 const adopt = (wallet: InstalledWallet | undefined, address: Hex): void => {
   chosen = wallet;
-  try {
-    if (wallet) sessionStorage.setItem(PROVIDER_KEY, wallet.rdns);
-    else sessionStorage.removeItem(PROVIDER_KEY);
-  } catch {
-    // In-memory choice still drives this tab.
-  }
+  remember(PROVIDER_KEY, wallet?.rdns);
   watchAccounts(walletProvider());
   setConnected(address);
 };
@@ -387,12 +407,41 @@ export const connectWallet = async (): Promise<Hex | undefined> => {
 
 export const disconnectWallet = (): void => {
   chosen = undefined;
-  try {
-    sessionStorage.removeItem(PROVIDER_KEY);
-  } catch {
-    // Nothing to forget.
-  }
+  remember(PROVIDER_KEY, undefined);
   setConnected(undefined);
+};
+
+/**
+ * Takes up a wallet that already granted this origin, without prompting.
+ *
+ * `eth_accounts` is the silent question: the wallet answers from the grant it
+ * already holds, so a trader returning from the wallet app is simply in. Only a
+ * wallet that answers with no accounts has really been revoked, and only then is
+ * the remembered address dropped. With no reachable provider — no wallet yet
+ * announced, or the chosen one gone — nothing can be said either way, so what is
+ * remembered is left alone for takeUpLateWallet to claim.
+ */
+export const restoreWallet = async (): Promise<Hex | undefined> => {
+  const eth = walletProvider();
+  if (!eth) return undefined;
+  let accounts: string[];
+  try {
+    accounts = (await eth.request({ method: "eth_accounts" })) as string[];
+  } catch {
+    return getConnectedWallet();
+  }
+  const first = accounts[0];
+  if (!first || !WALLET_ADDRESS.test(first)) {
+    if (getConnectedWallet()) setConnected(undefined);
+    return undefined;
+  }
+  const address = first.toLowerCase() as Hex;
+  watchAccounts(eth);
+  // Only a change is announced. This runs on every return to the tab, and
+  // re-announcing the same wallet would make every listening page reload.
+  if (address === getConnectedWallet()) connected = address;
+  else setConnected(address);
+  return address;
 };
 
 /** The wallet's own ETH on the current chain, as wei. */
@@ -515,4 +564,11 @@ export const initHeaderWallet = (): void => {
 
   watchAccounts(walletProvider());
   render();
+
+  // On load, and again whenever the tab comes back from the wallet app, ask the
+  // wallet silently rather than asking the trader.
+  void restoreWallet().catch(() => undefined);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void restoreWallet().catch(() => undefined);
+  });
 };
