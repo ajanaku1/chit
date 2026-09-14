@@ -17,7 +17,7 @@
 .limit { display: grid; align-content: space-between; gap: 0.5rem; min-height: 12rem; margin: 0; }
 .limit__figure { margin: 0.5rem 0; font-size: 2.25rem; }
 .limit__note { margin: 0; font-size: 0.85rem; line-height: 1.45; }
-.callout { margin: 0 0 1rem; padding: 0.8rem 1rem; border: 1px solid rgba(245, 239, 229, 0.18); border-radius: var(--radius-control); background: rgba(122, 36, 21, 0.35); color: var(--paper); font-size: 0.9rem; line-height: 1.45; }
+.callout { margin: 0 0 1rem; padding: 0.8rem 1rem; border: 1px solid rgba(245, 239, 229, 0.18); border-radius: var(--radius-inner); background: rgba(122, 36, 21, 0.35); color: var(--paper); font-size: 0.9rem; line-height: 1.45; }
 .withdraw-form { display: grid; gap: 0.25rem; }
 
 /* ---- Setup wizard ---- */
@@ -27,7 +27,9 @@
 .dots li[data-done="true"], .dots li[aria-current="step"] { color: var(--paper); }
 .dots li::after { content: ""; position: absolute; top: -2px; right: 0; left: 0; height: 2px; clip-path: inset(0 100% 0 0); }
 .dots li[data-done="true"]::after, .dots li[aria-current="step"]::after { background: var(--coral); clip-path: inset(0); }
-.backup-card { border-color: rgba(245, 239, 229, 0.28); }
+/* The backup's actions: stacked pills in a section under a hairline, not a card inside the card. */
+.backup-card { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid rgba(245, 239, 229, 0.1); }
+.backup-card .mono-line { margin: 0.25rem 0; }
 #draw-meter { margin-top: 0.5rem; }
 .gauge { width: min(14rem, 100%); margin: 1rem 0 0.5rem; }
 .gauge svg { display: block; width: 100%; height: auto; }
@@ -82,4 +84,4 @@ main.privacy-page h1 { font-size: clamp(2.25rem, 6vw, 3.75rem); }
 .ex-h { margin-top: 2.5rem; }
 .exclusions { color: var(--text-muted); line-height: 1.6; }
 /* One column, so each block is as tall as its own text rather than its neighbour's. */
-.privacy-page > .linkbtn { align-self: flex-start; }
+.privacy-page > .linkbtn { align-self: flex-start; width: auto; }

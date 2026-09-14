@@ -24,9 +24,10 @@
   --track-wide: 0.07em;
   /* Small labels sit in mono caps, tracked out, so they read as labels inside a box. */
   --font-label: var(--font-mono);
-  --track-label: 0.14em;
+  --track-label: 0.18em;
 
-  --radius-card: 24px;
+  --radius-card: 20px;
+  --radius-inner: 12px;
   --radius-control: 4px;
   --radius-pill: 999px;
 
