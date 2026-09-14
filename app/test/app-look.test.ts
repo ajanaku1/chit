@@ -314,3 +314,18 @@ test("the old stylesheet is gone and every class the pages use is styled", async
   const unstyled = [...used].filter((name) => !new RegExp(`\\.${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(styled));
   assert.deepEqual(unstyled, [], "classes with no rule in the new layers");
 });
+
+test("text fits its box: mono labels, card-sized titles, figures as label-and-value rows", async () => {
+  const [tokens, components] = await Promise.all([read("src/styles/tokens.css"), read("src/styles/components.css")]);
+  assert.match(tokens, /--font-label:\s*var\(--font-mono\)/, "labels have no typeface of their own");
+  assert.match(tokens, /--track-label:\s*0\.1\d+em/, "labels are not tracked out");
+  const css = rules(components);
+  for (const selector of [".kicker", ".cardlabel", ".summary dt"]) {
+    const rule = css.find(([name]) => name.split(/,\s*/).includes(selector));
+    assert.ok(rule && /font-family:\s*var\(--font-label\)/.test(rule[1]), `${selector} is not a mono label`);
+  }
+  const row = css.find(([name]) => name === ".summary div");
+  assert.ok(row && /justify-content:\s*space-between/.test(row[1]), "figures sit in boxed tiles, not label-and-value rows");
+  const cardTitle = css.find(([name]) => name.split(/,\s*/).includes(".wstep h2"));
+  assert.ok(cardTitle && /font-size:\s*clamp\(1\.25rem/.test(cardTitle[1]), "card titles are sized for the page, not the card");
+});
