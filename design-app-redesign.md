@@ -119,8 +119,8 @@ Each has one job and is shared by every page:
 - **Loading placeholders:** shimmer blocks where pages now say "Loading…".
 
 **CSS organisation:** `app/fleet.css` stays the single stylesheet every page
-links. It imports three layered files, `app/styles/tokens.css`,
-`app/styles/components.css` and `app/styles/pages.css`, declared with
+links. It imports three layered files (`tokens.css`, `components.css`, `pages.css`;
+sources in `app/src/styles/`, served as `styles/`), declared with
 `@layer tokens, components, pages`.
 - **Build:** `app/build.mjs` copies static files from an explicit list, so it
   gains a `styles/` directory and three copy lines.

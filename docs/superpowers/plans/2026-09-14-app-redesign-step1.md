@@ -5,7 +5,7 @@
 **Goal:** Restyle the four Chit app pages to match the landing's look: ink surfaces, glass cards, LED numerals, pill tags and the landing's motion rules, adapted for an app. No new data and no new dependency.
 
 **Architecture:**
-- `app/fleet.css` becomes a manifest. It imports `styles/tokens.css`, `styles/components.css` and `styles/pages.css` as cascade layers above a lowest-priority `legacy` layer that holds today's rules.
+- `app/fleet.css` becomes a manifest. It imports the three layer stylesheets (sources in `app/src/styles/`, served as `styles/`) as cascade layers above a lowest-priority `legacy` layer that holds today's rules.
 - Each task adds rules to the new layers and deletes the legacy rules it replaces. Pages stay styled throughout, and every commit stays small.
 - Two small shared modules, `led.ts` and `motion.ts`, plus a few pure view functions, drive the new figures.
 - Design contracts are pinned by source-shape tests and pure-function tests.
@@ -67,9 +67,9 @@
 | Path | Responsibility |
 |---|---|
 | `app/fleet.css` (modify) | Layer manifest (`@layer … ; @import …`), plus the shrinking `@layer legacy { … }` block. The legacy block is gone in Task 14. |
-| `app/styles/tokens.css` (create) | The landing's palette, type stacks, radii, easing and durations. `color-scheme: dark`. |
-| `app/styles/components.css` (create) | Shared components: base, shell, type, buttons, fields, surfaces, tiles, banners, chips, meters, dialogs, LED, motion. |
-| `app/styles/pages.css` (create) | Page-specific rules for Balance, the wizard, Control Room and Boundary. |
+| `app/src/styles/tokens.css` (create) | The landing's palette, type stacks, radii, easing and durations. `color-scheme: dark`. |
+| `app/src/styles/components.css` (create) | Shared components: base, shell, type, buttons, fields, surfaces, tiles, banners, chips, meters, dialogs, LED, motion. |
+| `app/src/styles/pages.css` (create) | Page-specific rules for Balance, the wizard, Control Room and Boundary. |
 | `app/build.mjs` (modify) | Copy `styles/*.css` into the build output. |
 | `app/src/fleet/led.ts` (create) | LED dot glyphs: `canLed`, `ledDots`, `renderLed`, `hydrateLed`. |
 | `app/src/fleet/motion.ts` (create) | `prefersReducedMotion`, `easeOut`, `countTo`, `revealOnEnter`. |
@@ -118,7 +118,7 @@ git commit -m "docs: approved design for the app redesign, step 1"
 ### Task 1: Layer manifest, tokens, dark base, build copies
 
 **Files:**
-- Create: `app/styles/tokens.css`, `app/styles/components.css`, `app/styles/pages.css`, `app/test/app-look.test.ts`
+- Create: `app/src/styles/tokens.css`, `app/src/styles/components.css`, `app/src/styles/pages.css`, `app/test/app-look.test.ts`
 - Modify: `app/fleet.css` (lines 1–2 and the end of the file), `app/build.mjs` (the mkdir and the copy list)
 
 **Interfaces:**
@@ -146,7 +146,7 @@ const repoRoot = dirname(appRoot);
 const read = (path: string): Promise<string> => readFile(join(appRoot, path), "utf8");
 
 const PAGES = ["fleet.html", "fleet-dashboard.html", "balance.html", "fleet-privacy.html"] as const;
-const NEW_STYLES = ["styles/tokens.css", "styles/components.css", "styles/pages.css"] as const;
+const NEW_STYLES = ["src/styles/tokens.css", "src/styles/components.css", "src/styles/pages.css"] as const;
 
 const cssColor = (css: string, name: string): string => {
   const match = new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})\\b`).exec(css);
@@ -173,7 +173,7 @@ const rules = (css: string): Array<[string, string]> =>
 test("the app's palette is the landing's, token for token", async () => {
   const [landing, tokens] = await Promise.all([
     readFile(join(repoRoot, "landing/public/style.css"), "utf8"),
-    read("styles/tokens.css"),
+    read("src/styles/tokens.css"),
   ]);
   for (const name of ["--coral", "--coral-lift", "--coral-deep", "--paper", "--soft-paper", "--ink", "--muted-ink", "--surface-top", "--surface-bottom"]) {
     assert.equal(cssColor(tokens, name), cssColor(landing, name), `${name} drifted from the landing`);
@@ -191,12 +191,12 @@ test("fleet.css layers the new styles over the old ones", async () => {
 test("the build ships the layered stylesheets", async () => {
   const build = await read("build.mjs");
   for (const file of ["tokens", "components", "pages"]) {
-    assert.match(build, new RegExp(`"\\./styles/${file}\\.css"[\\s\\S]*?"styles/${file}\\.css"`), `styles/${file}.css is not copied`);
+    assert.match(build, new RegExp(`"\\./src/styles/${file}\\.css"[\\s\\S]*?"styles/${file}\\.css"`), `styles/${file}.css is not copied`);
   }
 });
 
 test("text on the ink surface is readable", async () => {
-  const tokens = await read("styles/tokens.css");
+  const tokens = await read("src/styles/tokens.css");
   const [paper, softPaper, ink, coral] = ["--paper", "--soft-paper", "--ink", "--coral"].map((name) => cssColor(tokens, name));
   assert.ok(contrast(paper!, ink!) >= 4.5, "body text on ink");
   assert.ok(contrast(softPaper!, ink!) >= 4.5, "secondary text on ink");
@@ -219,7 +219,7 @@ git add app/test/app-look.test.ts
 git commit -m "test(app): pin the landing palette, the style layers and ink contrast"
 ```
 
-- [ ] **Step 4: Create `app/styles/tokens.css`**
+- [ ] **Step 4: Create `app/src/styles/tokens.css`**
 
 ```css
 /* The landing's palette and motion, copied token for token (landing/public/style.css).
@@ -260,9 +260,9 @@ git commit -m "test(app): pin the landing palette, the style layers and ink cont
 }
 ```
 
-- [ ] **Step 5: Create `app/styles/components.css` (base only for now) and `app/styles/pages.css`**
+- [ ] **Step 5: Create `app/src/styles/components.css` (base only for now) and `app/src/styles/pages.css`**
 
-`app/styles/components.css`:
+`app/src/styles/components.css`:
 
 ```css
 /* Components shared by every app page. The pages layer refines them; the
@@ -286,7 +286,7 @@ a { color: inherit; }
 }
 ```
 
-`app/styles/pages.css`:
+`app/src/styles/pages.css`:
 
 ```css
 /* Page-specific rules: Balance, the setup wizard, Control Room, Boundary. */
@@ -317,9 +317,9 @@ await mkdir(new URL("styles/", output), { recursive: true });
 Inside the `Promise.all([` list, directly after the `fleet.css` copy line, add:
 
 ```js
-  copyFile(new URL("./styles/tokens.css", import.meta.url), new URL("styles/tokens.css", output)),
-  copyFile(new URL("./styles/components.css", import.meta.url), new URL("styles/components.css", output)),
-  copyFile(new URL("./styles/pages.css", import.meta.url), new URL("styles/pages.css", output)),
+  copyFile(new URL("./src/styles/tokens.css", import.meta.url), new URL("styles/tokens.css", output)),
+  copyFile(new URL("./src/styles/components.css", import.meta.url), new URL("styles/components.css", output)),
+  copyFile(new URL("./src/styles/pages.css", import.meta.url), new URL("styles/pages.css", output)),
 ```
 
 - [ ] **Step 8: Run everything and confirm it passes**
@@ -332,7 +332,7 @@ Expected: typecheck clean, all tests pass (including the 4 new ones), build succ
 - [ ] **Step 10: Commit** (check `git diff --cached --shortstat` ≤ 200)
 
 ```bash
-git add app/styles app/fleet.css app/build.mjs
+git add app/src/styles app/fleet.css app/build.mjs
 git commit -m "feat(app): layer the landing's tokens over the old stylesheet"
 ```
 
@@ -428,7 +428,7 @@ git commit -m "feat(app): dark-only, like the landing"
   - the four `app/*.html` pages (replace `<header class="fleet-top">…</header>`)
   - `app/src/fleet/page-shared.ts` (add `initMenu` and `initShell`)
   - the four page scripts (call `initShell()`)
-  - `app/styles/components.css` (append the shell rules)
+  - `app/src/styles/components.css` (append the shell rules)
   - `app/fleet.css` (delete the legacy shell rules)
 - Test: `app/test/app-look.test.ts` (append)
 
@@ -546,7 +546,7 @@ export const initShell = (): void => {
 
 In each of the four page scripts, add `initShell` to the `./fleet/page-shared.js` import and call `initShell();` on the line right after `initHeaderWallet();`.
 
-- [ ] **Step 6: Append the shell rules to `app/styles/components.css`**
+- [ ] **Step 6: Append the shell rules to `app/src/styles/components.css`**
 
 ```css
 /* ---- Shell: page frame, masthead, nav, phone menu ---- */
@@ -598,7 +598,7 @@ main.dash { max-width: 60rem; }
   - `app/src/fleet/page-shared.ts` (add `initContractCopy` and `initPoolStatus`, and call them from `initShell`)
   - `app/src/fleet/balance.ts` (add `poolStatus`)
   - `app/src/fleet/balance-read.ts` (dispatch `chit-balance-read`)
-  - `app/styles/components.css`
+  - `app/src/styles/components.css`
   - `app/fleet.css` (delete the legacy `.fleet-foot` rules)
 - Test: `app/test/app-figures.test.ts` (create), `app/test/app-look.test.ts` (append)
 
@@ -771,7 +771,7 @@ export const initShell = (): void => {
         <p class="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
 ```
 
-- [ ] **Step 8: Append to `app/styles/components.css`**
+- [ ] **Step 8: Append to `app/src/styles/components.css`**
 
 ```css
 /* ---- Contract row, status pill, footer ---- */
@@ -803,7 +803,7 @@ export const initShell = (): void => {
 ### Task 5: Type and buttons
 
 **Files:**
-- Modify: `app/styles/components.css`, and `app/fleet.css` (delete the legacy type and button rules)
+- Modify: `app/src/styles/components.css`, and `app/fleet.css` (delete the legacy type and button rules)
 - Test: `app/test/app-look.test.ts` (append)
 
 **Interfaces:**
@@ -825,7 +825,7 @@ test("coral marks only what is live or has happened", async () => {
 });
 
 test("primary actions are paper, as on the landing", async () => {
-  const primary = rules(await read("styles/components.css")).find(([selector]) => selector === ".primary");
+  const primary = rules(await read("src/styles/components.css")).find(([selector]) => selector === ".primary");
   assert.ok(primary, "no .primary rule");
   assert.match(primary[1], /background:\s*var\(--paper\)/);
   assert.match(primary[1], /color:\s*var\(--ink\)/);
@@ -843,7 +843,7 @@ test("hover effects only apply where there is a real pointer", async () => {
 
 - [ ] **Step 3: Commit the red tests.** `git add app/test/app-look.test.ts && git commit -m "test(app): coral only for live and done; paper primaries; pointer-only hover"`
 
-- [ ] **Step 4: Append to `app/styles/components.css`**
+- [ ] **Step 4: Append to `app/src/styles/components.css`**
 
 ```css
 /* ---- Type ---- */
@@ -898,7 +898,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 ### Task 6: Fields and pickers
 
 **Files:**
-- Modify: `app/styles/components.css`, and `app/fleet.css` (delete the legacy field and picker rules)
+- Modify: `app/src/styles/components.css`, and `app/fleet.css` (delete the legacy field and picker rules)
 - Test: `app/test/app-look.test.ts` (append)
 
 **Interfaces:**
@@ -909,7 +909,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 ```ts
 test("a chosen size reads as chosen without borrowing coral, and field errors are deep-coral panels", async () => {
-  const css = rules(await read("styles/components.css"));
+  const css = rules(await read("src/styles/components.css"));
   const pressed = css.find(([selector]) => selector === '.quickpick button[aria-pressed="true"]');
   assert.ok(pressed && /background:\s*var\(--paper\)/.test(pressed[1]), "the chosen size is not paper");
   const error = css.find(([selector]) => selector === ".field-error");
@@ -919,7 +919,7 @@ test("a chosen size reads as chosen without borrowing coral, and field errors ar
 
 - [ ] **Step 2: Run the test and confirm it fails; commit the red test.** Expected: FAIL. Then `git add app/test/app-look.test.ts && git commit -m "test(app): chosen sizes in paper, errors in deep coral"`
 
-- [ ] **Step 3: Append to `app/styles/components.css`**
+- [ ] **Step 3: Append to `app/src/styles/components.css`**
 
 ```css
 /* ---- Fields and pickers ---- */
@@ -949,7 +949,7 @@ test("a chosen size reads as chosen without borrowing coral, and field errors ar
 ### Task 7: Surfaces, tiles, banners, chips, meters, dialogs, loading
 
 **Files:**
-- Modify: `app/styles/components.css`, and `app/fleet.css` (delete the legacy rules listed in step 5)
+- Modify: `app/src/styles/components.css`, and `app/fleet.css` (delete the legacy rules listed in step 5)
 - Test: `app/test/app-look.test.ts` (append)
 
 **Interfaces:**
@@ -962,7 +962,7 @@ test("a chosen size reads as chosen without borrowing coral, and field errors ar
 
 ```ts
 test("the three surfaces exist, and glass is real glass", async () => {
-  const css = rules(await read("styles/components.css"));
+  const css = rules(await read("src/styles/components.css"));
   const glass = css.find(([selector]) => selector === ".card-glass");
   assert.ok(glass && /backdrop-filter:\s*blur\(/.test(glass[1]), ".card-glass has no blur");
   assert.ok(css.some(([selector]) => selector === ".card-warm"), "no .card-warm");
@@ -970,14 +970,14 @@ test("the three surfaces exist, and glass is real glass", async () => {
 });
 
 test("errors are deep-coral panels, never the live accent", async () => {
-  const error = rules(await read("styles/components.css")).find(([selector]) => selector === '.status-banner[data-tone="error"]');
+  const error = rules(await read("src/styles/components.css")).find(([selector]) => selector === '.status-banner[data-tone="error"]');
   assert.ok(error && /background:\s*var\(--coral-deep\)/.test(error[1]));
 });
 ```
 
 - [ ] **Step 2: Run the tests and confirm they fail; commit the red tests.** `git add app/test/app-look.test.ts && git commit -m "test(app): glass, warm and solid surfaces; errors in deep coral"`
 
-- [ ] **Step 3: Append to `app/styles/components.css`**
+- [ ] **Step 3: Append to `app/src/styles/components.css`**
 
 ```css
 /* ---- Surfaces ---- */
@@ -1056,7 +1056,7 @@ test("errors are deep-coral panels, never the live accent", async () => {
 
 **Files:**
 - Create: `app/src/fleet/led.ts`, `app/test/app-led.test.ts`
-- Modify: `app/src/fleet/page-shared.ts` (`initShell` calls `hydrateLed()`), `app/styles/components.css`
+- Modify: `app/src/fleet/page-shared.ts` (`initShell` calls `hydrateLed()`), `app/src/styles/components.css`
 
 **Interfaces:**
 - Produces:
@@ -1225,7 +1225,7 @@ export const hydrateLed = (root: ParentNode = document): void => {
 
 **Files:**
 - Create: `app/src/fleet/motion.ts`, `app/test/app-motion.test.ts`
-- Modify: `app/src/fleet/page-shared.ts` (`initShell` calls `revealOnEnter()`), `app/styles/components.css`, `app/test/app-look.test.ts` (append)
+- Modify: `app/src/fleet/page-shared.ts` (`initShell` calls `revealOnEnter()`), `app/src/styles/components.css`, `app/test/app-look.test.ts` (append)
 
 **Interfaces:**
 - Produces:
@@ -1272,7 +1272,7 @@ Append to `app/test/app-look.test.ts`:
 
 ```ts
 test("motion follows the landing's rules", async () => {
-  const [tokens, components, pages, motion] = await Promise.all([read("styles/tokens.css"), read("styles/components.css"), read("styles/pages.css"), read("src/fleet/motion.ts")]);
+  const [tokens, components, pages, motion] = await Promise.all([read("src/styles/tokens.css"), read("src/styles/components.css"), read("src/styles/pages.css"), read("src/fleet/motion.ts")]);
   assert.match(tokens, /--ease-out:\s*cubic-bezier\(0\.23,\s*1,\s*0\.32,\s*1\)/);
   assert.match(tokens, /--ease-in-out:\s*cubic-bezier\(0\.77,\s*0,\s*0\.175,\s*1\)/);
   const css = `${components}\n${pages}`;
@@ -1358,7 +1358,7 @@ export const revealOnEnter = (root: ParentNode = document): void => {
 ### Task 10: The Balance page
 
 **Files:**
-- Modify: `app/balance.html`, `app/src/balance-page.ts`, `app/src/fleet/balance.ts`, `app/styles/pages.css`
+- Modify: `app/balance.html`, `app/src/balance-page.ts`, `app/src/fleet/balance.ts`, `app/src/styles/pages.css`
 - Test: `app/test/app-figures.test.ts`, `app/test/app-look.test.ts` (append)
 
 **Interfaces:**
@@ -1504,7 +1504,7 @@ const load = async (force: boolean): Promise<void> => {
 };
 ```
 
-- [ ] **Step 6: Append to `app/styles/pages.css`**
+- [ ] **Step 6: Append to `app/src/styles/pages.css`**
 
 ```css
 /* ---- Balance ---- */
@@ -1534,7 +1534,7 @@ const load = async (force: boolean): Promise<void> => {
 ### Task 11: The setup wizard
 
 **Files:**
-- Modify: `app/fleet.html`, `app/src/fleet-page.ts`, `app/src/fleet/balance.ts`, `app/styles/pages.css`, and `app/fleet.css` (delete the legacy `.dots` rules)
+- Modify: `app/fleet.html`, `app/src/fleet-page.ts`, `app/src/fleet/balance.ts`, `app/src/styles/pages.css`, and `app/fleet.css` (delete the legacy `.dots` rules)
 - Test: `app/test/app-figures.test.ts`, `app/test/app-look.test.ts` (append)
 
 **Interfaces:**
@@ -1661,7 +1661,7 @@ export const fundingProgress = (dueAt: string, now: Date, windowMs = 15 * 60_000
 
   - Next to each line that sets `el("funding-wait").textContent = fundingWait(<due>, new Date()).message;` (there are two, around lines 351 and 388), add `this.#showFunding(<due>);`, passing the same due value. Next to `el("funding-wait").textContent = "Your fleet is funded and live.";`, add `this.#showFunding(undefined);`.
 
-- [ ] **Step 6: Append to `app/styles/pages.css`**
+- [ ] **Step 6: Append to `app/src/styles/pages.css`**
 
 ```css
 /* ---- Setup wizard ---- */
@@ -1693,7 +1693,7 @@ export const fundingProgress = (dueAt: string, now: Date, windowMs = 15 * 60_000
 ### Task 12: Control Room
 
 **Files:**
-- Modify: `app/src/fleet/control-room.ts`, `app/src/fleet/page-shared.ts` (add `confirmDialog`), `app/src/fleet-dashboard.ts`, `app/fleet-dashboard.html`, `app/styles/pages.css`, and `app/fleet.css` (delete the legacy dashboard rules)
+- Modify: `app/src/fleet/control-room.ts`, `app/src/fleet/page-shared.ts` (add `confirmDialog`), `app/src/fleet-dashboard.ts`, `app/fleet-dashboard.html`, `app/src/styles/pages.css`, and `app/fleet.css` (delete the legacy dashboard rules)
 - Test: `app/test/app-figures.test.ts`, `app/test/app-look.test.ts` (append)
 
 **Interfaces:**
@@ -1823,7 +1823,7 @@ export const confirmDialog = (copy: { title: string; body: string; confirm: stri
 
 - [ ] **Step 6: Update `app/fleet-dashboard.html`.** Change the strip's opening tag to `<section id="balance-strip" class="dash-card card-glass" aria-label="Your Chit balance and this fleet's draw" hidden>` (the `<dl class="summary grid">` inside it stays). Add `class="wstep empty-state"` to `#no-fleet`, replacing `class="wstep"`. Add `data-reveal` to the three `.dash-card` blocks inside `#fleet-view`.
 
-- [ ] **Step 7: Append to `app/styles/pages.css`**
+- [ ] **Step 7: Append to `app/src/styles/pages.css`**
 
 ```css
 /* ---- Control Room ---- */
@@ -1859,7 +1859,7 @@ export const confirmDialog = (copy: { title: string; body: string; confirm: stri
 ### Task 13: The Boundary page
 
 **Files:**
-- Modify: `app/fleet-privacy.html`, `app/styles/pages.css`, and `app/fleet.css` (delete the legacy privacy and seam rules)
+- Modify: `app/fleet-privacy.html`, `app/src/styles/pages.css`, and `app/fleet.css` (delete the legacy privacy and seam rules)
 - Test: `app/test/app-look.test.ts` (append)
 
 **Interfaces:**
@@ -1907,7 +1907,7 @@ test("the Boundary page sets its four blocks as glass and solid cards", async ()
         </div>
 ```
 
-- [ ] **Step 4: Append to `app/styles/pages.css`**
+- [ ] **Step 4: Append to `app/src/styles/pages.css`**
 
 ```css
 /* ---- Boundary ---- */
@@ -1934,7 +1934,7 @@ main.privacy-page h1 { font-size: clamp(2.25rem, 6vw, 3.75rem); }
 ### Task 14: Retire the legacy layer
 
 **Files:**
-- Modify: `app/fleet.css`, and `app/styles/*.css` or the page markup (for any class the coverage test flags)
+- Modify: `app/fleet.css`, and `app/src/styles/*.css` or the page markup (for any class the coverage test flags)
 - Test: `app/test/app-look.test.ts` (append)
 
 **Interfaces:**
