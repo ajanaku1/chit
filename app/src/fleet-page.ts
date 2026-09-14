@@ -23,9 +23,7 @@ import {
 import { drawShare, fundingProgress, fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
 import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initShell, parseEth, saveFleetSnapshot, toEth, walletProvider } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
-import { renderLed } from "./fleet/led.js";
 import { prefersReducedMotion } from "./fleet/motion.js";
-import { currentRow, policyRows, type PolicyInput } from "./fleet/policy.js";
 import { readStatus } from "./fleet/status-read.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
 import { confirmRecovery, createRecoveryVault, type VaultContext } from "./fleet/vault.js";
@@ -42,9 +40,6 @@ const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   return node as T;
 };
 
-/** The live panel has room for a line, not a paragraph. */
-const firstSentence = (text: string): string => text.split(/(?<=\.)\s/)[0] ?? text;
-
 const banner = (message: string, tone: "pending" | "error" | "ok"): void => {
   const node = el("status-banner");
   node.textContent = message;
@@ -60,11 +55,6 @@ class FleetWizard {
   #budgetWei = "0";
   #step: Step = "welcome";
   #history: Step[] = [];
-  /** What the live panel shows as done: accepted, not merely typed. */
-  #sized = false;
-  #backup: PolicyInput["backup"] = "none";
-  #launched = false;
-  #funding: PolicyInput["funding"];
 
   start(): void {
     // A trader with a remembered wallet has nothing to connect; skip the step.
@@ -75,18 +65,9 @@ class FleetWizard {
     window.addEventListener("chit-wallet-changed", () => {
       const address = getConnectedWallet();
       if (address && address !== this.#wallet) void this.#adopt(address);
-      else if (!address) {
-        this.#wallet = undefined;
-        this.#renderPanel();
-      }
+      else if (!address) this.#wallet = undefined;
     });
-    el("a-draw").addEventListener("input", () => {
-      this.#renderPanel();
-      this.#renderLaunch();
-    });
-    // The panel follows the size form as it is typed into, before it is accepted.
-    el("size-form").addEventListener("input", () => this.#renderPanel());
-    el("size-form").addEventListener("change", () => this.#renderPanel());
+    el("a-draw").addEventListener("input", () => this.#renderLaunch());
     el("size-form").addEventListener("submit", (event) => {
       event.preventDefault();
       void this.#configure();
@@ -99,49 +80,11 @@ class FleetWizard {
       back.addEventListener("click", () => this.#back());
     }
     this.#bindQuickpicks();
-    this.#renderPanel();
 
     // A wallet remembered from an earlier load fires no connect event, so it
     // is taken up here; the event handler above covers wallets that arrive later.
     const remembered = getConnectedWallet();
     if (remembered) void this.#adopt(remembered, false);
-  }
-
-  /** Paints the live panel from what the trader has committed to so far. */
-  #renderPanel(): void {
-    const data = new FormData(el<HTMLFormElement>("size-form"));
-    const drawEth = el<HTMLInputElement>("a-draw").value;
-    const rows = policyRows({
-      wallet: this.#wallet,
-      wallets: Number(data.get("wallets") ?? 0),
-      budgetEth: String(data.get("budget") ?? ""),
-      days: Number(data.get("duration") ?? 7),
-      sized: this.#sized,
-      backup: this.#backup,
-      drawEth,
-      launched: this.#launched,
-      funding: this.#funding,
-    });
-    const current = currentRow(rows);
-    for (const row of rows) {
-      const item = document.querySelector<HTMLElement>(`#policy [data-row="${row.key}"]`);
-      if (!item) continue;
-      item.dataset["done"] = String(row.done);
-      if (row.key === current) item.setAttribute("aria-current", "step");
-      else item.removeAttribute("aria-current");
-      el(`policy-${row.key}`).textContent = row.value;
-    }
-    // Half-typed amounts ("0.", "") are normal mid-keystroke; the meter just reads empty.
-    let share = 0;
-    try {
-      share = drawShare(parseEth(drawEth));
-    } catch {
-      share = 0;
-    }
-    el("policy-draw-fill").style.setProperty("--fill", String(share));
-    el("panel-balance").dataset["empty"] = String(!this.#wallet);
-    if (this.#wallet) renderLed(el("panel-balance"), toEth(this.#availableBalance), "ETH");
-    else el("panel-balance").textContent = "Connect a wallet to see it";
   }
 
   /** Preset pills mirror into their input; the input stays the source of truth. */
@@ -156,8 +99,6 @@ class FleetWizard {
         )) {
           sibling.setAttribute("aria-pressed", String(sibling === pill));
         }
-        // Setting .value fires no input event, so the panel is told directly.
-        this.#renderPanel();
       });
     }
   }
@@ -239,7 +180,6 @@ class FleetWizard {
     this.#wallet = address;
     this.#setup ??= new CampaignSetup(this.#deps());
     this.#availableBalance = await this.#fetchBalance(address);
-    this.#renderPanel();
     this.#renderLaunch();
 
     const walletLine = el("wallet-line");
@@ -363,8 +303,6 @@ class FleetWizard {
         expiry: new Date(Date.now() + days * 86_400_000).toISOString(),
       });
       errorLine.hidden = true;
-      this.#sized = true;
-      this.#renderPanel();
       this.#go("backup");
     } catch (error) {
       errorLine.textContent = this.#humanize((error as { reason?: string }).reason ?? (error as Error).message);
@@ -396,8 +334,6 @@ class FleetWizard {
       line.hidden = false;
       el("vault-warn").hidden = false;
       (el("confirm-vault") as HTMLButtonElement).disabled = false;
-      this.#backup = "saved";
-      this.#renderPanel();
     } catch (error) {
       banner(`Couldn't create the backup: ${(error as Error).message}`, "error");
       return;
@@ -417,8 +353,6 @@ class FleetWizard {
       line.textContent = "Verified — your backup opens.";
       line.hidden = false;
       (el("to-launch") as HTMLButtonElement).disabled = false;
-      this.#backup = "verified";
-      this.#renderPanel();
       banner("Backup verified. Your keys never left this browser.", "ok");
     } catch (error) {
       banner("That signature didn't open the backup. Same wallet as step 1?", "error");
@@ -442,9 +376,6 @@ class FleetWizard {
       const dueAt = (this.#lastResult["draw"] as { dueAt?: string } | undefined)?.dueAt;
       if (dueAt) el("funding-wait").textContent = fundingWait(dueAt, new Date()).message;
       this.#showFunding(dueAt);
-      this.#launched = true;
-      if (dueAt) this.#funding = { message: firstSentence(fundingWait(dueAt, new Date()).message), done: false };
-      this.#renderPanel();
       this.#awaitFunding(activated.state, dueAt);
       saveFleetSnapshot({
         campaign: this.#campaign,
@@ -483,13 +414,10 @@ class FleetWizard {
           if (next === "Activating") {
             if (nextDue) el("funding-wait").textContent = fundingWait(nextDue, new Date()).message;
             this.#showFunding(nextDue);
-            if (nextDue) this.#funding = { message: firstSentence(fundingWait(nextDue, new Date()).message), done: false };
           } else {
             el("funding-wait").textContent = "Your fleet is funded and live.";
             this.#showFunding(undefined);
-            this.#funding = { message: "Funded and live.", done: true };
           }
-          this.#renderPanel();
           this.#awaitFunding(next, nextDue);
         } catch {
           this.#awaitFunding(state, dueAt);
