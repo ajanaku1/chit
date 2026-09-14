@@ -126,6 +126,12 @@ test("does not link into the app, which is not public", async () => {
   // The Fleet app runs locally while it is in private testing. A link here
   // would publish the Control Room and Balance pages to anyone who lands.
   assert.doesNotMatch(html, /href="\/app/);
+
+  // Links that do leave the page must leave it safely.
+  for (const link of html.match(/<a [^>]*href="https?:[^>]*>/g) ?? []) {
+    assert.match(link, /target="_blank"/, `${link} opens in place`);
+    assert.match(link, /rel="noopener noreferrer"/, `${link} lacks rel=noopener noreferrer`);
+  }
   assert.doesNotMatch(html, /href="[^"]*(fleet|balance|dashboard)[^"]*\.html"/i);
 
   // And the calls to action are inert until it is public.
@@ -182,7 +188,7 @@ test("copies the complete contract address with inline button feedback", async (
 test("keeps the contract group cohesive and screen-reader-only where it should be", async () => {
   const css = await source("style.css");
 
-  assert.match(css, /\.masthead\s*\{[^}]*grid-template-areas:\s*"brand"\s*"contract"/);
+  assert.match(css, /\.masthead\s*\{[^}]*grid-template-areas:\s*"brand action"\s*"contract contract"/);
   assert.match(css, /\.contract-row\s*\{[^}]*justify-self:\s*start/);
   assert.match(css, /\.contract-row\s*\{[^}]*width:\s*fit-content/);
   assert.match(css, /\.contract-row\s*\{[^}]*max-width:\s*100%/);

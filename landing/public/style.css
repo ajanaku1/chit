@@ -86,12 +86,19 @@ button{background:none;border:0;color:inherit;cursor:pointer}
 
 /* ── 4. MASTHEAD ────────────────────────────────────────── */
 .masthead{position:absolute; z-index:5; left:var(--gutter); right:var(--gutter); top:calc(46 * var(--u));
-  display:grid; grid-template-columns:minmax(0,1fr); align-items:start;
-  grid-template-areas:"brand" "contract";
+  display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start;
+  grid-template-areas:"brand action" "contract contract";
   gap:calc(24 * var(--u))}
 .brand-lockup{grid-area:brand}
 .nav{grid-area:nav}
-.btn-nav{grid-area:action}
+.btn-nav{grid-area:action; justify-self:end; align-self:center;
+  padding:calc(9 * var(--u)) calc(15 * var(--u)); border-radius:var(--radius-control);
+  border:var(--hairline) solid rgba(245,239,229,.24); color:var(--paper);
+  /* the masthead spans the full width, so this control sits over the light
+     wash column; it carries its own ink so it reads on either surface */
+  background:rgba(13,12,11,.72); backdrop-filter:blur(calc(8 * var(--u)));
+  font-size:calc(14 * var(--u)); letter-spacing:var(--track-snug); white-space:nowrap;
+  transition:border-color var(--morph-dur) var(--ease-out), color var(--morph-dur) var(--ease-out)}
 .burger{grid-area:action}
 .contract-row{grid-area:contract; justify-self:start; width:fit-content; max-width:100%;
   display:grid; grid-template-columns:auto minmax(0, 1fr) auto; align-items:center;
@@ -113,6 +120,7 @@ button{background:none;border:0;color:inherit;cursor:pointer}
 a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-offset:3px}
 
 @media (hover: hover) and (pointer: fine){
+  .btn-nav:hover{border-color:var(--coral); color:var(--coral)}
   #copy-contract-address:hover{opacity:1; border-color:rgba(255,90,60,.55)}
   .contract-row:hover code{opacity:.9}
 }
@@ -123,10 +131,6 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
 .nav a{font-size:calc(16 * var(--u)); line-height:1.1875; letter-spacing:var(--track-snug);
   opacity:.5; transition:opacity .2s}
 .nav a:hover,.nav a:focus-visible{opacity:1}
-.btn-nav{justify-self:end; padding:calc(10.37 * var(--u)) calc(15.83 * var(--u));
-  border-radius:var(--radius-control); background:var(--paper); color:var(--ink);
-  font-size:calc(16 * var(--u)); letter-spacing:var(--track-snug); transition:background .2s}
-.btn-nav:hover{background:var(--soft-paper)}
 .burger{display:none}
 
 /* ── 5. SCREEN A — HERO ─────────────────────────────────── */
@@ -536,8 +540,9 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
   .burger{display:grid; gap:calc(5 * var(--u)); width:calc(40 * var(--u)); height:calc(40 * var(--u));
     place-content:center; justify-self:end}
   .burger span{display:block; width:calc(18 * var(--u)); height:var(--hairline); background:var(--paper)}
-  .btn-nav{display:none}
-  .nav.is-open .btn-nav--mobile{display:inline-flex}
+  /* This slot used to hold the app link, which mobile hid behind the burger.
+     It now holds the only working destination on the page, so it stays. */
+  .btn-nav{font-size:calc(13 * var(--u)); padding:calc(8 * var(--u)) calc(12 * var(--u))}
   .hero__grid{grid-template-columns:1fr}
   .hero__title{font-size:calc(64 * var(--u))}
   .hero__panel{padding-block:0 calc(40 * var(--u))}
