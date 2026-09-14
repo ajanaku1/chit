@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
 /**
@@ -233,4 +233,24 @@ test("uses WCAG-compliant text colors on the ink surface", async () => {
   assertContrast("Secondary text on ink", softPaper, ink, 4.5);
   assertContrast("Coral accent on ink", coral, ink, 3);
   assertContrast("Ink label on a paper button", ink, paper, 4.5);
+});
+
+/**
+ * Every link lands somewhere. "Read the boundary" pointed at #boundary, which
+ * nothing on the page carries, so clicking it did nothing.
+ */
+test("every link on the landing reaches a page or an element that exists", async () => {
+  const html = await source("index.html");
+  for (const [, target] of html.matchAll(/href="(#[^"]*|\/[^"]*)"/g)) {
+    if (target.startsWith("#")) {
+      assert.match(html, new RegExp(`id="${target.slice(1)}"`), `${target} points at nothing on the page`);
+    } else if (target !== "/") {
+      await assert.doesNotReject(access(new URL(`../..${target}`, import.meta.url)), `${target} does not exist`);
+    }
+  }
+  assert.match(
+    html,
+    /<a [^>]*href="\/app\/fleet-privacy\.html"[^>]*>Read the boundary</,
+    "Read the boundary does not open the What's private page",
+  );
 });
