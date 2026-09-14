@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { balanceDelta, capShare, poolStatus, TRADER_CAP } from "../src/fleet/balance.js";
+import { balanceDelta, capShare, capUsed, poolStatus, TRADER_CAP } from "../src/fleet/balance.js";
 
 test("the status pill says nothing until the pool's state has been read", () => {
   assert.equal(poolStatus(undefined), undefined);
@@ -26,4 +26,10 @@ test("the balance change is measured against what this page last showed", () => 
   assert.equal(balanceDelta("50000000000000000", "50000000000000000"), undefined);
   assert.deepEqual(balanceDelta("0", "50000000000000000"), { up: true, eth: "0.05" });
   assert.deepEqual(balanceDelta("50000000000000000", "30000000000000000"), { up: false, eth: "0.02" });
+});
+
+test("the headroom note never reads below zero, even if the contract reports more room than the cap", () => {
+  assert.equal(capUsed("450000000000000000", TRADER_CAP), "50000000000000000");
+  assert.equal(capUsed(TRADER_CAP, TRADER_CAP), "0");
+  assert.equal(capUsed("600000000000000000", TRADER_CAP), "0");
 });
