@@ -11,6 +11,7 @@ import {
   canAddFunds,
   capShare,
   capUsed,
+  countFrame,
   depositOptions,
   exitView,
   loadCachedBalance,
@@ -95,7 +96,7 @@ const renderFigures = (view: BalanceState): void => {
   const host = el("balance-available");
   const to = Number(toEth(view.available));
   const from = shownAvailable === undefined ? to : Number(toEth(shownAvailable));
-  countTo((value) => renderLed(host, value.toFixed(4), "ETH"), from, to);
+  countTo((value) => renderLed(host, countFrame(value, to, toEth(view.available)), "ETH"), from, to);
   const delta = balanceDelta(shownAvailable, view.available);
   const deltaNode = el("balance-delta");
   deltaNode.hidden = delta === undefined;

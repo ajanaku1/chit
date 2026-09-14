@@ -134,7 +134,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .card-glass, .card-warm, .card-solid, .wstep, .dash-card { position: relative; margin-block: 1.25rem; padding: clamp(1.25rem, 3vw, 1.75rem); border-radius: var(--radius-card); }
 .card-solid, .wstep, .dash-card { border: 1px solid rgba(245, 239, 229, 0.08); background: rgba(245, 239, 229, 0.04); }
 .card-glass { border: 1px solid rgba(222, 214, 202, 0.12); background: var(--glass-fill); backdrop-filter: blur(24px); }
-.card-warm { border: 1px solid rgba(245, 239, 229, 0.22); background: linear-gradient(160deg, rgba(222, 214, 202, 0.55), rgba(255, 122, 92, 0.55) 55%, rgba(122, 36, 21, 0.75)); color: var(--paper); }
+.card-warm { border: 1px solid rgba(245, 239, 229, 0.22); background: linear-gradient(160deg, rgba(222, 214, 202, 0.35), rgba(255, 122, 92, 0.55) 55%, rgba(122, 36, 21, 0.75)); color: var(--paper); --text-muted: var(--paper); }
 .cardlabel { margin: 0 0 0.75rem; color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
 
 /* ---- Figures: label on the left, value on the right, hairlines between ---- */

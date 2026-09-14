@@ -264,3 +264,16 @@ export const poolStatus = (state: Pick<BalanceState, "pool"> | undefined): { tex
     : state.pool.paused
       ? { text: "Pool paused by the operator", live: false }
       : { text: "Pool live · testnet 46630", live: true };
+
+/** The status pill speaks only from a read young enough to trust, so it never says "live" on stale news. */
+export const freshPoolStatus = (
+  cached: Pick<CachedBalance, "pool" | "savedAt"> | undefined,
+  now: Date,
+): ReturnType<typeof poolStatus> => (cached !== undefined && isFresh(cached.savedAt, now) ? poolStatus(cached) : undefined);
+
+/**
+ * One frame of a count-up. Mid-count frames keep the final figure's width,
+ * and the last frame is the exact figure, never a rounding of it.
+ */
+export const countFrame = (value: number, to: number, exact: string): string =>
+  value === to ? exact : value.toFixed(exact.split(".")[1]?.length ?? 0);

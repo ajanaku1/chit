@@ -7,7 +7,7 @@
  * keys and the backup never touch storage; sessionStorage clears with the tab.
  */
 
-import { loadCachedBalance, poolStatus } from "./balance.js";
+import { freshPoolStatus, loadCachedBalance, poolStatus } from "./balance.js";
 import { SetupError } from "./campaign-setup.js";
 import { hydrateLed } from "./led.js";
 import { revealOnEnter } from "./motion.js";
@@ -550,12 +550,20 @@ export const initMenu = (): void => {
     burger.setAttribute("aria-expanded", String(open));
     nav.dataset["open"] = String(open);
   };
-  burger.addEventListener("click", () => set(burger.getAttribute("aria-expanded") !== "true"));
+  burger.addEventListener("click", () => {
+    const open = burger.getAttribute("aria-expanded") !== "true";
+    set(open);
+    // The links come before the burger in the page, so opening moves focus into them.
+    if (open) nav.querySelector<HTMLElement>("a")?.focus();
+  });
   nav.addEventListener("click", (event) => {
     if ((event.target as HTMLElement).closest("a")) set(false);
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") set(false);
+    if (event.key === "Escape" && burger.getAttribute("aria-expanded") === "true") {
+      set(false);
+      burger.focus();
+    }
   });
 };
 
@@ -594,7 +602,7 @@ export const initPoolStatus = (): void => {
     const wallet = getConnectedWallet();
     let status: ReturnType<typeof poolStatus>;
     try {
-      status = poolStatus(wallet ? loadCachedBalance(sessionStorage, wallet) : undefined);
+      status = freshPoolStatus(wallet ? loadCachedBalance(sessionStorage, wallet) : undefined, new Date());
     } catch {
       status = undefined;
     }
@@ -606,6 +614,8 @@ export const initPoolStatus = (): void => {
   };
   window.addEventListener("chit-balance-read", render);
   window.addEventListener("chit-wallet-changed", render);
+  document.addEventListener("visibilitychange", render);
+  globalThis.setInterval(render, 60_000);
   render();
 };
 
@@ -648,11 +658,11 @@ export const confirmDialog = (copy: { title: string; body: string; confirm: stri
     keep.focus();
   });
 
-/** Wires the shared page frame. */
-export const initShell = (): void => {
+/** Every app page's shared chrome. The Boundary page reads no balance, so it passes `pill: false`. */
+export const initShell = ({ pill = true }: { pill?: boolean } = {}): void => {
   initMenu();
   initContractCopy();
-  initPoolStatus();
+  if (pill) initPoolStatus();
   hydrateLed();
   revealOnEnter();
 };

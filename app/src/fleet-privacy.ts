@@ -13,7 +13,7 @@ import {
 } from "./fleet/index.js";
 
 initHeaderWallet();
-initShell();
+initShell({ pill: false });
 
 const el = (id: string): HTMLElement => {
   const node = document.getElementById(id);
