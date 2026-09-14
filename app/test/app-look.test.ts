@@ -199,3 +199,14 @@ test("errors are deep-coral panels, never the live accent", async () => {
   const error = rules(await read("src/styles/components.css")).find(([selector]) => selector === '.status-banner[data-tone="error"]');
   assert.ok(error && /background:\s*var\(--coral-deep\)/.test(error[1]));
 });
+
+test("motion follows the landing's rules", async () => {
+  const [tokens, components, pages, motion] = await Promise.all([read("src/styles/tokens.css"), read("src/styles/components.css"), read("src/styles/pages.css"), read("src/fleet/motion.ts")]);
+  assert.match(tokens, /--ease-out:\s*cubic-bezier\(0\.23,\s*1,\s*0\.32,\s*1\)/);
+  assert.match(tokens, /--ease-in-out:\s*cubic-bezier\(0\.77,\s*0,\s*0\.175,\s*1\)/);
+  const css = `${components}\n${pages}`;
+  assert.match(css, /@media \(prefers-reduced-motion: reduce\)/, "no still version for reduced motion");
+  assert.match(motion, /IntersectionObserver/);
+  assert.match(motion, /unobserve/, "reveals must happen once");
+  assert.doesNotMatch(`${css}\n${motion}`, /transition:\s*all|scale\(0\)|ease-in(?:[;, )]|$)|scroll-behavior:\s*smooth/im);
+});
