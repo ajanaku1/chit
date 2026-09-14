@@ -210,3 +210,17 @@ test("motion follows the landing's rules", async () => {
   assert.match(motion, /unobserve/, "reveals must happen once");
   assert.doesNotMatch(`${css}\n${motion}`, /transition:\s*all|scale\(0\)|ease-in(?:[;, )]|$)|scroll-behavior:\s*smooth/im);
 });
+
+test("the Balance page leads with a glass hero, the headroom meter and the three limits", async () => {
+  const html = await read("balance.html");
+  const { DRAW_CAP, toEth } = await import("../src/fleet/balance.js");
+  assert.match(html, /<section class="wstep card-glass" aria-labelledby="balance-h" data-reveal>/);
+  assert.match(html, /id="headroom-meter" role="meter"/);
+  assert.match(html, new RegExp(`data-led="${toEth(DRAW_CAP).replace(".", "\\.")}" data-unit="ETH"`), "the page's draw cap drifted from DRAW_CAP");
+  assert.match(html, /data-led="15" data-unit="min"/);
+  assert.match(html, /data-led="24" data-unit="h"/);
+  assert.match(html, /<section id="exit-card" class="wstep card-warm"/);
+  const script = await read("src/balance-page.ts");
+  assert.match(script, /renderLed\(/, "the balance is not drawn as an LED figure");
+  assert.match(script, /setAttribute\("aria-busy", "true"\)/, "the tiles never show they are loading");
+});
