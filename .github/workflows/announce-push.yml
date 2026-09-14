@@ -1,7 +1,9 @@
 name: Announce pushes to Telegram
 
-# Every push to main is posted to the community group as it is: who, how many
-# commits, the subject lines, the compare link. See scripts/announce-push.mjs.
+# Every push to main is posted to the community group: the commits grouped as
+# new / fixed / tests, any new dev diary entry from IMPLEMENTATION.md in the
+# dev's own words, and any new address or transaction recorded under
+# deployments/. See scripts/announce-push.mjs.
 #
 # Two repository secrets, set once under Settings > Secrets and variables >
 # Actions:
@@ -27,10 +29,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      # Full history: the diary and chain messages diff the tree before and
+      # after the push, and `before` can be many commits back.
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: scripts/announce-push.mjs
-          sparse-checkout-cone-mode: false
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
