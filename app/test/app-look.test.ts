@@ -153,3 +153,28 @@ test("the status pill reads the cached balance and never signs for one", async (
   assert.doesNotMatch(pill[0], /readBalance|signedFleetApi/, "the pill must not cost a signature");
   assert.match(await read("src/fleet/balance-read.ts"), /dispatchEvent\(new CustomEvent\("chit-balance-read"/, "pages are never told a fresh balance arrived");
 });
+
+const LIVE_OR_HAPPENED = /pill|data-live|data-done|aria-current="step"|data-tone="ok"|\.delta|meter__fill|gauge/;
+
+test("coral marks only what is live or has happened", async () => {
+  for (const file of NEW_STYLES) {
+    for (const [selector, body] of rules(await read(file))) {
+      if (!/var\(--coral(?:-lift)?\)/.test(body)) continue;
+      assert.match(selector, LIVE_OR_HAPPENED, `${file}: "${selector}" uses coral for something neither live nor done`);
+    }
+  }
+});
+
+test("primary actions are paper, as on the landing", async () => {
+  const primary = rules(await read("src/styles/components.css")).find(([selector]) => selector === ".primary");
+  assert.ok(primary, "no .primary rule");
+  assert.match(primary[1], /background:\s*var\(--paper\)/);
+  assert.match(primary[1], /color:\s*var\(--ink\)/);
+});
+
+test("hover effects only apply where there is a real pointer", async () => {
+  for (const file of NEW_STYLES) {
+    const unguarded = (await read(file)).replace(/@media \(hover: hover\) and \(pointer: fine\) \{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, "");
+    assert.doesNotMatch(unguarded, /:hover/, `${file} has a hover effect outside the pointer guard`);
+  }
+});
