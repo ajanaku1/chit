@@ -224,3 +224,13 @@ test("the Balance page leads with a glass hero, the headroom meter and the three
   assert.match(script, /renderLed\(/, "the balance is not drawn as an LED figure");
   assert.match(script, /setAttribute\("aria-busy", "true"\)/, "the tiles never show they are loading");
 });
+
+test("the wizard's progress is a labelled rail above the steps, with a draw meter and a funding gauge", async () => {
+  const html = await read("fleet.html");
+  const rail = html.indexOf('<ol class="dots" id="dots"');
+  assert.ok(rail > 0 && rail < html.indexOf('data-wstep="welcome"'), "the rail sits below the steps");
+  for (const label of ["Start", "Connect", "Size", "Backup", "Launch"]) assert.match(html, new RegExp(`<span>${label}</span>`));
+  assert.match(html, /id="draw-meter" role="meter"/);
+  assert.match(html, /id="funding-gauge"/);
+  assert.doesNotMatch(html, /seam-card/, "the backup still uses the old seam card");
+});

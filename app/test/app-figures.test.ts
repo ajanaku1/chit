@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { balanceDelta, capShare, capUsed, poolStatus, TRADER_CAP } from "../src/fleet/balance.js";
+import { balanceDelta, capShare, capUsed, DRAW_CAP, drawShare, fundingProgress, poolStatus, TRADER_CAP } from "../src/fleet/balance.js";
 
 test("the status pill says nothing until the pool's state has been read", () => {
   assert.equal(poolStatus(undefined), undefined);
@@ -32,4 +32,18 @@ test("the headroom note never reads below zero, even if the contract reports mor
   assert.equal(capUsed("450000000000000000", TRADER_CAP), "50000000000000000");
   assert.equal(capUsed(TRADER_CAP, TRADER_CAP), "0");
   assert.equal(capUsed("600000000000000000", TRADER_CAP), "0");
+});
+
+test("the funding gauge measures the wait against its 15-minute ceiling", () => {
+  const now = new Date("2026-09-14T12:00:00Z");
+  assert.equal(fundingProgress("2026-09-14T12:15:00Z", now), 0);
+  assert.equal(fundingProgress("2026-09-14T12:07:30Z", now), 0.5);
+  assert.equal(fundingProgress("2026-09-14T11:59:00Z", now), 1);
+  assert.equal(fundingProgress("not a date", now), 0);
+});
+
+test("the draw meter fills against the 0.2 ETH cap and stops there", () => {
+  assert.equal(drawShare("20000000000000000"), 0.1);
+  assert.equal(drawShare(DRAW_CAP), 1);
+  assert.equal(drawShare("300000000000000000"), 1);
 });
