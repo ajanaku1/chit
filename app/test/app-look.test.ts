@@ -134,3 +134,22 @@ test("every link on every app page reaches a page or an element that exists", as
     }
   }
 });
+
+test("every page carries the contract row, the status pill and the non-affiliation line", async () => {
+  for (const page of PAGES) {
+    const html = await read(page);
+    assert.match(html, /<code id="contract-address">0xD523A627030509021cC39B6d7C8543417D3E50D8<\/code>/, `${page} has no contract row`);
+    assert.match(html, /<button id="copy-contract-address" type="button" aria-label="Copy contract address">Copy<\/button>/);
+    assert.match(html, /<p id="pool-status" class="pill" role="status" hidden>/, `${page} has no hidden-by-default status pill`);
+    assert.match(html, /not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap/, `${page} lacks the non-affiliation line`);
+  }
+});
+
+test("the status pill reads the cached balance and never signs for one", async () => {
+  const shared = await read("src/fleet/page-shared.ts");
+  const pill = /export const initPoolStatus[\s\S]*?\n\};/.exec(shared);
+  assert.ok(pill, "no initPoolStatus");
+  assert.match(pill[0], /loadCachedBalance\(/);
+  assert.doesNotMatch(pill[0], /readBalance|signedFleetApi/, "the pill must not cost a signature");
+  assert.match(await read("src/fleet/balance-read.ts"), /dispatchEvent\(new CustomEvent\("chit-balance-read"/, "pages are never told a fresh balance arrived");
+});
