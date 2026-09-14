@@ -178,3 +178,11 @@ test("hover effects only apply where there is a real pointer", async () => {
     assert.doesNotMatch(unguarded, /:hover/, `${file} has a hover effect outside the pointer guard`);
   }
 });
+
+test("a chosen size reads as chosen without borrowing coral, and field errors are deep-coral panels", async () => {
+  const css = rules(await read("src/styles/components.css"));
+  const pressed = css.find(([selector]) => selector === '.quickpick button[aria-pressed="true"]');
+  assert.ok(pressed && /background:\s*var\(--paper\)/.test(pressed[1]), "the chosen size is not paper");
+  const error = css.find(([selector]) => selector === ".field-error");
+  assert.ok(error && /background:\s*var\(--coral-deep\)/.test(error[1]), "field errors are not deep-coral panels");
+});
