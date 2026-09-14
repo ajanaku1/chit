@@ -186,3 +186,16 @@ test("a chosen size reads as chosen without borrowing coral, and field errors ar
   const error = css.find(([selector]) => selector === ".field-error");
   assert.ok(error && /background:\s*var\(--coral-deep\)/.test(error[1]), "field errors are not deep-coral panels");
 });
+
+test("the three surfaces exist, and glass is real glass", async () => {
+  const css = rules(await read("src/styles/components.css"));
+  const glass = css.find(([selector]) => selector === ".card-glass");
+  assert.ok(glass && /backdrop-filter:\s*blur\(/.test(glass[1]), ".card-glass has no blur");
+  assert.ok(css.some(([selector]) => selector === ".card-warm"), "no .card-warm");
+  assert.ok(css.some(([selector]) => /(^|,\s*)\.card-solid\b/.test(selector)), "no .card-solid");
+});
+
+test("errors are deep-coral panels, never the live accent", async () => {
+  const error = rules(await read("src/styles/components.css")).find(([selector]) => selector === '.status-banner[data-tone="error"]');
+  assert.ok(error && /background:\s*var\(--coral-deep\)/.test(error[1]));
+});
