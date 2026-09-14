@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { network } from "hardhat";
 import { parseEther, type Address, type Hex } from "viem";
 
 import { runFleetBuy } from "../../src/fleet/chain-buy.js";
 import { ROBINHOOD_TESTNET_ROUTER } from "../../src/fleet/deploy.js";
 import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4EthBuy, venuePoolKey } from "../../src/fleet/v4-swap.js";
+import { connectRobinhoodFork } from "./robinhood-fork.js";
 
 /** Verified live on 46630 (specs/001-fleet-mission/research.md, 2026-08-30). */
 const POOL_MANAGER: Address = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
@@ -29,7 +29,7 @@ describe("Fleet venue on Uniswap v4 (46630 fork)", () => {
   const CAMPAIGN = `0x${"a7".repeat(32)}` as Hex;
 
   it("seeds the pool and lands a sponsored ETH -> FLEET buy in a fleet account", async () => {
-    const { viem } = await network.connect({ network: "robinhoodTestnetFork" });
+    const { viem } = await connectRobinhoodFork();
     const [operator, owner] = await viem.getWalletClients();
     const publicClient = await viem.getPublicClient();
 

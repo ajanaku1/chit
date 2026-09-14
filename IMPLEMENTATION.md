@@ -1386,3 +1386,32 @@ console errors, scrolling each page first so its once-only reveals are shown;
 the 1440 and 390 shots are kept in `app/evidence/`. They show the pages without
 a connected wallet; connected states were looked at by hand on localhost, not
 scripted.
+## The fork block is chosen at connect time, so a fresh clone is green (2026-09-14)
+
+The 46630 fork pin in `hardhat.config.ts` was the wrong mechanism, as the
+2026-09-13 entry recorded: the public RPC keeps state for about 6,900 blocks
+and a block lands every 0.16s, so any number committed there is unservable
+eighteen minutes later. `fleet-venue` was green only on a machine with a warm
+`cache/`, and `cache/` is gitignored. A fresh clone failed with
+`metadata is not found`.
+
+The pin is gone from the config. `test/fork/robinhood-fork.ts` asks the RPC
+for the tip when the test connects and passes `tip - 64` as a per-connection
+`override.forking.blockNumber`, which Hardhat 3 accepts on `network.connect`.
+The fork is still pinned for the length of the run, so EDR caches remote state
+and does not burst the RPC, but the number never rots. The block chosen is
+printed, and `ROBINHOOD_FORK_BLOCK=<n>` replays that exact fork while the RPC
+still serves it, which is how a failing run gets reproduced.
+
+Evidence, on a clone with no `cache/` directory, Windows, Node 24:
+`fleet-venue` passes in 34 seconds at block 119431961. The control,
+`ROBINHOOD_FORK_BLOCK=118812840` (the old pin), fails in two seconds with the
+old error. `pool-acceptance`'s pieces pass here too, observer test, landing
+suite, claims grep, `fleet-foundation`, `pool-foundation`, with one exception
+that is the machine and not the code: `app/test/isolated-build.test.ts` creates
+a symlink, which Windows refuses without developer mode, so every gate that
+includes `npm --prefix app run verify` reports red on this box. That test is
+untouched and passes on macOS.
+
+Nothing else changed. The venue test's body is the same; only how it opens the
+fork.

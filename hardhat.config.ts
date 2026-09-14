@@ -39,9 +39,13 @@ export default defineConfig({
       chainId: 46630,
       forking: {
         url: process.env.ROBINHOOD_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com",
-        // Pinned so EDR caches remote state on disk; the public RPC drops
-        // requests under the burst an unpinned fork makes. Bump deliberately.
-        blockNumber: 118812840,
+        // No block number here on purpose. The public RPC serves state for
+        // only ~6,900 blocks (about eighteen minutes), so any number written
+        // in this file is unservable by the time it is committed, and a fresh
+        // clone fails with "metadata is not found". test/fork/robinhood-fork.ts
+        // pins each connection a few blocks behind the live tip instead, which
+        // keeps EDR's on-disk cache and the RPC's burst limit happy without a
+        // number that rots. ROBINHOOD_FORK_BLOCK replays a specific run.
       },
     },
     // Fork of Ethereum Sepolia. chainId stays 11155111 so Nox's hardcoded
