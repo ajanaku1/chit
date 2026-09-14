@@ -1,5 +1,4 @@
-/* Components shared by every app page. The pages layer refines them; the
-   legacy layer loses to both. */
+/* Components shared by every app page. The pages layer refines them. */
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--surface-bottom); }
 body.fleet-body {
