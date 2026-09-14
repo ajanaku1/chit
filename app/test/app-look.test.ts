@@ -302,3 +302,15 @@ test("the Boundary page sets its four blocks as glass and solid cards", async ()
   assert.match(html, /<section class="card-glass boundary-block held"[^>]*>\s*<h2>Kept off the chain<\/h2>/);
   for (const id of ["public-facts", "private-fact", "privacy-claim", "pool-claim", "exclusions"]) assert.match(html, new RegExp(`id="${id}"`));
 });
+
+test("the old stylesheet is gone and every class the pages use is styled", async () => {
+  const manifest = await read("fleet.css");
+  assert.doesNotMatch(manifest, /@layer legacy\s*\{/, "the legacy layer still holds rules");
+  const styled = (await Promise.all(NEW_STYLES.map(read))).join("\n");
+  const used = new Set<string>(["wallet-chooser", "wallet-chooser-list", "wallet-chooser-status", "wallet-chooser-cancel", "confirm-dialog", "led", "led__dots", "led__unit", "reveal-ready"]);
+  for (const page of PAGES) {
+    for (const [, list] of (await read(page)).matchAll(/class="([^"]+)"/g)) for (const name of list!.split(/\s+/)) used.add(name);
+  }
+  const unstyled = [...used].filter((name) => !new RegExp(`\\.${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-])`).test(styled));
+  assert.deepEqual(unstyled, [], "classes with no rule in the new layers");
+});
