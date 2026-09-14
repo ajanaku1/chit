@@ -93,110 +93,6 @@
   box-shadow: var(--shadow);
   padding: 2.2rem 2rem;
 }
-.kicker {
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--coral-text);
-  margin: 0 0 0.6rem;
-}
-h1, h2, h3 {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif;
-  font-weight: 800;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  margin: 0 0 0.6rem;
-}
-h1 { font-size: 1.9rem; }
-h2 { font-size: 1.55rem; }
-.lead {
-  color: var(--dim);
-  font-size: 0.92rem;
-  line-height: 1.6;
-  margin: 0 0 1.6rem;
-}
-.lead.small { font-size: 0.85rem; margin-bottom: 1rem; }
-
-.promises {
-  list-style: none;
-  margin: 0 0 1.8rem;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.9rem;
-}
-.promises li {
-  background: var(--bg);
-  border: 1.5px solid var(--line);
-  border-radius: var(--r-field);
-  padding: 0.9rem 1.1rem;
-  font-size: 0.88rem;
-  line-height: 1.5;
-  color: var(--dim);
-}
-.promises strong { color: var(--text); display: block; margin-bottom: 0.15rem; }
-
-/* Buttons */
-button, .linkbtn {
-  font-family: inherit;
-  font-size: 0.9rem;
-  font-weight: 700;
-  border-radius: var(--r-btn);
-  cursor: pointer;
-  border: 1.5px solid var(--line);
-  background: var(--bg);
-  color: var(--text);
-  padding: 0.8rem 1.2rem;
-  text-decoration: none;
-  text-align: center;
-}
-.primary {
-  background: var(--coral);
-  color: var(--on-coral);
-  border-color: var(--coral);
-}
-.ghost {
-  background: transparent;
-}
-.big {
-  display: block;
-  width: 100%;
-  padding: 1.05rem;
-  font-size: 1rem;
-}
-button:disabled { opacity: 0.45; cursor: not-allowed; }
-button:focus-visible, .linkbtn:focus-visible, a:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
-}
-@media (prefers-reduced-motion: no-preference) {
-  button, .linkbtn { transition: transform 0.08s ease, filter 0.12s ease; }
-  .primary:not(:disabled):hover { filter: brightness(1.05); transform: translateY(-1px); }
-  .primary:not(:disabled):active { transform: translateY(0); }
-}
-.back {
-  border: 0;
-  background: none;
-  color: var(--dim);
-  font-weight: 600;
-  padding: 0.8rem 0.4rem;
-}
-.wnav {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 1.4rem;
-}
-.wnav .primary { flex: 1; }
-.fineprint {
-  margin: 1.2rem 0 0;
-  font-size: 0.78rem;
-  color: var(--dim);
-  text-align: center;
-}
-.fineprint a, .fleet-foot a { color: var(--coral-text); }
 
 /* Fields */
 .bigfield {
@@ -288,24 +184,6 @@ button:focus-visible, .linkbtn:focus-visible, a:focus-visible {
   font-size: 0.85rem;
   font-weight: 600;
   margin: 0.8rem 0 0;
-}
-.hint { font-size: 0.75rem; color: var(--dim); }
-
-.mono-line {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  font-size: 0.8rem;
-  color: var(--dim);
-  margin: 0.8rem 0 0;
-  word-break: break-all;
-}
-.eligibility-line {
-  margin: 1rem 0 0;
-  font-size: 0.88rem;
-  font-weight: 600;
-  color: var(--mint-text);
-  background: var(--mint);
-  border-radius: 12px;
-  padding: 0.7rem 1rem;
 }
 
 /* Backup step: the blind seam survives as a torn card edge. */
