@@ -171,3 +171,8 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 @media (prefers-reduced-motion: no-preference) {
   [aria-busy="true"] .summary dd { animation: shimmer 1.2s var(--ease-in-out) infinite; }
 }
+
+/* ---- LED figures ---- */
+.led { display: inline-flex; align-items: baseline; gap: 0.35em; }
+.led__dots { width: auto; height: 1.1em; overflow: visible; fill: currentColor; }
+.led__unit { color: var(--text-muted); font-size: 0.55em; }
