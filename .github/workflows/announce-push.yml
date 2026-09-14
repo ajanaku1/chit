@@ -1,0 +1,43 @@
+name: Announce pushes to Telegram
+
+# Every push to main is posted to the community group as it is: who, how many
+# commits, the subject lines, the compare link. See scripts/announce-push.mjs.
+#
+# Two repository secrets, set once under Settings > Secrets and variables >
+# Actions:
+#   TELEGRAM_BOT_TOKEN   a bot that is a member of the group (BotFather makes
+#                        one; add it to the group and let it post)
+#   TELEGRAM_CHAT_ID     the group's @username for a public group, or its
+#                        numeric id (negative for supergroups)
+# Without them the job prints what it would have sent and passes.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: announce-push
+  cancel-in-progress: false
+
+jobs:
+  announce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts/announce-push.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Post the push
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node scripts/announce-push.mjs
