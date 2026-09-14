@@ -5,7 +5,7 @@ A trader who runs many wallets has to fund them. Doing that from one main wallet
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.28-363636?logo=solidity)](https://soliditylang.org/)
 [![Network](https://img.shields.io/badge/network-Robinhood%20testnet%2046630-6B7280)]()
-[![Tests](https://img.shields.io/badge/tests-389%20passing-2E7D32)](#tests)
+[![Tests](https://img.shields.io/badge/tests-402%20passing-2E7D32)](#tests)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ![Chit](docs/images/fleet-landing.png)
