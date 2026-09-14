@@ -402,3 +402,10 @@ test("a wide figure cannot push its rows past a phone's edge, and the exit card'
   const exit = rules(await read("src/styles/pages.css")).find(([name]) => name === "#exit-card .wnav");
   assert.ok(exit && /flex-direction:\s*column/.test(exit[1]), "the exit card's two actions squeeze into one row on a phone");
 });
+
+test("every action on the Control Room is a styled pill or row, never a bare button", async () => {
+  const html = await read("fleet-dashboard.html");
+  assert.match(html, /<button type="button" class="ghost" data-action="topUp">Top up<\/button>/, "Top up renders as an unstyled bar");
+  const rows = rules(await read("src/styles/pages.css")).find(([name]) => name === ".control-list button");
+  assert.ok(rows && /border-radius:\s*var\(--radius-inner\)/.test(rows[1]), "control rows keep square corners inside a rounded card");
+});
