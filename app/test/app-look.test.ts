@@ -295,3 +295,10 @@ test("the welcome promises stack as one list, the way the page first had them", 
   assert.doesNotMatch(promises[1]!, /grid-template-columns/, "the promises are laid out as tiles again");
   assert.doesNotMatch(components, /\[data-wstep="welcome"\] \.primary \+ \.fineprint/, "the fine print sits beside the button instead of under it");
 });
+
+test("the Boundary page sets its four blocks as glass and solid cards", async () => {
+  const html = await read("fleet-privacy.html");
+  assert.doesNotMatch(html, /seam-card|seam-edge|seam-inner/, "the old seam motif is still here");
+  assert.match(html, /<section class="card-glass boundary-block held"[^>]*>\s*<h2>Kept off the chain<\/h2>/);
+  for (const id of ["public-facts", "private-fact", "privacy-claim", "pool-claim", "exclusions"]) assert.match(html, new RegExp(`id="${id}"`));
+});
