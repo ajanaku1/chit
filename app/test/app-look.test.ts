@@ -14,7 +14,7 @@ const repoRoot = dirname(appRoot);
 const read = (path: string): Promise<string> => readFile(join(appRoot, path), "utf8");
 
 const PAGES = ["fleet.html", "fleet-dashboard.html", "balance.html", "fleet-privacy.html"] as const;
-const NEW_STYLES = ["styles/tokens.css", "styles/components.css", "styles/pages.css"] as const;
+const NEW_STYLES = ["src/styles/tokens.css", "src/styles/components.css", "src/styles/pages.css"] as const;
 
 const cssColor = (css: string, name: string): string => {
   const match = new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})\\b`).exec(css);
@@ -41,7 +41,7 @@ const rules = (css: string): Array<[string, string]> =>
 test("the app's palette is the landing's, token for token", async () => {
   const [landing, tokens] = await Promise.all([
     readFile(join(repoRoot, "landing/public/style.css"), "utf8"),
-    read("styles/tokens.css"),
+    read("src/styles/tokens.css"),
   ]);
   for (const name of ["--coral", "--coral-lift", "--coral-deep", "--paper", "--soft-paper", "--ink", "--muted-ink", "--surface-top", "--surface-bottom"]) {
     assert.equal(cssColor(tokens, name), cssColor(landing, name), `${name} drifted from the landing`);
@@ -59,12 +59,12 @@ test("fleet.css layers the new styles over the old ones", async () => {
 test("the build ships the layered stylesheets", async () => {
   const build = await read("build.mjs");
   for (const file of ["tokens", "components", "pages"]) {
-    assert.match(build, new RegExp(`"\\./styles/${file}\\.css"[\\s\\S]*?"styles/${file}\\.css"`), `styles/${file}.css is not copied`);
+    assert.match(build, new RegExp(`"\\./src/styles/${file}\\.css"[\\s\\S]*?"styles/${file}\\.css"`), `styles/${file}.css is not copied`);
   }
 });
 
 test("text on the ink surface is readable", async () => {
-  const tokens = await read("styles/tokens.css");
+  const tokens = await read("src/styles/tokens.css");
   const [paper, softPaper, ink, coral] = ["--paper", "--soft-paper", "--ink", "--coral"].map((name) => cssColor(tokens, name));
   assert.ok(contrast(paper!, ink!) >= 4.5, "body text on ink");
   assert.ok(contrast(softPaper!, ink!) >= 4.5, "secondary text on ink");
