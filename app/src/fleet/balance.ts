@@ -221,13 +221,18 @@ export const clearCachedBalance = (storage: Storage, wallet: string): void => {
 /** FleetPool's per-depositor cap: 0.5 ETH, refused on chain above it. */
 export const TRADER_CAP = "500000000000000000";
 
+/** How much of `cap` is taken, in wei, from what the contract says remains; never below zero. */
+export const capUsed = (remaining: string, cap: string): string => {
+  const total = BigInt(cap);
+  const left = BigInt(remaining);
+  return (total > left ? total - left : 0n).toString();
+};
+
 /** How much of `cap` is taken, 0..1, from what the contract says remains. */
 export const capShare = (remaining: string, cap: string): number => {
   const total = BigInt(cap);
-  const left = BigInt(remaining);
   if (total <= 0n) return 0;
-  const used = total > left ? total - left : 0n;
-  return Number((used * 10_000n) / total) / 10_000;
+  return Number((BigInt(capUsed(remaining, cap)) * 10_000n) / total) / 10_000;
 };
 
 /** The change since the figure this page last showed, for the arrow beside the balance. */
