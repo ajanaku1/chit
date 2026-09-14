@@ -1415,3 +1415,33 @@ untouched and passes on macOS.
 
 Nothing else changed. The venue test's body is the same; only how it opens the
 fork.
+
+## FleetPool pre-audit: eight findings, each with a test, and six invariants (2026-09-14)
+
+The professional audit is the gate before real money. This is the work that
+makes that audit shorter: a read of `FleetPool.sol` against a written threat
+model, a unit test per finding that reproduces it on the contract as deployed,
+and an invariant suite that states what "the operator's ledger is right"
+means and holds it under 256 random sequences. Report in
+`docs/audit/2026-09-14-fleet-pool-pre-audit.md`; tests in
+`test/fleet/FleetPool.t.sol` and `test/fleet/FleetPoolInvariants.t.sol`,
+Solidity, forge-std, run by `npx hardhat test solidity`. No contract, service
+or app code changed.
+
+The two that matter. F3: a failed buy leaves the principal in the trader's
+fleet account and the operator refunds the pool from its own wallet, which
+the service comment already says; a trader who can make a buy revert is paid
+the principal each time, so funding and execution need to be atomic before
+mainnet. F2: draws are bounded per campaign and by nothing else, so the
+operator key can empty the pool; that is the disclosed design, and the report
+asks for a guardian that can only pause, then a multisig operator, and for the
+disclosure to say custody, not only visibility. Three one-line reverts close
+F1 (a deposit after requestExit is lost), F4 (commit below principal) and F5
+(a queued spend born outside its window). F7 is service-side: nothing refuses
+draws or buys for a depositor whose exit is pending.
+
+What held: checks-effects-interactions everywhere, every cap, claimable as
+gas only, the exit with the operator gone, bills posted during the wait. The
+accounting identity and honest-operator solvency hold as invariants. The
+fuzzer's one catch was in my own invariant, which double counted rollbacks;
+`totalOutflow` is already net of them.
