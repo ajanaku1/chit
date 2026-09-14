@@ -81,11 +81,10 @@ h2 { font-size: clamp(1.5rem, 3.5vw, 2.25rem); }
 .lead.small { font-size: 0.95rem; }
 .fineprint, .hint { margin: 0.75rem 0 0; color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; }
 .fineprint a { color: var(--soft-paper); }
-[data-wstep="welcome"] .primary + .fineprint { display: inline-block; margin: 0 0 0 1rem; vertical-align: middle; }
 .mono-line { color: var(--soft-paper); font-family: var(--font-mono); font-size: 0.82rem; overflow-wrap: anywhere; }
 .eligibility-line { color: var(--soft-paper); font-size: 0.9rem; }
-.promises { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem; margin: 1.5rem 0 1.75rem; padding: 0; list-style: none; }
-.promises li { display: grid; align-content: start; gap: 0.4rem; padding: 1rem 1.1rem; border: 1px solid rgba(245, 239, 229, 0.1); border-radius: var(--radius-control); background: rgba(245, 239, 229, 0.03); color: var(--text-muted); font-size: 0.9rem; line-height: 1.45; }
+.promises { display: grid; gap: 0.75rem; margin: 0 0 1.5rem; padding: 0; list-style: none; }
+.promises li { padding: 1rem 1.25rem; border: 1px solid rgba(245, 239, 229, 0.08); border-radius: var(--radius-card); background: var(--glass-fill); color: var(--text-muted); line-height: 1.5; }
 .promises strong { display: block; color: var(--paper); font-weight: 500; }
 
 /* ---- Buttons ---- */
