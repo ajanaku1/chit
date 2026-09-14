@@ -16,6 +16,21 @@ const VIEWPORTS = [
   { name: "1440-reduced", width: 1440, height: 900, reducedMotion: "reduce" },
 ];
 
+/**
+ * Sections reveal once as they scroll into view, and a full-page capture never
+ * scrolls, so walk the page first or they are photographed blank.
+ */
+const walkThrough = async (tab) => {
+  await tab.evaluate(async () => {
+    for (let y = 0; y < document.body.scrollHeight; y += 400) {
+      window.scrollTo(0, y);
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+    window.scrollTo(0, 0);
+  });
+  await tab.waitForTimeout(1200);
+};
+
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch();
 const failures = [];
@@ -32,16 +47,7 @@ for (const viewport of VIEWPORTS) {
     });
     tab.on("pageerror", (error) => errors.push(error.message));
     await tab.goto(`${BASE}${page}.html`, { waitUntil: "networkidle" });
-    // Sections reveal once as they scroll into view; a full-page capture never
-    // scrolls, so walk the page first or they are photographed blank.
-    await tab.evaluate(async () => {
-      for (let y = 0; y < document.body.scrollHeight; y += 400) {
-        window.scrollTo(0, y);
-        await new Promise((resolve) => setTimeout(resolve, 60));
-      }
-      window.scrollTo(0, 0);
-    });
-    await tab.waitForTimeout(1200);
+    await walkThrough(tab);
     const overflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     await tab.screenshot({ path: new URL(`${page}-${viewport.name}.png`, OUT).pathname, fullPage: true });
     if (overflow > 0) failures.push(`${page} @ ${viewport.name}: ${overflow}px of horizontal overflow`);
@@ -61,8 +67,15 @@ const CONNECTED_VIEWPORTS = [
   { name: "390", width: 390, height: 844 },
   { name: "320", width: 320, height: 640 },
 ];
+const ORIGIN = new URL(BASE).origin;
 const ADDRESS = "0x1111111111111111111111111111111111111111";
 const ACCOUNTS = Array.from({ length: 5 }, (_, i) => `0x${String(i + 1).repeat(40)}`);
+// A funded, running fleet as the status read reports it.
+const STATUS = {
+  campaign: "c1",
+  state: "Active",
+  draw: { amount: "20000000000000000", spent: "21000000000000", remaining: "19979000000000000", dueAt: "2026-01-01T00:00:00.000Z", state: "Funded" },
+};
 
 const seedConnected = ({ addr, accounts }) => {
   window.ethereum = {
@@ -99,10 +112,26 @@ for (const viewport of CONNECTED_VIEWPORTS) {
   const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
   await context.addInitScript(seedConnected, { addr: ADDRESS, accounts: ACCOUNTS });
   await context.route("**/*", (route) => {
-    const url = route.request().url();
-    if (url.startsWith(BASE)) return route.continue();
-    failures.push(`connected @ ${viewport.name}: offsite request: ${route.request().method()} ${url}`);
-    return route.abort();
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.origin !== ORIGIN) {
+      failures.push(`connected @ ${viewport.name}: offsite request: ${request.method()} ${request.url()}`);
+      return route.abort();
+    }
+    if (!url.pathname.startsWith("/api/")) return route.continue();
+    // The service is not under test here: status reads get a fixed live fleet,
+    // and any other call means a page did work a render check did not expect.
+    let payload = {};
+    try {
+      payload = request.postDataJSON() ?? {};
+    } catch {
+      payload = {};
+    }
+    if (payload.action === "status") {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(STATUS) });
+    }
+    failures.push(`connected @ ${viewport.name}: unexpected API call: ${request.method()} ${url.pathname} ${payload.action ?? ""}`);
+    return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "not_in_render_check" }) });
   });
   for (const page of CONNECTED_PAGES) {
     const tab = await context.newPage();
@@ -112,7 +141,7 @@ for (const viewport of CONNECTED_VIEWPORTS) {
     });
     tab.on("pageerror", (error) => errors.push(error.message));
     await tab.goto(`${BASE}${page}.html`, { waitUntil: "networkidle" });
-    await tab.waitForTimeout(600);
+    await walkThrough(tab);
     const overflow = await tab.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     await tab.screenshot({ path: new URL(`${page}-${viewport.name}-connected.png`, OUT).pathname, fullPage: true });
     if (overflow > 0) failures.push(`${page} @ ${viewport.name} (connected): ${overflow}px of horizontal overflow`);
