@@ -236,8 +236,8 @@ test("uses WCAG-compliant text colors on the ink surface", async () => {
 });
 
 /**
- * Every link lands somewhere. "Read the boundary" pointed at #boundary, which
- * nothing on the page carries, so clicking it did nothing.
+ * Every link lands somewhere. "Read the boundary" once pointed at #boundary,
+ * which nothing on the page carried, so clicking it did nothing.
  */
 test("every link on the landing reaches a page or an element that exists", async () => {
   const html = await source("index.html");
@@ -248,9 +248,6 @@ test("every link on the landing reaches a page or an element that exists", async
       await assert.doesNotReject(access(new URL(`../..${target}`, import.meta.url)), `${target} does not exist`);
     }
   }
-  assert.match(
-    html,
-    /<a [^>]*href="\/app\/fleet-privacy\.html"[^>]*>Read the boundary</,
-    "Read the boundary does not open the What's private page",
-  );
+  // The CTAs are inert on purpose while the app is in private testing; the
+  // check above still holds every real link to a page or element that exists.
 });
