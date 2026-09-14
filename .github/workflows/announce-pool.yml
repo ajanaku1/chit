@@ -1,0 +1,36 @@
+name: Post pool numbers to Telegram
+
+# Once a day, the pool's last 24 hours read from the chain: deposits, fleets
+# funded, sponsored buys, closes, exits, what the pool holds. See
+# scripts/announce-pool.mjs. Same secrets as the push announcer; without them
+# the job prints and passes.
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/announce-pool.mjs
+            deployments/fleet-46630.json
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Read the pool and post
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node scripts/announce-pool.mjs
