@@ -1,0 +1,36 @@
+/* The landing's palette and motion, copied token for token (landing/public/style.css).
+   Ink surface, paper type, one accent hue. */
+:root {
+  --coral: #FF5A3C;
+  --coral-lift: #FF7A5C;
+  --coral-deep: #7A2415;
+  --paper: #F5EFE5;
+  --soft-paper: #DED6CA;
+  --ink: #171513;
+  --muted-ink: #6F6860;
+  --surface-top: #0D0C0B;
+  --surface-bottom: #171513;
+  --text-muted: rgba(245, 239, 229, 0.62);
+  --glass-line: rgba(245, 239, 229, 0.36);
+  --glass-fill: rgba(0, 0, 0, 0.325);
+  --hairline: 1px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-metric: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  --track-tight: -0.04em;
+  --track-snug: -0.03em;
+  --track-narrow: -0.02em;
+  --track-wide: 0.07em;
+
+  --radius-card: 24px;
+  --radius-control: 4px;
+  --radius-pill: 999px;
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-ui: 240ms;
+  --dur-reveal: 800ms;
+
+  color-scheme: dark;
+}

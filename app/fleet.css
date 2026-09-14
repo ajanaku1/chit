@@ -1,3 +1,13 @@
+@layer legacy, tokens, components, pages;
+@import url("./styles/tokens.css") layer(tokens);
+@import url("./styles/components.css") layer(components);
+@import url("./styles/pages.css") layer(pages);
+
+/* Everything below is the pre-redesign stylesheet, kept at the lowest priority
+   while the pages move onto the new layers. Each redesign task deletes the
+   rules it replaces. */
+@layer legacy {
+
 /* Fleet pages — "Soft Receipt" production styles (selected proposal 3).
    Neo-bank calm: warm cream, white cards, pill controls, one coral accent.
    Dark mode is Soft Receipt's own sibling on warm charcoal — same shapes,
@@ -763,4 +773,5 @@ button:focus-visible, .linkbtn:focus-visible, a:focus-visible {
 @media (max-width: 480px) {
   .wstep { padding: 1.6rem 1.2rem; }
   .control-list, .summary { grid-template-columns: 1fr; flex-direction: column; }
+}
 }

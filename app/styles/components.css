@@ -1,0 +1,19 @@
+/* Components shared by every app page. The pages layer refines them; the
+   legacy layer loses to both. */
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--surface-bottom); }
+body.fleet-body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(180deg, var(--surface-top), var(--surface-bottom) 60%);
+  color: var(--paper);
+  font-family: var(--font-sans);
+  letter-spacing: var(--track-narrow);
+  -webkit-font-smoothing: antialiased;
+}
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--paper); outline-offset: 3px; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}

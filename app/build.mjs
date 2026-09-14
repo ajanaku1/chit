@@ -9,6 +9,7 @@ const output = process.env.APP_OUTPUT
 
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
+await mkdir(new URL("styles/", output), { recursive: true });
 await Promise.all([
   copyFile(new URL("./index.html", import.meta.url), new URL("index.html", output)),
   copyFile(new URL("./style.css", import.meta.url), new URL("style.css", output)),
@@ -22,6 +23,9 @@ await Promise.all([
   copyFile(new URL("./user-operation.html", import.meta.url), new URL("user-operation.html", output)),
   copyFile(new URL("./fleet.html", import.meta.url), new URL("fleet.html", output)),
   copyFile(new URL("./fleet.css", import.meta.url), new URL("fleet.css", output)),
+  copyFile(new URL("./styles/tokens.css", import.meta.url), new URL("styles/tokens.css", output)),
+  copyFile(new URL("./styles/components.css", import.meta.url), new URL("styles/components.css", output)),
+  copyFile(new URL("./styles/pages.css", import.meta.url), new URL("styles/pages.css", output)),
   copyFile(new URL("./fleet-dashboard.html", import.meta.url), new URL("fleet-dashboard.html", output)),
   copyFile(new URL("./fleet-privacy.html", import.meta.url), new URL("fleet-privacy.html", output)),
   copyFile(new URL("./balance.html", import.meta.url), new URL("balance.html", output)),
