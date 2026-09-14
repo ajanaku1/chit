@@ -1,8 +1,11 @@
 /* Page-specific rules: Balance, the setup wizard, Control Room, Boundary. */
 
 /* ---- Balance ---- */
-#balance .summary.grid > div:first-child { grid-column: 1 / -1; }
-#balance .summary.grid > div:first-child > dd:first-of-type { font-size: clamp(2.25rem, 7vw, 3.5rem); }
+/* The available balance leads the rows as one large figure. */
+#balance .summary.grid { margin-top: 1.5rem; }
+#balance .summary.grid > div:first-child { display: block; padding: 0 0 1.1rem; }
+#balance .summary.grid > div:first-child > dt { margin-bottom: 0.6rem; }
+#balance .summary.grid > div:first-child > dd:first-of-type { font-size: clamp(2rem, 5vw, 2.75rem); text-align: left; }
 .delta { margin: 0.35rem 0 0; color: var(--text-muted); font-size: 0.85rem; }
 .delta[data-up="true"] { color: var(--coral); }
 @keyframes delta-in { from { opacity: 0; } to { opacity: 1; } }
@@ -19,7 +22,7 @@
 
 /* ---- Setup wizard ---- */
 .dots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; margin: 0 0 1.5rem; padding: 0; list-style: none; counter-reset: step; }
-.dots li { position: relative; padding-top: 0.6rem; border-top: 2px solid rgba(245, 239, 229, 0.16); color: var(--text-muted); counter-increment: step; font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
+.dots li { position: relative; padding-top: 0.6rem; border-top: 2px solid rgba(245, 239, 229, 0.16); color: var(--text-muted); counter-increment: step; font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
 .dots li::before { content: counter(step, decimal-leading-zero) " "; font-family: var(--font-mono); }
 .dots li[data-done="true"], .dots li[aria-current="step"] { color: var(--paper); }
 .dots li::after { content: ""; position: absolute; top: -2px; right: 0; left: 0; height: 2px; clip-path: inset(0 100% 0 0); }
@@ -48,7 +51,7 @@
 .state-note { margin: 0.25rem 0 0; color: var(--text-muted); }
 .empty-state { text-align: center; }
 .budget-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin: 1rem 0 0; }
-.budget-grid dt { color: var(--text-muted); font-size: 0.7rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
+.budget-grid dt { color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
 .budget-grid dd { margin: 0.25rem 0 0; font-family: var(--font-metric); font-size: 1.15rem; }
 .returned { margin: 0.75rem 0 0; color: var(--soft-paper); }
 .control-list { display: grid; gap: 0.5rem; }
@@ -74,9 +77,9 @@ main.privacy-page h1 { font-size: clamp(2.25rem, 6vw, 3.75rem); }
 .boundary-block h2 { font-size: 1.25rem; }
 .boundary-block ul { display: grid; gap: 0.5rem; margin: 0; padding-left: 1.1rem; color: var(--text-muted); line-height: 1.5; }
 .boundary-block p { margin: 0 0 0.75rem; color: var(--text-muted); line-height: 1.55; }
+.boundary-block p:last-child { margin-bottom: 0; }
 .boundary-block.held p { color: var(--paper); font-size: 1.1rem; }
 .ex-h { margin-top: 2.5rem; }
 .exclusions { color: var(--text-muted); line-height: 1.6; }
-@media (min-width: 760px) {
-  .boundary-grid { grid-template-columns: 1fr 1fr; }
-}
+/* One column, so each block is as tall as its own text rather than its neighbour's. */
+.privacy-page > .linkbtn { align-self: flex-start; }

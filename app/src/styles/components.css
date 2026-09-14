@@ -76,18 +76,20 @@ a { color: inherit; }
 /* ---- Type ---- */
 h1, h2, h3 { margin: 0 0 0.75rem; font-weight: 500; line-height: 1.05; letter-spacing: var(--track-tight); text-wrap: balance; }
 h1 { font-size: clamp(2rem, 5vw, 3.25rem); }
-.wstep h1 { font-size: clamp(2rem, 4.2vw, 2.75rem); }
 h2 { font-size: clamp(1.5rem, 3.5vw, 2.25rem); }
-.kicker { margin: 0 0 0.75rem; color: var(--text-muted); font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
-.lead { margin: 0 0 1.25rem; color: var(--text-muted); font-size: 1.1rem; line-height: 1.45; }
+/* Inside a card, titles are sized to the card, not the page. */
+.wstep h1, .dash-card h1 { font-size: clamp(1.75rem, 3vw, 2.1rem); }
+.wstep h2, .dash-card h2, .card-warm h2 { font-size: clamp(1.25rem, 2.2vw, 1.5rem); }
+.kicker { margin: 0 0 0.9rem; color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
+.lead { margin: 0 0 1.25rem; color: var(--text-muted); font-size: 1rem; line-height: 1.5; }
 .lead.small { font-size: 0.95rem; }
 .fineprint, .hint { margin: 0.75rem 0 0; color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; }
 .fineprint a { color: var(--soft-paper); }
 .mono-line { color: var(--soft-paper); font-family: var(--font-mono); font-size: 0.82rem; overflow-wrap: anywhere; }
 .eligibility-line { color: var(--soft-paper); font-size: 0.9rem; }
-.promises { display: grid; gap: 0.75rem; margin: 0 0 1.5rem; padding: 0; list-style: none; }
-.promises li { padding: 1rem 1.25rem; border: 1px solid rgba(245, 239, 229, 0.08); border-radius: var(--radius-card); background: var(--glass-fill); color: var(--text-muted); line-height: 1.5; }
-.promises strong { display: block; color: var(--paper); font-weight: 500; }
+.promises { display: grid; gap: 0.75rem; margin: 1.25rem 0 1.5rem; padding: 0; list-style: none; }
+.promises li { padding: 0.9rem 1.1rem; border: 1px solid rgba(245, 239, 229, 0.08); border-radius: 14px; background: var(--glass-fill); color: var(--text-muted); font-size: 0.92rem; line-height: 1.5; }
+.promises strong { display: block; margin-bottom: 0.1rem; color: var(--paper); font-size: 0.98rem; font-weight: 500; }
 
 /* ---- Buttons ---- */
 button, .linkbtn { font: inherit; cursor: pointer; }
@@ -109,9 +111,10 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 /* ---- Fields and pickers ---- */
 .field, .bigfield { display: grid; gap: 0.4rem; margin-block: 1rem; }
-.field label, .bigfield label { color: var(--text-muted); font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
-.field input, .bigfield input, .bigfield select { width: 100%; padding: 0.8rem 1rem; border: 1px solid rgba(245, 239, 229, 0.14); border-radius: var(--radius-control); background: rgba(0, 0, 0, 0.35); color: var(--paper); font: inherit; font-family: var(--font-mono); }
-.bigfield input, .bigfield select { font-size: 1.5rem; }
+.field label, .bigfield label { color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
+.field input, .bigfield input, .bigfield select { width: 100%; padding: 0.75rem 0.95rem; border: 1px solid rgba(245, 239, 229, 0.12); border-radius: 12px; background: rgba(0, 0, 0, 0.35); color: var(--paper); font: inherit; font-family: var(--font-mono); font-size: 0.95rem; }
+.bigfield input, .bigfield select { font-size: 1.25rem; }
+.field input::placeholder, .bigfield input::placeholder { color: rgba(245, 239, 229, 0.32); }
 .bigfield .unit { color: var(--text-muted); font-size: 0.8rem; }
 .field-error { margin: 0.5rem 0 0; padding: 0.6rem 0.9rem; border-radius: var(--radius-control); background: var(--coral-deep); color: var(--paper); font-size: 0.85rem; }
 .quickpick { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-block: 0.75rem; }
@@ -129,15 +132,15 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .card-solid, .wstep, .dash-card { border: 1px solid rgba(245, 239, 229, 0.08); background: rgba(245, 239, 229, 0.04); }
 .card-glass { border: 1px solid rgba(222, 214, 202, 0.12); background: var(--glass-fill); backdrop-filter: blur(24px); }
 .card-warm { border: 1px solid rgba(245, 239, 229, 0.22); background: linear-gradient(160deg, rgba(222, 214, 202, 0.55), rgba(255, 122, 92, 0.55) 55%, rgba(122, 36, 21, 0.75)); color: var(--paper); }
-.cardlabel { margin: 0 0 0.75rem; color: var(--text-muted); font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
+.cardlabel { margin: 0 0 0.75rem; color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
 
-/* ---- Figure tiles ---- */
-.summary { display: grid; gap: 0.75rem; margin: 0; }
-.summary.grid { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
-.summary div { padding: 1rem 1.1rem; border: 1px solid rgba(245, 239, 229, 0.08); border-radius: calc(var(--radius-card) - 8px); background: rgba(0, 0, 0, 0.28); }
-.summary dt { margin: 0 0 0.35rem; color: var(--text-muted); font-size: 0.7rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
-.summary dd { margin: 0; font-family: var(--font-metric); font-size: 1.35rem; font-variant-numeric: tabular-nums; letter-spacing: var(--track-snug); }
-.summary dd button { font-size: 0.85rem; }
+/* ---- Figures: label on the left, value on the right, hairlines between ---- */
+.summary { display: grid; gap: 0; margin: 0; }
+.summary div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: 0.8rem 0; border-top: 1px solid rgba(245, 239, 229, 0.08); }
+.summary div:first-child { border-top: 0; }
+.summary dt { margin: 0; color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
+.summary dd { margin: 0; font-family: var(--font-mono); font-size: 0.95rem; font-variant-numeric: tabular-nums; text-align: right; }
+.summary dd button { min-height: 2.25rem; padding-block: 0.35rem; font-size: 0.82rem; }
 
 /* ---- Banners and warnings ---- */
 .status-banner { margin-block: 0 1rem; padding: 0.8rem 1rem; border: 1px solid rgba(245, 239, 229, 0.12); border-radius: var(--radius-control); background: var(--glass-fill); color: var(--soft-paper); font-size: 0.9rem; }

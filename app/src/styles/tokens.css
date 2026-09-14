@@ -22,6 +22,9 @@
   --track-snug: -0.03em;
   --track-narrow: -0.02em;
   --track-wide: 0.07em;
+  /* Small labels sit in mono caps, tracked out, so they read as labels inside a box. */
+  --font-label: var(--font-mono);
+  --track-label: 0.14em;
 
   --radius-card: 24px;
   --radius-control: 4px;
