@@ -1,1 +1,18 @@
 /* Page-specific rules: Balance, the setup wizard, Control Room, Boundary. */
+
+/* ---- Balance ---- */
+#balance .summary.grid > div:first-child { grid-column: 1 / -1; }
+#balance .summary.grid > div:first-child > dd:first-of-type { font-size: clamp(2.25rem, 7vw, 3.5rem); }
+.delta { margin: 0.35rem 0 0; color: var(--text-muted); font-size: 0.85rem; }
+.delta[data-up="true"] { color: var(--coral); }
+@keyframes delta-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: no-preference) {
+  .delta:not([hidden]) { animation: delta-in 400ms var(--ease-out); }
+}
+#headroom-meter { margin-top: 1.25rem; }
+.limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; margin-block: 1.25rem; }
+.limit { display: grid; align-content: space-between; gap: 0.5rem; min-height: 12rem; margin: 0; }
+.limit__figure { margin: 0.5rem 0; font-size: 2.25rem; }
+.limit__note { margin: 0; font-size: 0.85rem; line-height: 1.45; }
+.callout { margin: 0 0 1rem; padding: 0.8rem 1rem; border: 1px solid rgba(245, 239, 229, 0.18); border-radius: var(--radius-control); background: rgba(122, 36, 21, 0.35); color: var(--paper); font-size: 0.9rem; line-height: 1.45; }
+.withdraw-form { display: grid; gap: 0.25rem; }

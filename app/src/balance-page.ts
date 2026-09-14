@@ -7,16 +7,21 @@
 import { encodeFunctionData, type Hex } from "viem";
 
 import {
+  balanceDelta,
   canAddFunds,
+  capShare,
   depositOptions,
   exitView,
   loadCachedBalance,
   receiptOutcome,
   toEth,
+  TRADER_CAP,
   withdrawIssue,
   type BalanceState,
 } from "./fleet/balance.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
+import { renderLed } from "./fleet/led.js";
+import { countTo } from "./fleet/motion.js";
 import {
   ensureRobinhoodTestnet,
   getConnectedWallet,
@@ -83,8 +88,27 @@ const sendToPool = async (data: Hex, value?: bigint): Promise<Hex> => {
   })) as Hex;
 };
 
+let shownAvailable: string | undefined;
+
 const renderFigures = (view: BalanceState): void => {
-  el("balance-available").textContent = `${toEth(view.available)} ETH`;
+  const host = el("balance-available");
+  const to = Number(toEth(view.available));
+  const from = shownAvailable === undefined ? to : Number(toEth(shownAvailable));
+  countTo((value) => renderLed(host, value.toFixed(4), "ETH"), from, to);
+  const delta = balanceDelta(shownAvailable, view.available);
+  const deltaNode = el("balance-delta");
+  deltaNode.hidden = delta === undefined;
+  if (delta) {
+    deltaNode.textContent = `${delta.up ? "▲" : "▼"} ${delta.eth}`;
+    deltaNode.dataset["up"] = String(delta.up);
+  }
+  shownAvailable = view.available;
+
+  const used = capShare(view.headroom.perTraderRemaining, TRADER_CAP);
+  el("headroom-fill").style.setProperty("--fill", String(used));
+  el("headroom-meter").setAttribute("aria-valuenow", String(used));
+  el("headroom-note").textContent = `${toEth((BigInt(TRADER_CAP) - BigInt(view.headroom.perTraderRemaining)).toString())} of 0.5 ETH held`;
+
   el("balance-draws").textContent = `${toEth(view.openDraws)} ETH`;
   el("balance-deposited").textContent = `${toEth(view.deposited)} ETH`;
   el("balance-spent").textContent = `${toEth(view.spent)} ETH`;
@@ -151,7 +175,12 @@ const renderWalletEth = async (): Promise<void> => {
 const load = async (force: boolean): Promise<void> => {
   if (!wallet) return;
   void renderWalletEth();
-  state = await readBalance(wallet, { force });
+  el("balance").setAttribute("aria-busy", "true");
+  try {
+    state = await readBalance(wallet, { force });
+  } finally {
+    el("balance").removeAttribute("aria-busy");
+  }
   poolAddress = (state.poolAddress as Hex | undefined) ?? poolAddress;
   render(state);
 };

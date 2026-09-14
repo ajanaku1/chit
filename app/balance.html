@@ -40,17 +40,19 @@
       <main id="balance" class="wizard">
         <div id="status-banner" class="status-banner" role="status" aria-live="polite" hidden></div>
 
-        <section class="wstep" aria-labelledby="balance-h">
+        <section class="wstep card-glass" aria-labelledby="balance-h" data-reveal>
           <p class="kicker">Your ETH at Chit</p>
           <h1 id="balance-h">One balance. Every fleet draws from it.</h1>
           <dl class="summary grid">
-            <div><dt>Available at Chit</dt><dd id="balance-available">—</dd></div>
+            <div><dt>Available at Chit</dt><dd id="balance-available">—</dd><dd id="balance-delta" class="delta" hidden></dd></div>
             <div><dt>Held by open fleets</dt><dd id="balance-draws">—</dd></div>
             <div><dt>In your wallet</dt><dd id="wallet-eth">—</dd></div>
             <div><dt>Deposited</dt><dd id="balance-deposited">—</dd></div>
             <div><dt>Spent</dt><dd id="balance-spent">—</dd></div>
             <div><dt>Figures</dt><dd><button id="balance-refresh" type="button" class="ghost">Refresh</button></dd></div>
           </dl>
+          <div class="meter" id="headroom-meter" role="meter" aria-label="Balance against the 0.5 ETH limit" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"><span class="meter__fill" id="headroom-fill"></span></div>
+          <p id="headroom-note" class="fineprint"></p>
           <p class="fineprint">
             Your deposit goes into a pool shared with other traders and carries no fleet marker, so
             the chain does not show your wallet funding your fleet. Chit's operator can still see
@@ -59,7 +61,13 @@
           </p>
         </section>
 
-        <section class="wstep" aria-labelledby="deposit-h">
+        <aside class="limits" aria-label="Limits the pool contract enforces" data-reveal>
+          <div class="card-warm limit"><p class="cardlabel">Funding delay</p><p class="limit__figure"><span data-led="15" data-unit="min">15 min</span></p><p class="limit__note">The longest wait between activating a fleet and the pool funding it.</p></div>
+          <div class="card-warm limit"><p class="cardlabel">Draw cap</p><p class="limit__figure"><span data-led="0.2" data-unit="ETH">0.2 ETH</span></p><p class="limit__note">The most one fleet may draw. Refused on chain above this.</p></div>
+          <div class="card-warm limit"><p class="cardlabel">Self-serve exit</p><p class="limit__figure"><span data-led="24" data-unit="h">24 h</span></p><p class="limit__note">Recover your unspent deposit from the contract, with Chit offline.</p></div>
+        </aside>
+
+        <section class="wstep" aria-labelledby="deposit-h" data-reveal>
           <h2 id="deposit-h">Add ETH</h2>
           <p class="lead">
             Deposits come in fixed sizes so yours looks like everyone else's. Pick one.
@@ -69,8 +77,9 @@
           <button id="deposit-submit" type="button" class="primary big" disabled>Add funds</button>
         </section>
 
-        <section class="wstep" aria-labelledby="withdraw-h">
+        <section class="wstep" aria-labelledby="withdraw-h" data-reveal>
           <h2 id="withdraw-h">Take ETH out</h2>
+          <p class="callout">Paying out to the wallet you deposited from joins the two again on chain. Send to a fresh address.</p>
           <form id="withdraw-form" class="withdraw-form">
             <div class="field">
               <label for="withdraw-amount">Amount (ETH)</label>
@@ -85,7 +94,7 @@
           </form>
         </section>
 
-        <section id="exit-card" class="wstep" aria-labelledby="exit-h">
+        <section id="exit-card" class="wstep card-warm" aria-labelledby="exit-h">
           <h2 id="exit-h">If Chit is ever unreachable</h2>
           <p class="lead">
             You can take your unspent deposit straight from the pool contract, without us. Ask for

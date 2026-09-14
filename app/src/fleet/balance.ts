@@ -218,6 +218,26 @@ export const clearCachedBalance = (storage: Storage, wallet: string): void => {
   }
 };
 
+/** FleetPool's per-depositor cap: 0.5 ETH, refused on chain above it. */
+export const TRADER_CAP = "500000000000000000";
+
+/** How much of `cap` is taken, 0..1, from what the contract says remains. */
+export const capShare = (remaining: string, cap: string): number => {
+  const total = BigInt(cap);
+  const left = BigInt(remaining);
+  if (total <= 0n) return 0;
+  const used = total > left ? total - left : 0n;
+  return Number((used * 10_000n) / total) / 10_000;
+};
+
+/** The change since the figure this page last showed, for the arrow beside the balance. */
+export const balanceDelta = (previous: string | undefined, next: string): { up: boolean; eth: string } | undefined => {
+  if (previous === undefined || previous === next) return undefined;
+  const before = BigInt(previous);
+  const after = BigInt(next);
+  return after > before ? { up: true, eth: toEth((after - before).toString()) } : { up: false, eth: toEth((before - after).toString()) };
+};
+
 /** What the header's status pill says: only what the last balance read showed, never a guess. */
 export const poolStatus = (state: Pick<BalanceState, "pool"> | undefined): { text: string; live: boolean } | undefined =>
   state === undefined
