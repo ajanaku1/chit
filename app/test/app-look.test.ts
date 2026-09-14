@@ -329,3 +329,16 @@ test("text fits its box: mono labels, card-sized titles, figures as label-and-va
   const cardTitle = css.find(([name]) => name.split(/,\s*/).includes(".wstep h2"));
   assert.ok(cardTitle && /font-size:\s*clamp\(1\.25rem/.test(cardTitle[1]), "card titles are sized for the page, not the card");
 });
+
+test("actions follow Stow's pattern: pill buttons, the main action spans its card, stacked choices, no card inside a card", async () => {
+  const css = rules(await read("src/styles/components.css"));
+  const buttons = css.find(([name]) => name === ".primary, .ghost, .back, .linkbtn");
+  assert.ok(buttons && /border-radius:\s*var\(--radius-pill\)/.test(buttons[1]), "buttons are square boxes, not pills");
+  const big = css.find(([name]) => name === ".big");
+  assert.ok(big && /width:\s*100%/.test(big[1]), "a card's main action does not span the card");
+  const html = await read("fleet.html");
+  assert.doesNotMatch(html, /class="card-glass backup-card"/, "the backup's two actions still sit in a card inside the step card");
+  const pages = rules(await read("src/styles/pages.css"));
+  const backup = pages.find(([name]) => name === ".backup-card");
+  assert.ok(backup && /flex-direction:\s*column/.test(backup[1]) && /border-top:/.test(backup[1]), "the backup's actions are not a stacked section under a hairline");
+});
