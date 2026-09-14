@@ -83,3 +83,54 @@ test("the app is dark-only: no theme switch, ink browser chrome", async () => {
   }
   assert.doesNotMatch(await read("fleet.css"), /data-theme|prefers-color-scheme/, "the old stylesheet still switches themes");
 });
+
+const NAV: ReadonlyArray<readonly [string, string]> = [
+  ["./balance.html", "Balance"],
+  ["./fleet.html", "Set up"],
+  ["./fleet-dashboard.html", "Control Room"],
+  ["./fleet-privacy.html", "Boundary"],
+];
+
+test("every page wears the landing's masthead and the same nav", async () => {
+  for (const page of PAGES) {
+    const html = await read(page);
+    assert.match(html, /<header class="masthead">/, `${page} has no masthead`);
+    assert.match(html, /<a class="brand-lockup" href="\/" aria-label="Chit home">/, `${page} brand does not lead to the landing`);
+    const nav = /<nav class="nav" id="fleet-nav" aria-label="Fleet pages">([\s\S]*?)<\/nav>/.exec(html);
+    assert.ok(nav, `${page} has no fleet nav`);
+    const links = [...nav[1]!.matchAll(/<a href="([^"]+)"( aria-current="page")?>([^<]+)<\/a>/g)];
+    assert.deepEqual(links.map((m) => [m[1], m[3]]), NAV.map(([href, label]) => [href, label]), `${page} nav differs from the landing's labels`);
+    assert.deepEqual(links.filter((m) => m[2]).map((m) => m[1]), [`./${page}`], `${page} marks the wrong page as current`);
+    assert.match(html, /<button class="burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="fleet-nav">/, `${page} has no phone menu`);
+    assert.doesNotMatch(html, /chain-mark|class="fleet-top"/, `${page} still carries the old header`);
+  }
+});
+
+test("the phone menu opens and closes the nav it controls", async () => {
+  const shared = await read("src/fleet/page-shared.ts");
+  const menu = /export const initMenu[\s\S]*?\n\};/.exec(shared);
+  assert.ok(menu, "no initMenu");
+  assert.match(menu[0], /setAttribute\("aria-expanded", String\(open\)\)/);
+  assert.match(menu[0], /dataset\["open"\] = String\(open\)/);
+  assert.match(menu[0], /key === "Escape"/, "Escape does not close the menu");
+});
+
+// These two already pass; they guard the new markup.
+test("no app page loads third-party assets", async () => {
+  for (const page of PAGES) assert.doesNotMatch(await read(page), /<(?:script|link|img)[^>]+https?:\/\//i, page);
+});
+
+test("every link on every app page reaches a page or an element that exists", async () => {
+  for (const page of PAGES) {
+    const html = await read(page);
+    for (const [, target] of html.matchAll(/<a\b[^>]*\shref="([^"]+)"/g)) {
+      if (target === "/") continue;
+      if (target!.startsWith("#")) {
+        assert.match(html, new RegExp(`id="${target!.slice(1)}"`), `${page}: ${target} points at nothing`);
+        continue;
+      }
+      assert.match(target!, /^\.\/[a-z-]+\.html$/, `${page}: unexpected link ${target}`);
+      await assert.doesNotReject(access(join(appRoot, target!)), `${page}: ${target} does not exist`);
+    }
+  }
+});
