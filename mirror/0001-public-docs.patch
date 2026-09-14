@@ -1,16 +1,14 @@
-From 5844b3d6f529b1eae263bc92380f8e36a33fc150 Mon Sep 17 00:00:00 2001
+From 874a9febf0ec3fdbb4b58872ae3f47bc1949d455 Mon Sep 17 00:00:00 2001
 From: Bambam <alexmustapha11@gmail.com>
-Date: Mon, 14 Sep 2026 13:57:53 +0100
+Date: Mon, 14 Sep 2026 16:26:11 +0100
 Subject: [PATCH] docs: point onboarding at what the public mirror actually
  carries
 
 The build-contract documents and the specs tree stay in the private repo,
-so the links to them were dead here. Name that boundary instead, and
-correct the test badge to the 402 the three suites now run.
+so the links to them were dead here. Name that boundary instead.
 ---
  ONBOARDING.md | 20 +++++++++-----------
- README.md     |  2 +-
- 2 files changed, 10 insertions(+), 12 deletions(-)
+ 1 file changed, 9 insertions(+), 11 deletions(-)
 
 diff --git a/ONBOARDING.md b/ONBOARDING.md
 index 17b9ead..d883b77 100644
@@ -54,19 +52,6 @@ index 17b9ead..d883b77 100644
  
  **Laws:**
  - **Done means `verify.sh` exits 0.** Not a summary, not a checked-off task,
-diff --git a/README.md b/README.md
-index f9ba36f..a430644 100644
---- a/README.md
-+++ b/README.md
-@@ -5,7 +5,7 @@ A trader who runs many wallets has to fund them. Doing that from one main wallet
- [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
- [![Solidity](https://img.shields.io/badge/Solidity-0.8.28-363636?logo=solidity)](https://soliditylang.org/)
- [![Network](https://img.shields.io/badge/network-Robinhood%20testnet%2046630-6B7280)]()
--[![Tests](https://img.shields.io/badge/tests-389%20passing-2E7D32)](#tests)
-+[![Tests](https://img.shields.io/badge/tests-402%20passing-2E7D32)](#tests)
- [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
- 
- ![Chit](docs/images/fleet-landing.png)
 -- 
 2.50.1 (Apple Git-155)
 
