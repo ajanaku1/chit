@@ -273,3 +273,22 @@ test("a confirmation that fails to open still reaches the error banner", async (
   const shared = await read("src/fleet/page-shared.ts");
   assert.match(shared, /dialog\.setAttribute\("aria-labelledby", heading\.id\)/, "the dialog's name duplicates its heading");
 });
+
+test("anything marked hidden stays hidden, whatever display a component sets", async () => {
+  const components = await read("src/styles/components.css");
+  assert.match(components, /\[hidden\]\s*\{\s*display:\s*none\s*!important;?\s*\}/, "a component's display rule can un-hide a hidden element");
+});
+
+test("the top bar runs edge to edge and everything below it shares one column", async () => {
+  const components = await read("src/styles/components.css");
+  const shell = /\.fleet-shell\s*\{([^}]*)\}/.exec(components);
+  assert.ok(shell, "no .fleet-shell rule");
+  assert.doesNotMatch(shell[1]!, /max-width/, "the top bar is boxed in, so the wallet button sits short of the right edge");
+  assert.match(components, /\.fleet-shell > main, \.fleet-shell > \.fleet-foot\s*\{[^}]*max-width:\s*var\(--column\)/, "the content and footer do not share one column");
+  assert.match(components, /\.fleet-shell > \.pill\s*\{[^}]*margin-inline:\s*max\(0px, calc\(\(100% - var\(--column\)\) \/ 2\)\) auto/, "the pool pill does not line up with the column");
+});
+
+test("the welcome promises sit as tiles in a row, not boxes stacked in a box", async () => {
+  const components = await read("src/styles/components.css");
+  assert.match(components, /\.promises\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit, minmax\(12rem, 1fr\)\)/);
+});
