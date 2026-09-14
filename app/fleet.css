@@ -36,48 +36,6 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-.wallet-chooser {
-  width: min(22rem, calc(100vw - 2rem));
-  padding: 1.5rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  background: var(--card);
-  color: var(--text);
-  box-shadow: var(--shadow);
-}
-.wallet-chooser::backdrop { background: rgba(0, 0, 0, 0.45); }
-.wallet-chooser h2 { margin: 0 0 1rem; font-size: 1.15rem; }
-.wallet-chooser-list { display: grid; gap: 0.5rem; }
-.wallet-chooser-list button {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--r-btn);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-  font-weight: 600;
-  text-align: left;
-  cursor: pointer;
-}
-.wallet-chooser-list button:disabled { opacity: 0.55; cursor: progress; }
-.wallet-chooser-list img { width: 28px; height: 28px; border-radius: 8px; }
-.wallet-chooser-status { min-height: 1.25em; margin: 0.75rem 0 0; color: var(--coral-note); font-size: 0.9rem; }
-.wallet-chooser-cancel {
-  margin-top: 0.75rem;
-  padding: 0.25rem 0;
-  border: 0;
-  background: none;
-  color: var(--dim);
-  font: inherit;
-  cursor: pointer;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .wallet-btn { transition: filter 0.12s ease; }
-  .wallet-btn:hover { filter: brightness(0.97); }
-}
 /* Cards / wizard steps */
 .wizard,
 .dash,
@@ -85,13 +43,6 @@
   display: flex;
   flex-direction: column;
   gap: 1.4rem;
-}
-.wstep {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  box-shadow: var(--shadow);
-  padding: 2.2rem 2rem;
 }
 
 /* Backup step: the blind seam survives as a torn card edge. */
@@ -114,39 +65,6 @@
   flex-direction: column;
   gap: 0.9rem;
 }
-.warnbox {
-  background: var(--coral-soft);
-  color: var(--coral-note);
-  border-radius: 12px;
-  padding: 0.8rem 1rem;
-  font-size: 0.82rem;
-  line-height: 1.55;
-  margin: 0;
-}
-
-.summary {
-  display: flex;
-  gap: 1rem;
-  margin: 0 0 1.4rem;
-}
-.summary div {
-  flex: 1;
-  background: var(--bg);
-  border: 1.5px solid var(--line);
-  border-radius: var(--r-field);
-  padding: 0.9rem 1.1rem;
-}
-.summary.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr));
-}
-.summary.grid div { min-width: 0; }
-.summary dd { overflow-wrap: anywhere; }
-.summary dd button { padding: 0.45rem 0.9rem; font-size: 0.8rem; }
-.summary dt { font-size: 0.72rem; font-weight: 600; color: var(--dim); }
-.summary dd { margin: 0.2rem 0 0; font-size: 1.25rem; font-weight: 800; letter-spacing: -0.02em; }
-
-
 /* Step dots: a static position indicator. Fixed geometry, no transitions —
    only color changes, so the panel never moves. */
 .dots {
@@ -170,20 +88,6 @@
 .dots li[data-done="true"] { background: var(--dim); }
 .dots li[aria-current="step"] { background: var(--coral); }
 
-/* Status banner */
-.status-banner {
-  border-radius: var(--r-field);
-  padding: 0.9rem 1.1rem;
-  font-size: 0.85rem;
-  font-weight: 600;
-  line-height: 1.5;
-  border: 1.5px solid var(--line);
-  background: var(--card);
-}
-.status-banner[data-tone="pending"] { background: var(--coral-soft); color: var(--coral-note); border-color: var(--coral); }
-.status-banner[data-tone="error"] { background: var(--coral-soft); color: var(--coral-note); border-color: var(--coral-text); }
-.status-banner[data-tone="ok"] { background: var(--mint); color: var(--mint-text); border-color: var(--mint-text); }
-
 /* Dashboard */
 #fleet-view {
   display: flex;
@@ -197,52 +101,8 @@
   gap: 1rem;
 }
 .dash-head h1 { margin: 0; }
-.state-chip {
-  font-size: 0.72rem;
-  font-weight: 700;
-  border-radius: 999px;
-  padding: 0.35rem 0.8rem;
-  background: var(--mint);
-  color: var(--mint-text);
-}
-.state-chip[data-state="Paused"],
-.state-chip[data-state="Pending service"] { background: var(--coral-soft); color: var(--coral-note); }
-.state-chip[data-state="Revoked"],
-.state-chip[data-state="Closed"],
-.state-chip[data-state="Depleted"],
-.state-chip[data-state="Expired"] { background: var(--text); color: var(--card); }
 .state-note { color: var(--dim); font-size: 0.88rem; line-height: 1.55; margin: -0.6rem 0 0.2rem; }
 
-.dash-card {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-card);
-  box-shadow: var(--shadow);
-  padding: 1.6rem 1.8rem;
-}
-.cardlabel {
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--dim);
-  margin: 0 0 1rem;
-}
-.budget-meter {
-  height: 12px;
-  border-radius: 999px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  overflow: hidden;
-  display: flex;
-  margin-bottom: 1.1rem;
-}
-.budget-meter .seg { display: block; height: 100%; }
-.budget-meter .spent { background: var(--coral); border-radius: 999px 0 0 999px; }
-.budget-meter .reserved { background: var(--line); }
-@media (prefers-reduced-motion: no-preference) {
-  .budget-meter .seg { transition: width 0.25s ease; }
-}
 .budget-grid {
   display: flex;
   justify-content: space-between;
@@ -323,7 +183,6 @@
 }
 
 @media (max-width: 480px) {
-  .wstep { padding: 1.6rem 1.2rem; }
-  .control-list, .summary { grid-template-columns: 1fr; flex-direction: column; }
+  .control-list { grid-template-columns: 1fr; flex-direction: column; }
 }
 }
