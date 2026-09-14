@@ -234,3 +234,13 @@ test("the wizard's progress is a labelled rail above the steps, with a draw mete
   assert.match(html, /id="funding-gauge"/);
   assert.doesNotMatch(html, /seam-card/, "the backup still uses the old seam card");
 });
+
+test("the wizard slides back when going back, and the rail's coral line extends rather than snapping", async () => {
+  const css = await read("src/styles/pages.css");
+  assert.match(css, /@keyframes step-back\s*\{[^}]*translateX\(-/, "going back slides the same way as going forward");
+  assert.match(css, /#wizard\[data-dir="back"\] \.wstep:not\(\[hidden\]\)\s*\{\s*animation-name:\s*step-back/);
+  assert.match(css, /\.dots li::after\s*\{\s*transition:\s*clip-path/, "the reached step's line snaps instead of extending");
+  assert.doesNotMatch(css, /\.dots li\[data-done="true"\], \.dots li\[aria-current="step"\] \{[^}]*border-top-color/, "the rail still snaps its border to coral");
+  const script = await read("src/fleet-page.ts");
+  assert.match(script, /dataset\["dir"\] = /, "the wizard never says which way it is moving");
+});
