@@ -99,3 +99,20 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
   .primary, .ghost, .back, .wallet-btn { transition: background-color var(--dur-ui) var(--ease-out), border-color var(--dur-ui) var(--ease-out), transform 120ms var(--ease-out); }
   .primary:active, .ghost:active, .back:active { transform: translateY(1px) scale(0.98); }
 }
+
+/* ---- Fields and pickers ---- */
+.field, .bigfield { display: grid; gap: 0.4rem; margin-block: 1rem; }
+.field label, .bigfield label { color: var(--text-muted); font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
+.field input, .bigfield input, .bigfield select { width: 100%; padding: 0.8rem 1rem; border: 1px solid rgba(245, 239, 229, 0.14); border-radius: var(--radius-control); background: rgba(0, 0, 0, 0.35); color: var(--paper); font: inherit; font-family: var(--font-mono); }
+.bigfield input, .bigfield select { font-size: 1.5rem; }
+.bigfield .unit { color: var(--text-muted); font-size: 0.8rem; }
+.field-error { margin: 0.5rem 0 0; padding: 0.6rem 0.9rem; border-radius: var(--radius-control); background: var(--coral-deep); color: var(--paper); font-size: 0.85rem; }
+.quickpick { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-block: 0.75rem; }
+.quickpick button { min-height: 2.5rem; padding: 0.5rem 1rem; border: 1px solid rgba(245, 239, 229, 0.14); border-radius: var(--radius-pill); background: transparent; color: var(--paper); font-family: var(--font-mono); }
+.quickpick button[aria-pressed="true"] { border-color: var(--paper); background: var(--paper); color: var(--ink); }
+.advanced { margin-block: 1rem; padding: 0.75rem 1rem; border: 1px solid rgba(245, 239, 229, 0.1); border-radius: var(--radius-control); }
+.advanced summary { color: var(--soft-paper); cursor: pointer; }
+
+@media (hover: hover) and (pointer: fine) {
+  .quickpick button:hover { border-color: rgba(245, 239, 229, 0.38); }
+}
