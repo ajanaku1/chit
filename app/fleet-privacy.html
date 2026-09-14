@@ -41,34 +41,29 @@
           No fog, no fine print. Here is exactly where the line sits — the same line our tests enforce in code.
         </p>
 
-        <div class="seam-card wide">
-          <div class="seam-edge" aria-hidden="true"></div>
-          <div class="seam-inner">
-            <div class="boundary-stack">
-              <div class="boundary-block">
-                <h2>Everyone can see</h2>
-                <ul id="public-facts"></ul>
-              </div>
-              <div class="boundary-block held">
-                <h2>Kept off the chain</h2>
-                <p id="private-fact"></p>
-              </div>
-              <div class="boundary-block">
-                <h2>The fine print, said plainly</h2>
-                <p id="privacy-claim"></p>
-              </div>
-              <div class="boundary-block">
-                <h2>Once your fleet runs on the shared pool</h2>
-                <p id="pool-claim"></p>
-                <p class="fineprint">
-                  Private, not anonymous. We are not a mixer and we do not try to make you disappear.
-                  The public cannot join your wallet to your fleet; Chit's operator can, and we say so
-                  rather than hide it. The direction we are building toward is a key you hold, so you
-                  decide who gets to see what.
-                </p>
-              </div>
-            </div>
-          </div>
+        <div class="boundary-grid">
+          <section class="card-solid boundary-block" data-reveal>
+            <h2>Everyone can see</h2>
+            <ul id="public-facts"></ul>
+          </section>
+          <section class="card-glass boundary-block held" data-reveal>
+            <h2>Kept off the chain</h2>
+            <p id="private-fact"></p>
+          </section>
+          <section class="card-solid boundary-block" data-reveal>
+            <h2>The fine print, said plainly</h2>
+            <p id="privacy-claim"></p>
+          </section>
+          <section class="card-glass boundary-block" data-reveal>
+            <h2>Once your fleet runs on the shared pool</h2>
+            <p id="pool-claim"></p>
+            <p class="fineprint">
+              Private, not anonymous. We are not a mixer and we do not try to make you disappear.
+              The public cannot join your wallet to your fleet; Chit's operator can, and we say so
+              rather than hide it. The direction we are building toward is a key you hold, so you
+              decide who gets to see what.
+            </p>
+          </section>
         </div>
 
         <h2 class="ex-h">What Chit Fleet will not do</h2>
