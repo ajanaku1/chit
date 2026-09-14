@@ -25,7 +25,14 @@
         </nav>
         <button id="hdr-wallet" type="button" class="wallet-btn" data-state="disconnected" aria-label="Connect wallet">Connect</button>
         <button class="burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="fleet-nav"><span></span><span></span><span></span></button>
+        <div class="contract-row">
+          <span class="contract-row__label">CA</span>
+          <code id="contract-address">0xD523A627030509021cC39B6d7C8543417D3E50D8</code>
+          <button id="copy-contract-address" type="button" aria-label="Copy contract address">Copy</button>
+          <span id="copy-contract-status" class="sr-only" role="status" aria-live="polite"></span>
+        </div>
       </header>
+      <p id="pool-status" class="pill" role="status" hidden><span class="pill__dot" aria-hidden="true"></span><span class="pill__text"></span></p>
 
       <main id="privacy" class="privacy-page">
         <p class="kicker">The honest version</p>
@@ -73,6 +80,7 @@
 
       <footer class="fleet-foot">
         <p>Testnet demonstration on Robinhood Chain.</p>
+        <p class="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
       </footer>
     </div>
     <script type="module" src="./fleet-privacy.js"></script>

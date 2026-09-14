@@ -7,6 +7,7 @@
  * keys and the backup never touch storage; sessionStorage clears with the tab.
  */
 
+import { loadCachedBalance, poolStatus } from "./balance.js";
 import { SetupError } from "./campaign-setup.js";
 
 const SNAPSHOT_KEY = "chit-fleet-snapshot";
@@ -556,7 +557,59 @@ export const initMenu = (): void => {
   });
 };
 
+/** The masthead's contract row, copied as on the landing. */
+export const initContractCopy = (): void => {
+  const address = document.getElementById("contract-address");
+  const button = document.getElementById("copy-contract-address");
+  const status = document.getElementById("copy-contract-status");
+  if (!address || !button || !status) return;
+  button.addEventListener("click", () => {
+    void navigator.clipboard
+      .writeText(address.textContent ?? "")
+      .then(() => {
+        button.classList.remove("error");
+        button.textContent = "Copied";
+        status.textContent = "Contract address copied.";
+      })
+      .catch(() => {
+        button.classList.add("error");
+        button.textContent = "Copy failed. Try again.";
+        status.textContent = "Copy failed. Try again.";
+      })
+      .finally(() => {
+        window.setTimeout(() => {
+          button.textContent = "Copy";
+        }, 1600);
+      });
+  });
+};
+
+/** The status pill under the masthead: the pool's state as of the last balance read, hidden until there is one. */
+export const initPoolStatus = (): void => {
+  const pill = document.getElementById("pool-status");
+  if (!pill) return;
+  const render = (): void => {
+    const wallet = getConnectedWallet();
+    let status: ReturnType<typeof poolStatus>;
+    try {
+      status = poolStatus(wallet ? loadCachedBalance(sessionStorage, wallet) : undefined);
+    } catch {
+      status = undefined;
+    }
+    pill.hidden = status === undefined;
+    if (!status) return;
+    pill.dataset["live"] = String(status.live);
+    const text = pill.querySelector(".pill__text");
+    if (text) text.textContent = status.text;
+  };
+  window.addEventListener("chit-balance-read", render);
+  window.addEventListener("chit-wallet-changed", render);
+  render();
+};
+
 /** Wires the shared page frame. */
 export const initShell = (): void => {
   initMenu();
+  initContractCopy();
+  initPoolStatus();
 };

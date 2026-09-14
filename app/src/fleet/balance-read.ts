@@ -23,6 +23,7 @@ export const readBalance = async (wallet: Hex, options: ReadOptions = {}): Promi
   }
   const body = (await signedFleetApi(wallet, "balance", {})) as unknown as BalanceState;
   saveCachedBalance(sessionStorage, wallet, body, now);
+  window.dispatchEvent(new CustomEvent("chit-balance-read", { detail: { wallet } }));
   return { ...body, savedAt: now.getTime() };
 };
 

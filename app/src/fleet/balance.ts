@@ -217,3 +217,11 @@ export const clearCachedBalance = (storage: Storage, wallet: string): void => {
     // Nothing to forget if storage is unavailable.
   }
 };
+
+/** What the header's status pill says: only what the last balance read showed, never a guess. */
+export const poolStatus = (state: Pick<BalanceState, "pool"> | undefined): { text: string; live: boolean } | undefined =>
+  state === undefined
+    ? undefined
+    : state.pool.paused
+      ? { text: "Pool paused by the operator", live: false }
+      : { text: "Pool live · testnet 46630", live: true };
