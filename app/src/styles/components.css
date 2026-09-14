@@ -116,3 +116,58 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 @media (hover: hover) and (pointer: fine) {
   .quickpick button:hover { border-color: rgba(245, 239, 229, 0.38); }
 }
+
+/* ---- Surfaces ---- */
+.card-glass, .card-warm, .card-solid, .wstep, .dash-card { position: relative; margin-block: 1.25rem; padding: clamp(1.25rem, 3vw, 2rem); border-radius: var(--radius-card); }
+.card-solid, .wstep, .dash-card { border: 1px solid rgba(245, 239, 229, 0.08); background: rgba(245, 239, 229, 0.04); }
+.card-glass { border: 1px solid rgba(222, 214, 202, 0.12); background: var(--glass-fill); backdrop-filter: blur(24px); }
+.card-warm { border: 1px solid rgba(245, 239, 229, 0.22); background: linear-gradient(160deg, rgba(222, 214, 202, 0.55), rgba(255, 122, 92, 0.55) 55%, rgba(122, 36, 21, 0.75)); color: var(--paper); }
+.cardlabel { margin: 0 0 0.75rem; color: var(--text-muted); font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
+
+/* ---- Figure tiles ---- */
+.summary { display: grid; gap: 0.75rem; margin: 0; }
+.summary.grid { grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); }
+.summary div { padding: 1rem 1.1rem; border: 1px solid rgba(245, 239, 229, 0.08); border-radius: calc(var(--radius-card) - 8px); background: rgba(0, 0, 0, 0.28); }
+.summary dt { margin: 0 0 0.35rem; color: var(--text-muted); font-size: 0.7rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
+.summary dd { margin: 0; font-family: var(--font-metric); font-size: 1.35rem; font-variant-numeric: tabular-nums; letter-spacing: var(--track-snug); }
+.summary dd button { font-size: 0.85rem; }
+
+/* ---- Banners and warnings ---- */
+.status-banner { margin-block: 0 1rem; padding: 0.8rem 1rem; border: 1px solid rgba(245, 239, 229, 0.12); border-radius: var(--radius-control); background: var(--glass-fill); color: var(--soft-paper); font-size: 0.9rem; }
+.status-banner[data-tone="error"] { border-color: transparent; background: var(--coral-deep); color: var(--paper); }
+.status-banner[data-tone="ok"] { border-color: var(--coral); color: var(--paper); }
+.warnbox { padding: 0.9rem 1.1rem; border-radius: var(--radius-control); background: var(--coral-deep); color: var(--paper); }
+
+/* ---- State chips ---- */
+.state-chip { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.35rem 0.7rem; border: 1px solid rgba(245, 239, 229, 0.16); border-radius: var(--radius-pill); color: var(--soft-paper); font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
+.state-chip[data-live="true"]::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
+
+/* ---- Meters ---- */
+.budget-meter, .meter { display: flex; height: 0.5rem; overflow: hidden; border-radius: var(--radius-pill); background: rgba(245, 239, 229, 0.1); }
+.budget-meter .seg, .meter__fill { height: 100%; }
+.meter__fill { width: 100%; transform: scaleX(var(--fill, 0)); transform-origin: left center; }
+.budget-meter .spent, .meter__fill { background: var(--coral); }
+.budget-meter .reserved { background: rgba(245, 239, 229, 0.35); }
+
+/* ---- Dialogs ---- */
+.wallet-chooser, .confirm-dialog { width: min(24rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid rgba(222, 214, 202, 0.14); border-radius: var(--radius-card); background: rgba(13, 12, 11, 0.72); backdrop-filter: blur(28px); color: var(--paper); }
+.wallet-chooser::backdrop, .confirm-dialog::backdrop { background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(4px); }
+.wallet-chooser h2, .confirm-dialog h2 { margin: 0 0 1rem; font-size: 1.15rem; }
+.confirm-dialog p { margin: 0; color: var(--text-muted); line-height: 1.5; }
+.wallet-chooser-list { display: grid; gap: 0.5rem; }
+.wallet-chooser-list button { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border: 1px solid rgba(245, 239, 229, 0.1); border-radius: var(--radius-control); background: rgba(245, 239, 229, 0.04); color: var(--paper); text-align: left; }
+.wallet-chooser-list button:disabled { cursor: progress; opacity: 0.55; }
+.wallet-chooser-list img { width: 28px; height: 28px; border-radius: 8px; }
+.wallet-chooser-status { min-height: 1.25em; margin: 0.75rem 0 0; color: var(--soft-paper); font-size: 0.88rem; }
+.wallet-chooser-cancel { margin-top: 0.75rem; padding: 0.25rem 0; border: 0; background: none; color: var(--text-muted); }
+
+/* ---- Loading ---- */
+[aria-busy="true"] .summary dd { border-radius: 6px; background: linear-gradient(90deg, rgba(245, 239, 229, 0.06), rgba(245, 239, 229, 0.14), rgba(245, 239, 229, 0.06)) 0 0 / 200% 100%; color: transparent; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+@media (hover: hover) and (pointer: fine) {
+  .wallet-chooser-list button:hover { border-color: rgba(245, 239, 229, 0.38); }
+}
+@media (prefers-reduced-motion: no-preference) {
+  [aria-busy="true"] .summary dd { animation: shimmer 1.2s var(--ease-in-out) infinite; }
+}
