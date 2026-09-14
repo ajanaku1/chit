@@ -288,7 +288,10 @@ test("the top bar runs edge to edge and everything below it shares one column", 
   assert.match(components, /\.fleet-shell > \.pill\s*\{[^}]*margin-inline:\s*max\(0px, calc\(\(100% - var\(--column\)\) \/ 2\)\) auto/, "the pool pill does not line up with the column");
 });
 
-test("the welcome promises sit as tiles in a row, not boxes stacked in a box", async () => {
+test("the welcome promises stack as one list, the way the page first had them", async () => {
   const components = await read("src/styles/components.css");
-  assert.match(components, /\.promises\s*\{[^}]*grid-template-columns:\s*repeat\(auto-fit, minmax\(12rem, 1fr\)\)/);
+  const promises = /\.promises\s*\{([^}]*)\}/.exec(components);
+  assert.ok(promises, "no .promises rule");
+  assert.doesNotMatch(promises[1]!, /grid-template-columns/, "the promises are laid out as tiles again");
+  assert.doesNotMatch(components, /\[data-wstep="welcome"\] \.primary \+ \.fineprint/, "the fine print sits beside the button instead of under it");
 });
