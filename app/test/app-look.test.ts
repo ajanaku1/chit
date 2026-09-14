@@ -255,3 +255,21 @@ test("the Control Room asks before anything that cannot be undone", async () => 
   assert.match(script, /renderLed\(el\("draw-remaining"\)/, "the draw figures are not LED figures");
   assert.match(await read("fleet-dashboard.html"), /<section id="balance-strip" class="dash-card card-glass"/);
 });
+
+test("the Control Room pairs the draw's LED figures with a meter", async () => {
+  const html = await read("fleet-dashboard.html");
+  const start = html.indexOf('id="balance-strip"');
+  const strip = html.slice(start, html.indexOf("</section>", start));
+  assert.match(strip, /id="draw-used-meter" role="meter"/, "the draw figures have no meter");
+  const script = await read("src/fleet-dashboard.ts");
+  assert.match(script, /capShare\(this\.#draw\.remaining, this\.#draw\.amount\)/, "the meter is not filled from the draw");
+});
+
+test("a confirmation that fails to open still reaches the error banner", async () => {
+  const script = await read("src/fleet-dashboard.ts");
+  const control = /async #control\([\s\S]*?\n  \}/.exec(script);
+  assert.ok(control, "no #control");
+  assert.ok(control[0].indexOf("try {") < control[0].indexOf("confirmDialog("), "the dialog is awaited outside the try, so its failure is silent");
+  const shared = await read("src/fleet/page-shared.ts");
+  assert.match(shared, /dialog\.setAttribute\("aria-labelledby", heading\.id\)/, "the dialog's name duplicates its heading");
+});
