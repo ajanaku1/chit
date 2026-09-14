@@ -162,8 +162,8 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .wallet-chooser-cancel { margin-top: 0.75rem; padding: 0.25rem 0; border: 0; background: none; color: var(--text-muted); }
 
 /* ---- Loading ---- */
-[aria-busy="true"] .summary dd { border-radius: 6px; background: linear-gradient(90deg, rgba(245, 239, 229, 0.06), rgba(245, 239, 229, 0.14), rgba(245, 239, 229, 0.06)) 0 0 / 200% 100%; color: transparent; }
-@keyframes shimmer { to { background-position: -200% 0; } }
+[aria-busy="true"] .summary dd { border-radius: 6px; background: linear-gradient(90deg, rgba(245, 239, 229, 0.06), rgba(245, 239, 229, 0.14), rgba(245, 239, 229, 0.06)); color: transparent; }
+@keyframes shimmer { 50% { opacity: 0.45; } }
 
 @media (hover: hover) and (pointer: fine) {
   .wallet-chooser-list button:hover { border-color: rgba(245, 239, 229, 0.38); }
