@@ -37,7 +37,7 @@
       <main id="dash" class="dash">
         <div id="status-banner" class="status-banner" role="status" aria-live="polite" hidden></div>
         <p id="pool-paused" class="status-banner" data-tone="pending" role="status" aria-live="polite" hidden></p>
-        <section id="balance-strip" class="dash-card" aria-label="Your Chit balance and this fleet's draw" hidden>
+        <section id="balance-strip" class="dash-card card-glass" aria-label="Your Chit balance and this fleet's draw" hidden>
           <dl class="summary grid">
             <div><dt>Your balance</dt><dd id="bal-available">—</dd></div>
             <div><dt>This fleet may spend</dt><dd id="draw-amount">—</dd></div>
@@ -51,7 +51,7 @@
           </div>
         </section>
 
-        <section class="wstep" id="no-fleet" aria-labelledby="nf-h">
+        <section class="wstep empty-state" id="no-fleet" aria-labelledby="nf-h">
           <p class="kicker">Dashboard</p>
           <h1 id="nf-h">No fleet yet.</h1>
           <p class="lead">Set one up in about two minutes — connect, size it, save your backup, launch.</p>
@@ -65,7 +65,7 @@
           </div>
           <p class="state-note" id="state-note"></p>
 
-          <div class="dash-card">
+          <div class="dash-card" data-reveal>
             <p class="cardlabel">Gas budget</p>
             <div class="budget-meter" role="img" aria-label="Budget usage" id="budget-meter">
               <span class="seg spent" id="seg-spent" style="width:0%"></span>
@@ -79,7 +79,7 @@
             <p class="returned" id="b-returned" hidden></p>
           </div>
 
-          <div class="dash-card">
+          <div class="dash-card" data-reveal>
             <p class="cardlabel">Controls</p>
             <div class="control-list">
               <button data-action="pause" type="button" disabled><strong>Pause</strong><span>Stop sponsoring for now. You can resume.</span></button>
@@ -89,7 +89,7 @@
             </div>
           </div>
 
-          <div class="dash-card">
+          <div class="dash-card" data-reveal>
             <p class="cardlabel">Wallets</p>
             <p class="lead small" id="wallets-note">Each wallet makes its trades in public; the link back to you stays off the chain.</p>
             <ul id="fleet-accounts" class="account-list" aria-label="Fleet wallets"></ul>

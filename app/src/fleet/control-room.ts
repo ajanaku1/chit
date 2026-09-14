@@ -136,6 +136,17 @@ export function buildControlRoomView(input: ControlRoomInput): ControlRoomView {
   };
 }
 
+/** Actions that cannot be taken back ask first; the rest just happen. */
+export const confirmationFor = (action: ControlAction): { title: string; body: string; confirm: string } | undefined =>
+  action === "revoke"
+    ? { title: "Stop this fleet for good?", body: "Sponsorship ends now and cannot be resumed. Close is the only action left afterwards.", confirm: "Stop for good" }
+    : action === "close"
+      ? { title: "Close this fleet?", body: "Whatever it did not spend goes back to your Chit balance.", confirm: "Close fleet" }
+      : undefined;
+
+/** States with something happening right now, which earn the live dot. */
+export const isLiveState = (state: string): boolean => state === "Active" || state === "Activating";
+
 export function buildBuyReport(results: readonly AccountBuyResult[]): BuyReport {
   const last = results[results.length - 1];
   return {

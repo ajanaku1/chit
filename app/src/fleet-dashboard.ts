@@ -5,13 +5,14 @@
  * allows, straight from the tested control-room view.
  */
 
-import { buildBuyReport, buildControlRoomView, type AccountBuyResult, type CampaignState, type ControlAction } from "./fleet/control-room.js";
-import { clearFleetSnapshot, getConnectedWallet, initHeaderWallet, initShell, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
+import { buildBuyReport, buildControlRoomView, confirmationFor, isLiveState, type AccountBuyResult, type CampaignState, type ControlAction } from "./fleet/control-room.js";
+import { clearFleetSnapshot, confirmDialog, getConnectedWallet, initHeaderWallet, initShell, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { StatusUnavailable, readStatus } from "./fleet/status-read.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 import type { DrawView } from "./fleet/control-room.js";
-import { pollDelayMs } from "./fleet/balance.js";
+import { pollDelayMs, stateLabel } from "./fleet/balance.js";
+import { renderLed } from "./fleet/led.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -63,7 +64,8 @@ class FleetDashboard {
 
   #render(): void {
     const chip = el("state-chip");
-    chip.textContent = this.#snapshot.state;
+    chip.textContent = stateLabel(this.#snapshot.state);
+    chip.dataset["live"] = String(isLiveState(this.#snapshot.state));
     chip.dataset["state"] = this.#snapshot.state;
 
     const state = this.#state();
@@ -85,10 +87,10 @@ class FleetDashboard {
     const strip = el("balance-strip");
     strip.hidden = this.#draw === undefined;
     if (this.#draw) {
-      el("bal-available").textContent = `${toEth(this.#available)} ETH`;
-      el("draw-amount").textContent = `${toEth(this.#draw.amount)} ETH`;
-      el("draw-spent").textContent = `${toEth(this.#draw.spent)} ETH`;
-      el("draw-remaining").textContent = `${toEth(this.#draw.remaining)} ETH`;
+      renderLed(el("bal-available"), toEth(this.#available), "ETH");
+      renderLed(el("draw-amount"), toEth(this.#draw.amount), "ETH");
+      renderLed(el("draw-spent"), toEth(this.#draw.spent), "ETH");
+      renderLed(el("draw-remaining"), toEth(this.#draw.remaining), "ETH");
     }
     const poolBanner = el("pool-paused");
     poolBanner.hidden = !view.poolPaused;
@@ -167,6 +169,8 @@ class FleetDashboard {
 
   async #control(action: ControlAction): Promise<void> {
     if (action === "topUp") return this.#topUp();
+    const question = confirmationFor(action);
+    if (question && !(await confirmDialog(question))) return;
     try {
       const wallet = getConnectedWallet();
       if (!wallet) throw new Error("not_connected");

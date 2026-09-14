@@ -609,6 +609,44 @@ export const initPoolStatus = (): void => {
   render();
 };
 
+/** A glass dialog for a decision that cannot be undone. Resolves true only on the explicit confirm button. */
+export const confirmDialog = (copy: { title: string; body: string; confirm: string }): Promise<boolean> =>
+  new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "confirm-dialog";
+    dialog.setAttribute("aria-label", copy.title);
+    const heading = document.createElement("h2");
+    heading.textContent = copy.title;
+    const body = document.createElement("p");
+    body.textContent = copy.body;
+    const actions = document.createElement("div");
+    actions.className = "wnav";
+    const keep = document.createElement("button");
+    keep.type = "button";
+    keep.className = "ghost";
+    keep.textContent = "Keep it";
+    const confirm = document.createElement("button");
+    confirm.type = "button";
+    confirm.className = "primary";
+    confirm.textContent = copy.confirm;
+    let answered = false;
+    const finish = (yes: boolean): void => {
+      if (answered) return;
+      answered = true;
+      dialog.close();
+      dialog.remove();
+      resolve(yes);
+    };
+    keep.addEventListener("click", () => finish(false));
+    confirm.addEventListener("click", () => finish(true));
+    dialog.addEventListener("close", () => finish(false));
+    actions.append(keep, confirm);
+    dialog.append(heading, body, actions);
+    document.body.append(dialog);
+    dialog.showModal();
+    keep.focus();
+  });
+
 /** Wires the shared page frame. */
 export const initShell = (): void => {
   initMenu();

@@ -40,3 +40,28 @@
 @media (max-width: 520px) {
   .dots li span { display: none; }
 }
+
+/* ---- Control Room ---- */
+#fleet-view { display: grid; gap: 0.25rem; }
+.dash-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.dash-head h1 { margin: 0; }
+.state-note { margin: 0.25rem 0 0; color: var(--text-muted); }
+.empty-state { text-align: center; }
+.budget-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin: 1rem 0 0; }
+.budget-grid dt { color: var(--text-muted); font-size: 0.7rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
+.budget-grid dd { margin: 0.25rem 0 0; font-family: var(--font-metric); font-size: 1.15rem; }
+.returned { margin: 0.75rem 0 0; color: var(--soft-paper); }
+.control-list { display: grid; gap: 0.5rem; }
+.control-list button { display: grid; gap: 0.2rem; padding: 0.9rem 1rem; border: 1px solid rgba(245, 239, 229, 0.1); border-radius: var(--radius-control); background: rgba(0, 0, 0, 0.25); color: var(--paper); text-align: left; }
+.control-list button span { color: var(--text-muted); font-size: 0.85rem; }
+.control-list button[data-action="revoke"] { border-color: rgba(122, 36, 21, 0.9); }
+.account-list { display: grid; gap: 0.4rem; margin: 0.75rem 0 1rem; padding: 0; list-style: none; }
+.account-list li { overflow: hidden; padding: 0.6rem 0.8rem; border-radius: var(--radius-control); background: rgba(0, 0, 0, 0.25); font-family: var(--font-mono); font-size: 0.82rem; text-overflow: ellipsis; }
+.buy-report { width: 100%; margin-top: 1rem; border-collapse: collapse; font-size: 0.85rem; }
+.buy-report th, .buy-report td { padding: 0.5rem 0.4rem; border-bottom: 1px solid rgba(245, 239, 229, 0.08); text-align: left; }
+.buy-report th { color: var(--text-muted); font-weight: 500; }
+.buy-report .sponsored { color: var(--paper); font-weight: 600; }
+.buy-report .rejected { color: var(--paper); background: rgba(122, 36, 21, 0.45); }
+@media (hover: hover) and (pointer: fine) {
+  .control-list button:not(:disabled):hover { border-color: rgba(245, 239, 229, 0.32); }
+}
