@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { balanceDelta, capShare, capUsed, DRAW_CAP, drawShare, fundingProgress, poolStatus, TRADER_CAP } from "../src/fleet/balance.js";
+import { balanceDelta, capShare, capUsed, countFrame, DRAW_CAP, drawShare, freshPoolStatus, fundingProgress, poolStatus, TRADER_CAP } from "../src/fleet/balance.js";
 import { confirmationFor, isLiveState } from "../src/fleet/control-room.js";
 
 test("the status pill says nothing until the pool's state has been read", () => {
@@ -54,6 +54,21 @@ test("only actions that cannot be undone ask for confirmation", () => {
   assert.ok(confirmationFor("close"));
   for (const action of ["pause", "resume", "topUp"] as const) assert.equal(confirmationFor(action), undefined);
   assert.match(confirmationFor("revoke")!.body, /cannot be resumed/);
+});
+
+test("the balance lands on its exact figure, never a rounded one", () => {
+  assert.equal(countFrame(0.049979, 0.049979, "0.049979"), "0.049979");
+  assert.equal(countFrame(0.02, 0.049979, "0.049979"), "0.020000", "mid-count frames keep the final figure's width");
+  assert.equal(countFrame(1, 1, "1"), "1");
+});
+
+test("the pool pill speaks only from a read young enough to trust", () => {
+  const now = new Date("2026-09-14T12:00:00Z");
+  const read = { pool: { paused: false } };
+  assert.equal(freshPoolStatus(undefined, now), undefined);
+  assert.deepEqual(freshPoolStatus({ ...read, savedAt: now.getTime() - 60_000 }, now), { text: "Pool live · testnet 46630", live: true });
+  assert.equal(freshPoolStatus({ ...read, savedAt: now.getTime() - 11 * 60_000 }, now), undefined, "a stale read must not say live");
+  assert.equal(freshPoolStatus(read, now), undefined, "a read with no time on it is not fresh");
 });
 
 test("only a running or funding fleet carries the live dot", () => {

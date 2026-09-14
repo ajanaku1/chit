@@ -269,7 +269,7 @@ test("a confirmation that fails to open still reaches the error banner", async (
   const script = await read("src/fleet-dashboard.ts");
   const control = /async #control\([\s\S]*?\n  \}/.exec(script);
   assert.ok(control, "no #control");
-  assert.ok(control[0].indexOf("try {") < control[0].indexOf("confirmDialog("), "the dialog is awaited outside the try, so its failure is silent");
+  assert.ok(control[0].indexOf("try {") >= 0 && control[0].indexOf("try {") < control[0].indexOf("confirmDialog("), "the dialog is awaited outside the try, so its failure is silent");
   const shared = await read("src/fleet/page-shared.ts");
   assert.match(shared, /dialog\.setAttribute\("aria-labelledby", heading\.id\)/, "the dialog's name duplicates its heading");
 });
@@ -328,6 +328,56 @@ test("text fits its box: mono labels, card-sized titles, figures as label-and-va
   assert.ok(row && /justify-content:\s*space-between/.test(row[1]), "figures sit in boxed tiles, not label-and-value rows");
   const cardTitle = css.find(([name]) => name.split(/,\s*/).includes(".wstep h2"));
   assert.ok(cardTitle && /font-size:\s*clamp\(1\.25rem/.test(cardTitle[1]), "card titles are sized for the page, not the card");
+});
+
+test("the pill never speaks from a stale read, and the Boundary page shows none", async () => {
+  const pill = /export const initPoolStatus[\s\S]*?\n\};/.exec(await read("src/fleet/page-shared.ts"));
+  assert.ok(pill && /freshPoolStatus\(/.test(pill[0]), "the pill reads the cache without asking how old it is");
+  assert.match(await read("src/fleet-privacy.ts"), /initShell\(\{ pill: false \}\)/, "the Boundary page reads no balance, so it shows no pill");
+});
+
+test("nothing in the Control Room can push the page wider than the phone", async () => {
+  const css = rules(await read("src/styles/pages.css"));
+  const view = css.find(([name]) => name === "#fleet-view");
+  assert.ok(view && /grid-template-columns:\s*minmax\(0,\s*1fr\)/.test(view[1]), "one wide child widens the whole column");
+  const accounts = css.find(([name]) => name === ".account-list li");
+  assert.ok(accounts && /overflow-wrap:\s*anywhere/.test(accounts[1]) && !/text-overflow:\s*ellipsis/.test(accounts[1]), "addresses are clipped, and people compare their ends");
+});
+
+test("text on the warm cards is readable where the gradient is lightest", async () => {
+  const [tokens, components] = await Promise.all([read("src/styles/tokens.css"), read("src/styles/components.css")]);
+  const warm = rules(components).find(([name]) => name === ".card-warm");
+  assert.ok(warm, "no .card-warm");
+  assert.match(warm[1], /--text-muted:\s*var\(--paper\)/, "muted text on a warm card falls below 4.5:1");
+  const stop = /linear-gradient\(160deg,\s*rgba\((\d+),\s*(\d+),\s*(\d+),\s*([\d.]+)\)/.exec(warm[1]);
+  assert.ok(stop, "the warm gradient's light stop moved");
+  const ground = cssColor(tokens, "--surface-bottom");
+  const [r, g, b, a] = stop.slice(1).map(Number) as [number, number, number, number];
+  const mix = (c: number, i: number): string =>
+    Math.round(c * a + Number.parseInt(ground.slice(i, i + 2), 16) * (1 - a)).toString(16).padStart(2, "0");
+  const lightest = `#${mix(r, 1)}${mix(g, 3)}${mix(b, 5)}`;
+  const ratio = contrast(cssColor(tokens, "--paper"), lightest);
+  assert.ok(ratio >= 4.5, `paper on the warm card's lightest stop is ${ratio.toFixed(2)}:1`);
+});
+
+test("the limits say only what the contract enforces", async () => {
+  const html = await read("balance.html");
+  assert.doesNotMatch(html, /Limits the pool contract enforces|The longest wait between activating/, "the contract has no 15-minute ceiling; only the service does");
+  assert.match(html, /the contract enforces at least a minute/);
+});
+
+test("the phone menu takes focus in when it opens and gives it back when Escape closes it", async () => {
+  const menu = /export const initMenu[\s\S]*?\n\};/.exec(await read("src/fleet/page-shared.ts"));
+  assert.ok(menu, "no initMenu");
+  assert.match(menu[0], /querySelector<HTMLElement>\("a"\)\?\.focus\(\)/, "opening the menu leaves focus behind it");
+  assert.match(menu[0], /burger\.focus\(\)/, "Escape strands focus on a hidden link");
+});
+
+test("the funding wait shows on the screen the trader lands on after Launch", async () => {
+  const done = /<section class="wstep" data-wstep="done"[\s\S]*?<\/section>/.exec(await read("fleet.html"));
+  assert.ok(done, "no done step");
+  assert.match(done[0], /id="funding-gauge"/);
+  assert.match(done[0], /id="funding-wait"/);
 });
 
 test("actions follow Stow's pattern: pill buttons, the main action spans its card, stacked choices, no card inside a card", async () => {
