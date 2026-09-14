@@ -392,3 +392,13 @@ test("actions follow Stow's pattern: pill buttons, the main action spans its car
   const backup = pages.find(([name]) => name === ".backup-card");
   assert.ok(backup && /flex-direction:\s*column/.test(backup[1]) && /border-top:/.test(backup[1]), "the backup's actions are not a stacked section under a hairline");
 });
+
+test("a wide figure cannot push its rows past a phone's edge, and the exit card's actions stack", async () => {
+  const components = rules(await read("src/styles/components.css"));
+  const summary = components.find(([name]) => name === ".summary");
+  assert.ok(summary && /grid-template-columns:\s*minmax\(0,\s*1fr\)/.test(summary[1]), "the widest figure widens every row");
+  const dots = components.find(([name]) => name === ".led__dots");
+  assert.ok(dots && /max-width:\s*100%/.test(dots[1]), "an LED figure never shrinks to fit its box");
+  const exit = rules(await read("src/styles/pages.css")).find(([name]) => name === "#exit-card .wnav");
+  assert.ok(exit && /flex-direction:\s*column/.test(exit[1]), "the exit card's two actions squeeze into one row on a phone");
+});
