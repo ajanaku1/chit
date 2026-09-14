@@ -29,6 +29,8 @@ a { color: inherit; }
 .fleet-shell:has(> main.dash) { --column: 60rem; }
 .fleet-shell > main, .fleet-shell > .fleet-foot { width: 100%; max-width: var(--column); margin-inline: auto; }
 .fleet-shell > .pill { display: flex; width: fit-content; margin-inline: max(0px, calc((100% - var(--column)) / 2)) auto; }
+/* Each page's sections stack in one column. */
+.wizard, .dash, .privacy-page { display: flex; flex-direction: column; gap: 1.4rem; }
 
 .masthead {
   display: grid; grid-template-columns: auto 1fr auto;

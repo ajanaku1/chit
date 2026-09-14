@@ -1,48 +1,4 @@
-@layer legacy, tokens, components, pages;
+@layer tokens, components, pages;
 @import url("./styles/tokens.css") layer(tokens);
 @import url("./styles/components.css") layer(components);
 @import url("./styles/pages.css") layer(pages);
-
-/* Everything below is the pre-redesign stylesheet, kept at the lowest priority
-   while the pages move onto the new layers. Each redesign task deletes the
-   rules it replaces. */
-@layer legacy {
-
-/* Fleet pages — "Soft Receipt" production styles (selected proposal 3).
-   Neo-bank calm on warm charcoal, pill controls, one coral accent.
-   Dark only, matching the landing. */
-
-:root {
-  --bg: #121016;
-  --surface: #151318;
-  --dim-outer: #9b968e;
-  --card: #1d1a20;
-  --text: #f2efe9;
-  --dim: #9b968e;
-  --coral: #ff5a3c;
-  --on-coral: #1c1a17;
-  --coral-text: #ff7d64;
-  --coral-soft: #35201c;
-  --coral-note: #ffb3a3;
-  --mint: #173226;
-  --mint-text: #3ddc97;
-  --line: #2b2830;
-  --shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
-  --focus: #7db4f5;
-  --r-card: 24px;
-  --r-field: 16px;
-  --r-btn: 16px;
-}
-
-*, *::before, *::after { box-sizing: border-box; }
-
-/* Cards / wizard steps */
-.wizard,
-.dash,
-.privacy-page {
-  display: flex;
-  flex-direction: column;
-  gap: 1.4rem;
-}
-
-}
