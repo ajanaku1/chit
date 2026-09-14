@@ -614,9 +614,10 @@ export const confirmDialog = (copy: { title: string; body: string; confirm: stri
   new Promise((resolve) => {
     const dialog = document.createElement("dialog");
     dialog.className = "confirm-dialog";
-    dialog.setAttribute("aria-label", copy.title);
     const heading = document.createElement("h2");
     heading.textContent = copy.title;
+    heading.id = "confirm-dialog-title";
+    dialog.setAttribute("aria-labelledby", heading.id);
     const body = document.createElement("p");
     body.textContent = copy.body;
     const actions = document.createElement("div");

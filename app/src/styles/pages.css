@@ -62,6 +62,7 @@
 .buy-report th { color: var(--text-muted); font-weight: 500; }
 .buy-report .sponsored { color: var(--paper); font-weight: 600; }
 .buy-report .rejected { color: var(--paper); background: rgba(122, 36, 21, 0.45); }
+#draw-used-meter { margin-top: 1rem; }
 @media (hover: hover) and (pointer: fine) {
   .control-list button:not(:disabled):hover { border-color: rgba(245, 239, 229, 0.32); }
 }

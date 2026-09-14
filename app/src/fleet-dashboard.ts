@@ -11,7 +11,7 @@ import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { StatusUnavailable, readStatus } from "./fleet/status-read.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 import type { DrawView } from "./fleet/control-room.js";
-import { pollDelayMs, stateLabel } from "./fleet/balance.js";
+import { capShare, pollDelayMs, stateLabel } from "./fleet/balance.js";
 import { renderLed } from "./fleet/led.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -91,6 +91,9 @@ class FleetDashboard {
       renderLed(el("draw-amount"), toEth(this.#draw.amount), "ETH");
       renderLed(el("draw-spent"), toEth(this.#draw.spent), "ETH");
       renderLed(el("draw-remaining"), toEth(this.#draw.remaining), "ETH");
+      const used = capShare(this.#draw.remaining, this.#draw.amount);
+      el("draw-used-fill").style.setProperty("--fill", String(used));
+      el("draw-used-meter").setAttribute("aria-valuenow", String(used));
     }
     const poolBanner = el("pool-paused");
     poolBanner.hidden = !view.poolPaused;
@@ -169,9 +172,9 @@ class FleetDashboard {
 
   async #control(action: ControlAction): Promise<void> {
     if (action === "topUp") return this.#topUp();
-    const question = confirmationFor(action);
-    if (question && !(await confirmDialog(question))) return;
     try {
+      const question = confirmationFor(action);
+      if (question && !(await confirmDialog(question))) return;
       const wallet = getConnectedWallet();
       if (!wallet) throw new Error("not_connected");
       const body = await signedFleetApi(wallet, action, { campaign: this.#snapshot.campaign });
