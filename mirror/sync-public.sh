@@ -32,7 +32,11 @@ trap cleanup EXIT
 # Paths that must never reach the public mirror. Keep this list in sync with
 # the reasoning in the repo split: code ships, strategy and the build contract
 # do not. `mirror` is here so this script does not publish itself.
-STRIP="marketing proposals specs .specify .agents loop reports submission mirror Goal.md plan.md prompt.md GO-LIVE.md feedback.md design.md design-stage2.md verify.sh"
+# .github is stripped deliberately. The announce workflows run `on: push` to
+# main and read TELEGRAM_* from repo secrets. Mirrored, they would fire on the
+# public repo, which has no such secrets, and leave a failed red Action after
+# every sync. They also describe internal comms, which is not public business.
+STRIP="marketing proposals specs .specify .agents .github loop reports submission mirror Goal.md plan.md prompt.md GO-LIVE.md feedback.md design.md design-stage2.md verify.sh"
 
 echo "==> cloning private"
 git clone -q --single-branch --branch "$BRANCH" "$PRIVATE_URL" "$WORK/m"
@@ -87,6 +91,17 @@ if [ -n "$SECRETS" ]; then
   echo "ERROR: key-shaped strings found in history:"
   echo "$SECRETS"
   echo "Nothing was pushed."
+  exit 1
+fi
+
+echo "==> verifying the replayed commit is authored as the repo identity"
+# GitHub builds the contributor list from commit emails. Replaying the patch
+# under any other address silently adds a stranger to the public repo's
+# contributors, which is how Yonkoo11 turned up once.
+PATCH_AUTHOR="$(git log -1 --format='%ae')"
+if [ "$PATCH_AUTHOR" != "mykdahunsi@gmail.com" ]; then
+  echo "ERROR: replayed commit is authored by '$PATCH_AUTHOR', not mykdahunsi@gmail.com."
+  echo "       Fix the 'From:' line in $PATCH. Nothing was pushed."
   exit 1
 fi
 
