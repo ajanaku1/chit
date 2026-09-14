@@ -71,3 +71,15 @@ test("text on the ink surface is readable", async () => {
   assert.ok(contrast(coral!, ink!) >= 3, "coral accent on ink");
   assert.ok(contrast(ink!, paper!) >= 4.5, "ink label on a paper button");
 });
+
+test("the app is dark-only: no theme switch, ink browser chrome", async () => {
+  for (const page of PAGES) {
+    const html = await read(page);
+    assert.doesNotMatch(html, /theme-toggle/, `${page} still offers a theme switch`);
+    assert.match(html, /<meta name="theme-color" content="#171513" \/>/, `${page} paints light browser chrome`);
+  }
+  for (const script of ["src/fleet/page-shared.ts", "src/fleet-page.ts", "src/fleet-dashboard.ts", "src/balance-page.ts", "src/fleet-privacy.ts"]) {
+    assert.doesNotMatch(await read(script), /initTheme/, `${script} still wires the theme switch`);
+  }
+  assert.doesNotMatch(await read("fleet.css"), /data-theme|prefers-color-scheme/, "the old stylesheet still switches themes");
+});
