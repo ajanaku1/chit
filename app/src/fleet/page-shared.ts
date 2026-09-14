@@ -10,6 +10,7 @@
 import { loadCachedBalance, poolStatus } from "./balance.js";
 import { SetupError } from "./campaign-setup.js";
 import { hydrateLed } from "./led.js";
+import { revealOnEnter } from "./motion.js";
 
 const SNAPSHOT_KEY = "chit-fleet-snapshot";
 const ETH_DECIMAL = /^\d+(\.\d{1,18})?$/;
@@ -614,4 +615,5 @@ export const initShell = (): void => {
   initContractCopy();
   initPoolStatus();
   hydrateLed();
+  revealOnEnter();
 };
