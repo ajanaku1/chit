@@ -37,7 +37,7 @@ export const revealOnEnter = (root: ParentNode = document): void => {
         observer.unobserve(entry.target);
       }
     },
-    { threshold: 0.12 },
+    { threshold: 0 },
   );
   for (const target of targets) observer.observe(target);
 };
