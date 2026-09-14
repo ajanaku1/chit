@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { balanceDelta, capShare, capUsed, DRAW_CAP, drawShare, fundingProgress, poolStatus, TRADER_CAP } from "../src/fleet/balance.js";
+import { confirmationFor, isLiveState } from "../src/fleet/control-room.js";
 
 test("the status pill says nothing until the pool's state has been read", () => {
   assert.equal(poolStatus(undefined), undefined);
@@ -46,4 +47,17 @@ test("the draw meter fills against the 0.2 ETH cap and stops there", () => {
   assert.equal(drawShare("20000000000000000"), 0.1);
   assert.equal(drawShare(DRAW_CAP), 1);
   assert.equal(drawShare("300000000000000000"), 1);
+});
+
+test("only actions that cannot be undone ask for confirmation", () => {
+  assert.ok(confirmationFor("revoke"));
+  assert.ok(confirmationFor("close"));
+  for (const action of ["pause", "resume", "topUp"] as const) assert.equal(confirmationFor(action), undefined);
+  assert.match(confirmationFor("revoke")!.body, /cannot be resumed/);
+});
+
+test("only a running or funding fleet carries the live dot", () => {
+  assert.equal(isLiveState("Active"), true);
+  assert.equal(isLiveState("Activating"), true);
+  for (const state of ["Paused", "Revoked", "Closed", "Depleted", "Expired", "Pending service"]) assert.equal(isLiveState(state), false);
 });

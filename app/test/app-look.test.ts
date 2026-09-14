@@ -244,3 +244,14 @@ test("the wizard slides back when going back, and the rail's coral line extends 
   const script = await read("src/fleet-page.ts");
   assert.match(script, /dataset\["dir"\] = /, "the wizard never says which way it is moving");
 });
+
+test("the Control Room asks before anything that cannot be undone", async () => {
+  const script = await read("src/fleet-dashboard.ts");
+  const control = /async #control\([\s\S]*?\n  \}/.exec(script);
+  assert.ok(control, "no #control");
+  assert.match(control[0], /confirmationFor\(action\)[\s\S]*?await confirmDialog\(/, "revoke and close run without asking");
+  assert.ok(control[0].indexOf("confirmDialog(") < control[0].indexOf("signedFleetApi("), "it signs before asking");
+  assert.match(script, /dataset\["live"\] = String\(isLiveState\(/, "the state chip never shows it is live");
+  assert.match(script, /renderLed\(el\("draw-remaining"\)/, "the draw figures are not LED figures");
+  assert.match(await read("fleet-dashboard.html"), /<section id="balance-strip" class="dash-card card-glass"/);
+});
