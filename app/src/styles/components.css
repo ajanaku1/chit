@@ -138,7 +138,8 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .cardlabel { margin: 0 0 0.75rem; color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
 
 /* ---- Figures: label on the left, value on the right, hairlines between ---- */
-.summary { display: grid; gap: 0; margin: 0; }
+/* One column that no single figure can widen, so a long balance never pushes the rows off a phone. */
+.summary { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; margin: 0; }
 .summary div { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; padding: 0.8rem 0; border-top: 1px solid rgba(245, 239, 229, 0.08); }
 .summary div:first-child { border-top: 0; }
 .summary dt { margin: 0; color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
@@ -186,8 +187,9 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 }
 
 /* ---- LED figures ---- */
-.led { display: inline-flex; align-items: baseline; gap: 0.35em; }
-.led__dots { width: auto; height: 1.1em; overflow: visible; fill: currentColor; }
+.led { display: inline-flex; align-items: baseline; gap: 0.35em; max-width: 100%; }
+/* The dots shrink to fit a narrow box rather than run past it; the value stays whole in the sr-only text. */
+.led__dots { width: auto; height: 1.1em; min-width: 0; max-width: 100%; overflow: visible; fill: currentColor; }
 .led__unit { color: var(--text-muted); font-size: 0.55em; }
 
 /* ---- Motion: once-only reveals, and a still version of everything ---- */
