@@ -116,6 +116,7 @@ class FleetWizard {
   }
 
   #show(step: Step): void {
+    el("wizard").dataset["dir"] = STEPS.indexOf(step) < STEPS.indexOf(this.#step) ? "back" : "forward";
     this.#step = step;
     for (const section of Array.from(document.querySelectorAll<HTMLElement>("[data-wstep]"))) {
       section.hidden = section.dataset["wstep"] !== step;
@@ -203,8 +204,9 @@ class FleetWizard {
     const state = launchState(drawWei, this.#availableBalance);
     button.disabled = state.disabled;
     note.textContent = state.note;
-    el("draw-fill").style.setProperty("--fill", String(drawShare(drawWei)));
-    el("draw-meter").setAttribute("aria-valuenow", String(drawShare(drawWei)));
+    const share = drawShare(drawWei);
+    el("draw-fill").style.setProperty("--fill", String(share));
+    el("draw-meter").setAttribute("aria-valuenow", String(share));
   }
 
   /**

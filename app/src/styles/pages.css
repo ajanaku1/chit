@@ -19,9 +19,11 @@
 
 /* ---- Setup wizard ---- */
 .dots { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.5rem; margin: 0 0 1.5rem; padding: 0; list-style: none; counter-reset: step; }
-.dots li { padding-top: 0.6rem; border-top: 2px solid rgba(245, 239, 229, 0.16); color: var(--text-muted); counter-increment: step; font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
+.dots li { position: relative; padding-top: 0.6rem; border-top: 2px solid rgba(245, 239, 229, 0.16); color: var(--text-muted); counter-increment: step; font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
 .dots li::before { content: counter(step, decimal-leading-zero) " "; font-family: var(--font-mono); }
-.dots li[data-done="true"], .dots li[aria-current="step"] { border-top-color: var(--coral); color: var(--paper); }
+.dots li[data-done="true"], .dots li[aria-current="step"] { color: var(--paper); }
+.dots li::after { content: ""; position: absolute; top: -2px; right: 0; left: 0; height: 2px; clip-path: inset(0 100% 0 0); }
+.dots li[data-done="true"]::after, .dots li[aria-current="step"]::after { background: var(--coral); clip-path: inset(0); }
 .backup-card { border-color: rgba(245, 239, 229, 0.28); }
 #draw-meter { margin-top: 0.5rem; }
 .gauge { width: min(14rem, 100%); margin: 1rem 0 0.5rem; }
@@ -29,8 +31,11 @@
 .gauge__track { fill: none; stroke: rgba(245, 239, 229, 0.12); stroke-width: 6; stroke-linecap: round; }
 .gauge__needle { stroke: var(--coral); stroke-width: 3; stroke-linecap: round; transform: rotate(calc(-90deg + var(--p, 0) * 180deg)); transform-box: view-box; transform-origin: 60px 60px; }
 @keyframes step-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+@keyframes step-back { from { opacity: 0; transform: translateX(-16px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: no-preference) {
   #wizard .wstep:not([hidden]) { animation: step-in 360ms var(--ease-out); }
+  #wizard[data-dir="back"] .wstep:not([hidden]) { animation-name: step-back; }
+  .dots li::after { transition: clip-path 400ms var(--ease-out); }
 }
 @media (max-width: 520px) {
   .dots li span { display: none; }
