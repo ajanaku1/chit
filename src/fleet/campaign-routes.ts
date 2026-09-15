@@ -139,6 +139,8 @@ const fromWireOrder = (wire: Record<string, unknown>): Record<string, unknown> =
 export class CampaignRouter {
   readonly #deps: RouterDeps;
   readonly #campaigns = new Map<string, CampaignRecord>();
+  /** `campaignKey(id)` has no inverse; this remembers it for every record this instance created or restored. */
+  readonly #keyIndex = new Map<Hex, string>();
   readonly #randomId: () => string;
   /** Ordinary traffic sweeps, but not every request: a sweep is many reads. */
   readonly #sweepGate = createSweepGate(10_000);
@@ -189,6 +191,8 @@ export class CampaignRouter {
     if (action === "balance") return this.#balance(wallet);
     if (action === "tokenQuote") return this.#tokenQuote(wallet, body);
     if (action === "order") return this.#order(wallet, body);
+    if (action === "list") return this.#list(wallet);
+    if (action === "holdings") return this.#holdings(wallet, body);
 
     if (typeof idempotencyKey !== "string") {
       throw new ServiceError("idempotency_conflict", "key_required");
@@ -259,6 +263,7 @@ export class CampaignRouter {
       budget: new CampaignBudget("0"),
     };
     this.#campaigns.set(record.id, record);
+    this.#keyIndex.set(campaignKey(record.id).toLowerCase() as Hex, record.id);
     return { status: 201, body: this.#result(record, { fee: true }) };
   }
 
@@ -331,7 +336,7 @@ export class CampaignRouter {
   async #syncDraw(record: CampaignRecord): Promise<void> {
     const pool = this.#deps.pool;
     if (!pool) return;
-    const draw = await pool.drawOf(campaignKey(record.id));
+    const draw = await pool.drawOf(this.#key(record));
     if (!draw) return;
     record.draw = draw;
     if (record.state === "Activating" && draw.state === "Funded") {
@@ -406,7 +411,7 @@ export class CampaignRouter {
   async #topUp(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = await this.#campaign(wallet, body);
     const amount = await this.#requireDrawable(wallet, body["amount"]);
-    record.draw = await this.#pool().topUpDraw({ campaign: campaignKey(record.id), amount });
+    record.draw = await this.#pool().topUpDraw({ campaign: this.#key(record), amount });
     if (record.state === "Depleted") record.state = "Active";
     return { status: 200, body: this.#result(record) };
   }
@@ -417,21 +422,42 @@ export class CampaignRouter {
    * Before activation the policy exists only in the creating instance.
    */
   async #restore(id: string, wallet: string): Promise<CampaignRecord | undefined> {
+    if (!id) return undefined;
+    return this.#restoreFromKey(id, campaignKey(id), wallet);
+  }
+
+  /**
+   * `list` learns campaigns by their escrow key, not their friendly id, and
+   * `campaignKey` has no inverse: the restored record's id is the key itself,
+   * remembered on `chainKey` so every later chain call uses the key, not a
+   * re-hash of it.
+   */
+  async #restoreByKey(key: Hex, wallet: string): Promise<CampaignRecord | undefined> {
+    return this.#restoreFromKey(key, key, wallet, key);
+  }
+
+  async #restoreFromKey(id: string, key: Hex, wallet: string, chainKey?: Hex): Promise<CampaignRecord | undefined> {
     const chain = this.#deps.chain;
-    if (!chain || !id) return undefined;
-    const key = campaignKey(id);
+    if (!chain) return undefined;
     const pool = this.#deps.pool;
     const found = pool ? await this.#pooledCampaign(chain, pool, key, wallet) : await chain.loadCampaign(key);
     if (!found?.session || found.owner.toLowerCase() !== wallet) return undefined;
 
     const record = restoredRecord(id, wallet, found, this.#now());
+    if (chainKey) record.chainKey = chainKey;
     const draw = await pool?.drawOf(key);
     if (draw) {
       record.draw = draw;
       record.state = drawnState(draw, found, this.#now());
     }
     this.#campaigns.set(id, record);
+    this.#keyIndex.set(key.toLowerCase() as Hex, id);
     return record;
+  }
+
+  /** `campaignKey(record.id)`, except for a record `list` restored by its escrow key, which has no inverse. */
+  #key(record: CampaignRecord): Hex {
+    return record.chainKey ?? campaignKey(record.id);
   }
 
   /**
@@ -466,7 +492,7 @@ export class CampaignRouter {
     if (nextState !== record.state) {
       if (this.#deps.chain) {
         // Funding is what the escrow holds, read on-chain: never a claim.
-        const budget = await this.#deps.chain.readBudget(campaignKey(record.id));
+        const budget = await this.#deps.chain.readBudget(this.#key(record));
         if (BigInt(budget.unused) < BigInt(record.policy.perAccountGas)) {
           throw new BudgetError("budget_exceeded", "campaign_unfunded");
         }
@@ -646,6 +672,33 @@ export class CampaignRouter {
     return { status: 200, body: { executed, nextDueAt: later.length ? new Date(Math.min(...later)).toISOString() : null, draw: record.draw } };
   }
 
+  /** The fleets this wallet registered on the escrow, in the state the chain gives them now. */
+  async #list(wallet: string): Promise<RouterResult> {
+    const keys = await this.#market().campaignsOf(wallet as Address);
+    const fleets: Record<string, unknown>[] = [];
+    for (const key of keys) {
+      const id = this.#keyIndex.get(key.toLowerCase() as Hex) ?? key;
+      const record = this.#campaigns.get(id) ?? (await this.#restoreByKey(key, wallet));
+      if (!record) continue;
+      await this.#syncDraw(record);
+      fleets.push({
+        campaign: record.id, state: record.state,
+        remaining: record.draw ? record.draw.remaining : this.#budget(record).unused,
+        accounts: (record.chainAccounts ?? []).length,
+      });
+    }
+    return { status: 200, body: { fleets } };
+  }
+
+  /** Each of this fleet's enrolled accounts' ETH and the tokens the browser asks about. */
+  async #holdings(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
+    const tokens = (Array.isArray(body["tokens"]) ? (body["tokens"] as string[]) : [])
+      .filter((t) => /^0x[0-9a-fA-F]{40}$/.test(t)) as Address[];
+    const accounts = record.chainAccounts ?? this.#session(record).accounts;
+    return { status: 200, body: { holdings: await this.#market().holdings(accounts, tokens) } };
+  }
+
   /**
    * Pooled buys: each permitted account's principal leaves the pool only inside
    * its own buy, and the charge against the depositor is queued separately so
@@ -673,7 +726,7 @@ export class CampaignRouter {
     if (buys.length === 0) return refused;
 
     const report = await pool.buy({
-      campaign: campaignKey(record.id),
+      campaign: this.#key(record),
       depositor: wallet as Address,
       target: record.policy.router,
       buys,
@@ -712,7 +765,7 @@ export class CampaignRouter {
       }
     }
     if (permitted.length === 0) return refused;
-    const report = await chain.buy(campaignKey(record.id), record.policy.router, permitted);
+    const report = await chain.buy(this.#key(record), record.policy.router, permitted);
     record.chainBudget = report.budget;
     return [...refused, ...report.results.map((r) => ({ ...r, budget: report.budget }))];
   }
@@ -809,14 +862,14 @@ export class CampaignRouter {
     const nextState = transition(record.state, event);
     const chain = this.#deps.chain;
     if (chain && record.chainAccounts && nextState !== record.state) {
-      await chain.control(campaignKey(record.id), event === "close" ? "revoke" : event);
+      await chain.control(this.#key(record), event === "close" ? "revoke" : event);
     }
     record.state = nextState;
     if (event === "close") {
       // With a pool, the unspent draw was never moved: closing releases it back
       // to the balance and transfers nothing, so nothing is published.
       if (this.#deps.pool) {
-        const closed = await this.#deps.pool.closeDraw(campaignKey(record.id));
+        const closed = await this.#deps.pool.closeDraw(this.#key(record));
         const credited = record.draw?.remaining ?? "0";
         if (closed) record.draw = closed;
         return { status: 200, body: { ...this.#result(record), creditedToBalance: credited } };
@@ -832,7 +885,7 @@ export class CampaignRouter {
     const known = new Set((record.chainAccounts ?? []).map((account) => account.toLowerCase()));
     for (const account of requested) {
       if (known.has(account.toLowerCase())) continue;
-      if (await chain.isEnrolled(campaignKey(record.id), account)) {
+      if (await chain.isEnrolled(this.#key(record), account)) {
         record.chainAccounts = [...(record.chainAccounts ?? []), account.toLowerCase() as Address];
         known.add(account.toLowerCase());
       }
@@ -851,11 +904,11 @@ export class CampaignRouter {
     const nextState = transition(record.state, pool ? "fund" : "activate");
 
     if (this.#deps.chain && !record.chainAccounts) {
-      record.chainAccounts = await this.#deps.chain.activate(campaignKey(record.id), record.accounts, record.policy);
+      record.chainAccounts = await this.#deps.chain.activate(this.#key(record), record.accounts, record.policy);
     }
     if (pool && amount) {
       record.draw = await pool.openDraw({
-        campaign: campaignKey(record.id), depositor: wallet as Address, amount,
+        campaign: this.#key(record), depositor: wallet as Address, amount,
       });
     }
     record.state = nextState;
