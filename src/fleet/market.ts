@@ -9,7 +9,7 @@
 import { concatHex, encodeAbiParameters, keccak256, parseAbi, toHex, type Address, type Hex, type PublicClient } from "viem";
 
 import type { Uint } from "./types.js";
-import { venuePoolKey } from "./v4-swap.js";
+import { VENUE_POOL, venuePoolKey } from "./v4-swap.js";
 
 export type TokenQuote = {
   token: Address;
@@ -17,7 +17,7 @@ export type TokenQuote = {
   decimals: number;
   hasPool: boolean;
   sqrtPriceX96: Uint;
-  /** No fee, no price impact: an estimate for the panel, never a promise. */
+  /** The fill this trade would get right now, fee and price impact included; still an estimate, never a promise. */
   estimatedOut: Uint;
 };
 export type Holding = { wallet: Address; eth: Uint; tokens: Record<string, Uint> };
@@ -50,6 +50,39 @@ export const decodeSlot0 = (word: Hex): { sqrtPriceX96: bigint; tick: number } =
 /** ETH is currency0, so amountOut ≈ amountIn · (sqrtP / 2^96)². */
 export const estimateOut = (amountIn: bigint, sqrtPriceX96: bigint): bigint => (amountIn * sqrtPriceX96 * sqrtPriceX96) >> 192n;
 
+/** The pool's active liquidity lives three words after slot0 in v4's Pool.State. */
+export const liquiditySlot = (poolId: Hex): Hex => toHex(BigInt(slot0Slot(poolId)) + 3n, { size: 32 });
+
+const Q96 = 1n << 96n;
+const FEE_DENOMINATOR = 1_000_000n;
+
+/**
+ * An exact-input fill through one full-range position, fee and price impact
+ * included: v3/v4's swap step for a single range. The spot estimate above
+ * says what a tiny trade would get; this says what this trade gets, which is
+ * what a slippage guard has to be set against on a thin pool.
+ */
+export const quoteExactIn = (
+  amountIn: bigint,
+  sqrtPriceX96: bigint,
+  liquidity: bigint,
+  zeroForOne: boolean,
+  feePips: number,
+): bigint => {
+  if (amountIn === 0n || sqrtPriceX96 === 0n || liquidity === 0n) return 0n;
+  const inLessFee = (amountIn * (FEE_DENOMINATOR - BigInt(feePips))) / FEE_DENOMINATOR;
+  if (zeroForOne) {
+    // token0 (ETH) in: the price falls. sqrtP' = L·Q96·sqrtP / (L·Q96 + in·sqrtP); out1 = L·(sqrtP − sqrtP') / Q96
+    const numerator = liquidity * Q96 * sqrtPriceX96;
+    const denominator = liquidity * Q96 + inLessFee * sqrtPriceX96;
+    const next = numerator / denominator;
+    return (liquidity * (sqrtPriceX96 - next)) / Q96;
+  }
+  // token1 in: the price rises. sqrtP' = sqrtP + in·Q96 / L; out0 = L·Q96·(sqrtP' − sqrtP) / (sqrtP'·sqrtP)
+  const next = sqrtPriceX96 + (inLessFee * Q96) / liquidity;
+  return (liquidity * Q96 * (next - sqrtPriceX96)) / (next * sqrtPriceX96);
+};
+
 const POOL_MANAGER_ABI = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)"]);
 const ERC20_ABI = parseAbi([
   "function symbol() view returns (string)",
@@ -63,19 +96,29 @@ export const createMarket = (
   addresses: { poolManager: Address; escrow: Address; escrowFromBlock: bigint },
 ): MarketPort => ({
   async tokenQuote(token, amountInWei) {
-    const [symbol, decimals, word] = await Promise.all([
+    const id = poolIdFor(token);
+    const [symbol, decimals, word, liq] = await Promise.all([
       client.readContract({ address: token, abi: ERC20_ABI, functionName: "symbol" }).catch(() => "?"),
       client.readContract({ address: token, abi: ERC20_ABI, functionName: "decimals" }).catch(() => 18),
-      client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slot0Slot(poolIdFor(token))] }),
+      client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slot0Slot(id)] }),
+      client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [liquiditySlot(id)] }),
     ]);
     const { sqrtPriceX96 } = decodeSlot0(word);
+    const liquidity = BigInt(liq) & ((1n << 128n) - 1n);
+    // The fill this trade would get, fee and price impact included, so the
+    // slippage guard set against it holds on a thin pool; the spot estimate
+    // alone tripped the guard on the testnet venue, where one buy is a tenth
+    // of the liquidity.
+    const estimatedOut = liquidity > 0n
+      ? quoteExactIn(BigInt(amountInWei), sqrtPriceX96, liquidity, true, VENUE_POOL.fee)
+      : estimateOut(BigInt(amountInWei), sqrtPriceX96);
     return {
       token,
       symbol,
       decimals: Number(decimals),
       hasPool: sqrtPriceX96 > 0n,
       sqrtPriceX96: sqrtPriceX96.toString(),
-      estimatedOut: estimateOut(BigInt(amountInWei), sqrtPriceX96).toString(),
+      estimatedOut: estimatedOut.toString(),
     };
   },
   async holdings(wallets, tokens) {

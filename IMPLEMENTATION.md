@@ -1544,3 +1544,28 @@ block"), so the test deploys before it reads and a local `hardhat node` fork nee
 one `evm_mine` first; and the bundler transaction has to be priced like the
 operation, or the refund at the operation's price does not match what the bundler
 paid at the node's default.
+
+## Chit Bot, the testnet playground (2026-09-16, advisor, branch feat/chit-bot)
+
+The Telegram trading bot, the card every degen knows, on a chain that has
+no such bot. Playground mode, testnet: /start makes the user a wallet and
+funds it from a faucet; Buy and Sell go through the real Uniswap v4 router
+with a quote from the pool and a 3% guard; Positions, Withdraw, Faucet
+(once a day), /pool in the group. The bot holds the playground key and says
+so on the card; it can because the key holds test ETH and nothing else. Keys
+are sealed at rest under a host secret in a store shared across instances
+(memory or Neon). On mainnet the runtime refuses to start: there the bot
+holds nothing, and the same buttons drive a session on the user's own
+account through session keys. `docs/chit-bot.md` says all of it, including
+the line against Trojan: speed without the key.
+
+Handlers are pure over three ports and have seven conversation tests
+against fakes; the chain adapter has a fork test against the live router
+(faucet, quote, buy, sell, send). On the way, two things the fleet needed
+anyway: the sell side of the v4 encoder with the Permit2 approvals
+(`encodeV4TokenSell`, `sellApprovals`, a fork round trip), and an exact-in
+quote with fee and price impact (`quoteExactIn`, from the pool's
+liquidity) that `market.tokenQuote` now returns instead of the spot
+estimate. The spot estimate tripped the slippage guard on the testnet venue,
+where one buy is a tenth of the liquidity; on the fork the exact quote
+matched the fill to the wei. The service's pooled buys inherit the fix.

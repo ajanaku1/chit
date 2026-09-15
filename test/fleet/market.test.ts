@@ -41,3 +41,24 @@ test("an empty slot0 means no pool, and an estimate follows the square of the pr
   assert.ok(doubled - out * 2n <= 1n && out * 2n - doubled <= 1n, "doubling the input doubles the estimate, to a wei of truncation");
   assert.equal(estimateOut(10n ** 15n, 0n), 0n);
 });
+
+test("an exact-in quote includes the fee and the price impact, and shrinks toward spot as the trade shrinks", async () => {
+  const { quoteExactIn, liquiditySlot } = await import("../../src/fleet/market.js");
+  const { parseEther } = await import("viem");
+  // A pool priced at 1000 tokens per ETH with 0.02 ETH of full-range liquidity, as the fork tests seed it.
+  const isqrt = (n: bigint): bigint => { let x = n, y = (n + 1n) / 2n; while (y < x) { x = y; y = (x + n / x) / 2n; } return x; };
+  const sqrtP = isqrt(1000n * 2n ** 192n);
+  const liquidity = isqrt(parseEther("0.02") * parseEther("20"));
+  const spot = estimateOut(parseEther("0.001"), sqrtP);
+  const fill = quoteExactIn(parseEther("0.001"), sqrtP, liquidity, true, 3000);
+  assert.ok(fill < spot, "the fill is below spot: fee plus impact");
+  assert.ok(fill > (spot * 90n) / 100n, "a 5% trade on the pool costs under 10%");
+  const tiny = quoteExactIn(parseEther("0.000001"), sqrtP, liquidity, true, 3000);
+  const tinySpot = estimateOut(parseEther("0.000001"), sqrtP);
+  assert.ok(tiny > (tinySpot * 996n) / 1000n && tiny < tinySpot, "a tiny trade pays only the 0.3% fee");
+  // The other way round, at the same pool state: tokens in, ETH out, paying fee and impact a second time.
+  const back = quoteExactIn(fill, sqrtP, liquidity, false, 3000);
+  assert.ok(back < parseEther("0.001") && back > parseEther("0.0008"), `a round trip at one state loses fee and impact twice: ${back}`);
+  assert.equal(quoteExactIn(1n, sqrtP, 0n, true, 3000), 0n, "no liquidity, no fill");
+  assert.notEqual(liquiditySlot(`0x${"11".repeat(32)}`), slot0Slot(`0x${"11".repeat(32)}`));
+});

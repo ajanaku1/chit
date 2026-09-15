@@ -70,6 +70,43 @@ export const encodeV4EthBuy = ({ token, amountIn, minOut = 0n, deadline }: V4Buy
   return encodeFunctionData({ abi: EXECUTE_ABI, functionName: "execute", args: [COMMAND_V4_SWAP, [input], deadline] });
 };
 
+export type V4Sell = { token: Address; amountIn: bigint; minOut?: bigint; deadline: bigint };
+
+/** Permit2 on Robinhood Chain, verified live (specs/001-fleet-mission/research.md). The router pulls ERC-20 input through it. */
+export const PERMIT2: Address = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+
+const ERC20_APPROVE_ABI = [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "spender", type: "address" }, { name: "amount", type: "uint256" }], outputs: [{ type: "bool" }] }] as const;
+const PERMIT2_APPROVE_ABI = [{ type: "function", name: "approve", stateMutability: "nonpayable", inputs: [{ name: "token", type: "address" }, { name: "spender", type: "address" }, { name: "amount", type: "uint160" }, { name: "expiration", type: "uint48" }], outputs: [] }] as const;
+
+/**
+ * The sell side of the same pool: token in, ETH out, oneForZero. The router
+ * settles the token through Permit2 from the caller, so the caller must have
+ * approved Permit2 on the token and the router on Permit2 first; those two
+ * calls are `sellApprovals`. TAKE_ALL sends the ETH to the caller.
+ */
+export const encodeV4TokenSell = ({ token, amountIn, minOut = 0n, deadline }: V4Sell): Hex => {
+  const actions: Hex = `0x${ACTION_SWAP_EXACT_IN_SINGLE}${ACTION_SETTLE_ALL}${ACTION_TAKE_ALL}`;
+  const params: Hex[] = [
+    encodeAbiParameters([EXACT_IN_SINGLE], [{
+      poolKey: venuePoolKey(token), zeroForOne: false, amountIn, amountOutMinimum: minOut, hookData: "0x",
+    }]),
+    encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [token, amountIn]),
+    encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [NATIVE_ETH, minOut]),
+  ];
+  const input = encodeAbiParameters([{ type: "bytes" }, { type: "bytes[]" }], [actions, params]);
+  return encodeFunctionData({ abi: EXECUTE_ABI, functionName: "execute", args: [COMMAND_V4_SWAP, [input], deadline] });
+};
+
+/** The two approvals a seller makes once per token: the token to Permit2, then Permit2 to the router. */
+export const sellApprovals = (token: Address, router: Address, amount: bigint, expiration: number): Array<{ to: Address; data: Hex }> => [
+  { to: token, data: encodeFunctionData({ abi: ERC20_APPROVE_ABI, functionName: "approve", args: [PERMIT2, amount] }) },
+  { to: PERMIT2, data: encodeFunctionData({ abi: PERMIT2_APPROVE_ABI, functionName: "approve", args: [token, router, amount, expiration] }) },
+];
+
+/** A sale's ETH out at the spot price, before fee and slippage: the inverse of the buy estimate. */
+export const estimateEthOut = (amountIn: bigint, sqrtPriceX96: bigint): bigint =>
+  sqrtPriceX96 === 0n ? 0n : (amountIn * (2n ** 192n)) / (sqrtPriceX96 * sqrtPriceX96);
+
 /** Legacy fixture shape: `selector(token, value)`, used by the labelled test-only venue. */
 const encodeFixtureBuy = (signature: string, token: Address, value: bigint): Hex => {
   // A campaign restored from the chain knows only its selector, not the signature.
