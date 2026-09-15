@@ -126,12 +126,14 @@ const poolAddressFromEnv = (): Address | undefined => {
  * Stage 2 pool service. Needs the operator signer and FLEET_POOL_ADDRESS; the
  * ledger key derives from the operator key, so no new secret is introduced.
  */
-const poolFromEnv = (): PoolPort | undefined => {
+const poolFromEnv = (store: StorePort): PoolPort | undefined => {
   const key = operatorKeyFromEnv();
   const address = poolAddressFromEnv();
   if (!key || !address) return undefined;
   const { wallet, publicClient } = clients(key);
-  return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKeyFromEnv(key));
+  // The same store the router uses: owed spend recorded by a buy on one
+  // instance is queued by a sweep on another.
+  return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKeyFromEnv(key), { store });
 };
 
 /**
@@ -319,11 +321,11 @@ export const getFleetRouter = (): CampaignRouter => {
   const feeConfig = feeConfigFromEnv();
   const chain = chainFromEnv();
   const nonceSecret = nonceSecretFromEnv();
-  const pool = poolFromEnv();
+  const store = storeFromEnv();
+  const pool = poolFromEnv(store);
   const market = marketFromEnv();
   const allowedTokens = allowedTokensFromEnv();
   const maxSlippageBps = maxSlippageFromEnv();
-  const store = storeFromEnv();
   if (!allowedTokens) console.warn("FLEET_TOKEN_ALLOWLIST is not set: sponsored buys may target any token");
   void verifyDeployedAddresses();
   const deps: RouterDeps = {

@@ -15,7 +15,7 @@ const POOL_ABI = parseAbi([
   "function requestExit()",
   "function executeExit()",
   "function setPaused(bool paused_)",
-  "function queueSpend(bytes encDepositor, uint256 amount, uint64 dueAt) returns (uint256)",
+  "function queueSpendBatch(bytes[] encDepositors, uint256[] amounts, uint64[] dueAts) returns (uint256[])",
   "function postQueued(uint256 id, address depositor)",
   "function claimOperator(uint256 amount)",
   "function openDraw(bytes32 campaign, uint256 amount, uint64 dueAt, bytes ownerRef)",
@@ -76,7 +76,8 @@ export type FleetPool = {
   commit(campaign: Hex, actual: bigint): Promise<Hex>;
   rollback(campaign: Hex, principalReturned: bigint): Promise<Hex>;
   closeDraw(campaign: Hex): Promise<Hex>;
-  queueSpend(encDepositor: Hex, amount: bigint, dueAt: bigint): Promise<Hex>;
+  /** One transaction for a sweep's worth of charges; each entry on its own timer. */
+  queueSpendBatch(encDepositors: readonly Hex[], amounts: readonly bigint[], dueAts: readonly bigint[]): Promise<Hex>;
   postQueued(id: bigint, depositor: Address): Promise<Hex>;
   claimable(): Promise<bigint>;
   claimOperator(amount: bigint): Promise<Hex>;
@@ -189,7 +190,7 @@ export const createFleetPool = (
     rollback: (campaign, principalReturned) =>
       write("rollback", [campaign, principalReturned], principalReturned),
     closeDraw: (campaign) => write("closeDraw", [campaign]),
-    queueSpend: (encDepositor, amount, dueAt) => write("queueSpend", [encDepositor, amount, dueAt]),
+    queueSpendBatch: (encDepositors, amounts, dueAts) => write("queueSpendBatch", [encDepositors, amounts, dueAts]),
     postQueued: (id, depositor) => write("postQueued", [id, depositor]),
     claimable: () => read<bigint>("claimable"),
     claimOperator: (amount) => write("claimOperator", [amount]),
