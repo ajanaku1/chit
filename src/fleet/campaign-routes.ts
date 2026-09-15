@@ -423,6 +423,9 @@ export class CampaignRouter {
    */
   async #restore(id: string, wallet: string): Promise<CampaignRecord | undefined> {
     if (!id) return undefined;
+    // An id `list` handed out is the chain key itself; hashing it again would
+    // look up a campaign that does not exist.
+    if (/^0x[0-9a-fA-F]{64}$/.test(id)) return this.#restoreByKey(id.toLowerCase() as Hex, wallet);
     return this.#restoreFromKey(id, campaignKey(id), wallet);
   }
 

@@ -181,8 +181,15 @@ describe("A seeded fleet order over two polls", () => {
     assert.ok(spent - spentBefore >= total, `draw spent ${spent - spentBefore}, slices total ${total}`);
     assert.equal(await s.publicClient.getBalance({ address: s.sink.address as Address }), total, "the venue received every slice");
 
-    const fleets = await s.same("list", {});
+    // A cold instance lists the fleet by its chain key, and a third cold
+    // instance can act on that id: nothing depends on the friendly id surviving.
+    const fleets = await s.elsewhere("list", {});
     assert.equal(fleets.status, 200, JSON.stringify(fleets.body));
-    assert.equal((fleets.body as { fleets: { campaign: string }[] }).fleets.length, 1);
+    const listed = (fleets.body as { fleets: { campaign: string; accounts: number; state: string }[] }).fleets;
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0]!.accounts, 5, "a restored fleet still knows its wallets");
+    const held = await s.elsewhere("holdings", { campaign: listed[0]!.campaign, tokens: [] });
+    assert.equal(held.status, 200, JSON.stringify(held.body));
+    assert.equal((held.body as { holdings: unknown[] }).holdings.length, 5);
   });
 });
