@@ -166,7 +166,7 @@ const main = async (): Promise<void> => {
     await save();
   }
   if (!sponsorship.paymaster) {
-    sponsorship.paymaster = await deploy("FleetPaymaster", [ENTRYPOINT_V07, operator.address, sponsorship.escrow]);
+    sponsorship.paymaster = await deploy("FleetPaymaster", [ENTRYPOINT_V07, operator.address, sponsorship.escrow, 0]);
     await save();
   }
   if (!sponsorship.probe) {

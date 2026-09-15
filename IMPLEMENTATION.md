@@ -1544,3 +1544,29 @@ block"), so the test deploys before it reads and a local `hardhat node` fork nee
 one `evm_mine` first; and the bundler transaction has to be priced like the
 operation, or the refund at the operation's price does not match what the bundler
 paid at the node's default.
+
+## Gas sponsorship for dapps, built (2026-09-15, advisor, branch feat/gas-sponsorship)
+
+The proposal's product, on top of the spike, with no change to the pool and
+no new surface in the fleet's wiring. A dapp registers by its wallet's
+signature (the fleet's challenge flow), sets a policy (targets and selectors,
+a ceiling per operation, a cap per user per UTC day, a cap per sponsor per
+day), funds its budget in a sponsor escrow from its own wallet, and its users
+get operations sponsored through `POST /api/fleet/sponsor` with no login:
+every FR-002 check runs before a signature and a refusal names its reason;
+the route bundles the signed op itself and records what the escrow charged.
+`FleetPaymaster` gained an immutable `feeBps` (zero for the fleet's own): the
+budget is reserved and committed at cost plus fee, in postOp, which also
+settles the spike's finding that postOp's figure undershoots the operator's
+outlay. Measured on the fork with 20%: the budget covers 114% of the outlay
+on an operation that deploys the account.
+
+The ledger (sponsors, policies, every op by user hash) is the first state the
+fleet service keeps off chain and between instances: `SponsorStore`, memory
+for tests, Neon for the host (`DATABASE_URL`), so the daily caps hold across
+functions (FR-005); the unit test runs two services over one store. The
+dashboard is the `status` action for now, by day, target and user hash, never
+an address (FR-008); a page in the app waits until the redesign settles, so
+it lands once. `docs/gas-sponsorship.md` is the integration, end to end;
+`scripts/sponsor-deploy-live.ts` deploys the set and prints the host
+variables. Six unit tests, one fork test that is the doc page as code.

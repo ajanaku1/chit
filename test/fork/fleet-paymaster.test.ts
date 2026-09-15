@@ -65,6 +65,7 @@ describe("FleetPaymaster + escrow settler", () => {
       entryPoint!.account.address,
       operator!.account.address,
       escrow.address,
+      0,
     ]);
     await escrow.write.setSettler([paymaster.address]);
     await escrow.write.registerCampaign([CAMPAIGN, owner!.account.address]);

@@ -32,7 +32,9 @@ struct PackedUserOperation {
 /// @title Fleet paymaster
 /// @notice A verifying ERC-4337 v0.7 paymaster that sponsors gas for fleet
 ///         accounts and settles the cost against `FleetCampaignEscrow` atomically
-///         inside the EntryPoint flow.
+///         inside the EntryPoint flow. With a fee, it is the gas-sponsorship
+///         product's paymaster too: the sponsor's budget is charged the cost
+///         plus a published percentage, in the same postOp, and nothing else.
 /// @dev The operator authorizes each sponsored op off-chain by signing over the
 ///      userOpHash plus the campaign, reservation key, and cost bound. That
 ///      off-chain check is where policy (approved router, caps, state) is
@@ -54,6 +56,17 @@ contract FleetPaymaster {
     address public immutable operator;
     FleetCampaignEscrow public immutable escrow;
 
+    /// @notice The fee on every sponsored operation, in basis points of the
+    ///         gas cost the EntryPoint reports. Zero for the fleet's own
+    ///         paymaster; the sponsorship product's is deployed with one. It
+    ///         is fixed at deployment so a sponsor can read it and rely on it.
+    /// @dev The EntryPoint hands postOp a cost that leaves out postOp's own
+    ///      gas and the unused-gas penalty (measured at 1.5% to 5% of the
+    ///      operator's outlay on 46630); the fee has to clear that before it
+    ///      is revenue.
+    uint16 public immutable feeBps;
+    uint16 public constant MAX_FEE_BPS = 5_000;
+
     /// @dev paymasterData layout after the 20+16+16 header EntryPoint strips:
     ///      campaign(32) | key(32) | validUntil(6) | validAfter(6) | signature(65)
     uint256 private constant SIG_OFFSET = 76;
@@ -63,6 +76,7 @@ contract FleetPaymaster {
     error NotEntryPoint();
     error NotOperator();
     error MalformedPaymasterData();
+    error FeeTooHigh();
 
     modifier onlyEntryPoint() {
         if (msg.sender != entryPoint) revert NotEntryPoint();
@@ -74,10 +88,17 @@ contract FleetPaymaster {
         _;
     }
 
-    constructor(address entryPoint_, address operator_, FleetCampaignEscrow escrow_) {
+    constructor(address entryPoint_, address operator_, FleetCampaignEscrow escrow_, uint16 feeBps_) {
+        if (feeBps_ > MAX_FEE_BPS) revert FeeTooHigh();
         entryPoint = entryPoint_;
         operator = operator_;
         escrow = escrow_;
+        feeBps = feeBps_;
+    }
+
+    /// @notice What the budget is charged for a given gas cost: the cost plus the fee.
+    function charged(uint256 gasCost) public view returns (uint256) {
+        return gasCost + (gasCost * feeBps) / 10_000;
     }
 
     /// @notice Validates a sponsored op and reserves its maximum cost.
@@ -102,10 +123,11 @@ contract FleetPaymaster {
         userOpHash;
         bool signatureOk = _verify(userOp, campaign, key, maxCost, validUntil, validAfter, data[SIG_OFFSET:SIG_OFFSET + 65]);
 
-        // Reserve the ceiling only for an authorized op; an invalid signature is
-        // signalled to the EntryPoint through validationData, which drops the op.
+        // Reserve the ceiling, fee included, only for an authorized op; an
+        // invalid signature is signalled to the EntryPoint through
+        // validationData, which drops the op.
         if (signatureOk) {
-            escrow.reserve(campaign, key, maxCost);
+            escrow.reserve(campaign, key, charged(maxCost));
         }
 
         context = abi.encode(campaign, key, userOp.sender);
@@ -140,10 +162,11 @@ contract FleetPaymaster {
         return digest.recover(signature) == operator;
     }
 
-    /// @notice Commits the actual gas cost against the campaign budget.
+    /// @notice Commits the actual gas cost, plus the fee, against the budget.
     /// @dev By postOp the gas has already been spent, so we always commit the
-    ///      real cost (never more than the reserved max). Rollback is the
-    ///      operator's off-chain path for an op that never lands.
+    ///      real cost (never more than the reserved max, since the fee scales
+    ///      the same way on both). Rollback is the operator's off-chain path
+    ///      for an op that never lands.
     function postOp(
         PostOpMode,
         bytes calldata context,
@@ -151,7 +174,7 @@ contract FleetPaymaster {
         uint256
     ) external onlyEntryPoint {
         (bytes32 campaign, bytes32 key, address sender) = abi.decode(context, (bytes32, bytes32, address));
-        escrow.commit(campaign, key, actualGasCost);
+        escrow.commit(campaign, key, charged(actualGasCost));
         emit Sponsored(campaign, key, sender);
     }
 
