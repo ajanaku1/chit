@@ -30,7 +30,7 @@ describe("Pool balance through the router", () => {
   it("shows a deposit to a fresh instance and pays a withdrawal from the operator wallet", async () => {
     const [operator, trader] = await viem.getWalletClients();
     const publicClient = await viem.getPublicClient();
-    const contract = await viem.deployContract("FleetPool", [operator!.account.address]);
+    const contract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
 
     const pool = createFleetPool(operator!, publicClient, contract.address as Address);
     const key = ledgerKey(OPERATOR_KEY);

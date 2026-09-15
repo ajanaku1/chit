@@ -24,7 +24,7 @@ describe("FleetPool draws", () => {
   });
 
   const seeded = async () => {
-    const pool = await viem.deployContract("FleetPool", [operator!.account.address]);
+    const pool = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
     await pool.write.deposit({ account: alice!.account, value: parseEther("0.1") });
     return pool;
   };

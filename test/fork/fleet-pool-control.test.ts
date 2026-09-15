@@ -31,7 +31,7 @@ describe("Pool control and recovery", () => {
   const setup = async () => {
     const [operator, trader] = await viem.getWalletClients();
     const publicClient = await viem.getPublicClient();
-    const contract = await viem.deployContract("FleetPool", [operator!.account.address]);
+    const contract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
     const key = ledgerKey(OPERATOR_KEY);
     const service = createPoolService(
       operator!,

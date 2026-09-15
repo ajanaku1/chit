@@ -34,7 +34,7 @@ describe("Fleet contracts — production hardening", () => {
   describe("FleetAccount owner escape hatch (HIGH)", () => {
     it("lets the owner sweep ERC-20 tokens and ETH; blocks the operator", async () => {
       const operator = wallets[0]!;
-      const policy = await viem.deployContract("FleetSessionPolicy", [operator.account.address]);
+      const policy = await viem.deployContract("FleetSessionPolicy", [operator.account.address, operator.account.address]);
       const factory = await viem.deployContract("FleetAccountFactory", [operator.account.address]);
 
       const owners = fleetOwners();
@@ -161,7 +161,7 @@ describe("Fleet contracts — production hardening", () => {
   describe("FleetSessionPolicy openSession sanity checks (LOW)", () => {
     it("rejects a past expiry, chain mismatch, per>total gas, and zero router", async () => {
       const operator = wallets[0]!;
-      const policy = await viem.deployContract("FleetSessionPolicy", [operator.account.address]);
+      const policy = await viem.deployContract("FleetSessionPolicy", [operator.account.address, operator.account.address]);
       const owners = fleetOwners();
       const chainId = await (await viem.getPublicClient()).getChainId();
 

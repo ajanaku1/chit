@@ -52,10 +52,10 @@ describe("What an observer can see", () => {
     const publicClient = await viem.getPublicClient();
     const chainId = await publicClient.getChainId();
 
-    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address]);
+    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
     const factory = await viem.deployContract("FleetAccountFactory", [operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
-    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address]);
+    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
     // The pool funds and executes a buy in one transaction; the policy names it
     // so the fleet accounts admit it as an executor.
     await policy.write.setPool([poolContract.address]);

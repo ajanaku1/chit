@@ -23,7 +23,7 @@ describe("Fleet Stage 1 lifecycle (on-chain)", () => {
     const publicClient = await viem.getPublicClient();
     const chainId = await publicClient.getChainId();
 
-    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address]);
+    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
     const factory = await viem.deployContract("FleetAccountFactory", [operator!.account.address]);
     const counter = await viem.deployContract("ChitCounter", []);

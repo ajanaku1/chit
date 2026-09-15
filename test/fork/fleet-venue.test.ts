@@ -40,7 +40,7 @@ describe("Fleet venue on Uniswap v4 (46630 fork)", () => {
     await seeder.write.seed([key, SQRT_PRICE_1000, FULL_RANGE.lower, FULL_RANGE.upper, parseEther("0.3")], { value: parseEther("0.02") });
     assert.ok(await token.read.balanceOf([POOL_MANAGER]) > 0n, "pool holds FLEET liquidity");
 
-    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address]);
+    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
     // The policy enrols a fleet of five or more; one of them makes the buy.
     const fleet = [];

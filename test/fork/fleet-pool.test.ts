@@ -20,7 +20,7 @@ describe("FleetPool deposits, caps, and pause", () => {
     [operator, alice, bob] = await viem.getWalletClients();
   });
 
-  const deploy = () => viem.deployContract("FleetPool", [operator!.account.address]);
+  const deploy = () => viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
 
   it("accepts only the published deposit sizes", async () => {
     const pool = await deploy();
