@@ -98,4 +98,10 @@ main.privacy-page h1 { font-size: clamp(2.25rem, 6vw, 3.75rem); }
 .order__slices { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; font-family: var(--font-mono); font-size: 0.8rem; }
 .order__slices li { display: flex; justify-content: space-between; gap: 0.75rem; overflow-wrap: anywhere; }
 .order__slices a { color: var(--soft-paper); }
+/* A slice's hash and its Copy sit on one line; the pill is sized to the row, not the page. */
+.order__slices li > span:last-child { display: inline-flex; align-items: center; gap: 0.5rem; white-space: nowrap; }
+.order__slices .ghost { min-height: 1.6rem; padding: 0.1rem 0.6rem; font-size: 0.72rem; }
+/* The fleet switcher reads like the inputs beside it, and its caption like their labels. */
+.field > span { color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
+.field select { width: 100%; padding: 0.75rem 0.95rem; border: 1px solid rgba(245, 239, 229, 0.12); border-radius: 12px; background: rgba(0, 0, 0, 0.35); color: var(--paper); font: inherit; font-family: var(--font-mono); font-size: 0.95rem; appearance: none; }
 .order[data-done="true"] .order__head h3 { color: var(--paper); }
