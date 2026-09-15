@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 /**
@@ -250,4 +252,72 @@ test("every link on the landing reaches a page or an element that exists", async
   }
   // The CTAs are inert on purpose while the app is in private testing; the
   // check above still holds every real link to a page or element that exists.
+});
+
+/**
+ * Each Learn More opens a limit sheet on screen B. The sheets explain the
+ * contract, so every identifier they cite must exist in FleetPool.sol; a
+ * constant renamed or a revert removed fails here before it misleads a reader.
+ */
+test("every Learn More opens a limit sheet whose contract citations are real", async () => {
+  const html = await source("index.html");
+  const pool = await readFile(new URL("../../contracts/fleet/FleetPool.sol", import.meta.url), "utf8");
+
+  const triggers = [...html.matchAll(/<a class="learn-more" href="#(limit-[a-z]+)" aria-controls="(limit-[a-z]+)"/g)];
+  assert.equal(triggers.length, 3);
+  for (const [, href, controls] of triggers) {
+    assert.equal(href, controls);
+    assert.match(html, new RegExp(`<section class="limit limit--[a-z]+" id="${href}" aria-labelledby="${href}-title"`));
+  }
+
+  const sheets = html.match(/<section class="limit limit--[a-z]+" id="limit-[\s\S]*?<\/section>/g) ?? [];
+  assert.equal(sheets.length, 3);
+  for (const sheet of sheets) {
+    for (const [, cited] of sheet.matchAll(/<code>([^<]+)<\/code>/g)) {
+      for (const ident of cited.replace(/&[a-z]+;/g, " ").match(/[A-Za-z_]{3,}/g) ?? []) {
+        if (["ether", "hours"].includes(ident)) continue;
+        assert.match(pool, new RegExp(`\\b${ident}\\b`), `"${ident}" is not in FleetPool.sol`);
+      }
+    }
+    // Both ways out stay on the landing.
+    assert.match(sheet, /class="limit__close" href="#the-numbers"/);
+    assert.match(sheet, /class="limit__next" href="#limit-[a-z]+"/);
+  }
+  assert.match(html, /<section class="screen screen--metrics" id="the-numbers"/);
+});
+
+/**
+ * Launch app and Open the app open the progress sheet; Read the boundary opens
+ * the boundary sheet. Both stay on the landing. The progress sheet carries no
+ * hand-typed number: every figure is rendered from progress.json, which
+ * scripts/progress.mjs recomputes from the task lists (PROGRESS.md).
+ */
+test("the app buttons open the progress sheet, the boundary button its sheet, and no number is typed", async () => {
+  const [html, js] = await Promise.all([source("index.html"), source("main.js")]);
+
+  assert.match(html, /<a class="btn-nav" href="#progress" aria-controls="progress"[^>]*>Launch app<\/a>/);
+  assert.match(html, /<a class="btn btn--solid" href="#progress" aria-controls="progress"[^>]*>Open the app<\/a>/);
+  assert.match(html, /<a class="btn btn--ghost" href="#boundary" aria-controls="boundary"[^>]*>Read the boundary<\/a>/);
+  assert.match(html, /<div class="modal" id="progress" role="dialog" aria-modal="true" aria-labelledby="progress-title"/);
+  assert.match(html, /<div class="modal" id="boundary" role="dialog" aria-modal="true" aria-labelledby="boundary-title"/);
+
+  // Meet the dev still has a home, and still leaves the page safely.
+  assert.match(html, /<nav class="nav"[\s\S]*?href="https:\/\/ajanaku1\.github\.io\/bambam\/meet-the-dev"[\s\S]*?Meet the dev/);
+
+  // The progress sheet's figures are slots, not literals.
+  const progress = html.match(/<div class="modal" id="progress"[\s\S]*?<\/div>\s*<!-- Read the boundary/)[0];
+  assert.match(progress, /data-dots="0" data-progress="percent"/);
+  for (const slot of ["tasks", "stages", "specs", "open", "stamp"]) {
+    assert.match(progress, new RegExp(`data-progress="${slot}"`), `no ${slot} slot`);
+  }
+  assert.doesNotMatch(text(progress), /\d+\s*(%|of \d+|\/ \d+)/, "a typed figure in the progress sheet");
+  assert.match(js, /fetch\(url, \{ cache: 'no-store' \}\)/);
+  assert.match(js, /'\/api\/progress', 'progress\.json'/);
+});
+
+test("progress.json matches the facts scripts/progress.mjs reads", () => {
+  const check = spawnSync("node", [fileURLToPath(new URL("../../scripts/progress.mjs", import.meta.url)), "--check"], {
+    encoding: "utf8",
+  });
+  assert.equal(check.status, 0, check.stderr || check.stdout);
 });
