@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {FleetPool} from "../../contracts/fleet/FleetPool.sol";
 
 /// Pre-audit tests for FleetPool. Each `test_finding_*` was written to
@@ -23,7 +24,7 @@ contract FleetPoolTest is Test {
     bytes32 internal constant CAMPAIGN = keccak256("campaign-1");
 
     function setUp() public {
-        pool = new FleetPool(OPERATOR);
+        pool = new FleetPool(OPERATOR, OPERATOR);
         vm.deal(ALICE, 10 ether);
         vm.deal(BOB, 10 ether);
         vm.deal(OPERATOR, 10 ether);
@@ -250,10 +251,12 @@ contract FleetPoolTest is Test {
         pool.pause();
         assertTrue(pool.paused(), "the guardian stopped the money");
 
+        // Unpausing and naming the guardian are the admin's now, so the
+        // guardian is refused by the owner check; moving money by the operator's.
         vm.startPrank(guardian);
-        vm.expectRevert(FleetPool.NotOperator.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
         pool.setPaused(false);
-        vm.expectRevert(FleetPool.NotOperator.selector);
+        vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableUnauthorizedAccount.selector, guardian));
         pool.setGuardian(guardian);
         vm.expectRevert(FleetPool.NotOperator.selector);
         pool.openDraw(CAMPAIGN, 0.05 ether, uint64(block.timestamp + 60), "");

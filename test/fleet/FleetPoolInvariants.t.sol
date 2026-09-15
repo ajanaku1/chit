@@ -102,7 +102,7 @@ contract Handler is Test {
     uint256[] internal sizes;
 
     constructor() {
-        pool = new FleetPool(address(this));
+        pool = new FleetPool(address(this), address(this));
         sizes.push(0.01 ether);
         sizes.push(0.05 ether);
         sizes.push(0.1 ether);
