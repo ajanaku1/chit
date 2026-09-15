@@ -159,9 +159,12 @@ contract FleetPoolTest is Test {
 
     function test_finding_F5_queuedSpendBeyondWindowIsRefused() public {
         vm.startPrank(OPERATOR);
+        (bytes[] memory refs, uint256[] memory amounts, uint64[] memory dues) = _batch(1);
+        amounts[0] = 0.01 ether;
+        dues[0] = uint64(block.timestamp + 12 hours + 1);
         vm.expectRevert(FleetPool.DueBeyondWindow.selector);
-        pool.queueSpend("", 0.01 ether, uint64(block.timestamp + 12 hours + 1));
-        uint256 id = pool.queueSpend("", 0.01 ether, uint64(block.timestamp + 12 hours));
+        pool.queueSpendBatch(refs, amounts, dues);
+        uint256 id = _queueOne(0.01 ether, uint64(block.timestamp + 12 hours));
         vm.warp(block.timestamp + 12 hours);
         pool.postQueued(id, ALICE);
         vm.stopPrank();
@@ -180,7 +183,7 @@ contract FleetPoolTest is Test {
         assertEq(pool.totalDrawSpent(), 0, "no campaign has spent anything");
 
         vm.prank(OPERATOR);
-        uint256 id = pool.queueSpend("", 1 ether, uint64(block.timestamp));
+        uint256 id = _queueOne(1 ether, uint64(block.timestamp));
         vm.prank(OPERATOR);
         pool.postQueued(id, ALICE);
 
@@ -285,7 +288,7 @@ contract FleetPoolTest is Test {
         pool.requestExit();
 
         vm.prank(OPERATOR);
-        uint256 id = pool.queueSpend("", 0.03 ether, uint64(block.timestamp + 60));
+        uint256 id = _queueOne(0.03 ether, uint64(block.timestamp + 60));
         vm.warp(block.timestamp + 60);
         vm.prank(OPERATOR);
         pool.postQueued(id, ALICE);
@@ -341,6 +344,76 @@ contract FleetPoolTest is Test {
         pool.fund(CAMPAIGN, accounts);
         vm.stopPrank();
     }
+    // --- batch queueing: charges leave the operator in one sweep, never after a buy ---
+
+    /// The join the pool exists to break was the operator's own transaction
+    /// order: a buy, then its charge, next nonce. Charges now queue in one
+    /// batch, each with its own due time, in a transaction that follows no buy.
+    function test_queueSpendBatch_queuesEveryEntryWithItsOwnDueTime() public {
+        (bytes[] memory refs, uint256[] memory amounts, uint64[] memory dues) = _batch(3);
+        vm.prank(OPERATOR);
+        uint256[] memory ids = pool.queueSpendBatch(refs, amounts, dues);
+        assertEq(ids.length, 3);
+        assertEq(pool.queuedSpendCount(), 3);
+        for (uint256 i = 0; i < 3; i++) {
+            FleetPool.QueuedSpend memory q = pool.queuedSpendAt(ids[i]);
+            assertEq(q.amount, amounts[i]);
+            assertEq(q.dueAt, dues[i]);
+            assertEq(q.queuedAt, uint64(block.timestamp));
+            assertEq(q.posted, false);
+        }
+    }
+
+    function test_queueSpendBatch_refusesTheWholeBatchWhenOneEntryIsBeyondTheWindow() public {
+        (bytes[] memory refs, uint256[] memory amounts, uint64[] memory dues) = _batch(3);
+        dues[1] = uint64(block.timestamp + 12 hours + 1);
+        vm.prank(OPERATOR);
+        vm.expectRevert(FleetPool.DueBeyondWindow.selector);
+        pool.queueSpendBatch(refs, amounts, dues);
+        assertEq(pool.queuedSpendCount(), 0, "nothing from a refused batch is queued");
+    }
+
+    function test_queueSpendBatch_refusesMismatchedLengthsAndAnEmptyBatch() public {
+        (bytes[] memory refs, uint256[] memory amounts, uint64[] memory dues) = _batch(2);
+        uint64[] memory shortDues = new uint64[](1);
+        shortDues[0] = dues[0];
+        vm.startPrank(OPERATOR);
+        vm.expectRevert(FleetPool.LengthMismatch.selector);
+        pool.queueSpendBatch(refs, amounts, shortDues);
+        vm.expectRevert(FleetPool.EmptyBatch.selector);
+        pool.queueSpendBatch(new bytes[](0), new uint256[](0), new uint64[](0));
+        vm.stopPrank();
+    }
+
+    function test_queueSpendBatch_onlyTheOperator() public {
+        (bytes[] memory refs, uint256[] memory amounts, uint64[] memory dues) = _batch(1);
+        vm.prank(ALICE);
+        vm.expectRevert(FleetPool.NotOperator.selector);
+        pool.queueSpendBatch(refs, amounts, dues);
+    }
+
+    function _batch(uint256 n) internal view returns (bytes[] memory refs, uint256[] memory amounts, uint64[] memory dues) {
+        refs = new bytes[](n);
+        amounts = new uint256[](n);
+        dues = new uint64[](n);
+        for (uint256 i = 0; i < n; i++) {
+            refs[i] = abi.encodePacked("ref", i);
+            amounts[i] = (i + 1) * 0.001 ether;
+            dues[i] = uint64(block.timestamp + 90 + i * 300);
+        }
+    }
+
+    /// One charge through the batch entry point; the single-entry function is gone.
+    function _queueOne(uint256 amount, uint64 due) internal returns (uint256 id) {
+        bytes[] memory refs = new bytes[](1);
+        uint256[] memory amounts = new uint256[](1);
+        uint64[] memory dues = new uint64[](1);
+        amounts[0] = amount;
+        dues[0] = due;
+        uint256[] memory ids = pool.queueSpendBatch(refs, amounts, dues);
+        return ids[0];
+    }
+
 }
 
 /// A fleet account that tries to be funded twice from inside its receive.
