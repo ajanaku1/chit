@@ -48,6 +48,14 @@ contract FleetPool {
 
     address public immutable operator;
 
+    /// @notice A second key that can stop the money and nothing else. The
+    ///         operator key moves funds; if it is compromised, the pause is the
+    ///         only brake, and a brake only the same key can pull is no brake.
+    ///         The guardian may pause. Only the operator may unpause or change
+    ///         the guardian. A monitor, a second person or a multisig can hold
+    ///         it without ever being able to move a wei.
+    address public guardian;
+
     /// @notice Deposits come in fixed sizes so one deposit looks like any other
     ///         of its size and cannot be matched to a fleet's spending.
     uint256 public constant SIZE_SMALL = 0.01 ether;
@@ -95,6 +103,7 @@ contract FleetPool {
     event SpendPosted(address indexed depositor, uint256 amount);
     event OperatorClaimed(uint256 amount);
     event PausedSet(bool paused);
+    event GuardianSet(address guardian);
 
     event DrawOpened(bytes32 indexed campaign, uint256 amount, uint64 dueAt);
     event DrawFunded(bytes32 indexed campaign, uint256 seeded);
@@ -128,6 +137,7 @@ contract FleetPool {
     error ClaimExceeded();
     error TransferFailed();
     error NoAccounts();
+    error NotGuardian();
     error DelayTooShort();
     error ExitPending();
     error CommitBelowPrincipal();
@@ -196,6 +206,19 @@ contract FleetPool {
     function setPaused(bool paused_) external onlyOperator {
         paused = paused_;
         emit PausedSet(paused_);
+    }
+
+    function setGuardian(address guardian_) external onlyOperator {
+        guardian = guardian_;
+        emit GuardianSet(guardian_);
+    }
+
+    /// @notice The brake. Callable by the guardian or the operator; releasing
+    ///         it is the operator's alone, through setPaused(false).
+    function pause() external {
+        if (msg.sender != guardian && msg.sender != operator) revert NotGuardian();
+        paused = true;
+        emit PausedSet(true);
     }
 
     /// @notice Records a spend to be charged to whoever `encDepositor` names,

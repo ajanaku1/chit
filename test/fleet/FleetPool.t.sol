@@ -231,6 +231,40 @@ contract FleetPoolTest is Test {
         assertEq(FLEET_ACCOUNT.balance, pool.GAS_HEADROOM(), "and funds again once unpaused");
     }
 
+    /// R2a: a guardian can stop the money and nothing else. It cannot
+    /// unpause, cannot move funds, cannot change itself.
+    function test_guardianCanPauseAndOnlyPause() public {
+        address guardian = address(0x6a4d);
+        _deposit(ALICE, 0.1 ether);
+
+        vm.prank(guardian);
+        vm.expectRevert(FleetPool.NotGuardian.selector);
+        pool.pause();
+
+        vm.prank(OPERATOR);
+        pool.setGuardian(guardian);
+        vm.prank(guardian);
+        pool.pause();
+        assertTrue(pool.paused(), "the guardian stopped the money");
+
+        vm.startPrank(guardian);
+        vm.expectRevert(FleetPool.NotOperator.selector);
+        pool.setPaused(false);
+        vm.expectRevert(FleetPool.NotOperator.selector);
+        pool.setGuardian(guardian);
+        vm.expectRevert(FleetPool.NotOperator.selector);
+        pool.openDraw(CAMPAIGN, 0.05 ether, uint64(block.timestamp + 60), "");
+        vm.stopPrank();
+
+        vm.prank(OPERATOR);
+        vm.expectRevert(FleetPool.Paused.selector);
+        pool.openDraw(CAMPAIGN, 0.05 ether, uint64(block.timestamp + 60), "");
+
+        vm.prank(OPERATOR);
+        pool.setPaused(false);
+        assertFalse(pool.paused(), "only the operator releases the brake");
+    }
+
     function test_exitWorksWhilePausedAndWithoutTheOperator() public {
         _deposit(ALICE, 0.05 ether);
         vm.prank(OPERATOR);

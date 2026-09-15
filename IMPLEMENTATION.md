@@ -1542,7 +1542,16 @@ can only pause would actually stop the money. The pre-audit tests for F1, F4
 and F5 assert the refusal now; F2 and F3 still pass as reproductions. The
 spec's error list matches the contract again (A67, partly).
 
-Not done here, on purpose: the amount-and-id join (A4, A30, A31), which is a
-design change to how charges are posted, and the guardian and multisig (F2,
-F8), which change the constructor. Both are next, and both want the founder
-in the room.
+Later the same day, two more. On `main`: charges are posted in coarse units,
+rounded down to a grain of 0.00001 ETH and always strictly below the exact
+amount, so the wei value in `Committed` never reappears in `SpendPosted`
+and a withdrawal's payout never equals its charge (A4 and A30, the amount
+half; the grain is the pool's). On the branch: a `guardian` the operator
+sets, which can call `pause()` and nothing else; only the operator unpauses
+or changes it (R2a from the pre-audit). No constructor change, so nothing
+in the deploy scripts moves.
+
+Still open, and wanting the founder in the room: the time join (a charge is
+queued in the operator's next transaction after the buy; breaking that needs
+the contract to carry uncharged spend until a sweep batches it), random
+queue ids, and a multisig operator (F2, F8).
