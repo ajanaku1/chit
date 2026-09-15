@@ -101,7 +101,8 @@ describe("Pool balance through the router", () => {
     const swept = await elsewhere("sweep", {});
     assert.equal((swept.body as { queued: number }).queued, 1);
     assert.equal(await contract.read.queuedSpendCount(), 1n);
-    const queued = await contract.read.queuedSpendAt([0n]);
+    const [queuedId, queued] = await contract.read.queuedSpendAt([0n]);
+    assert.notEqual(queuedId, `0x${"0".repeat(64)}`, "keyed by hash, not by position");
     assert.equal(queued.amount, coarseCharge(parseEther("0.03")));
     assert.ok(queued.amount < parseEther("0.03"));
     assert.equal(queued.posted, false);

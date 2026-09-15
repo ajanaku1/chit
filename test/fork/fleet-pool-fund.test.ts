@@ -175,13 +175,17 @@ describe("Pooled funding and buys", () => {
     const batched = await s.elsewhere("sweep", {});
     assert.equal((batched.body as { queued: number }).queued, 3);
     assert.equal(await s.poolContract.read.queuedSpendCount(), 3n);
-    const amounts = await Promise.all([0n, 1n, 2n].map(async (i) => (await s.poolContract.read.queuedSpendAt([i])).amount));
+    const entries = await Promise.all([0n, 1n, 2n].map((i) => s.poolContract.read.queuedSpendAt([i])));
+    const amounts = entries.map(([, e]) => e.amount);
     assert.ok(amounts.some((a) => a < HEADROOM * 5n && HEADROOM * 5n - a <= CHARGE_GRAIN), "the seeded headroom is a charge like any other, in its coarse form");
-    assert.equal((await s.poolContract.read.queuedSpendAt([0n])).posted, false);
+    assert.equal(entries[0]![1].posted, false);
+    const ids = entries.map(([id]) => id);
+    assert.equal(new Set(ids).size, 3, "three distinct hashed ids");
+    assert.ok(ids.every((id) => !/^0x0+[0-2]$/.test(id)), "none of them is a counter");
 
     await travel(200);
     const posted = await s.elsewhere("sweep", {});
-    assert.deepEqual((posted.body as { posted: string[] }).posted, ["0", "1", "2"]);
+    assert.deepEqual([...(posted.body as { posted: string[] }).posted].sort(), [...ids].sort(), "every queued charge posted, by id");
     const spent = (await s.poolContract.read.depositorOf([s.trader!.account.address]))[1];
     assert.ok(spent < draw.spent && draw.spent - spent <= 3n * CHARGE_GRAIN, "the trader is charged what left the pool for their fleet, less at most one grain per charge, which is the pool's");
     assert.equal(spent % CHARGE_GRAIN, 0n, "and never the exact figure the campaign side recorded");

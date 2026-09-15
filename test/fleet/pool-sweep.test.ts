@@ -107,7 +107,7 @@ const opts = () => ({ delaySeconds: () => 120, store: createMemoryStore(), rando
 describe("sweep", () => {
   it("posts every due charge and funds every other draw when one draw cannot be funded", async () => {
     const queued: PoolQueued[] = [
-      { id: 0n, encDepositor: sealDepositor(KEY, ALICE), amount: 1n, dueAt: 1_699_999_000n, queuedAt: 1_699_998_000n, posted: false },
+      { id: `0x${"a1".repeat(32)}` as Hex, encDepositor: sealDepositor(KEY, ALICE), amount: 1n, dueAt: 1_699_999_000n, queuedAt: 1_699_998_000n, posted: false },
     ];
     const { pool, calls, refuse } = makePool([draw(1, ALICE, parseEther("0.01")), draw(2, BOB, parseEther("0.01"))], queued);
     refuse(campaign(1));
@@ -115,7 +115,7 @@ describe("sweep", () => {
 
     const report = await service.sweep(async () => [account(1), account(2)]);
 
-    assert.deepEqual(report.posted, ["0"], "the charge was posted although the first draw failed");
+    assert.deepEqual(report.posted, [`0x${"a1".repeat(32)}` as Hex], "the charge was posted although the first draw failed");
     assert.deepEqual(report.funded, [campaign(2)], "the second draw was funded although the first failed");
     const order = calls.map((c) => c.fn);
     assert.equal(order.indexOf("postQueued") < order.indexOf("fund"), true, "charges are posted before any draw is funded");

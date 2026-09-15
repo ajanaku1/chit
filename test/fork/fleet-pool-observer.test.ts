@@ -174,7 +174,7 @@ describe("What an observer can see", () => {
       topic("PrincipalSent(bytes32,address,uint256)"),
       topic("Committed(bytes32,uint256)"),
     ]);
-    const SPEND_QUEUED = topic("SpendQueued(uint256,uint256,uint64)");
+    const SPEND_QUEUED = topic("SpendQueued(bytes32,uint256,uint64)");
     const poolLogs = logs.filter((log) => log.address.toLowerCase() === poolContract.address.toLowerCase());
     const queuedBlocks = poolLogs.filter((log) => log.topics[0] === SPEND_QUEUED).map((log) => log.blockNumber);
     const campaignBlocks = poolLogs.filter((log) => CAMPAIGN_SIDE.has(log.topics[0] as Hex)).map((log) => log.blockNumber);
