@@ -142,6 +142,8 @@ export class CampaignRouter {
   readonly #randomId: () => string;
   /** Ordinary traffic sweeps, but not every request: a sweep is many reads. */
   readonly #sweepGate = createSweepGate(10_000);
+  /** Slices this instance has executed, keyed `${orderId}|${index}`: stops a double-poll running one twice. */
+  readonly #executedSlices = new Set<string>();
 
   constructor(deps: RouterDeps) {
     this.#deps = deps;
@@ -208,6 +210,8 @@ export class CampaignRouter {
           return this.#activate(wallet, body);
         case "buy":
           return this.#buy(wallet, body);
+        case "trade":
+          return this.#trade(wallet, body);
         case "withdraw":
           return this.#withdraw(wallet, body);
         case "topUp":
@@ -599,6 +603,47 @@ export class CampaignRouter {
       throw error;
     }
     return { order: { ...draft, id: orderId(draft) }, slices };
+  }
+
+  /**
+   * Executes the slices of a browser-held order that are due and that the
+   * browser still reports pending. The plan is recomputed from the order, so
+   * any instance agrees on it; the per-instance guard stops a double-poll from
+   * running one slice twice, and the browser's pending list stops the rest.
+   */
+  async #trade(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
+    const given = asRecord(body["order"]);
+    const { order, slices } = await this.#validatedOrder(record, wallet as Address, { ...fromWireOrder(given), campaign: record.id });
+    if (String(given["id"] ?? "").toLowerCase() !== order.id.toLowerCase() || String(given["owner"] ?? "").toLowerCase() !== wallet.toLowerCase()) {
+      throw new TradeValidationError("order_tampered");
+    }
+    const pending = new Set((Array.isArray(body["pending"]) ? (body["pending"] as unknown[]) : []).map(Number));
+    const now = this.#now();
+    const due = slices.filter((s) => pending.has(s.index) && Date.parse(s.dueAt) <= now.getTime() && !this.#executedSlices.has(`${order.id}|${s.index}`));
+    for (const slice of due) this.#executedSlices.add(`${order.id}|${slice.index}`);
+
+    const { submitter, chain } = this.#deps;
+    if (!submitter && !chain) throw new ServiceError("dependency_evidence_invalid", "submitter_unconfigured");
+    if (chain) await this.#syncEnrolled(record, chain, due.map((s) => s.wallet));
+    const session = this.#session(record);
+    const executed: Record<string, unknown>[] = [];
+    for (const slice of due) {
+      // One slice at a time: sizes differ per wallet, and the pooled path takes one value per call.
+      const results = this.#deps.pool && record.draw
+        ? await this.#buyFromPool(record, session, [slice.wallet], order.token, slice.amountWei, now, wallet)
+        : chain
+          ? await this.#buyOnChain(record, session, chain, [slice.wallet], order.token, slice.amountWei, now)
+          : await this.#buyInMemory(record, session, submitter!, [slice.wallet], order.token, slice.amountWei, now);
+      const result = results[0] ?? { status: "rejected", reason: "no_result" };
+      if (result["status"] !== "sponsored") this.#executedSlices.delete(`${order.id}|${slice.index}`);
+      executed.push({ index: slice.index, wallet: slice.wallet, amountWei: slice.amountWei, ...result });
+    }
+    const later = slices
+      .filter((s) => pending.has(s.index) && !executed.some((e) => e["index"] === s.index))
+      .map((s) => Date.parse(s.dueAt))
+      .filter((t) => t > now.getTime());
+    return { status: 200, body: { executed, nextDueAt: later.length ? new Date(Math.min(...later)).toISOString() : null, draw: record.draw } };
   }
 
   /**

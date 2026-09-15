@@ -179,7 +179,7 @@ test("trade runs only the slices that are due and still pending, and reports the
   // Just after the first due time: exactly the slices due by then run.
   now.value = new Date(dues[0]! + 1);
   const dueNow = dues.filter((d) => d <= now.value.getTime()).length;
-  const first = await router.handle(await signed(service, "trade", { campaign, order, pending: [0, 1, 2, 3, 4] }), "key-1");
+  const first = await router.handle(await signed(service, "trade", { campaign, order, pending: [0, 1, 2, 3, 4] }), key("t1"));
   assert.equal(first.status, 200);
   const r1 = first.body as { executed: { index: number; status: string }[]; nextDueAt: string | null };
   assert.equal(r1.executed.length, dueNow);
@@ -189,14 +189,14 @@ test("trade runs only the slices that are due and still pending, and reports the
   // Past the window, with the browser reporting what is still pending: the rest run once.
   now.value = new Date(dues[4]! + 1);
   const done = new Set(r1.executed.map((e) => e.index));
-  const rest = await router.handle(await signed(service, "trade", { campaign, order, pending: [0, 1, 2, 3, 4].filter((i) => !done.has(i)) }), "key-2");
+  const rest = await router.handle(await signed(service, "trade", { campaign, order, pending: [0, 1, 2, 3, 4].filter((i) => !done.has(i)) }), key("t2"));
   const r2 = rest.body as { executed: { index: number }[]; nextDueAt: string | null };
   assert.equal(r2.executed.length + r1.executed.length, 5);
   assert.equal(r2.nextDueAt, null);
   assert.equal(chain.submissions.length, 5, "every slice bought exactly once");
 
   // A slice the browser already has is never re-run, even if asked twice in one instance.
-  const again = await router.handle(await signed(service, "trade", { campaign, order, pending: [0] }), "key-3");
+  const again = await router.handle(await signed(service, "trade", { campaign, order, pending: [0] }), key("t3"));
   assert.equal((again.body as { executed: unknown[] }).executed.length, 0);
   assert.equal(chain.submissions.length, 5);
 });
@@ -206,7 +206,8 @@ test("trade refuses an order whose fields no longer hash to its id, or that anot
   const { router, service, campaign, accounts } = await activeCampaign({ now: () => now });
   const placed = await router.handle(await signed(service, "order", { campaign, token: TOKEN, totalWei: "1000000000000000", wallets: accounts, entropy: SEED, createdAt: now.toISOString() }));
   const { order } = placed.body as { order: Record<string, unknown> };
-  const forged = await router.handle(await signed(service, "trade", { campaign, order: { ...order, totalWei: "9000000000000000" }, pending: [0] }), "key-9");
+  // Still within the draw and the per-slice cap, so only the hash mismatch trips.
+  const forged = await router.handle(await signed(service, "trade", { campaign, order: { ...order, totalWei: "1200000000000000" }, pending: [0] }), key("t9"));
   assert.equal(forged.status, 400);
   assert.equal((forged.body as Record<string, unknown>)["code"], "order_tampered");
 });
