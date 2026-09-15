@@ -1499,7 +1499,12 @@ browser under `chit-orders:<owner>`; the service lists nothing. Slice hashes sho
 text with a Copy button, because no block explorer for this testnet is recorded
 anywhere in the repo and the page adds no external link. The page says trades stay
 public and never sells volume: the stagger hides who funded the fleet, nothing else.
-`order` and `trade` now refuse while the wallet's exit is pending.
+`order` and `trade` now refuse while the wallet's exit is pending. Two things are
+true and worth knowing: polls never overlap (a timer tick and a freshly placed order
+queue behind each other, and each order is re-read before it is touched), and every
+`trade` poll asks the wallet for one signature, because every state-changing action
+is signed. Letting `trade` ride on the order's own signature would remove those
+prompts and is a service change for later.
 
 Two constraints bent, both on the record. The isolated-build test lists every page
 it stages by name, so a new page cannot exist without one line in it; that line was
