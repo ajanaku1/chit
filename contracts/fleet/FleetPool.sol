@@ -154,6 +154,8 @@ contract FleetPool {
     error ExitPending();
     error CommitBelowPrincipal();
     error DueBeyondWindow();
+    error EmptyBatch();
+    error LengthMismatch();
 
     modifier onlyOperator() {
         if (msg.sender != operator) revert NotOperator();
@@ -233,15 +235,29 @@ contract FleetPool {
         emit PausedSet(true);
     }
 
-    /// @notice Records a spend to be charged to whoever `encDepositor` names,
-    ///         after `dueAt`. Queuing and posting are separate so the charge
-    ///         does not land in the same moment as the campaign-keyed
-    ///         settlement that caused it.
-    function queueSpend(bytes calldata encDepositor, uint256 amount, uint64 dueAt)
+    /// @notice Records a batch of spends, each to be charged to whoever its
+    ///         `encDepositors[i]` names after its own `dueAts[i]`. One batch per
+    ///         sweep, in a transaction that follows no buy: the operator's
+    ///         next nonce after a campaign-keyed settlement used to be the
+    ///         depositor-keyed charge for it, which was a join of its own.
+    ///         Batching, with the entries shuffled and each on its own timer,
+    ///         is what breaks it; the contract's part is to accept them in one
+    ///         call and refuse the whole batch if any entry could never post.
+    function queueSpendBatch(bytes[] calldata encDepositors, uint256[] calldata amounts, uint64[] calldata dueAts)
         external
         onlyOperator
-        returns (uint256 id)
+        returns (uint256[] memory ids)
     {
+        uint256 n = encDepositors.length;
+        if (n == 0) revert EmptyBatch();
+        if (amounts.length != n || dueAts.length != n) revert LengthMismatch();
+        ids = new uint256[](n);
+        for (uint256 i = 0; i < n; ++i) {
+            ids[i] = _queue(encDepositors[i], amounts[i], dueAts[i]);
+        }
+    }
+
+    function _queue(bytes calldata encDepositor, uint256 amount, uint64 dueAt) private returns (uint256 id) {
         // POST_WINDOW runs from now; a dueAt past it is a charge that can
         // never be posted, and a charge never posted is the pool's loss.
         if (dueAt > block.timestamp + POST_WINDOW) revert DueBeyondWindow();
