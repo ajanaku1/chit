@@ -127,7 +127,7 @@ const activeCampaign = async (options: { now?: () => Date } = {}) => {
   await router.handle(await signed(service, "fund", { campaign, fundingReference: "tx-1" }), key("fund"));
   await router.handle(await signed(service, "activate", { campaign }), key("activate"));
 
-  return { router, service, campaign, accounts, chain, market };
+  return { router, service, campaign, accounts, chain, market, deps };
 };
 
 const SEED = `0x${"ab".repeat(32)}` as const;
@@ -232,4 +232,25 @@ test("holdings reports each fleet wallet's ETH and the tokens the browser asks a
   const holdings = (res.body as { holdings: { wallet: string; tokens: Record<string, string> }[] }).holdings;
   assert.equal(holdings.length, accounts.length);
   assert.ok(TOKEN.toLowerCase() in holdings[0]!.tokens);
+});
+
+test("an order is refused while the wallet's exit is pending", async () => {
+  const { router, service, campaign, accounts, deps } = await activeCampaign();
+  const unused = () => {
+    throw new Error("not part of an exit check");
+  };
+  // Swapped in after activation: the router reads its deps by reference, and
+  // only the exit check should ever reach this pool.
+  deps.pool = {
+    balance: async () => ({
+      available: "0", deposited: "0", spent: "0", openDraws: "0",
+      headroom: { sizes: [], perTraderRemaining: "0", poolRemaining: "0" },
+      exit: { requestedAt: "2026-09-15T10:00:00.000Z", amount: "10000000000000000", availableAt: "2026-09-16T10:00:00.000Z" },
+      pool: { paused: false }, poolAddress: owner(0x901),
+    }),
+    withdraw: unused, openDraw: unused, topUpDraw: unused, drawOf: async () => undefined, ownerOf: async () => undefined, closeDraw: unused,
+  } as unknown as NonNullable<RouterDeps["pool"]>;
+  const placed = await router.handle(await signed(service, "order", { campaign, token: TOKEN, totalWei: "1000000000000000", wallets: accounts, entropy: SEED, createdAt: "2026-09-15T12:00:00.000Z" }));
+  assert.equal(placed.status, 400, JSON.stringify(placed.body));
+  assert.equal((placed.body as Record<string, unknown>)["code"], "exit_pending");
 });
