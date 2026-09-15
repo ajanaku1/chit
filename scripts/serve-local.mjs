@@ -92,9 +92,11 @@ const server = createServer((request, response) => {
     }
 
     // Static: the assembled site, with /app/x -> /app/x.html for bare paths.
+    // The app has no index page; its front door is the fleet wizard.
     let file = join(ROOT, normalize(url.pathname).replace(/^(\.\.[/\\])+/, ""));
     try {
       if ((await stat(file)).isDirectory()) file = join(file, "index.html");
+      if (file.endsWith("/app/index.html")) file = file.replace(/index\.html$/, "fleet.html");
     } catch {
       if (!extname(file)) file += ".html";
     }

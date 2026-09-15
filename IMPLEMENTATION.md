@@ -1512,3 +1512,9 @@ added in its own commit. And `trade-page.ts` landed as one 500-line commit, over
 200-line cap: a single new file, where partial commits would be states that do not
 compile. The render check now covers the Trade page at every viewport, and connected
 with a running and a finished order seeded.
+
+## The hackathon layer is retired (2026-09-15)
+
+The repo carried two products. The first, a confidential ERC-4337 paymaster on iExec Nox for Sepolia, was the hackathon entry; the second, Chit Fleet on Robinhood Chain, is the one that is live. The first still owned the front door: `/app/` served "New sponsorship round", the hackathon's page, while the real app sat at `/app/fleet.html`. Today the hackathon is gone from this tree: its six pages and their tests, `spikes/`, the seven `Chit*.sol` contracts, the twenty-two service modules and their tests, the four API routes, five live scripts, nine Sepolia deployment records, the Nox plugin and Sepolia fork in `hardhat.config.ts`, and the six `verify.sh` phases that checked them against Sepolia. `/app` now lands on the fleet wizard, locally and on Vercel. Nothing under `src/fleet`, `api/fleet`, `contracts/fleet`, `test/fleet` or `test/fork/fleet-*` imported any of it; the Fleet suites are unchanged and green. The public hackathon repo, `ajanaku1/chit`, keeps the code and its history.
+
+Two checks in `verify.sh` were already red before this change and were left alone: "scaffolding files are gitignored" and the app's `npm run build`, which fails on the store work in flight in another branch, not on this one.

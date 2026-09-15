@@ -5,7 +5,20 @@
   "outputDirectory": "public",
   "framework": null,
   "crons": [
-    { "path": "/api/fleet/sweep", "schedule": "0 3 * * *" },
-    { "path": "/api/fleet/sweep", "schedule": "0 15 * * *" }
+    {
+      "path": "/api/fleet/sweep",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/fleet/sweep",
+      "schedule": "0 15 * * *"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/app",
+      "destination": "/app/fleet.html",
+      "permanent": false
+    }
   ]
 }

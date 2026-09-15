@@ -15,29 +15,13 @@ async function copyBuildInputs(workspace: string): Promise<void> {
   await mkdir(join(workspace, "app"), { recursive: true });
   await Promise.all([
     cp(join(appRoot, "build.mjs"), join(workspace, "app", "build.mjs")),
-    cp(join(appRoot, "index.html"), join(workspace, "app", "index.html")),
-    cp(join(appRoot, "style.css"), join(workspace, "app", "style.css")),
-    cp(join(appRoot, "sponsor.html"), join(workspace, "app", "sponsor.html")),
-    cp(join(appRoot, "sponsor.css"), join(workspace, "app", "sponsor.css")),
-    cp(join(appRoot, "creator-round.json"), join(workspace, "app", "creator-round.json")),
-    cp(join(appRoot, "assets.json"), join(workspace, "app", "assets.json")),
-    cp(join(appRoot, "rotate.html"), join(workspace, "app", "rotate.html")),
-    cp(join(appRoot, "enroll.html"), join(workspace, "app", "enroll.html")),
-    cp(join(appRoot, "sponsor-two.html"), join(workspace, "app", "sponsor-two.html")),
-    cp(join(appRoot, "user-operation.html"), join(workspace, "app", "user-operation.html")),
     cp(join(appRoot, "fleet.html"), join(workspace, "app", "fleet.html")),
     cp(join(appRoot, "fleet.css"), join(workspace, "app", "fleet.css")),
     cp(join(appRoot, "fleet-dashboard.html"), join(workspace, "app", "fleet-dashboard.html")),
     cp(join(appRoot, "fleet-privacy.html"), join(workspace, "app", "fleet-privacy.html")),
     cp(join(appRoot, "balance.html"), join(workspace, "app", "balance.html")),
     cp(join(appRoot, "trade.html"), join(workspace, "app", "trade.html")),
-    cp(join(appRoot, "service-target.json"), join(workspace, "app", "service-target.json")),
     cp(join(appRoot, "src"), join(workspace, "app", "src"), { recursive: true }),
-    cp(join(projectRoot, "spikes", "active-sponsor", "main.ts"), join(workspace, "spikes", "active-sponsor", "main.ts")),
-    cp(join(projectRoot, "spikes", "service-rotation", "main.ts"), join(workspace, "spikes", "service-rotation", "main.ts")),
-    cp(join(projectRoot, "spikes", "enrollment", "main.ts"), join(workspace, "spikes", "enrollment", "main.ts")),
-    cp(join(projectRoot, "spikes", "operator-sponsor", "main.ts"), join(workspace, "spikes", "operator-sponsor", "main.ts")),
-    cp(join(projectRoot, "spikes", "hosted-user-operation", "main.ts"), join(workspace, "spikes", "hosted-user-operation", "main.ts")),
     cp(join(projectRoot, "src"), join(workspace, "src"), { recursive: true }),
     cp(join(projectRoot, "brand"), join(workspace, "brand"), { recursive: true }),
   ]);
@@ -53,7 +37,7 @@ test("builds when dependencies exist only under app/node_modules", async () => {
   try {
     await copyBuildInputs(workspace);
     await execute(process.execPath, [join(workspace, "app", "build.mjs")]);
-    const bundle = await readFile(join(workspace, "app", "dist", "main.js"), "utf8");
+    const bundle = await readFile(join(workspace, "app", "dist", "fleet-page.js"), "utf8");
     assert.ok(bundle.length > 0);
   } finally {
     await rm(workspace, { recursive: true, force: true });

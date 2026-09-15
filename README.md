@@ -174,8 +174,6 @@ specs/             Spec, plan, data model and tasks per stage
 deployments/       Recorded addresses and transaction hashes
 ```
 
-The repo also carries an earlier project: a confidential ERC-4337 paymaster built on iExec Nox for Sepolia. It lives in `contracts/Chit*.sol`, `src/*.ts` outside `src/fleet/`, and `spikes/`. It is a different product on a different chain.
-
 ---
 
 ## Status
