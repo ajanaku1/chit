@@ -27,15 +27,9 @@ if (process.argv[2] === "delete") {
   await call("setWebhook", { url: `${site}/api/bot`, secret_token: secret, allowed_updates: ["message", "callback_query"], drop_pending_updates: true });
   await call("setMyCommands", {
     commands: [
-      { command: "start", description: "your testnet wallet, topped up" },
-      { command: "buy", description: "buy through Uniswap v4: /buy 0.002" },
-      { command: "sell", description: "sell a share: /sell 50" },
-      { command: "positions", description: "what you hold" },
-      { command: "withdraw", description: "move test ETH out: /withdraw 0x… 0.01" },
-      { command: "faucet", description: "test ETH, once a day" },
-      { command: "fleet", description: "what the real product does" },
-      { command: "pool", description: "the pool's numbers" },
-      { command: "help", description: "the list" },
+      { command: "start", description: "your testnet wallet and the card; everything else is a button" },
+      { command: "pool", description: "the pool's numbers, also in the group" },
+      { command: "help", description: "how it works" },
     ],
   });
   const info = await call("getWebhookInfo", {});

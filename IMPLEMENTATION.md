@@ -1569,3 +1569,24 @@ liquidity) that `market.tokenQuote` now returns instead of the spot
 estimate. The spot estimate tripped the slippage guard on the testnet venue,
 where one buy is a tenth of the liquidity; on the fork the exact quote
 matched the fill to the wei. The service's pooled buys inherit the fix.
+
+## Chit Bot, buttons all the way, and the fleet from the chat (2026-09-16, advisor, branch feat/chit-bot)
+
+The playground grew into the bot people expect: a card with buttons, a
+reply field that opens when a number or an address is needed, and a token
+card for any contract address pasted into the chat. Any token with an ETH
+pool on the venue trades; settings hold the user's amounts, shares and
+slippage, a confirmation step and sell protection; positions show what each
+holding would fetch now; withdraw walks through a prompt and preset shares;
+referral links count and promise nothing. The card still says whose key it
+is and why that is fine on testnet.
+
+The Fleet card drives Chit's own product from the chat: deposit into the
+pool from the wallet, create a fleet of five with sealed keys (the service
+sees addresses and salts), activate with a draw, buy from every wallet,
+pause, resume, close, pool balance. `bot-fleet.ts` is the driver over the
+hosted service's routes with the challenge flow signed by the playground
+key; the test's fake service recovers every signature to the wallet and
+refuses a tampered one. Eleven conversation tests, one fork test of the
+adapter against the live router. `BOT_FLEET_OFF=1` hides the card until the
+service is wired to the pool.

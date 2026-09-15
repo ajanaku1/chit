@@ -6,35 +6,57 @@ wallet, a balance, and buttons. Two modes, both labelled on the card.
 ## Playground (testnet, now)
 
 Press Start in private. The bot makes you a wallet on Robinhood Chain
-testnet (46630), funds it with test ETH from a faucet, and shows the card:
+testnet (46630), funds it with test ETH from a faucet, and shows the card.
+Everything after that is a button; when a number or an address is needed,
+the reply field opens with a hint, the way Trojan does it.
 
 ```
 Robinhood Chain testnet · 46630
 0x…your wallet…  (tap to copy)
-balance: 0.02 ETH · 4.95 FLEET
+balance: 0.02 ETH
+4.95 FLEET · 1980 PEPE
 
-[ Buy ] [ Sell ]
-[ Positions ] [ Fleet ]
-[ Withdraw ] [ ↻ Refresh ]
-[ Help ]
+[ 💰 Buy ]      [ 💸 Sell ]
+[ 📊 Positions ] [ 🚀 Fleet ]
+[ 🔑 Sessions ]  [ 🤝 Refer ]
+[ ⚙️ Settings ]  [ 🏦 Withdraw ]
+[ ❓ Help ]      [ ↻ Refresh ]
 ```
 
-- **Buy**: 0.001 / 0.005 / 0.01 ETH, or `/buy 0.002`. Quoted from the pool
-  with fee and price impact, a 3% slippage guard, then the real Uniswap v4
-  router. The reply carries the transaction hash and the tokens received.
-- **Sell**: 25 / 50 / 100%, or `/sell 50`. The first sale approves Permit2
-  and the router once; then the router, guard included.
-- **Positions**: ETH, tokens, and what the tokens would fetch at the pool's
-  current price.
-- **Withdraw**: `/withdraw 0xAddress 0.01`. Test ETH, worth nothing off the
-  chain.
-- **Faucet**: `/faucet`, once a day per wallet, while the faucet key has ETH.
-- **Fleet**: what the real product does, and where it lives today (the app).
-- **/pool**: the pool's numbers, read from the chain; the one command that
-  answers in the group.
+- **Paste any token's contract address** and its card appears: price per
+  ETH, the pool's ETH, what you hold, and your buy and sell buttons. Any
+  token with an ETH pool on the venue; one without says so.
+- **Buy**: your three presets, or a custom amount through the reply field.
+  Quoted from the pool with fee and price impact (the exact-in math, matched
+  to the wei on a fork), a slippage guard from your settings, then the real
+  Uniswap v4 router. The reply carries the hash and the tokens received.
+- **Sell**: your three shares, or a custom one. The first sale of a token
+  approves Permit2 and the router once. Sell protection asks before more
+  than 75% of a position.
+- **Positions**: every token you hold, and what each would fetch if sold now,
+  with sell buttons on the row.
+- **Fleet**: Chit's own product, step by step, from the chat: deposit a
+  published size into the pool from your wallet, create a fleet of five
+  (fresh keys, sealed; the service sees addresses and salts), activate with a
+  draw, buy from every wallet through the router, pause, resume, close, and
+  your pool balance. Every signed action goes through the hosted service's
+  challenge flow, signed by the playground key the way the wallet signs in
+  the browser. Until the service is wired to the pool it answers with its
+  reason, and the card says so.
+- **Settings**: buy amounts, sell shares, buy and sell slippage, confirm
+  trades (every trade asks first), sell protection. No priority fees, no MEV
+  toggles, no turbo: the chain has a sequencer and none of that exists here.
+- **Refer**: your link, `t.me/<bot>?start=r-<code>`, and how many came
+  through it. Rewards: none yet, said plainly; the roadmap's referral pays
+  from the fee when the fee goes live.
+- **Withdraw**: paste the address, pick half or all-but-gas, or type an
+  amount. **Faucet** tops you up once a day from the card. **/pool** answers
+  in the group with the pool's numbers; every other command there is sent
+  to private.
 
 Every figure is read from the chain when the card is drawn. Every trade is a
-real transaction and the reply says its hash. A failure is a message with
+real transaction and the reply says its hash. One trade at a time per
+wallet, so two taps cannot race on the nonce. A failure is a message with
 the error's first line, never silence.
 
 **The bot holds this key.** It says so on the card. It can, because the key
@@ -42,6 +64,7 @@ holds test ETH and test tokens and nothing else; the playground exists so
 anyone can try Chit in one tap with nothing to lose. Keys are sealed at rest
 (AES-256-GCM under a secret the host holds) in a store shared by every
 function instance, so a user meets the same wallet whichever one answers.
+The runtime refuses to start on any chain but testnet.
 
 ## Your wallet (testnet, then mainnet)
 
@@ -62,17 +85,18 @@ Trojan gives speed by taking your key. Chit gives speed without it.
 
 ## What is built, what is next
 
-Built (branch `feat/chit-bot`): the playground, end to end. Handlers over
-ports (store, chain, Telegram) with seven conversation tests against fakes;
-the chain adapter with a fork test against the live Uniswap v4 router
-(faucet, quote, buy, sell, send); the sell encoder and Permit2 approvals in
-`v4-swap.ts`; exact-in quotes with fee and price impact in `market.ts`,
-which also fixes the service's slippage guard on thin pools; the webhook in
-`api/bot.js`; `scripts/bot-set-webhook.mjs`.
+Built (branch `feat/chit-bot`): the playground, end to end, buttons and
+reply prompts. Handlers over ports (store, chain, Telegram, the fleet
+service) with eleven conversation tests against fakes, one of which drives
+the whole fleet journey against a fake service that recovers every
+signature; the chain adapter with a fork test against the live Uniswap v4
+router (faucet, token info, quote, buy, sell, send); the sell encoder and
+Permit2 approvals in `v4-swap.ts`; exact-in quotes with fee and price impact
+in `market.ts`, which also fixes the service's slippage guard on thin pools;
+the webhook in `api/bot.js`; `scripts/bot-set-webhook.mjs`.
 
-Next: the fleet from the chat (the signed flow through the SDK), then
-session-key trading, then any token with a v4 pool rather than the venue
-token alone.
+Next: session-key trading on mainnet (the same buttons, no key held), and
+recovery of what a fleet wallet holds after a close.
 
 ## Turning it on
 

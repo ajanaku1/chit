@@ -25,6 +25,7 @@ import { isHex } from "viem";
 
 import { isAddress, type Address } from "./types.js";
 import { createBotChain } from "./bot-chain.js";
+import { createFetchFleetApi } from "./bot-fleet.js";
 import { ChitBot } from "./bot-handlers.js";
 import { createTelegram } from "./bot-telegram.js";
 import { MemoryBotWalletStore, NeonBotWalletStore, type BotWalletStore } from "./bot-wallets.js";
@@ -76,21 +77,24 @@ export const getBot = (): ChitBot | undefined => {
   const chain = createBotChain({
     chainId: CHAIN_ID,
     rpcUrl: process.env.FLEET_RPC_URL || process.env.ROBINHOOD_TESTNET_RPC_URL || DEFAULT_RPC,
-    token: token0,
+    defaultToken: token0,
     router: ROUTER,
     poolManager: POOL_MANAGER,
     ...(isAddress(pool) ? { pool } : {}),
     ...(faucetKey ? { faucetKey: faucetKey as `0x${string}` } : {}),
   });
   if (!faucetKey) warnOnce("faucet", "BOT_FAUCET_PRIVATE_KEY is not set: new wallets get no test ETH");
+  const site = process.env.FLEET_ORIGIN || "https://chit.tools";
   bot = new ChitBot({
     store: storeFromEnv(),
     chain,
     telegram: createTelegram(token),
+    // The fleet from the chat drives the hosted service on the same host; BOT_FLEET_OFF=1 hides the buttons until it is wired.
+    ...(process.env.BOT_FLEET_OFF === "1" ? {} : { fleetApi: createFetchFleetApi(site) }),
     keySecret,
     botUsername: username,
     ...(faucetEth ? { faucetWei: BigInt(Math.round(Number(faucetEth) * 1e18)) } : {}),
-    siteUrl: process.env.FLEET_ORIGIN || "https://chit.tools",
+    siteUrl: site,
   });
   return bot;
 };

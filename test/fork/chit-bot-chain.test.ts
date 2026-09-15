@@ -37,7 +37,7 @@ describe("Chit Bot chain adapter (46630 fork)", () => {
     assert.equal(privateKeyToAccount(faucetKey).address.toLowerCase(), faucetWallet!.account.address.toLowerCase());
     // The adapter as the bot builds it, over the fork's in-process provider instead of an HTTP url.
     const forked = createBotChain({
-      chainId: 46630, rpcUrl: "fork", token: token.address, router: ROBINHOOD_TESTNET_ROUTER, poolManager: POOL_MANAGER, faucetKey,
+      chainId: 46630, rpcUrl: "fork", defaultToken: token.address, router: ROBINHOOD_TESTNET_ROUTER, poolManager: POOL_MANAGER, faucetKey,
       transport: custom(provider as { request: (args: { method: string; params?: unknown }) => Promise<unknown> }),
     });
     const userKey = `0x${"c0".repeat(32)}` as const;
@@ -48,20 +48,30 @@ describe("Chit Bot chain adapter (46630 fork)", () => {
     assert.equal(topped.ok, true);
     assert.equal(await forked.ethBalance(user), parseEther("0.02"));
 
-    const quote = await forked.quoteBuy(parseEther("0.001"));
+    const info = await forked.tokenInfo(token.address);
+    assert.equal(info.hasPool, true);
+    assert.equal(info.symbol, "FLEET");
+    assert.ok(info.perEth > parseEther("990") && info.perEth < parseEther("1010"), `about 1000 FLEET per ETH: ${info.perEth}`);
+    // The seeder took liquidity L = 0.3e18 at sqrt(1000): the ETH side is L / sqrtP, about 0.0095 ETH of the 0.02 offered.
+    assert.ok(info.poolEth > parseEther("0.0094") && info.poolEth < parseEther("0.0096"), `the position's ETH side: ${info.poolEth}`);
+    const nowhere = await forked.tokenInfo(seeder.address);
+    assert.equal(nowhere.hasPool, false, "a contract with no pool says so");
+
+    const quote = await forked.quoteBuy(token.address, parseEther("0.001"));
     assert.ok(quote && quote > parseEther("0.9") && quote < parseEther("1.01"), `about 1 FLEET for 0.001 ETH at 1000/ETH: ${quote}`);
-    const bought = await forked.buy(userKey, parseEther("0.001"), minOutFor(quote!, 300));
+    const bought = await forked.buy(userKey, token.address, parseEther("0.001"), minOutFor(quote!, 300));
     assert.equal(bought.ok, true, "the buy landed through the router");
-    const held = await forked.tokenBalance(user);
+    const held = await forked.tokenBalance(token.address, user);
     assert.ok(held > 0n && held >= minOutFor(quote!, 300), "within the guard");
+    assert.equal(held, quote, "the exact-in quote is the fill");
 
     const half = held / 2n;
-    const sellQuote = await forked.quoteSell(half);
+    const sellQuote = await forked.quoteSell(token.address, half);
     assert.ok(sellQuote && sellQuote > 0n);
     const ethBefore = await forked.ethBalance(user);
-    const sold = await forked.sell(userKey, half, minOutFor(sellQuote!, 300));
+    const sold = await forked.sell(userKey, token.address, half, minOutFor(sellQuote!, 300));
     assert.equal(sold.ok, true, "the sale landed (approvals then the router)");
-    assert.equal(await forked.tokenBalance(user), held - half);
+    assert.equal(await forked.tokenBalance(token.address, user), held - half);
     assert.ok((await forked.ethBalance(user)) > ethBefore - parseEther("0.0005"), "ETH came back, minus gas for three transactions");
 
     const sent = await forked.send(userKey, faucetWallet!.account.address, parseEther("0.005"));

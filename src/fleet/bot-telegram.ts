@@ -10,7 +10,7 @@ export type InlineButton = { text: string; callback_data: string } | { text: str
 export type Keyboard = InlineButton[][];
 
 export type Outgoing =
-  | { kind: "send"; chatId: string; text: string; keyboard?: Keyboard }
+  | { kind: "send"; chatId: string; text: string; keyboard?: Keyboard; /** Opens the reply field with a hint: how a custom amount or an address is asked for. */ ask?: string }
   | { kind: "edit"; chatId: string; messageId: number; text: string; keyboard?: Keyboard }
   | { kind: "answer"; callbackId: string; text?: string };
 
@@ -34,7 +34,8 @@ export const createTelegram = (token: string): Telegram => {
   return {
     async deliver(out) {
       if (out.kind === "send") {
-        await call("sendMessage", { chat_id: out.chatId, text: out.text, parse_mode: "HTML", disable_web_page_preview: true, ...(out.keyboard ? { reply_markup: { inline_keyboard: out.keyboard } } : {}) });
+        const replyMarkup = out.ask ? { force_reply: true, input_field_placeholder: out.ask, selective: true } : out.keyboard ? { inline_keyboard: out.keyboard } : undefined;
+        await call("sendMessage", { chat_id: out.chatId, text: out.text, parse_mode: "HTML", disable_web_page_preview: true, ...(replyMarkup ? { reply_markup: replyMarkup } : {}) });
       } else if (out.kind === "edit") {
         await call("editMessageText", { chat_id: out.chatId, message_id: out.messageId, text: out.text, parse_mode: "HTML", disable_web_page_preview: true, ...(out.keyboard ? { reply_markup: { inline_keyboard: out.keyboard } } : {}) });
       } else {
