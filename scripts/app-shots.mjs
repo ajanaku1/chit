@@ -6,7 +6,7 @@ import { chromium } from "playwright";
 
 const BASE = process.env.APP_URL ?? "http://localhost:3000/app/";
 const OUT = new URL("../app/evidence/", import.meta.url);
-const PAGES = ["balance", "fleet", "fleet-dashboard", "fleet-privacy"];
+const PAGES = ["balance", "fleet", "fleet-dashboard", "fleet-privacy", "trade"];
 const VIEWPORTS = [
   { name: "1606", width: 1606, height: 1161 },
   { name: "1440", width: 1440, height: 900 },
@@ -62,7 +62,7 @@ for (const viewport of VIEWPORTS) {
 // instead of the signed-out placeholders the first pass sees. Any request
 // that escapes the local origin is aborted and counted as a failure, same as
 // a layout overflow or a console error.
-const CONNECTED_PAGES = ["balance", "fleet-dashboard"];
+const CONNECTED_PAGES = ["balance", "fleet-dashboard", "trade"];
 const CONNECTED_VIEWPORTS = [
   { name: "390", width: 390, height: 844 },
   { name: "320", width: 320, height: 640 },
@@ -80,7 +80,7 @@ const STATUS = {
 const seedConnected = ({ addr, accounts }) => {
   window.ethereum = {
     request: async ({ method }) =>
-      method === "eth_chainId" ? "0xb626" : method === "eth_accounts" ? [addr] : null,
+      method === "eth_chainId" ? "0xb626" : method === "eth_accounts" ? [addr] : method === "personal_sign" ? `0x${"11".repeat(65)}` : null,
     on() {},
   };
   sessionStorage.setItem("chit-fleet-wallet", addr);
@@ -106,6 +106,25 @@ const seedConnected = ({ addr, accounts }) => {
       accounts,
     }),
   );
+  // Two orders for the Trade page: one still running, one finished long ago.
+  const order = (id, createdAt, states) => ({
+    order: { id, campaign: "c1", token: "0x13283ab8e1f2bc4297e9ec6480c80c59674af554", totalWei: "5000000000000000", wallets: accounts, entropy: `0x${"ab".repeat(32)}`, windowMs: 300000, createdAt, owner: addr },
+    symbol: "FLEET",
+    cancelled: false,
+    placedAt: createdAt,
+    slices: accounts.map((wallet, index) => ({
+      index, wallet, amountWei: "1000000000000000", dueAt: new Date(Date.parse(createdAt) + 60000 * (index + 1)).toISOString(),
+      state: states[index], attempts: states[index] === "pending" ? 0 : 1,
+      ...(states[index] === "sponsored" ? { txHash: `0x${String(index + 1).repeat(64)}` } : {}),
+    })),
+  });
+  localStorage.setItem(
+    `chit-orders:${addr.toLowerCase()}`,
+    JSON.stringify([
+      order(`0x${"c1".repeat(32)}`, new Date(Date.now() + 120000).toISOString(), ["sponsored", "sponsored", "pending", "pending", "pending"]),
+      order(`0x${"c2".repeat(32)}`, "2026-09-14T10:00:00.000Z", ["sponsored", "sponsored", "sponsored", "sponsored", "failed"]),
+    ]),
+  );
 };
 
 for (const viewport of CONNECTED_VIEWPORTS) {
@@ -127,8 +146,16 @@ for (const viewport of CONNECTED_VIEWPORTS) {
     } catch {
       payload = {};
     }
-    if (payload.action === "status") {
-      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(STATUS) });
+    // The page's own reads, answered locally: no service runs in a render check.
+    const canned = {
+      status: STATUS,
+      challenge: { nonce: `0x${"22".repeat(32)}`, issuedAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 600000).toISOString() },
+      list: { fleets: [{ campaign: "c1", state: "Active", remaining: STATUS.draw.remaining, accounts: ACCOUNTS.length }] },
+      holdings: { holdings: ACCOUNTS.map((wallet) => ({ wallet, eth: "1000000000000000", tokens: { "0x13283ab8e1f2bc4297e9ec6480c80c59674af554": "695139410069661587" } })) },
+      tokenQuote: { token: "0x13283ab8e1f2bc4297e9ec6480c80c59674af554", symbol: "FLEET", decimals: 18, hasPool: true, sqrtPriceX96: "2088889848049424137305055772769", estimatedOut: "695139410069661587", windowMs: 300000, capWei: "500000000000000" },
+    };
+    if (payload.action in canned) {
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(canned[payload.action]) });
     }
     failures.push(`connected @ ${viewport.name}: unexpected API call: ${request.method()} ${url.pathname} ${payload.action ?? ""}`);
     return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ code: "not_in_render_check" }) });

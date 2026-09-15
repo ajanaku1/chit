@@ -30,6 +30,7 @@ async function copyBuildInputs(workspace: string): Promise<void> {
     cp(join(appRoot, "fleet-dashboard.html"), join(workspace, "app", "fleet-dashboard.html")),
     cp(join(appRoot, "fleet-privacy.html"), join(workspace, "app", "fleet-privacy.html")),
     cp(join(appRoot, "balance.html"), join(workspace, "app", "balance.html")),
+    cp(join(appRoot, "trade.html"), join(workspace, "app", "trade.html")),
     cp(join(appRoot, "service-target.json"), join(workspace, "app", "service-target.json")),
     cp(join(appRoot, "src"), join(workspace, "app", "src"), { recursive: true }),
     cp(join(projectRoot, "spikes", "active-sponsor", "main.ts"), join(workspace, "spikes", "active-sponsor", "main.ts")),

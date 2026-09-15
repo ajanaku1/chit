@@ -1484,3 +1484,31 @@ events alone: it unions those Stage 1 fleets with the pool's draws whose sealed
 owner reference opens to the caller, read operator-side, publishing nothing. The
 `fleet-trade` gate runs a five-slice order on a fresh chain across two service
 instances and two polls.
+
+## Trading panel, plan 2: the Trade page (2026-09-15)
+
+A trader pastes a token address, sees whether the venue has an ETH pool for it and
+roughly what the total buys, enters a total, and reads the plan: how many wallets,
+about how much each, over about how long. Placing the order confirms in a dialog and
+signs once. From then on the open page drives it: on each poll the browser marks the
+due slices as sent *before* asking the service to run them, sends only those indices,
+and settles each from the reply. A reply that never comes leaves those slices
+"unconfirmed", never re-sent, and settled against how much the fleet's remaining draw
+fell in the meantime. A rejected slice retries twice, then fails. Orders live in the
+browser under `chit-orders:<owner>`; the service lists nothing. Slice hashes show as
+text with a Copy button, because no block explorer for this testnet is recorded
+anywhere in the repo and the page adds no external link. The page says trades stay
+public and never sells volume: the stagger hides who funded the fleet, nothing else.
+`order` and `trade` now refuse while the wallet's exit is pending. Two things are
+true and worth knowing: polls never overlap (a timer tick and a freshly placed order
+queue behind each other, and each order is re-read before it is touched), and every
+`trade` poll asks the wallet for one signature, because every state-changing action
+is signed. Letting `trade` ride on the order's own signature would remove those
+prompts and is a service change for later.
+
+Two constraints bent, both on the record. The isolated-build test lists every page
+it stages by name, so a new page cannot exist without one line in it; that line was
+added in its own commit. And `trade-page.ts` landed as one 500-line commit, over the
+200-line cap: a single new file, where partial commits would be states that do not
+compile. The render check now covers the Trade page at every viewport, and connected
+with a running and a finished order seeded.

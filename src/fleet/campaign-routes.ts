@@ -611,6 +611,11 @@ export class CampaignRouter {
     const totalWei = String(body["totalWei"] ?? "");
     if (!/^\d+$/.test(totalWei)) throw new TradeValidationError("invalid_total");
 
+    // Nothing new leaves the pool for a wallet on its way out of it.
+    if (this.#deps.pool) {
+      const { exit } = await this.#deps.pool.balance(owner);
+      if (exit.requestedAt) throw new TradeValidationError("exit_pending");
+    }
     // A fresh instance restores the fleet from chain without its accounts; ask
     // the chain before refusing, as a plain buy does.
     if (this.#deps.chain) await this.#syncEnrolled(record, this.#deps.chain, wallets);

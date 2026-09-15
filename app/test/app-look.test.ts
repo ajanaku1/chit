@@ -13,7 +13,7 @@ const appRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = dirname(appRoot);
 const read = (path: string): Promise<string> => readFile(join(appRoot, path), "utf8");
 
-const PAGES = ["fleet.html", "fleet-dashboard.html", "balance.html", "fleet-privacy.html"] as const;
+const PAGES = ["fleet.html", "fleet-dashboard.html", "balance.html", "fleet-privacy.html", "trade.html"] as const;
 const NEW_STYLES = ["src/styles/tokens.css", "src/styles/components.css", "src/styles/pages.css"] as const;
 
 const cssColor = (css: string, name: string): string => {
@@ -87,6 +87,7 @@ test("the app is dark-only: no theme switch, ink browser chrome", async () => {
 const NAV: ReadonlyArray<readonly [string, string]> = [
   ["./balance.html", "Balance"],
   ["./fleet.html", "Set up"],
+  ["./trade.html", "Trade"],
   ["./fleet-dashboard.html", "Control Room"],
   ["./fleet-privacy.html", "Boundary"],
 ];
@@ -408,4 +409,54 @@ test("every action on the Control Room is a styled pill or row, never a bare but
   assert.match(html, /<button type="button" class="ghost" data-action="topUp">Top up<\/button>/, "Top up renders as an unstyled bar");
   const rows = rules(await read("src/styles/pages.css")).find(([name]) => name === ".control-list button");
   assert.ok(rows && /border-radius:\s*var\(--radius-inner\)/.test(rows[1]), "control rows keep square corners inside a rounded card");
+});
+
+test("the Trade page: fleet card, order form, orders list, and the honest line about public trades", async () => {
+  const html = await read("trade.html");
+  assert.match(html, /<main id="trade" class="dash">/);
+  for (const id of ["fleet-switch", "fleet-chip", "fleet-left", "holdings", "order-form", "o-token", "o-quote", "o-total", "o-plan", "o-place", "orders-open", "orders-past", "trade-error"]) assert.match(html, new RegExp(`id="${id}"`), `no #${id}`);
+  assert.match(html, /<button id="o-place" type="submit" class="primary big" disabled>Place order<\/button>/);
+  assert.match(html, /Trades stay public/);
+  assert.doesNotMatch(html, /organic|volume/i, "the stagger hides the funder, it does not sell volume");
+  assert.match(await read("build.mjs"), /"trade-page": new URL\("\.\/src\/trade-page\.ts"/);
+  assert.match(await read("build.mjs"), /"\.\/trade\.html"/);
+});
+
+test("the Trade page marks slices sent before it asks, never re-sends an unconfirmed one, and asks before it signs", async () => {
+  const script = await read("src/trade-page.ts");
+  const poll = /async #pollOnce\([\s\S]*?\n  \}/.exec(script);
+  assert.ok(poll, "no #pollOnce");
+  assert.ok(poll[0].indexOf("markSent(") < poll[0].indexOf('signedFleetApi(wallet, "trade"'), "the request leaves before the slices are marked sent");
+  assert.match(poll[0], /markUnconfirmed\(/, "a lost reply leaves slices pending, so they would be re-sent");
+  assert.match(script, /pending: pendingIndices\(/, "the service must receive only what the browser still holds");
+  const place = /async #place\([\s\S]*?\n  \}/.exec(script);
+  assert.ok(place && place[0].indexOf("confirmDialog(") < place[0].indexOf('signedFleetApi(wallet, "order"'), "placing an order does not confirm first");
+  assert.match(await read("src/fleet/page-shared.ts"), /\["quote", "challenge", "read", "balance", "status", "tokenQuote", "order", "list", "holdings"\]/, "signed reads must not carry an idempotency key");
+});
+
+test("the Trade page's select and per-slice Copy buttons fit their rows", async () => {
+  const pages = rules(await read("src/styles/pages.css"));
+  const select = pages.find(([name]) => name.split(/,\s*/).includes(".field select"));
+  assert.ok(select && /font-family:\s*var\(--font-mono\)/.test(select[1]), "the fleet switcher is the browser's default select");
+  const label = pages.find(([name]) => name.split(/,\s*/).includes(".field > span"));
+  assert.ok(label && /text-transform:\s*uppercase/.test(label[1]), "a field's span caption is not styled like its label");
+  const copy = pages.find(([name]) => name === ".order__slices .ghost");
+  assert.ok(copy && /min-height:\s*1\.\d+rem/.test(copy[1]), "per-slice Copy is a full-size pill and wraps the row");
+});
+
+test("polls never overlap, each sends from a fresh read, and lost replies reconcile from the unsigned status read", async () => {
+  const script = await read("src/trade-page.ts");
+  assert.match(script, /#polling/, "two polls can run at once and send the same slices twice");
+  const once = /async #pollOnce\([\s\S]*?\n  \}/.exec(script);
+  assert.ok(once, "no #pollOnce");
+  assert.ok(once[0].indexOf("store.get(") < once[0].indexOf("markSent("), "a poll works from a stale snapshot instead of re-reading the order");
+  assert.match(once[0], /readStatus\(/, "remainingAtSend is not a fresh read taken before the send");
+  const reconcile = /async #reconcile\([\s\S]*?\n  \}/.exec(script);
+  assert.ok(reconcile && /readStatus\(/.test(reconcile[0]) && !/signedFleetApi\(wallet, "list"/.test(reconcile[0]), "reconcile must not cost a wallet signature");
+});
+
+test("copying a slice's hash is announced, as copying the contract address is", async () => {
+  assert.match(await read("trade.html"), /<span id="copy-status" class="sr-only" role="status" aria-live="polite"><\/span>/, "no live region for copy feedback");
+  const row = /  #hashRow\(hash: string\)[\s\S]*?\n  \}/.exec(await read("src/trade-page.ts"));
+  assert.ok(row && /copy-status/.test(row[0]), "the Copy button only changes its own text, which assistive tech may not announce");
 });

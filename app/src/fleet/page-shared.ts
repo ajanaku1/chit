@@ -52,7 +52,7 @@ export const fleetApi = async (
         ? "buy"
         : "campaign";
   const headers: Record<string, string> = { "content-type": "application/json" };
-  if (!["quote", "challenge", "read", "balance", "status"].includes(action)) {
+  if (!["quote", "challenge", "read", "balance", "status", "tokenQuote", "order", "list", "holdings"].includes(action)) {
     headers["idempotency-key"] = `fleet-${action}${Date.now()}`.padEnd(22, "0").slice(0, 40);
   }
   const response = await fetch(`/api/fleet/${route}`, {
