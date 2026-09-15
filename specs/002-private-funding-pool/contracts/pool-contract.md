@@ -21,4 +21,6 @@ Solidity 0.8.x, deployed on 46630. Operator is the Stage 1 operator key.
 Every event and function names at most one of {depositor, campaign}. Tests assert this over the full ABI.
 
 ## Errors
-`NotOperator`, `Paused`, `SizeNotAllowed`, `DepositorCapExceeded`, `PoolCapExceeded`, `DrawCapExceeded`, `DrawNotPending`, `DrawNotFunded`, `NotDue`, `DrawExceeded`, `NothingReserved`, `ExitNotRequested`, `ExitNotDue`, `ClaimExceeded`.
+`NotOperator`, `Paused`, `SizeNotAllowed`, `DepositorCapExceeded`, `PoolCapExceeded`, `DrawCapExceeded`, `DrawExists`, `DrawNotPending`, `DrawNotFunded`, `DrawNotOpen`, `NotDue`, `DrawExceeded`, `PostWindowClosed`, `AlreadyPosted`, `NothingReserved`, `ReservationOpen`, `CommitExceedsReservation`, `CommitBelowPrincipal`, `PrincipalMismatch`, `NothingDeposited`, `ExitNotRequested`, `ExitNotDue`, `ExitPending`, `DueBeyondWindow`, `ClaimExceeded`, `TransferFailed`, `NoAccounts`, `DelayTooShort`.
+
+`paused` refuses deposits, draws, funding, principal, top-ups and the operator claim; exits are never paused. `deposit` refuses a wallet whose exit is pending. `commit` refuses an amount below the principal that left. `queueSpend` refuses a `dueAt` beyond `POST_WINDOW`.

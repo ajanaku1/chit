@@ -1512,3 +1512,37 @@ added in its own commit. And `trade-page.ts` landed as one 500-line commit, over
 200-line cap: a single new file, where partial commits would be states that do not
 compile. The render check now covers the Trade page at every viewport, and connected
 with a running and a finished order seeded.
+
+## Audit fixes, round one: service guards on main, contract one-liners on a branch (2026-09-15)
+
+Three commits on `main` close the service-side findings that needed no
+redeploy. `pool-buy.ts`: the sweep posts charges first and funds each draw in
+its own try (A3), skips a draw below its own headroom (A3), charges the seeded
+headroom to the depositor (A1), queues a withdrawal's charge before paying it
+(A12), retries a failed commit after a mined buy instead of rolling it back
+(A11), bounds the execute transaction by the gas ceiling (A9), and keeps the
+delay floor above the contract's (A37). `campaign-routes.ts`: a wallet whose
+exit is pending gets no draw, buy or withdrawal (F7); a buy re-reads the
+session from the chain and refuses on paused or revoked (A14); withdraw,
+activate, top-up and buy are serialized per wallet and activate re-reads the
+balance after the chain activation (A5, A6); a draw below its minimum, a token
+outside `FLEET_TOKEN_ALLOWLIST`, a malformed account list and a gas ceiling
+below the floor are refused (A3, A8, A41, A9). `service-runtime.ts`: every
+configured address must hold code, checked once at boot, refused with a named
+reason after (A33); the catch-all logs an error's first line only (A63).
+Tests: `test/fleet/pool-sweep.test.ts`, `test/fleet/money-route-guards.test.ts`;
+the pooled funding fork test now expects the headroom charge.
+
+`audit/contract-fixes` holds the contract changes, which need a redeploy on
+46630 and are the founder's call: `deposit` refuses a wallet whose exit is
+pending (F1), `commit` refuses an amount below the principal that left (F4),
+`queueSpend` refuses a `dueAt` beyond `POST_WINDOW` (F5), and `paused` now
+gates `fund`, `topUpDraw` and `claimOperator` too (A36), so a guardian that
+can only pause would actually stop the money. The pre-audit tests for F1, F4
+and F5 assert the refusal now; F2 and F3 still pass as reproductions. The
+spec's error list matches the contract again (A67, partly).
+
+Not done here, on purpose: the amount-and-id join (A4, A30, A31), which is a
+design change to how charges are posted, and the guardian and multisig (F2,
+F8), which change the constructor. Both are next, and both want the founder
+in the room.
