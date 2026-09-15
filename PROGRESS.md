@@ -1,0 +1,63 @@
+# PROGRESS.md — how "how far along is Chit" is computed
+
+The landing's **Launch app** and **Open the app** buttons open a sheet that says
+how much of Chit is built. That sheet is not written by a person. It is
+generated from the repo, on every push to `main`, by the rule on this page.
+If you work on Chit, this is the one rule about progress you need to know:
+
+> **Progress is read, never typed.** The only way to move the number is to
+> move a fact the script reads.
+
+## What counts
+
+| Fact | Where it is read from | What it becomes |
+|---|---|---|
+| A task is done | `- [x] Txxx …` in `specs/*/tasks.md` | one of `tasks.done` |
+| A task is open | `- [ ] Txxx …` in `specs/*/tasks.md` | one of `tasks.total`, listed under `specs[].open` |
+| A phase | `## Phase N: …` headings in `tasks.md` | `specs[].phases[]` with its own done/total |
+| A stage's status | the **Stages** table in `README.md` | `stages[]`, status text verbatim |
+| The last change | `git log -1`, `git rev-list --count` | `commit`, `committedAt`, `commits` |
+
+Nothing else counts. Not commits, not lines, not a test count, not a summary.
+
+## Why the task list is trusted
+
+The workspace laws say **done = the check passed**: a task's box is ticked only
+when its `verify.sh` phase is green, never from someone's own assessment. So a
+ticked box is already the strongest fact the repo has, and the sheet inherits
+that discipline without adding a second bookkeeping system.
+
+A stage with no spec yet (Stage 3) contributes no tasks. The percentage is of
+the specced work, and the sheet says so.
+
+## The chain
+
+```
+specs/*/tasks.md + README.md ──▶ scripts/progress.mjs ──▶ landing/public/progress.json
+                                        │
+        .github/workflows/progress.yml runs it on every push to main
+        and commits the file when the facts changed
+                                        │
+        mirror/sync-public.sh carries it to the public mirror
+                                        │
+        api/progress.js serves it from chit.tools (5 min edge cache)
+        so no visitor's browser ever talks to GitHub
+                                        │
+        landing/public/main.js renders the sheet; falls back to the
+        same-origin progress.json when the API is unreachable (local dev)
+```
+
+## Working with it
+
+- Tick a task in `tasks.md` when its gate passes. That is the whole job; the
+  Action does the rest on the next push to `main`.
+- Changed a task list and want to see it locally? `node scripts/progress.mjs`,
+  then open the landing.
+- `node scripts/progress.mjs --check` exits 1 if `progress.json` no longer
+  matches the facts (timestamp and commit fields are ignored). The landing's
+  test suite runs the same check.
+- Never edit `landing/public/progress.json` by hand. The next push overwrites
+  it, and the change it carried was not a fact.
+- Adding a new spec under `specs/NNN-…/` with a `tasks.md` in the standard
+  shape is picked up automatically. A new stage row in the README table is
+  too.

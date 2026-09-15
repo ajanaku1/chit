@@ -47,7 +47,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
 
 <a class="skip-link" href="#main-content">Skip to content</a>
 
-<div class="page" data-screen="hero">
+<div class="page" id="the-page" data-screen="hero">
 
   <!-- ONE ambient field, shared by both screens. Its clip is the morph's spine. -->
   <div class="wash" data-reveal style="--rv-delay:90ms; --rv-dur:970ms">
@@ -67,9 +67,12 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
       </svg>
       <span class="brand__name">Chit</span>
       </a>
+      <nav class="nav" aria-label="About">
+        <ul><li><a href="https://ajanaku1.github.io/bambam/meet-the-dev"
+          target="_blank" rel="noopener noreferrer">Meet the dev</a></li></ul>
+      </nav>
     </div>
-    <a class="btn-nav" href="https://ajanaku1.github.io/bambam/meet-the-dev"
-       target="_blank" rel="noopener noreferrer">Meet the dev</a>
+    <a class="btn-nav" href="#progress" aria-controls="progress" aria-expanded="false">Launch app</a>
     <div class="contract-row">
       <span class="contract-row__label">CA</span>
       <code id="contract-address">0xD523A627030509021cC39B6d7C8543417D3E50D8</code>
@@ -94,8 +97,8 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
             </h1>
             <p class="hero__sub" data-reveal style="--rv-delay:833ms; --rv-dur:617ms">Your main wallet never funds your fleet. The chain shows a deposit into Chit and fleets funded by Chit, and no transaction links the two. Trades stay public; only the funding relationship is withheld.</p>
             <div class="hero__actions" data-reveal style="--rv-delay:833ms; --rv-dur:600ms">
-              <button class="btn btn--solid" type="button" disabled aria-disabled="true">Open the app</button>
-              <button class="btn btn--ghost" type="button" disabled aria-disabled="true">Read the boundary</button>
+              <a class="btn btn--solid" href="#progress" aria-controls="progress" aria-expanded="false">Open the app</a>
+              <a class="btn btn--ghost" href="#boundary" aria-controls="boundary" aria-expanded="false">Read the boundary</a>
             </div>
             <p class="hero__pending" data-reveal style="--rv-delay:900ms; --rv-dur:600ms">The app is in private testing and runs locally only.</p>
           </div>
@@ -185,7 +188,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
   </section>
 
   <!-- ══════════════ SCREEN B — THE NUMBERS ══════════════ -->
-  <section class="screen screen--metrics" aria-label="Contract-enforced limits">
+  <section class="screen screen--metrics" id="the-numbers" aria-label="Contract-enforced limits">
     <div class="metrics__head">
       <h2 class="headline">
         <span class="headline__line">Bounded by&nbsp;<span class="dot-word" data-dots="contract" aria-label="contract"></span></span>
@@ -194,6 +197,9 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
       <p class="intro">Every limit below is enforced by the pool contract on Robinhood Chain<br class="desktop-break"> testnet 46630, and refused before any ETH moves. Chit's operator can<br class="desktop-break"> still link a deposit to a fleet. Private, not anonymous.</p>
     </div>
 
+    <!-- The cards and the three limit sheets share one stage, so a sheet
+         opens in the cards' footprint and the page stays one screen. -->
+    <div class="limits">
     <div class="cards">
       <!-- CARD 1 — funding delay -->
       <article class="card card--delay">
@@ -244,7 +250,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
 
         <p class="metric metric--delay"><span class="dot-number" data-dots="15" aria-label="15"></span><span class="metric__unit">min</span></p>
         <p class="caption">Maximum wait<br>before funding</p>
-        <button class="learn-more" type="button" disabled aria-disabled="true">Learn More</button>
+        <a class="learn-more" href="#limit-delay" aria-controls="limit-delay" aria-expanded="false">Learn More</a>
       </article>
 
       <!-- CARD 2 — draw cap -->
@@ -297,7 +303,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
 
         <p class="metric metric--draw"><span class="dot-number" data-dots="0.2" aria-label="0.2"></span><span class="metric__unit">ETH</span></p>
         <p class="caption">Refused on chain<br>above this</p>
-        <button class="learn-more" type="button" disabled aria-disabled="true">Learn More</button>
+        <a class="learn-more" href="#limit-draw" aria-controls="limit-draw" aria-expanded="false">Learn More</a>
       </article>
 
       <!-- CARD 3 — self-serve exit -->
@@ -329,12 +335,182 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
 
         <p class="metric metric--exit"><span class="dot-number" data-dots="24" aria-label="24"></span><span class="metric__unit">h</span></p>
         <p class="caption">Works with the<br>service offline</p>
-        <button class="learn-more" type="button" disabled aria-disabled="true">Learn More</button>
+        <a class="learn-more" href="#limit-exit" aria-controls="limit-exit" aria-expanded="false">Learn More</a>
       </article>
     </div>
+
+    <!-- ══ LIMIT SHEETS — one per card. Every line below is read off
+         contracts/fleet/FleetPool.sol or specs/002; nothing is a promise. ══ -->
+    <section class="limit limit--delay" id="limit-delay" aria-labelledby="limit-delay-title" tabindex="-1">
+      <header class="limit__head">
+        <div class="limit__lead">
+          <p class="limit__eyebrow"><span class="limit__index">01 / 03</span>Funding delay</p>
+          <h3 class="limit__title" id="limit-delay-title">Your fleet is funded on a timer, and the contract sets the floor under it.</h3>
+        </div>
+        <p class="limit__figure"><span class="dot-number" data-dots="15" aria-label="15"></span><span class="limit__unit">min<small>at most, never under 1</small></span></p>
+      </header>
+      <div class="limit__body">
+        <div class="limit__col">
+          <p class="limit__label">Enforced by</p>
+          <ul class="limit__code">
+            <li><code>MIN_FUNDING_DELAY = 60</code><span>the shortest legal wait, in seconds</span></li>
+            <li><code>openDraw &rarr; DelayTooShort</code><span>a draw due sooner than 60 s is refused</span></li>
+            <li><code>fund &rarr; NotDue</code><span>nothing seeds a fleet before its due time</span></li>
+          </ul>
+        </div>
+        <div class="limit__col">
+          <p class="limit__label">Why it exists</p>
+          <p>A deposit into Chit and a fleet funded by Chit are both public. If they landed a block apart, anyone could pair them by time. The wait is random, between one and fifteen minutes, so the timing tells an observer nothing. Deposits come in three fixed sizes (0.01, 0.05 and 0.1 ETH) for the same reason: one looks like any other of its size.</p>
+        </div>
+        <div class="limit__col">
+          <p class="limit__label">Still true</p>
+          <p>The one-minute floor is the contract's. The fifteen-minute ceiling is Chit's service choosing a wait; the chain would accept a longer one, never a shorter one. Chit's operator knows which deposit a draw belongs to. The wait hides that from the public, not from Chit.</p>
+        </div>
+      </div>
+      <footer class="limit__foot">
+        <a class="limit__close" href="#the-numbers">Back to the numbers</a>
+        <a class="limit__next" href="#limit-draw">Next: Draw cap<span aria-hidden="true">&rarr;</span></a>
+      </footer>
+    </section>
+
+    <section class="limit limit--draw" id="limit-draw" aria-labelledby="limit-draw-title" tabindex="-1">
+      <header class="limit__head">
+        <div class="limit__lead">
+          <p class="limit__eyebrow"><span class="limit__index">02 / 03</span>Draw cap</p>
+          <h3 class="limit__title" id="limit-draw-title">No campaign can pull more than 0.2 ETH from the pool, whatever the operator asks for.</h3>
+        </div>
+        <p class="limit__figure"><span class="dot-number" data-dots="0.2" aria-label="0.2"></span><span class="limit__unit">ETH<small>per campaign</small></span></p>
+      </header>
+      <div class="limit__body">
+        <div class="limit__col">
+          <p class="limit__label">Enforced by</p>
+          <ul class="limit__code">
+            <li><code>DRAW_CAP = 0.2 ether</code><span>the most any one campaign can claim</span></li>
+            <li><code>openDraw / topUpDraw &rarr; DrawCapExceeded</code><span>above the cap, a draw neither opens nor grows</span></li>
+            <li><code>fundPrincipal &rarr; DrawExceeded</code><span>a buy that would overspend the draw is refused before principal moves</span></li>
+          </ul>
+        </div>
+        <div class="limit__col">
+          <p class="limit__label">Why it exists</p>
+          <p>The pool is shared, so the damage any one campaign can do has to be bounded by code, not by policy. Principal moves one buy at a time, just before that buy. Unspent draw never leaves the pool, and a failed buy is rolled back and charged nothing. A depositor holds at most 0.5 ETH in the pool, and the pool itself is capped at 5 ETH.</p>
+        </div>
+        <div class="limit__col">
+          <p class="limit__label">Still true</p>
+          <p>The cap is per campaign, not per operator. The operator can open more than one draw, up to what the pool holds and its 5 ETH cap allows. The cap bounds how much a mistake, or a compromised operator key, can move in one go. It does not make the operator trustless.</p>
+        </div>
+      </div>
+      <footer class="limit__foot">
+        <a class="limit__close" href="#the-numbers">Back to the numbers</a>
+        <a class="limit__next" href="#limit-exit">Next: Self-serve exit<span aria-hidden="true">&rarr;</span></a>
+      </footer>
+    </section>
+
+    <section class="limit limit--exit" id="limit-exit" aria-labelledby="limit-exit-title" tabindex="-1">
+      <header class="limit__head">
+        <div class="limit__lead">
+          <p class="limit__eyebrow"><span class="limit__index">03 / 03</span>Self-serve exit</p>
+          <h3 class="limit__title" id="limit-exit-title">You take your unspent balance back with two transactions Chit never has to sign.</h3>
+        </div>
+        <p class="limit__figure"><span class="dot-number" data-dots="24" aria-label="24"></span><span class="limit__unit">h<small>after the request</small></span></p>
+      </header>
+      <div class="limit__body">
+        <div class="limit__col">
+          <p class="limit__label">Enforced by</p>
+          <ul class="limit__code">
+            <li><code>EXIT_DELAY = 24 hours</code><span><code>executeExit</code> reverts <code>ExitNotDue</code> before then</span></li>
+            <li><code>requestExit / executeExit</code><span>callable by the depositor alone, no operator role, and neither checks <code>paused</code></span></li>
+            <li><code>POST_WINDOW = 12 hours</code><span>a charge not posted within 12 h of queuing expires unposted</span></li>
+          </ul>
+        </div>
+        <div class="limit__col">
+          <p class="limit__label">Why it exists</p>
+          <p>If Chit goes offline, is paused, or disappears, your deposit is still yours to recover from the contract directly. The 24-hour wait lets every charge that is genuinely yours land first: the operator has 12 hours to post a queued spend, so by the time the exit pays there is nothing left to post. Anything unposted after that is Chit's loss, not yours.</p>
+        </div>
+        <div class="limit__col">
+          <p class="limit__label">Still true</p>
+          <p>The exit pays what is unspent at execution, not what was unspent at the request, so exiting is never a way out of a bill already due. The wait is a full day. It cannot be shortened, by you or by Chit.</p>
+        </div>
+      </div>
+      <footer class="limit__foot">
+        <a class="limit__close" href="#the-numbers">Back to the numbers</a>
+        <a class="limit__next" href="#limit-delay">Next: Funding delay<span aria-hidden="true">&rarr;</span></a>
+      </footer>
+    </section>
+    </div><!-- /.limits -->
   </section>
 
   </main>
+
+  <!-- ══ SHEETS OVER EITHER SCREEN. Same glass as the limit sheets. ══ -->
+
+  <!-- Launch app / Open the app: how far along the build is. Every number
+       here is rendered from progress.json, which the repo recomputes on each
+       push to main from its task lists. The rule is PROGRESS.md. -->
+  <div class="modal" id="progress" role="dialog" aria-modal="true" aria-labelledby="progress-title" tabindex="-1">
+    <section class="limit limit--modal limit--progress">
+      <header class="limit__head">
+        <div class="limit__lead">
+          <p class="limit__eyebrow"><span class="limit__index">Where the build stands</span>From the repo</p>
+          <h3 class="limit__title" id="progress-title">The app is in private testing. Here is exactly how far along it is.</h3>
+        </div>
+        <p class="limit__figure"><span class="dot-number" data-dots="0" data-progress="percent" aria-label="0"></span><span class="limit__unit">%<small data-progress="tasks">of specced tasks done</small></span></p>
+      </header>
+      <div class="limit__body">
+        <div class="limit__col">
+          <p class="limit__label">Stages</p>
+          <ul class="limit__code" data-progress="stages"><li><code>Loading</code><span>reading the repo's record</span></li></ul>
+        </div>
+        <div class="limit__col">
+          <p class="limit__label">Task lists</p>
+          <ul class="progress__specs" data-progress="specs"></ul>
+        </div>
+        <div class="limit__col">
+          <p class="limit__label">What is left</p>
+          <ul class="limit__code" data-progress="open"></ul>
+          <p class="limit__stamp" data-progress="stamp"></p>
+        </div>
+      </div>
+      <footer class="limit__foot">
+        <a class="limit__close" href="#the-page">Close</a>
+        <p class="limit__fine">Progress is read, never typed: ticked boxes in the repo's task lists, recomputed on every push to main.</p>
+      </footer>
+    </section>
+  </div>
+
+  <!-- Read the boundary: the same facts app/src/fleet/index.ts publishes. -->
+  <div class="modal" id="boundary" role="dialog" aria-modal="true" aria-labelledby="boundary-title" tabindex="-1">
+    <section class="limit limit--modal limit--boundary">
+      <header class="limit__head">
+        <div class="limit__lead">
+          <p class="limit__eyebrow"><span class="limit__index">The boundary</span>What is private, what is not</p>
+          <h3 class="limit__title" id="boundary-title">Private, not anonymous. Here is exactly where the line sits, the same line the tests enforce.</h3>
+        </div>
+      </header>
+      <div class="limit__body">
+        <div class="limit__col">
+          <p class="limit__label">Everyone can see</p>
+          <ul class="limit__code limit__code--plain">
+            <li>fleet accounts</li><li>trades</li><li>amounts</li><li>timing</li><li>gas</li>
+            <li>the operator's gas payments</li><li>deposits into the pool</li><li>fleets funded from it</li>
+          </ul>
+        </div>
+        <div class="limit__col">
+          <p class="limit__label">Kept off the chain</p>
+          <p>The primary-wallet-to-fleet relationship. Your ETH goes into a shared pool that carries no fleet marker, and Chit funds fleets from that pool, so no transaction links the two.</p>
+          <p class="limit__label limit__label--gap">Said plainly</p>
+          <p>Chit's operator knows which balance paid for which fleet, and while the pool is small, amounts and timing can still line up. We are not a mixer and we do not try to make you disappear. The direction we are building toward is a key you hold, so you decide who gets to see what.</p>
+        </div>
+        <div class="limit__col">
+          <p class="limit__label">What Chit will not do</p>
+          <p>These are design decisions, not missing features: no custody, no imported keys, no sells, no copy trading, no arbitrary calls, no mainnet sponsorship, no new token, no manufactured volume, no attribution the operator cannot see, and never a trade kept out of view.</p>
+        </div>
+      </div>
+      <footer class="limit__foot">
+        <a class="limit__close" href="#the-page">Close</a>
+        <a class="limit__next" href="#limit-delay">The three limits the contract enforces<span aria-hidden="true">&rarr;</span></a>
+      </footer>
+    </section>
+  </div>
 
   <button class="morph-cue" type="button" aria-label="See the numbers">
     <span class="morph-cue__ring">

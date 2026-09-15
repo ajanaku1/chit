@@ -190,24 +190,230 @@
       screen === 'metrics' ? 'Back to the top' : 'See the numbers');
   }
 
-  const forward = () => goTo('metrics');
-  const back = () => goTo('hero');
+  /* ── 6.6 LIMIT SHEETS ─────────────────────────────────
+     Each Learn More is a link to its sheet, so the page works with no
+     script via :target. With script, the hash never changes: the sheet
+     opens in place, the cards behind it go inert, and focus moves in and
+     back out with the reader. */
+  const limits = document.querySelector('.limits');
+  const cards = document.querySelector('.cards');
+  let openSheet = null;
+  let opener = null;
+
+  /** The sheet a "#limit-…" hash names, or null for any other hash. */
+  function sheetAt(hash) {
+    const el = document.getElementById(hash.slice(1));
+    return el && el.classList.contains('limit') ? el : null;
+  }
+
+  function setExpanded(sheet, expanded) {
+    document.querySelectorAll(`[aria-controls="${sheet.id}"]`)
+      .forEach((a) => a.setAttribute('aria-expanded', String(expanded)));
+  }
+
+  function hideSheet(sheet) {
+    sheet.classList.remove('is-open');
+    setExpanded(sheet, false);
+  }
+
+  function openLimit(sheet, trigger) {
+    if (openSheet === sheet) return;
+    // Switching sheets keeps the original opener, so closing later returns
+    // focus to the card the reader actually left.
+    if (openSheet) hideSheet(openSheet);
+    else opener = trigger;
+    openSheet = sheet;
+    sheet.classList.add('is-open');
+    setExpanded(sheet, true);
+    limits.classList.add('has-open');
+    if (!mobile()) cards.inert = true;
+    sheet.focus({ preventScroll: true });
+  }
+
+  function closeLimit() {
+    if (!openSheet) return;
+    hideSheet(openSheet);
+    openSheet = null;
+    limits.classList.remove('has-open');
+    cards.inert = false;
+    if (opener) opener.focus({ preventScroll: true });
+    opener = null;
+  }
+
+  /* ── 6.7 MODAL SHEETS ─────────────────────────────────
+     Launch app / Open the app show how far along the build is; Read the
+     boundary shows where the privacy line sits. They sit over either
+     screen, so the main region goes inert rather than the cards. */
+  const main = document.getElementById('main-content');
+  let openModal = null;
+  let modalOpener = null;
+
+  function modalAt(hash) {
+    const el = document.getElementById(hash.slice(1));
+    return el && el.classList.contains('modal') ? el : null;
+  }
+
+  function showModal(modal, trigger) {
+    if (openModal === modal) return;
+    if (openModal) hideSheet(openModal);
+    else modalOpener = trigger;
+    openModal = modal;
+    modal.classList.add('is-open');
+    setExpanded(modal, true);
+    main.inert = true;
+    modal.focus({ preventScroll: true });
+    if (modal.id === 'progress') loadProgress().then(renderProgress);
+  }
+
+  function closeModal() {
+    if (!openModal) return;
+    hideSheet(openModal);
+    openModal = null;
+    main.inert = false;
+    if (modalOpener) modalOpener.focus({ preventScroll: true });
+    modalOpener = null;
+  }
+
+  /* A click on the scrim, outside the sheet itself, closes the modal. */
+  document.querySelectorAll('.modal').forEach((modal) => {
+    modal.addEventListener('click', (e) => { if (e.target === modal) closeModal(); });
+  });
+
+  /* Every in-page link inside .page routes here; the skip link is outside. */
+  document.querySelectorAll('.page a[href^="#"]').forEach((a) => {
+    a.addEventListener('click', (e) => {
+      e.preventDefault();
+      const href = a.getAttribute('href');
+      const modal = modalAt(href);
+      const sheet = sheetAt(href);
+      if (modal) { showModal(modal, a); return; }
+      if (sheet) {
+        closeModal();
+        if (page.dataset.screen !== 'metrics') goTo('metrics');
+        openLimit(sheet, a);
+        return;
+      }
+      if (href === '#the-page') closeModal();
+      else closeLimit();
+    });
+  });
+
+  /* ── Build progress, rendered from progress.json ─────
+     Nothing below invents a number. The file is recomputed from the repo's
+     task lists on every push to main (PROGRESS.md); the API serves the
+     latest copy, and the same-origin file is the fallback for local runs. */
+  async function loadProgress() {
+    for (const url of ['/api/progress', 'progress.json']) {
+      try {
+        const res = await fetch(url, { cache: 'no-store' });
+        if (res.ok) return await res.json();
+      } catch { /* try the next source */ }
+    }
+    return null;
+  }
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function codeItem(code, note, state) {
+    const li = el('li');
+    if (state) li.dataset.state = state;
+    li.append(el('code', '', code), el('span', '', note));
+    return li;
+  }
+
+  /** One task list: its title, done / total, and a bar. */
+  function specItem(spec) {
+    const li = el('li');
+    const row = el('div', 'spec__row');
+    const count = el('span', 'spec__count');
+    count.append(el('strong', '', String(spec.done)), ` / ${spec.total}`);
+    row.append(el('span', '', spec.title), count);
+    const bar = el('div', 'bar');
+    const fill = el('span');
+    fill.style.setProperty('--pct', `${spec.total ? (spec.done / spec.total) * 100 : 0}%`);
+    bar.append(fill);
+    li.append(row, bar);
+    return li;
+  }
+
+  function renderProgress(p) {
+    const slot = (name) => document.querySelector(`[data-progress="${name}"]`);
+    if (!p) {
+      slot('stages').replaceChildren(codeItem('Unavailable', 'the repo record could not be reached just now'));
+      slot('stamp').textContent = 'Try again in a moment.';
+      return;
+    }
+    const dots = slot('percent');
+    dots.dataset.dots = String(p.tasks.percent);
+    dots.setAttribute('aria-label', String(p.tasks.percent));
+    renderDots(dots);
+    slot('tasks').textContent = `${p.tasks.done} of ${p.tasks.total} specced tasks done`;
+
+    slot('stages').replaceChildren(...p.stages.map((s) =>
+      codeItem(`Stage ${s.stage} · ${s.name}`, s.status, /^Live/.test(s.status) ? 'done' : undefined)));
+
+    slot('specs').replaceChildren(...p.specs.map(specItem));
+
+    const open = p.specs.flatMap((spec) => spec.open);
+    slot('open').replaceChildren(...(open.length
+      ? open.map((t) => codeItem(t.id, t.text))
+      : [codeItem('Nothing open', 'every specced task has passed its gate')]));
+
+    const when = new Date(p.committedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+    slot('stamp').textContent = `Read from commit ${p.commit}, ${when}. ${p.commits} commits so far. Stage 3 has no task list yet, so it is not in the count.`;
+  }
+
+  /* ── Triggers. A sheet is one step deeper than screen B, so "back"
+     closes it before it leaves the screen, and "forward" waits. ────── */
+  const forward = () => { if (!openModal && !openSheet) goTo('metrics'); };
+  const back = () => {
+    if (openModal) closeModal();
+    else if (openSheet) closeLimit();
+    else goTo('hero');
+  };
 
   window.addEventListener('wheel', (e) => {
-    if (mobile() || Math.abs(e.deltaY) <= 12) return;
+    if (mobile() || openModal || Math.abs(e.deltaY) <= 12) return;
+    // inside an open sheet the wheel scrolls its body; only a wheel-up at
+    // the top of that body reads as "back"
+    if (openSheet && (e.deltaY > 0 || openSheet.querySelector('.limit__body').scrollTop > 0)) return;
     e.deltaY > 0 ? forward() : back();
   }, { passive: true });
 
   window.addEventListener('keydown', (e) => {
     if (mobile()) return;
+    if (openModal) {
+      if (e.key === 'Escape') { e.preventDefault(); closeModal(); }
+      return;
+    }
+    if (openSheet) {
+      // the sheet's own body scrolls with the arrow keys; only Escape is ours
+      if (e.key === 'Escape') { e.preventDefault(); back(); }
+      return;
+    }
     if (['ArrowDown', 'PageDown', ' ', 'Spacebar'].includes(e.key)) { e.preventDefault(); forward(); }
     else if (['ArrowUp', 'PageUp', 'Escape'].includes(e.key)) { e.preventDefault(); back(); }
   });
 
+  /* A sheet linked to directly opens on arrival; a limit sheet brings screen B. */
+  const arrivalModal = modalAt(location.hash);
+  const arrival = sheetAt(location.hash);
+  if (arrivalModal || arrival) history.replaceState(null, '', location.pathname + location.search);
+  if (arrivalModal) showModal(arrivalModal, document.querySelector(`[aria-controls="${arrivalModal.id}"]`));
+  if (arrival) {
+    goTo('metrics');
+    openLimit(arrival, document.querySelector(`[aria-controls="${arrival.id}"]`));
+  }
+
   let touchStartY = null;
   window.addEventListener('touchstart', (e) => { touchStartY = e.touches[0].clientY; }, { passive: true });
   window.addEventListener('touchend', (e) => {
-    if (mobile() || touchStartY === null) return;
+    if (mobile() || openModal || touchStartY === null) return;
     const dy = touchStartY - e.changedTouches[0].clientY;
     if (Math.abs(dy) > 40) dy > 0 ? forward() : back();
     touchStartY = null;
