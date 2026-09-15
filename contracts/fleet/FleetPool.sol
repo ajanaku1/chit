@@ -13,6 +13,10 @@ pragma solidity ^0.8.28;
 ///      contract cannot decrypt it, so it cannot check that a posting names the
 ///      right depositor; that is operator trust, disclosed in the product, and
 ///      auditable after the fact by anyone holding the ledger key.
+interface IFleetAccount {
+    function execute(address target, uint256 value, bytes calldata data) external returns (bytes memory);
+}
+
 contract FleetPool {
     enum DrawState {
         None,
@@ -48,6 +52,14 @@ contract FleetPool {
 
     address public immutable operator;
 
+    /// @notice A second key that can stop the money and nothing else. The
+    ///         operator key moves funds; if it is compromised, the pause is the
+    ///         only brake, and a brake only the same key can pull is no brake.
+    ///         The guardian may pause. Only the operator may unpause or change
+    ///         the guardian. A monitor, a second person or a multisig can hold
+    ///         it without ever being able to move a wei.
+    address public guardian;
+
     /// @notice Deposits come in fixed sizes so one deposit looks like any other
     ///         of its size and cannot be matched to a fleet's spending.
     uint256 public constant SIZE_SMALL = 0.01 ether;
@@ -62,6 +74,13 @@ contract FleetPool {
     /// @notice How long a trader waits to recover their deposit without Chit.
     uint64 public constant EXIT_DELAY = 24 hours;
 
+    /// @notice Gas the outer transaction spends around the inner call, added to
+    ///         what the inner call measured so the charge covers the whole
+    ///         transaction and not only the buy. Capped by the ceiling either way.
+    uint256 public constant EXECUTE_OVERHEAD_GAS = 90_000;
+
+    bool private _executing;
+
     /// @notice The shortest wait between opening a draw and funding its fleet.
     ///         The wait is what stops a deposit and its fleet funding from
     ///         pairing by timing, so the floor lives here rather than in the
@@ -74,6 +93,9 @@ contract FleetPool {
     ///         so the exit needs no cooperation from a vanished operator.
     uint64 public constant POST_WINDOW = 12 hours;
 
+    /// @notice Stops every path that moves ETH out or widens a claim on the
+    ///         pool: deposits, draws, funding, principal, top-ups and the
+    ///         operator's claim. Exits keep working, on purpose.
     bool public paused;
     uint256 public totalDeposited;
     uint256 public totalDrawSpent;
@@ -92,6 +114,7 @@ contract FleetPool {
     event SpendPosted(address indexed depositor, uint256 amount);
     event OperatorClaimed(uint256 amount);
     event PausedSet(bool paused);
+    event GuardianSet(address guardian);
 
     event DrawOpened(bytes32 indexed campaign, uint256 amount, uint64 dueAt);
     event DrawFunded(bytes32 indexed campaign, uint256 seeded);
@@ -125,7 +148,12 @@ contract FleetPool {
     error ClaimExceeded();
     error TransferFailed();
     error NoAccounts();
+    error NotGuardian();
+    error Reentered();
     error DelayTooShort();
+    error ExitPending();
+    error CommitBelowPrincipal();
+    error DueBeyondWindow();
 
     modifier onlyOperator() {
         if (msg.sender != operator) revert NotOperator();
@@ -146,6 +174,10 @@ contract FleetPool {
             revert SizeNotAllowed();
         }
         Depositor storage d = _depositors[msg.sender];
+        // A deposit made after requestExit would be paid out as min(exitAmount,
+        // unspent) and then deleted with the record: lost to the depositor and
+        // owned by nobody. Leave first, then deposit again.
+        if (d.exitRequestedAt != 0) revert ExitPending();
         if (d.deposited + msg.value > DEPOSITOR_CAP) revert DepositorCapExceeded();
         if (totalDeposited + msg.value > POOL_CAP) revert PoolCapExceeded();
 
@@ -188,6 +220,19 @@ contract FleetPool {
         emit PausedSet(paused_);
     }
 
+    function setGuardian(address guardian_) external onlyOperator {
+        guardian = guardian_;
+        emit GuardianSet(guardian_);
+    }
+
+    /// @notice The brake. Callable by the guardian or the operator; releasing
+    ///         it is the operator's alone, through setPaused(false).
+    function pause() external {
+        if (msg.sender != guardian && msg.sender != operator) revert NotGuardian();
+        paused = true;
+        emit PausedSet(true);
+    }
+
     /// @notice Records a spend to be charged to whoever `encDepositor` names,
     ///         after `dueAt`. Queuing and posting are separate so the charge
     ///         does not land in the same moment as the campaign-keyed
@@ -197,6 +242,9 @@ contract FleetPool {
         onlyOperator
         returns (uint256 id)
     {
+        // POST_WINDOW runs from now; a dueAt past it is a charge that can
+        // never be posted, and a charge never posted is the pool's loss.
+        if (dueAt > block.timestamp + POST_WINDOW) revert DueBeyondWindow();
         id = _queued.length;
         _queued.push(
             QueuedSpend({
@@ -226,6 +274,7 @@ contract FleetPool {
     ///         bound is campaign-side accounting only, so claiming publishes no
     ///         depositor.
     function claimOperator(uint256 amount) external onlyOperator {
+        if (paused) revert Paused();
         if (amount > claimable()) revert ClaimExceeded();
         totalClaimed += amount;
         emit OperatorClaimed(amount);
@@ -257,6 +306,7 @@ contract FleetPool {
 
     /// @notice Seeds each fleet account with gas headroom once the wait is over.
     function fund(bytes32 campaign, address[] calldata accounts) external onlyOperator {
+        if (paused) revert Paused();
         Draw storage draw = _draws[campaign];
         if (draw.state != DrawState.Pending) revert DrawNotPending();
         if (block.timestamp < draw.dueAt) revert NotDue();
@@ -279,6 +329,7 @@ contract FleetPool {
     /// @notice Raises an open draw so a campaign that ran out can keep trading
     ///         without another deposit. The per-draw cap still binds.
     function topUpDraw(bytes32 campaign, uint256 amount) external onlyOperator {
+        if (paused) revert Paused();
         Draw storage draw = _draws[campaign];
         if (draw.state != DrawState.Pending && draw.state != DrawState.Funded) revert DrawNotOpen();
         if (amount == 0 || draw.amount + amount > DRAW_CAP) revert DrawCapExceeded();
@@ -307,11 +358,53 @@ contract FleetPool {
         if (principal != 0) _send(account, principal);
     }
 
+    /// @notice Funds one buy's principal and runs the buy, in one transaction.
+    ///         The account is sent the principal and told to execute; if the
+    ///         buy reverts, this whole call reverts and the principal never
+    ///         left. The draw is charged the principal plus the gas measured
+    ///         here, capped by the ceiling. No reservation, no rollback, and
+    ///         nothing the account's owner can pull between the two steps,
+    ///         because there are no two steps.
+    /// @dev The account admits this contract through its policy's `pool`.
+    function fundAndExecute(
+        bytes32 campaign,
+        address account,
+        uint256 principal,
+        uint256 gasCeiling,
+        address target,
+        bytes calldata data
+    ) external onlyOperator returns (bytes memory result) {
+        if (paused) revert Paused();
+        if (_executing) revert Reentered();
+        Draw storage draw = _draws[campaign];
+        if (draw.state != DrawState.Funded) revert DrawNotFunded();
+        if (draw.reserved != 0) revert ReservationOpen();
+        if (draw.spent + principal + gasCeiling > draw.amount) revert DrawExceeded();
+
+        _executing = true;
+        uint256 gasBefore = gasleft();
+        totalOutflow += principal;
+        emit PrincipalSent(campaign, account, principal);
+        if (principal != 0) _send(account, principal);
+        result = IFleetAccount(account).execute(target, principal, data);
+
+        uint256 gasCost = (gasBefore - gasleft() + EXECUTE_OVERHEAD_GAS) * tx.gasprice;
+        uint256 actual = principal + (gasCost > gasCeiling ? gasCeiling : gasCost);
+        draw.spent += actual;
+        totalDrawSpent += actual;
+        emit Committed(campaign, actual);
+        _executing = false;
+    }
+
     /// @notice Settles the in-flight buy at its real cost (principal plus gas).
     function commit(bytes32 campaign, uint256 actual) external onlyOperator {
         Draw storage draw = _draws[campaign];
         if (draw.reserved == 0) revert NothingReserved();
         if (actual > draw.reserved) revert CommitExceedsReservation();
+        // The principal has already left. Charging less than it would leave
+        // the difference in a fleet account, uncharged and invisible to every
+        // view; the service never does this, and now the contract never lets it.
+        if (actual < draw.principalOut) revert CommitBelowPrincipal();
 
         draw.spent += actual;
         draw.reserved = 0;

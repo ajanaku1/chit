@@ -1518,3 +1518,77 @@ with a running and a finished order seeded.
 The repo carried two products. The first, a confidential ERC-4337 paymaster on iExec Nox for Sepolia, was the hackathon entry; the second, Chit Fleet on Robinhood Chain, is the one that is live. The first still owned the front door: `/app/` served "New sponsorship round", the hackathon's page, while the real app sat at `/app/fleet.html`. Today the hackathon is gone from this tree: its six pages and their tests, `spikes/`, the seven `Chit*.sol` contracts, the twenty-two service modules and their tests, the four API routes, five live scripts, nine Sepolia deployment records, the Nox plugin and Sepolia fork in `hardhat.config.ts`, and the six `verify.sh` phases that checked them against Sepolia. `/app` now lands on the fleet wizard, locally and on Vercel. Nothing under `src/fleet`, `api/fleet`, `contracts/fleet`, `test/fleet` or `test/fork/fleet-*` imported any of it; the Fleet suites are unchanged and green. The public hackathon repo, `ajanaku1/chit`, keeps the code and its history.
 
 Two checks in `verify.sh` were already red before this change and were left alone: "scaffolding files are gitignored" and the app's `npm run build`, which fails on the store work in flight in another branch, not on this one.
+
+## Audit fixes, round one: service guards on main, contract one-liners on a branch (2026-09-15)
+
+Three commits on `main` close the service-side findings that needed no
+redeploy. `pool-buy.ts`: the sweep posts charges first and funds each draw in
+its own try (A3), skips a draw below its own headroom (A3), charges the seeded
+headroom to the depositor (A1), queues a withdrawal's charge before paying it
+(A12), retries a failed commit after a mined buy instead of rolling it back
+(A11), bounds the execute transaction by the gas ceiling (A9), and keeps the
+delay floor above the contract's (A37). `campaign-routes.ts`: a wallet whose
+exit is pending gets no draw, buy or withdrawal (F7); a buy re-reads the
+session from the chain and refuses on paused or revoked (A14); withdraw,
+activate, top-up and buy are serialized per wallet and activate re-reads the
+balance after the chain activation (A5, A6); a draw below its minimum, a token
+outside `FLEET_TOKEN_ALLOWLIST`, a malformed account list and a gas ceiling
+below the floor are refused (A3, A8, A41, A9). `service-runtime.ts`: every
+configured address must hold code, checked once at boot, refused with a named
+reason after (A33); the catch-all logs an error's first line only (A63).
+Tests: `test/fleet/pool-sweep.test.ts`, `test/fleet/money-route-guards.test.ts`;
+the pooled funding fork test now expects the headroom charge.
+
+`audit/contract-fixes` holds the contract changes, which need a redeploy on
+46630 and are the founder's call: `deposit` refuses a wallet whose exit is
+pending (F1), `commit` refuses an amount below the principal that left (F4),
+`queueSpend` refuses a `dueAt` beyond `POST_WINDOW` (F5), and `paused` now
+gates `fund`, `topUpDraw` and `claimOperator` too (A36), so a guardian that
+can only pause would actually stop the money. The pre-audit tests for F1, F4
+and F5 assert the refusal now; F2 and F3 still pass as reproductions. The
+spec's error list matches the contract again (A67, partly).
+
+Later the same day, two more. On `main`: charges are posted in coarse units,
+rounded down to a grain of 0.00001 ETH and always strictly below the exact
+amount, so the wei value in `Committed` never reappears in `SpendPosted`
+and a withdrawal's payout never equals its charge (A4 and A30, the amount
+half; the grain is the pool's). On the branch: a `guardian` the operator
+sets, which can call `pause()` and nothing else; only the operator unpauses
+or changes it (R2a from the pre-audit). No constructor change, so nothing
+in the deploy scripts moves.
+
+Still open, and wanting the founder in the room: the time join (a charge is
+queued in the operator's next transaction after the buy; breaking that needs
+the contract to carry uncharged spend until a sweep batches it), random
+queue ids, and a multisig operator (F2, F8).
+
+## The atomic buy: funding and execution in one transaction (2026-09-15)
+
+F3 and A22 were the same defect from two sides: the service sent the
+principal in one transaction and executed the buy in another, so a buy that
+reverted left the principal in the trader's own account and the operator
+refunded the pool from its wallet; and between the two transactions the
+account's owner could take the principal with the escape hatch. Both gaps
+were the gap between two transactions. Now there is one.
+
+`FleetPool.fundAndExecute` sends the principal and calls the account's
+`execute` in the same call; a revert anywhere reverts the funding too. The
+draw is charged principal plus the gas measured around the inner call,
+capped by the ceiling, so the reservation, the commit and the rollback have
+nothing left to do. `FleetAccount.execute` admits the pool as a caller
+through `FleetSessionPolicy.pool()`, which the operator sets once with
+`setPool`; the deploy script does it right after deploying the pool. The
+service's `settle` is one write and reads the charge back as the draw's
+spent delta.
+
+Tests: `test/fleet/FleetPoolAtomic.t.sol` (a buy lands and is charged
+principal plus measured gas; a reverting buy moves nothing and leaves no
+reservation; the owner has no gap to act in; only the policy-named pool may
+execute; pause and the draw cap hold). The pool fork tests set the pool on
+the policy in their setup. 26 Solidity, 53 fork, 169 unit, green.
+
+Three contracts change bytecode, so this is a redeploy of the pool, the
+policy and the factory on 46630, in that order, then `setPool`. The old
+`fundPrincipal`, `commit` and `rollback` are still in the contract for the
+Stage 1 shape and unused by the service; they should go once the atomic
+path is live, and the pre-audit's F2 and F3 tests with them.

@@ -54,6 +54,21 @@ const main = async (): Promise<void> => {
   const address = receipt.contractAddress as Address;
   console.log(`FleetPool ${address} (${hash})`);
 
+  // The pool funds and executes a buy in one transaction, and a fleet account
+  // admits it only through its policy. Name it there, or every pooled buy
+  // reverts NotOperator.
+  const existing = JSON.parse(await readFile(RECORD, "utf8")) as { sessionPolicy?: string; policy?: string };
+  const policyAddress = (existing.sessionPolicy ?? existing.policy) as `0x${string}` | undefined;
+  if (policyAddress) {
+    const policyAbi = [{ type: "function", name: "setPool", stateMutability: "nonpayable", inputs: [{ name: "pool_", type: "address" }], outputs: [] }] as const;
+    const setPoolHash = await wallet.writeContract({ address: policyAddress, abi: policyAbi, functionName: "setPool", args: [address] });
+    const setPoolReceipt = await publicClient.waitForTransactionReceipt({ hash: setPoolHash });
+    if (setPoolReceipt.status !== "success") throw new Error(`policy.setPool failed: ${setPoolHash}`);
+    console.log(`FleetSessionPolicy.setPool(${address}) (${setPoolHash})`);
+  } else {
+    console.warn("no policy address in the record: run setPool by hand before the first pooled buy");
+  }
+
   // Read the caps back from the chain rather than restating them here: the
   // record should say what was deployed, not what we meant to deploy.
   const read = (functionName: string) =>

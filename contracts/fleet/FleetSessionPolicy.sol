@@ -23,6 +23,13 @@ contract FleetSessionPolicy {
 
     address public immutable operator;
 
+    /// @notice The funding pool allowed to drive a fleet account's execute in
+    ///         the same transaction that funds it. Set by the operator; zero
+    ///         means only the operator executes, as before.
+    address public pool;
+
+    event PoolSet(address pool);
+
     mapping(bytes32 campaign => Session) private _sessions;
     mapping(bytes32 campaign => mapping(address account => bool enrolled)) private _accounts;
 
@@ -58,6 +65,11 @@ contract FleetSessionPolicy {
 
     constructor(address operator_) {
         operator = operator_;
+    }
+
+    function setPool(address pool_) external onlyOperator {
+        pool = pool_;
+        emit PoolSet(pool_);
     }
 
     /// @notice Opens the campaign's single session over its generated accounts.

@@ -4,11 +4,12 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {FleetPool} from "../../contracts/fleet/FleetPool.sol";
 
-/// Pre-audit tests for FleetPool. Each `test_finding_*` reproduces one item in
-/// docs/audit/2026-09-14-fleet-pool-pre-audit.md against the contract as it is,
-/// so the finding is a failing-or-passing predicate rather than an opinion,
-/// and a fix flips the test. The rest pin behaviour the contract promises in
-/// its own comments: caps, sizes, the exit path, checks-effects-interactions.
+/// Pre-audit tests for FleetPool. Each `test_finding_*` was written to
+/// reproduce one item in docs/audit/2026-09-14-fleet-pool-pre-audit.md against
+/// the contract as it was. F1, F4 and F5 are fixed and their tests now assert
+/// the refusal; F2 and F3 still pass as reproductions, because they are the
+/// custody and the atomicity questions a later change answers. The rest pin
+/// behaviour the contract promises in its own comments.
 ///
 /// Runs with `npx hardhat test solidity`. The invariant suite is in
 /// FleetPoolInvariants.t.sol.
@@ -51,30 +52,26 @@ contract FleetPoolTest is Test {
         return deposited > spent ? deposited - spent : 0;
     }
 
-    // --- F1: a deposit made after requestExit is lost on executeExit --------
+    // --- F1, fixed: no deposit while an exit is pending -----------------------
 
-    /// Alice holds 0.05, requests exit, then deposits 0.1 more (nothing stops
-    /// her). Twenty-four hours later executeExit pays min(exitAmount, unspent)
-    /// = 0.05 and deletes her record, which held 0.15. The other 0.1 stays in
-    /// the pool with no depositor attached to it.
-    function test_finding_F1_depositAfterExitRequestIsLost() public {
+    /// A deposit after requestExit used to be paid out as min(exitAmount,
+    /// unspent) and then deleted with the record. It is refused now; Alice
+    /// exits, then deposits again.
+    function test_finding_F1_depositAfterExitRequestIsRefused() public {
         _deposit(ALICE, 0.05 ether);
         vm.prank(ALICE);
         pool.requestExit();
 
-        _deposit(ALICE, 0.1 ether);
-        (uint256 deposited,,,) = pool.depositorOf(ALICE);
-        assertEq(deposited, 0.15 ether, "the second deposit was accepted");
+        vm.prank(ALICE);
+        vm.expectRevert(FleetPool.ExitPending.selector);
+        pool.deposit{value: 0.1 ether}();
 
         vm.warp(block.timestamp + 24 hours);
-        uint256 before = ALICE.balance;
         vm.prank(ALICE);
         pool.executeExit();
-
-        assertEq(ALICE.balance - before, 0.05 ether, "paid only the snapshot");
-        (deposited,,,) = pool.depositorOf(ALICE);
-        assertEq(deposited, 0, "record deleted, the 0.1 is gone from Alice's side");
-        assertEq(address(pool).balance, 0.1 ether, "and it is still in the pool, owned by nobody");
+        _deposit(ALICE, 0.1 ether);
+        (uint256 deposited,,,) = pool.depositorOf(ALICE);
+        assertEq(deposited, 0.1 ether, "after the exit, a fresh record");
     }
 
     // --- F2: the operator can move the whole pool, not only what it charged --
@@ -140,43 +137,36 @@ contract FleetPoolTest is Test {
         assertEq(_unspent(ALICE), 0.1 ether, "and Alice's balance is untouched");
     }
 
-    // --- F4: commit may charge less than the principal that left -------------
+    // --- F4, fixed: a commit never charges less than the principal that left ---
 
-    /// The service always charges principal plus gas, so this never happens
-    /// today. The contract lets it happen, and a service bug or a replaced
-    /// service would leak the difference out of the pool uncharged.
-    function test_finding_F4_commitBelowPrincipalIsAccepted() public {
+    function test_finding_F4_commitBelowPrincipalIsRefused() public {
         _deposit(ALICE, 0.1 ether);
         _openAndFund(CAMPAIGN, 0.1 ether, FLEET_ACCOUNT);
 
-        vm.prank(OPERATOR);
+        vm.startPrank(OPERATOR);
         pool.fundPrincipal(CAMPAIGN, FLEET_ACCOUNT, 0.05 ether, 0.001 ether);
-        vm.prank(OPERATOR);
-        pool.commit(CAMPAIGN, 1 wei);
+        vm.expectRevert(FleetPool.CommitBelowPrincipal.selector);
+        pool.commit(CAMPAIGN, 0.05 ether - 1);
+        pool.commit(CAMPAIGN, 0.05 ether);
+        vm.stopPrank();
 
         FleetPool.Draw memory draw = pool.drawOf(CAMPAIGN);
-        assertEq(draw.spent, pool.GAS_HEADROOM() + 1 wei, "0.05 ETH left, 1 wei charged");
+        assertEq(draw.spent, pool.GAS_HEADROOM() + 0.05 ether, "charged at least the principal");
         assertEq(draw.reserved, 0);
     }
 
-    // --- F5: a queued spend can be born unpostable -------------------------
+    // --- F5, fixed: a queued spend is born inside its window -------------------
 
-    /// POST_WINDOW runs from queuedAt, dueAt is unchecked. A dueAt later than
-    /// queuedAt + 12h yields a spend that is never due inside its window, so
-    /// the charge is silently lost and the pool is short by that amount.
-    function test_finding_F5_queuedSpendCanNeverBePosted() public {
-        vm.prank(OPERATOR);
-        uint256 id = pool.queueSpend("", 0.01 ether, uint64(block.timestamp + 13 hours));
-
-        vm.warp(block.timestamp + 12 hours + 1);
-        vm.prank(OPERATOR);
-        vm.expectRevert(FleetPool.NotDue.selector);
+    function test_finding_F5_queuedSpendBeyondWindowIsRefused() public {
+        vm.startPrank(OPERATOR);
+        vm.expectRevert(FleetPool.DueBeyondWindow.selector);
+        pool.queueSpend("", 0.01 ether, uint64(block.timestamp + 12 hours + 1));
+        uint256 id = pool.queueSpend("", 0.01 ether, uint64(block.timestamp + 12 hours));
+        vm.warp(block.timestamp + 12 hours);
         pool.postQueued(id, ALICE);
-
-        vm.warp(block.timestamp + 1 hours);
-        vm.prank(OPERATOR);
-        vm.expectRevert(FleetPool.PostWindowClosed.selector);
-        pool.postQueued(id, ALICE);
+        vm.stopPrank();
+        (, uint256 spent,,) = pool.depositorOf(ALICE);
+        assertEq(spent, 0.01 ether, "a charge at the edge of the window still posts");
     }
 
     // --- F6: posted spend is bounded by nothing --------------------------
@@ -216,6 +206,63 @@ contract FleetPoolTest is Test {
         vm.prank(OPERATOR);
         vm.expectRevert(FleetPool.DrawCapExceeded.selector);
         pool.openDraw(CAMPAIGN, 0.2 ether + 1, uint64(block.timestamp + 60), "");
+    }
+
+    /// A36, fixed: pause stops every outflow and every widening of a claim,
+    /// not only deposits and principal. A guardian that can only pause is
+    /// worth having only if pause actually stops the money.
+    function test_pauseGatesFundingTopUpAndClaim() public {
+        _deposit(ALICE, 0.1 ether);
+        address[] memory accounts = new address[](1);
+        accounts[0] = FLEET_ACCOUNT;
+        vm.startPrank(OPERATOR);
+        pool.openDraw(CAMPAIGN, 0.05 ether, uint64(block.timestamp + 60), "");
+        vm.warp(block.timestamp + 60);
+        pool.setPaused(true);
+        vm.expectRevert(FleetPool.Paused.selector);
+        pool.fund(CAMPAIGN, accounts);
+        vm.expectRevert(FleetPool.Paused.selector);
+        pool.topUpDraw(CAMPAIGN, 0.01 ether);
+        vm.expectRevert(FleetPool.Paused.selector);
+        pool.claimOperator(0);
+        pool.setPaused(false);
+        pool.fund(CAMPAIGN, accounts);
+        vm.stopPrank();
+        assertEq(FLEET_ACCOUNT.balance, pool.GAS_HEADROOM(), "and funds again once unpaused");
+    }
+
+    /// R2a: a guardian can stop the money and nothing else. It cannot
+    /// unpause, cannot move funds, cannot change itself.
+    function test_guardianCanPauseAndOnlyPause() public {
+        address guardian = address(0x6a4d);
+        _deposit(ALICE, 0.1 ether);
+
+        vm.prank(guardian);
+        vm.expectRevert(FleetPool.NotGuardian.selector);
+        pool.pause();
+
+        vm.prank(OPERATOR);
+        pool.setGuardian(guardian);
+        vm.prank(guardian);
+        pool.pause();
+        assertTrue(pool.paused(), "the guardian stopped the money");
+
+        vm.startPrank(guardian);
+        vm.expectRevert(FleetPool.NotOperator.selector);
+        pool.setPaused(false);
+        vm.expectRevert(FleetPool.NotOperator.selector);
+        pool.setGuardian(guardian);
+        vm.expectRevert(FleetPool.NotOperator.selector);
+        pool.openDraw(CAMPAIGN, 0.05 ether, uint64(block.timestamp + 60), "");
+        vm.stopPrank();
+
+        vm.prank(OPERATOR);
+        vm.expectRevert(FleetPool.Paused.selector);
+        pool.openDraw(CAMPAIGN, 0.05 ether, uint64(block.timestamp + 60), "");
+
+        vm.prank(OPERATOR);
+        pool.setPaused(false);
+        assertFalse(pool.paused(), "only the operator releases the brake");
     }
 
     function test_exitWorksWhilePausedAndWithoutTheOperator() public {

@@ -22,6 +22,7 @@ const POOL_ABI = parseAbi([
   "function topUpDraw(bytes32 campaign, uint256 amount)",
   "function fund(bytes32 campaign, address[] accounts)",
   "function fundPrincipal(bytes32 campaign, address account, uint256 principal, uint256 gasCeiling)",
+  "function fundAndExecute(bytes32 campaign, address account, uint256 principal, uint256 gasCeiling, address target, bytes data) returns (bytes)",
   "function commit(bytes32 campaign, uint256 actual)",
   "function rollback(bytes32 campaign, uint256 principalReturned) payable",
   "function closeDraw(bytes32 campaign)",
@@ -70,6 +71,8 @@ export type FleetPool = {
   topUpDraw(campaign: Hex, amount: bigint): Promise<Hex>;
   fund(campaign: Hex, accounts: readonly Address[]): Promise<Hex>;
   fundPrincipal(campaign: Hex, account: Address, principal: bigint, gasCeiling: bigint): Promise<Hex>;
+  /** Funds the principal and runs the buy in one transaction; reverts whole if the buy does. */
+  fundAndExecute(campaign: Hex, account: Address, principal: bigint, gasCeiling: bigint, target: Address, data: Hex, gas?: bigint): Promise<Hex>;
   commit(campaign: Hex, actual: bigint): Promise<Hex>;
   rollback(campaign: Hex, principalReturned: bigint): Promise<Hex>;
   closeDraw(campaign: Hex): Promise<Hex>;
@@ -172,6 +175,16 @@ export const createFleetPool = (
     fund: (campaign, accounts) => write("fund", [campaign, accounts]),
     fundPrincipal: (campaign, account, principal, gasCeiling) =>
       write("fundPrincipal", [campaign, account, principal, gasCeiling]),
+    fundAndExecute: async (campaign, account, principal, gasCeiling, target, data, gas) => {
+      const hash = await wallet.writeContract({
+        ...ctx(wallet), address, abi: POOL_ABI, functionName: "fundAndExecute",
+        args: [campaign, account, principal, gasCeiling, target, data],
+        ...(gas === undefined ? {} : { gas }),
+      } as never);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error(`fundAndExecute reverted: ${hash}`);
+      return hash;
+    },
     commit: (campaign, actual) => write("commit", [campaign, actual]),
     rollback: (campaign, principalReturned) =>
       write("rollback", [campaign, principalReturned], principalReturned),
