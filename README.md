@@ -39,7 +39,7 @@ Chit is **private, not anonymous**. Accounts, trades, amounts, timing and gas al
 | Stage | What it does | Status |
 |---|---|---|
 | **1. Private gas** | The operator pays the fleet's gas and settles it against the trader's ETH escrow. | Live on 46630 |
-| **2. Private funding pool** | One shared, unkeyed pool funds gas and trade principal. This is where the funding link disappears. | Built, gates green, live validation pending |
+| **2. Private funding pool** | One shared, unkeyed pool funds gas and trade principal. The main wallet never funds the fleet; the operator can still link them, and while the pool is small, amounts and timing can too. | Built, gates green, live validation pending |
 | **3. Trustless shielded pool** | A ZK pool where not even the operator can link a deposit to a fleet, with user-held view keys. | Not built |
 
 Stage 1's honest claim is only that the operator pays your fleet's gas. Its escrow is a per-campaign deposit that names the owner on chain, so the link is still derivable from public events. Stage 2 replaces that escrow with a pool that carries no campaign identifier.
@@ -65,7 +65,7 @@ Everything else is contract-enforced and refused before any ETH moves:
 | Funding delay | 1 to 15 minutes, with a 60 second floor in the contract |
 | Self-serve exit | 24 hours, works with the service offline |
 
-Principal moves to a fleet account just in time for a buy and commits against the draw. A failed buy rolls it back. Spend posts against the depositor later, on its own timer, so posting does not correlate either. Closing a campaign credits the unspent draw back to the balance rather than refunding a wallet, so closing publishes nothing.
+Principal moves to a fleet account just in time for a buy and commits against the draw. A failed buy rolls it back. Spend posts against the depositor later, on its own timer and in coarse units, so the posted charge never carries the exact amount the campaign side recorded. The posting still follows the buy in the operator's next transaction; that adjacency is a join the contract does not yet break. Closing a campaign credits the unspent draw back to the balance rather than refunding a wallet, so closing publishes nothing.
 
 ---
 

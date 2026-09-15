@@ -63,8 +63,34 @@ const operatorKeyFromEnv = (): `0x${string}` | undefined => {
  * the key itself is never used directly.
  */
 const nonceSecretFromEnv = (): string | undefined => {
+  const own = process.env.FLEET_NONCE_SECRET;
+  if (own && own.length >= 32) return own;
   const key = operatorKeyFromEnv();
-  return key ? keccak256(stringToBytes(`chit-fleet-challenge-v1|${key}`)) : undefined;
+  if (!key) return undefined;
+  warnOnce("nonce", "FLEET_NONCE_SECRET is not set: challenge nonces are keyed from the operator key");
+  return keccak256(stringToBytes(`chit-fleet-challenge-v1|${key}`));
+};
+
+/**
+ * The ledger key opens every sealed depositor reference the pool holds. It
+ * used to be derived from the operator key, so one leaked variable was the
+ * custodian, the ledger and the nonce secret at once (audit A34). It can now
+ * be its own secret. Changing it on a pool that already holds draws makes
+ * their references unreadable, so set it before the first draw or not at
+ * all; the derivation stays as the default so nothing deployed breaks.
+ */
+const ledgerKeyFromEnv = (operatorKey: `0x${string}`): `0x${string}` => {
+  const own = process.env.FLEET_LEDGER_KEY;
+  if (own && isHex(own) && own.length === 66) return own;
+  warnOnce("ledger", "FLEET_LEDGER_KEY is not set: the ledger key is derived from the operator key");
+  return ledgerKey(operatorKey);
+};
+
+const warned = new Set<string>();
+const warnOnce = (what: string, message: string): void => {
+  if (warned.has(what)) return;
+  warned.add(what);
+  console.warn(message);
 };
 
 /**
@@ -85,7 +111,7 @@ const poolFromEnv = (): PoolPort | undefined => {
   const address = poolAddressFromEnv();
   if (!key || !address) return undefined;
   const { wallet, publicClient } = clients(key);
-  return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKey(key));
+  return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKeyFromEnv(key));
 };
 
 /**
@@ -101,6 +127,15 @@ const allowedTokensFromEnv = (): Address[] | undefined => {
   const bad = tokens.filter((t) => !isAddress(t));
   if (bad.length > 0) throw new Error(`FLEET_TOKEN_ALLOWLIST holds a value that is not an address: ${bad.join(", ")}`);
   return tokens as Address[];
+};
+
+/** Slippage a sponsored buy tolerates, in basis points; unset means the router's default. */
+const maxSlippageFromEnv = (): number | undefined => {
+  const raw = process.env.FLEET_MAX_SLIPPAGE_BPS;
+  if (!raw) return undefined;
+  const bps = Number(raw);
+  if (!Number.isInteger(bps) || bps < 1 || bps > 5_000) throw new Error(`FLEET_MAX_SLIPPAGE_BPS must be an integer between 1 and 5000, got ${raw}`);
+  return bps;
 };
 
 /** Read-only market facts for the trading panel; the operator's client, no signing. */
@@ -267,6 +302,7 @@ export const getFleetRouter = (): CampaignRouter => {
   const pool = poolFromEnv();
   const market = marketFromEnv();
   const allowedTokens = allowedTokensFromEnv();
+  const maxSlippageBps = maxSlippageFromEnv();
   if (!allowedTokens) console.warn("FLEET_TOKEN_ALLOWLIST is not set: sponsored buys may target any token");
   void verifyDeployedAddresses();
   const deps: RouterDeps = {
@@ -278,6 +314,7 @@ export const getFleetRouter = (): CampaignRouter => {
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
     ...(allowedTokens ? { allowedTokens } : {}),
+    ...(maxSlippageBps !== undefined ? { maxSlippageBps } : {}),
     // Without the pool, balance and withdrawal answer 503 the same way.
     ...(pool ? { pool } : {}),
     // Without the market, tokenQuote, order, list and holdings answer 503 too.

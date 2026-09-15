@@ -20,7 +20,7 @@ import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } fro
 import { DRAW_CAP, MIN_GAS_CEILING, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
-import { UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall } from "./v4-swap.js";
+import { UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall, minOutFor } from "./v4-swap.js";
 import {
   FleetValidationError,
   isAddress,
@@ -58,6 +58,11 @@ export type RouterDeps = {
    * behind.
    */
   allowedTokens?: readonly Address[];
+  /**
+   * Slippage a sponsored buy tolerates, in basis points of the spot estimate;
+   * default 200. A buy on a real venue is refused when no quote can be read.
+   */
+  maxSlippageBps?: number;
   /** Confirms a funding reference against chain evidence and returns its wei amount. */
   verifyFunding?: (reference: string) => Promise<Uint>;
   /** Lands authorized UserOperations; absent means sponsorship is not configured. */
@@ -790,6 +795,7 @@ export class CampaignRouter {
       if (live?.paused) { record.state = "Paused"; throw new CampaignStateError("state_invalid", "session_paused"); }
     }
     if (BigInt(record.policy.perAccountGas) < MIN_GAS_CEILING) throw new PolicyRejection("gas_ceiling_too_low");
+    const minOut = await this.#minOut(record, token as Address, value);
     const refused: Record<string, unknown>[] = [];
     const buys: PooledBuy[] = [];
     for (const account of requested) {
@@ -797,7 +803,7 @@ export class CampaignRouter {
         buys.push({
           account,
           value,
-          callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now),
+          callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now, minOut),
           maxCost: record.policy.perAccountGas,
         });
       } else {
@@ -837,11 +843,12 @@ export class CampaignRouter {
     record: CampaignRecord, session: SessionKey, chain: FleetChain,
     requested: Address[], token: string, value: Uint, now: Date,
   ): Promise<Record<string, unknown>[]> {
+    const minOut = await this.#minOut(record, token as Address, value);
     const refused: Record<string, unknown>[] = [];
     const permitted: ChainBuy[] = [];
     for (const account of requested) {
       if (this.#permitted(record, session, account, value, now)) {
-        permitted.push(this.#chainBuy(record, account, token, value, now));
+        permitted.push(this.#chainBuy(record, account, token, value, now, minOut));
       } else {
         refused.push({ account, status: "rejected", budget: this.#budget(record) });
       }
@@ -871,11 +878,29 @@ export class CampaignRouter {
     }
   }
 
-  #chainBuy(record: CampaignRecord, account: Address, token: string, value: Uint, now: Date): ChainBuy {
+  /**
+   * The least a buy on the real venue may return. Read from the pool's spot
+   * price at request time, less the tolerated slippage. Without it every
+   * sponsored buy was a market order with amountOutMinimum zero, which on a
+   * public chain is an invitation to be sandwiched for the whole principal.
+   * The fixture venue used by tests has no pool and takes no minimum.
+   */
+  async #minOut(record: CampaignRecord, token: Address, value: Uint): Promise<bigint> {
+    if (record.policy.function !== UNIVERSAL_ROUTER_EXECUTE) return 0n;
+    const market = this.#deps.market;
+    if (!market) throw new ServiceError("dependency_evidence_invalid", "market_unconfigured");
+    const quote = await market.tokenQuote(token, value);
+    if (!quote.hasPool) throw new PolicyRejection("no_pool_for_token");
+    const minOut = minOutFor(BigInt(quote.estimatedOut), this.#deps.maxSlippageBps ?? 200);
+    if (minOut === 0n) throw new PolicyRejection("no_quote_for_token");
+    return minOut;
+  }
+
+  #chainBuy(record: CampaignRecord, account: Address, token: string, value: Uint, now: Date, minOut = 0n): ChainBuy {
     const reservation = `${record.id}|buy|${account.toLowerCase()}|${value}|${token.toLowerCase()}`;
     return {
       account, key: campaignKey(reservation), value,
-      callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now),
+      callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now, minOut),
       maxCost: record.policy.perAccountGas,
     };
   }

@@ -85,7 +85,13 @@ const makeRouter = (knobs: Knobs = {}) => {
     sessionOf: async () => session,
     control: async () => `0x${"c".repeat(64)}`,
   } as FleetChain;
-  const deps: RouterDeps = { service, pool, chain, ...(knobs.allowedTokens ? { allowedTokens: knobs.allowedTokens } : {}) };
+  // every buy on the real venue needs a quote now; the fake pool has one
+  const market = {
+    tokenQuote: async () => ({ token: VENUE, symbol: "FLEET", decimals: 18, hasPool: true, sqrtPriceX96: "1", estimatedOut: "1000000" }),
+    holdings: async () => [],
+    campaignsOf: async () => [],
+  };
+  const deps: RouterDeps = { service, pool, chain, market, ...(knobs.allowedTokens ? { allowedTokens: knobs.allowedTokens } : {}) };
   return { router: new CampaignRouter(deps), service, paid, bought };
 };
 
@@ -193,4 +199,55 @@ test("two withdrawals of the whole balance sent together pay once", async () => 
   const statuses = results.map((r) => r.status).sort();
   assert.deepEqual(statuses, [200, 422], JSON.stringify(results.map((r) => r.body)));
   assert.equal(paid.length, 1, "the second saw the balance the first left");
+});
+
+test("a buy on the real venue carries a minimum output from the spot quote, and is refused without a pool", async () => {
+  const { encodeV4EthBuy, UNIVERSAL_ROUTER_EXECUTE } = await import("../../src/fleet/v4-swap.js");
+  const now = new Date("2026-09-15T12:00:00.000Z");
+  let hasPool = true;
+  const market = {
+    tokenQuote: async () => ({ token: VENUE, symbol: "FLEET", decimals: 18, hasPool, sqrtPriceX96: "1", estimatedOut: "1000000" }),
+    holdings: async () => [],
+    campaignsOf: async () => [],
+  };
+  const captured: { callData: string }[] = [];
+  // a router of our own so the pool fake can capture calldata
+  const service = new CampaignService(serviceConfig);
+  const draw: DrawSummary = { amount: parseEther("0.02").toString(), spent: "0", remaining: parseEther("0.02").toString(), dueAt: "2026-09-08T12:05:00.000Z", state: "Funded" };
+  const capturing: PoolPort = {
+    balance: async () => ({ available: parseEther("0.08").toString(), deposited: parseEther("0.1").toString(), spent: "0", openDraws: "0", headroom: { sizes: [], perTraderRemaining: "0", poolRemaining: "0" }, exit: {}, pool: { paused: false }, poolAddress: POOL }),
+    withdraw: async () => ({ payoutTx: `0x${"a".repeat(64)}`, queuedSpendTx: `0x${"b".repeat(64)}` }),
+    openDraw: async () => draw, topUpDraw: async () => draw, drawOf: async () => draw,
+    ownerOf: async () => trader.address.toLowerCase() as Address, closeDraw: async () => draw,
+    sweep: async () => ({ funded: [], posted: [] }),
+    buy: async ({ buys }) => { captured.push(...buys); return { results: buys.map((b) => ({ account: b.account, status: "sponsored" as const })), draw }; },
+  };
+  const chain: FleetChain = {
+    registerCampaign: async () => undefined, readBudget: async () => ({ funded: "0", reserved: "0", spent: "0", unused: "0" }),
+    activate: async () => [owner(11), owner(12), owner(13), owner(14), owner(15)],
+    buy: async () => ({ results: [], budget: { funded: "0", reserved: "0", spent: "0", unused: "0" } }),
+    loadCampaign: async () => undefined, isEnrolled: async () => true,
+    accountsOf: async () => [owner(11)], sessionOf: async () => ({ chainId: 46630n, router: policy().router as Address, selector: "0x24856bc3", maxTradeValue: 10n ** 15n, perAccountGas: 2n * 10n ** 14n, totalGas: 10n ** 15n, expiry: 1_800_000_000n, spentGas: 0n, paused: false, revoked: false, exists: true } as OnChainSession),
+    control: async () => `0x${"c".repeat(64)}`,
+  } as FleetChain;
+  const router = new CampaignRouter({ service, pool: capturing, chain, market, maxSlippageBps: 250, now: () => now });
+
+  const created = await router.handle(await signed(service, "create", {
+    quoteId: "q", policy: { ...policy(), function: UNIVERSAL_ROUTER_EXECUTE },
+    accounts: Array.from({ length: 5 }, (_, i) => ({ ownerAddress: owner(i + 1), salt: salt(i + 1) })),
+    recoveryVaultCommitment: `0x${"3".repeat(64)}`,
+  }), key());
+  const campaign = (created.body as { campaign: string }).campaign;
+  await router.handle(await signed(service, "confirmRecovery", { campaign }), key());
+  await router.handle(await signed(service, "activate", { campaign, draw: parseEther("0.02").toString() }), key());
+
+  const ok = await router.handle(await buy(service, campaign), key());
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  const expected = encodeV4EthBuy({ token: VENUE, amountIn: 1n, minOut: 975_000n, deadline: BigInt(Math.floor(now.getTime() / 1000) + 3600) });
+  assert.equal(captured[0]?.callData, expected, "amountOutMinimum = estimate less 2.5%, never zero");
+
+  hasPool = false;
+  const refused = await router.handle(await buy(service, campaign), key());
+  assert.equal(refused.status, 403, JSON.stringify(refused.body));
+  assert.equal(captured.length, 1, "no principal moved for a token without a pool");
 });
