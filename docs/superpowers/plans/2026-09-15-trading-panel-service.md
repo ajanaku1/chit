@@ -731,6 +731,9 @@ const marketFromEnv = (): MarketPort | undefined => {
   const { publicClient } = clients(key);
   return createMarket(publicClient, { poolManager, escrow, escrowFromBlock: DEPLOYED_46630.escrowBlock });
 };
+// DEPLOYED_46630 gains: poolManager: "0x8366a39cc670b4001a1121b8f6a443a643e40951" (deployments venue.poolManager) and escrowBlock: 110732061n (block of campaignEscrowTx 0xf464…708d).
+const _unused = () => {
+};
 ```
 Add `market: marketFromEnv(),` to the `deps` object. `DEPLOYED_46630` must gain `poolManager` (`deployments/fleet-46630.json` → `venue.poolManager` = `0x8366a39cc670b4001a1121b8f6a443a643e40951`) and `escrowBlock` (the block of `campaignEscrowTx`; read it once with `cast`/viem or the explorer and hardcode it with a comment naming the tx). Read how `DEPLOYED_46630` is built (from the JSON or a literal) and extend it the same way.
 
@@ -756,7 +759,7 @@ Check `vercel.json`/`scripts/serve-local.mjs` for how `api/fleet/*.js` are route
 - Create: `test/fork/fleet-order.test.ts`
 - Modify: `verify.sh` (add the `fleet-trade` gate after `pool-fund`)
 
-- [ ] **Step 1: Write the test**, modelled on `test/fork/fleet-pool-fund.test.ts`: same `network.connect`, `travel`, and `setup()` that deploys the pool, seeds the venue token via the same path that test uses, funds a depositor, creates + activates a campaign with a draw, and travels past funding. Then:
+- [ ] **Step 1: Write the test**, modelled on `test/fork/fleet-pool-fund.test.ts` (Hardhat network `default`: fresh contracts and the `FleetTestSink` venue, NOT `robinhoodTestnetFork`, which is known-red under load). There is no v4 PoolManager on `default`, so wrap the market: `const market = { ...createMarket(publicClient, { poolManager: sink, escrow, escrowFromBlock: 0n }), tokenQuote: async (token, amountInWei) => ({ token, symbol: "SINK", decimals: 18, hasPool: true, sqrtPriceX96: "1", estimatedOut: amountInWei }) }`. Replace the token-balance assertion at the end with: the campaign's draw `spent` grew by the sum of the five slice amounts, and each executed slice has `status: "sponsored"`. Keep the `list` assertion (real `campaignsOf` against the local escrow).: same `network.connect`, `travel`, and `setup()` that deploys the pool, seeds the venue token via the same path that test uses, funds a depositor, creates + activates a campaign with a draw, and travels past funding. Then:
 
 ```ts
   it("executes a seeded order over two polls, every slice exactly once", async () => {
