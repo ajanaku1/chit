@@ -608,6 +608,9 @@ export class CampaignRouter {
     const totalWei = String(body["totalWei"] ?? "");
     if (!/^\d+$/.test(totalWei)) throw new TradeValidationError("invalid_total");
 
+    // A fresh instance restores the fleet from chain without its accounts; ask
+    // the chain before refusing, as a plain buy does.
+    if (this.#deps.chain) await this.#syncEnrolled(record, this.#deps.chain, wallets);
     const enrolled = new Set((record.chainAccounts ?? this.#session(record).accounts).map((a) => a.toLowerCase()));
     if (wallets.length === 0 || wallets.some((w) => !enrolled.has(String(w).toLowerCase()))) throw new TradeValidationError("wallets_not_enrolled");
 
@@ -674,17 +677,24 @@ export class CampaignRouter {
 
   /** The fleets this wallet registered on the escrow, in the state the chain gives them now. */
   async #list(wallet: string): Promise<RouterResult> {
-    const keys = await this.#market().campaignsOf(wallet as Address);
+    // Stage 1 fleets are registered on the escrow; Stage 2 fleets never are (that
+    // registration would publish the owner beside the campaign), so those come
+    // from the pool's sealed owner references instead. Union, dedupe, keep order.
+    const [escrowKeys, poolKeys] = await Promise.all([
+      this.#market().campaignsOf(wallet as Address),
+      this.#deps.pool?.campaignsOf?.(wallet as Address) ?? Promise.resolve([] as Hex[]),
+    ]);
+    const keys = [...new Set([...escrowKeys, ...poolKeys].map((k) => k.toLowerCase() as Hex))];
     const fleets: Record<string, unknown>[] = [];
     for (const key of keys) {
       const id = this.#keyIndex.get(key.toLowerCase() as Hex) ?? key;
-      const record = this.#campaigns.get(id) ?? (await this.#restoreByKey(key, wallet));
+      const record = this.#campaigns.get(id) ?? (await this.#restoreByKey(key as Hex, wallet));
       if (!record) continue;
       await this.#syncDraw(record);
       fleets.push({
         campaign: record.id, state: record.state,
         remaining: record.draw ? record.draw.remaining : this.#budget(record).unused,
-        accounts: (record.chainAccounts ?? []).length,
+        accounts: (await this.#accountsOf(record)).length,
       });
     }
     return { status: 200, body: { fleets } };
@@ -695,7 +705,7 @@ export class CampaignRouter {
     const record = await this.#campaign(wallet, body);
     const tokens = (Array.isArray(body["tokens"]) ? (body["tokens"] as string[]) : [])
       .filter((t) => /^0x[0-9a-fA-F]{40}$/.test(t)) as Address[];
-    const accounts = record.chainAccounts ?? this.#session(record).accounts;
+    const accounts = await this.#accountsOf(record);
     return { status: 200, body: { holdings: await this.#market().holdings(accounts, tokens) } };
   }
 
@@ -881,6 +891,15 @@ export class CampaignRouter {
   }
 
   /** Accounts the chain says are enrolled join the record, so restored records can buy. */
+  /** The fleet's accounts, fetched from the factory's own event when a restored record has none. */
+  async #accountsOf(record: CampaignRecord): Promise<readonly Address[]> {
+    if (!record.chainAccounts?.length && this.#deps.chain) {
+      const found = await this.#deps.chain.accountsOf(this.#key(record));
+      if (found.length) record.chainAccounts = found.map((a) => a.toLowerCase() as Address);
+    }
+    return record.chainAccounts ?? this.#session(record).accounts;
+  }
+
   async #syncEnrolled(record: CampaignRecord, chain: FleetChain, requested: readonly Address[]): Promise<void> {
     const known = new Set((record.chainAccounts ?? []).map((account) => account.toLowerCase()));
     for (const account of requested) {

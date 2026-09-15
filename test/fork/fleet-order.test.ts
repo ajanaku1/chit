@@ -169,8 +169,10 @@ describe("A seeded fleet order over two polls", () => {
     for (const e of done2) assert.equal(e.status, "sponsored");
     assert.equal((second.body as { nextDueAt: string | null }).nextDueAt, null);
 
-    // Asking again for a slice the browser already holds runs nothing.
-    const again = await s.elsewhere("trade", { campaign: s.campaign, order, pending: [pending[0] ?? 0] });
+    // Asking the same instance again for a slice it already ran does nothing.
+    // Across instances the browser's pending list is the guard, which the
+    // second poll above exercised: it sent only what the first had not run.
+    const again = await s.same("trade", { campaign: s.campaign, order, pending: [done1[0]!.index] });
     assert.equal((again.body as { executed: unknown[] }).executed.length, 0);
 
     // The draw paid for exactly the five slices, and the sink received them.
