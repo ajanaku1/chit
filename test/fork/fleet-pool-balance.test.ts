@@ -8,6 +8,7 @@ import { CampaignService, challengeBytes, payloadHash } from "../../src/fleet/ca
 import { createFleetPool } from "../../src/fleet/chain-pool.js";
 import { ledgerKey } from "../../src/fleet/pool-ledger.js";
 import { coarseCharge, createPoolService } from "../../src/fleet/pool-buy.js";
+import { createMemoryStore } from "../../src/fleet/store.js";
 import type { AuthEnvelope } from "../../src/fleet/types.js";
 
 /**
@@ -33,12 +34,14 @@ describe("Pool balance through the router", () => {
 
     const pool = createFleetPool(operator!, publicClient, contract.address as Address);
     const key = ledgerKey(OPERATOR_KEY);
-    // Each router is its own serverless instance: separate memory, same chain.
+    // Each router is its own serverless instance: separate memory, same chain,
+    // one store between them, as Neon is on chit.tools.
+    const store = createMemoryStore();
     const instance = () => {
-      const service = new CampaignService(serviceConfig, { nonceSecret: NONCE_SECRET });
+      const service = new CampaignService(serviceConfig, { nonceSecret: NONCE_SECRET, store });
       return {
         service,
-        router: new CampaignRouter({ service, pool: createPoolService(operator!, publicClient, pool, key) }),
+        router: new CampaignRouter({ service, store, pool: createPoolService(operator!, publicClient, pool, key, { store, delaySeconds: () => 120 }) }),
       };
     };
     const issuer = instance().service;
@@ -80,22 +83,31 @@ describe("Pool balance through the router", () => {
     const after = await publicClient.getBalance({ address: destination });
     assert.equal(after - before, parseEther("0.03"), "the destination was paid exactly");
 
-    // The pool itself did not pay: it still holds the deposit, and the spend is
-    // queued against the depositor for later posting.
+    // The pool itself did not pay: it still holds the deposit, and the charge
+    // is recorded, not queued: the payout is the operator's only transaction
+    // in this window, so nothing depositor-keyed sits beside the payee.
     assert.equal(await publicClient.getBalance({ address: contract.address as Address }), parseEther("0.1"));
+    assert.equal(await contract.read.queuedSpendCount(), 0n, "no charge follows the payout");
+
+    // Available drops immediately, on any instance, so the same ETH cannot be
+    // withdrawn twice while the charge waits for its batch.
+    const second = await elsewhere("balance", {});
+    assert.equal((second.body as { available: string }).available, (parseEther("0.1") - coarseCharge(parseEther("0.03"))).toString());
+    assert.equal((second.body as { owed: string }).owed, coarseCharge(parseEther("0.03")).toString());
+
+    // A sweep from another instance queues it. The charge is the coarse form
+    // of the payout, one grain below it, so the transfer to the payee and the
+    // charge to the depositor never carry the same number; the grain is the pool's.
+    const swept = await elsewhere("sweep", {});
+    assert.equal((swept.body as { queued: number }).queued, 1);
     assert.equal(await contract.read.queuedSpendCount(), 1n);
     const queued = await contract.read.queuedSpendAt([0n]);
-    // The charge is the coarse form of the payout, one grain below it, so the
-    // transfer to the payee and the charge to the depositor never carry the
-    // same number; the grain is the pool's.
     assert.equal(queued.amount, coarseCharge(parseEther("0.03")));
     assert.ok(queued.amount < parseEther("0.03"));
     assert.equal(queued.posted, false);
-
-    // Available drops immediately, so the same ETH cannot be withdrawn twice
-    // while the posting is still in flight.
-    const second = await elsewhere("balance", {});
-    assert.equal((second.body as { available: string }).available, (parseEther("0.1") - coarseCharge(parseEther("0.03"))).toString());
+    const third = await elsewhere("balance", {});
+    assert.equal((third.body as { available: string; owed: string }).available, (parseEther("0.1") - coarseCharge(parseEther("0.03"))).toString(), "still subtracted, now as a queued spend");
+    assert.equal((third.body as { owed: string }).owed, "0");
     const tooMuch = await elsewhere("withdraw", { amount: parseEther("0.08").toString(), destination });
     assert.equal(tooMuch.status, 422, JSON.stringify(tooMuch.body));
   });

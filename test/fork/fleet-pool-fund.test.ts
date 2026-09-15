@@ -165,13 +165,19 @@ describe("Pooled funding and buys", () => {
     assert.ok(draw.spent < parseEther("0.02"), "and stay inside the draw");
     assert.equal(draw.reserved, 0n, "nothing left in flight");
 
-    // Every charge against the depositor is queued, not posted beside what
-    // caused it: the headroom the sweep seeded, then one per buy.
-    assert.equal(await s.poolContract.read.queuedSpendCount(), 3n);
-    const headroomCharge = (await s.poolContract.read.queuedSpendAt([0n])).amount;
-    assert.ok(headroomCharge < HEADROOM * 5n && HEADROOM * 5n - headroomCharge <= CHARGE_GRAIN, "the seeded headroom is a charge like any other, posted in its coarse form");
-    assert.equal((await s.poolContract.read.queuedSpendAt([0n])).posted, false);
+    // Nothing depositor-keyed has left the operator yet: the buy queued no
+    // charge in its own window, and neither did the sweep that funded.
+    assert.equal(await s.poolContract.read.queuedSpendCount(), 0n, "a buy is followed by no charge");
     assert.equal((await s.poolContract.read.depositorOf([s.trader!.account.address]))[1], 0n);
+
+    // The next sweep queues everything owed in one batch: the headroom the
+    // earlier sweep seeded, then one per buy.
+    const batched = await s.elsewhere("sweep", {});
+    assert.equal((batched.body as { queued: number }).queued, 3);
+    assert.equal(await s.poolContract.read.queuedSpendCount(), 3n);
+    const amounts = await Promise.all([0n, 1n, 2n].map(async (i) => (await s.poolContract.read.queuedSpendAt([i])).amount));
+    assert.ok(amounts.some((a) => a < HEADROOM * 5n && HEADROOM * 5n - a <= CHARGE_GRAIN), "the seeded headroom is a charge like any other, in its coarse form");
+    assert.equal((await s.poolContract.read.queuedSpendAt([0n])).posted, false);
 
     await travel(200);
     const posted = await s.elsewhere("sweep", {});

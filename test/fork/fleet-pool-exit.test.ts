@@ -37,7 +37,7 @@ describe("FleetPool self-serve exit", () => {
     const pool = await funded();
     const publicClient = await viem.getPublicClient();
     const enc = `0x${"e1".repeat(32)}` as const;
-    await pool.write.queueSpend([enc, parseEther("0.02"), 0n]);
+    await pool.write.queueSpendBatch([[enc], [parseEther("0.02")], [0n]]);
     await pool.write.postQueued([0n, alice!.account.address]);
 
     await pool.write.requestExit({ account: alice!.account });
@@ -71,7 +71,7 @@ describe("FleetPool self-serve exit", () => {
     const publicClient = await viem.getPublicClient();
     await pool.write.requestExit({ account: alice!.account });
     // The trader keeps trading after asking to leave; that spend still counts.
-    await pool.write.queueSpend([`0x${"e2".repeat(32)}`, parseEther("0.03"), 0n]);
+    await pool.write.queueSpendBatch([[`0x${"e2".repeat(32)}`], [parseEther("0.03")], [0n]]);
     await pool.write.postQueued([0n, alice!.account.address]);
 
     await travel(DAY + 1);
@@ -87,7 +87,7 @@ describe("FleetPool self-serve exit", () => {
     // Chain time, not wall time: earlier cases in this file have already
     // travelled forward, so the wall clock is behind the EVM.
     const block = await (await viem.getPublicClient()).getBlock();
-    await pool.write.queueSpend([`0x${"e3".repeat(32)}`, parseEther("0.02"), block.timestamp + 60n]);
+    await pool.write.queueSpendBatch([[`0x${"e3".repeat(32)}`], [parseEther("0.02")], [block.timestamp + 60n]]);
     await assert.rejects(pool.write.postQueued([0n, alice!.account.address]), "not due yet");
 
     // The window is what lets the exit be safe without the operator: an unposted
@@ -101,7 +101,7 @@ describe("FleetPool self-serve exit", () => {
   it("posts a queued spend inside its window and only once", async () => {
     const pool = await funded();
     const block = await (await viem.getPublicClient()).getBlock();
-    await pool.write.queueSpend([`0x${"e4".repeat(32)}`, parseEther("0.01"), block.timestamp + 60n]);
+    await pool.write.queueSpendBatch([[`0x${"e4".repeat(32)}`], [parseEther("0.01")], [block.timestamp + 60n]]);
     await travel(120);
     await pool.write.postQueued([0n, alice!.account.address]);
     assert.equal((await pool.read.depositorOf([alice!.account.address]))[1], parseEther("0.01"));

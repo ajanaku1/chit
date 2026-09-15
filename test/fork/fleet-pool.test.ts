@@ -91,7 +91,7 @@ describe("FleetPool deposits, caps, and pause", () => {
     );
     await assert.rejects(pool.write.claimOperator([parseEther("0.01")], { account: alice!.account }));
     await assert.rejects(
-      pool.write.queueSpend(["0xdead", parseEther("0.01"), 0n], { account: alice!.account }),
+      pool.write.queueSpendBatch([["0xdead"], [parseEther("0.01")], [0n]], { account: alice!.account }),
     );
   });
 
