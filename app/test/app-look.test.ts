@@ -433,3 +433,13 @@ test("the Trade page marks slices sent before it asks, never re-sends an unconfi
   assert.ok(place && place[0].indexOf("confirmDialog(") < place[0].indexOf('signedFleetApi(wallet, "order"'), "placing an order does not confirm first");
   assert.match(await read("src/fleet/page-shared.ts"), /\["quote", "challenge", "read", "balance", "status", "tokenQuote", "order", "list", "holdings"\]/, "signed reads must not carry an idempotency key");
 });
+
+test("the Trade page's select and per-slice Copy buttons fit their rows", async () => {
+  const pages = rules(await read("src/styles/pages.css"));
+  const select = pages.find(([name]) => name.split(/,\s*/).includes(".field select"));
+  assert.ok(select && /font-family:\s*var\(--font-mono\)/.test(select[1]), "the fleet switcher is the browser's default select");
+  const label = pages.find(([name]) => name.split(/,\s*/).includes(".field > span"));
+  assert.ok(label && /text-transform:\s*uppercase/.test(label[1]), "a field's span caption is not styled like its label");
+  const copy = pages.find(([name]) => name === ".order__slices .ghost");
+  assert.ok(copy && /min-height:\s*1\.\d+rem/.test(copy[1]), "per-slice Copy is a full-size pill and wraps the row");
+});
