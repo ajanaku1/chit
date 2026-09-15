@@ -105,12 +105,16 @@ contract FleetPool {
     mapping(address depositor => Depositor) private _depositors;
     mapping(bytes32 campaign => Draw) private _draws;
     bytes32[] private _campaigns;
-    QueuedSpend[] private _queued;
+    /// @dev Keyed by a hash, not a counter: a counter made the k-th posting the
+    ///      k-th queueing, which was the k-th buy. The id list keeps enumeration
+    ///      possible for the operator's sweep and for anyone auditing the queue.
+    mapping(bytes32 id => QueuedSpend) private _queued;
+    bytes32[] private _queueIds;
 
     event Deposited(address indexed depositor, uint256 amount);
     event ExitRequested(address indexed depositor, uint256 amount, uint64 availableAt);
     event ExitPaid(address indexed depositor, uint256 amount);
-    event SpendQueued(uint256 indexed id, uint256 amount, uint64 dueAt);
+    event SpendQueued(bytes32 indexed id, uint256 amount, uint64 dueAt);
     event SpendPosted(address indexed depositor, uint256 amount);
     event OperatorClaimed(uint256 amount);
     event PausedSet(bool paused);
@@ -156,6 +160,7 @@ contract FleetPool {
     error DueBeyondWindow();
     error EmptyBatch();
     error LengthMismatch();
+    error UnknownSpend();
 
     modifier onlyOperator() {
         if (msg.sender != operator) revert NotOperator();
@@ -246,37 +251,39 @@ contract FleetPool {
     function queueSpendBatch(bytes[] calldata encDepositors, uint256[] calldata amounts, uint64[] calldata dueAts)
         external
         onlyOperator
-        returns (uint256[] memory ids)
+        returns (bytes32[] memory ids)
     {
         uint256 n = encDepositors.length;
         if (n == 0) revert EmptyBatch();
         if (amounts.length != n || dueAts.length != n) revert LengthMismatch();
-        ids = new uint256[](n);
+        ids = new bytes32[](n);
         for (uint256 i = 0; i < n; ++i) {
             ids[i] = _queue(encDepositors[i], amounts[i], dueAts[i]);
         }
     }
 
-    function _queue(bytes calldata encDepositor, uint256 amount, uint64 dueAt) private returns (uint256 id) {
+    function _queue(bytes calldata encDepositor, uint256 amount, uint64 dueAt) private returns (bytes32 id) {
         // POST_WINDOW runs from now; a dueAt past it is a charge that can
         // never be posted, and a charge never posted is the pool's loss.
         if (dueAt > block.timestamp + POST_WINDOW) revert DueBeyondWindow();
-        id = _queued.length;
-        _queued.push(
-            QueuedSpend({
-                encDepositor: encDepositor,
-                amount: amount,
-                dueAt: dueAt,
-                queuedAt: uint64(block.timestamp),
-                posted: false
-            })
-        );
+        // The position mixes in so identical entries in one batch part ways;
+        // prevrandao so the id is not computable from the entry alone.
+        id = keccak256(abi.encode(encDepositor, amount, dueAt, block.prevrandao, _queueIds.length));
+        _queueIds.push(id);
+        _queued[id] = QueuedSpend({
+            encDepositor: encDepositor,
+            amount: amount,
+            dueAt: dueAt,
+            queuedAt: uint64(block.timestamp),
+            posted: false
+        });
         emit SpendQueued(id, amount, dueAt);
     }
 
     /// @notice Charges a queued spend to its depositor, inside its window.
-    function postQueued(uint256 id, address depositor) external onlyOperator {
+    function postQueued(bytes32 id, address depositor) external onlyOperator {
         QueuedSpend storage q = _queued[id];
+        if (q.queuedAt == 0) revert UnknownSpend();
         if (q.posted) revert AlreadyPosted();
         if (block.timestamp < q.dueAt) revert NotDue();
         if (block.timestamp > q.queuedAt + POST_WINDOW) revert PostWindowClosed();
@@ -492,11 +499,12 @@ contract FleetPool {
     }
 
     function queuedSpendCount() external view returns (uint256) {
-        return _queued.length;
+        return _queueIds.length;
     }
 
-    function queuedSpendAt(uint256 index) external view returns (QueuedSpend memory) {
-        return _queued[index];
+    function queuedSpendAt(uint256 index) external view returns (bytes32 id, QueuedSpend memory entry) {
+        id = _queueIds[index];
+        entry = _queued[id];
     }
 
     // --- internals ----------------------------------------------------------
