@@ -40,6 +40,7 @@
     "fleet-pool:journey": "npm run build && node --env-file=.env dist/scripts/fleet-pool-journey.js",
     "fleet-pool-deploy:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/fleet-pool-deploy-live.js",
     "fleet-venue:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/fleet-venue-live.js",
+    "sponsor-spike:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/sponsor-spike-live.js",
     "test:fleet:deploy": "npm run build && node --test dist/test/fork/fleet-deploy.test.js"
   },
   "dependencies": {

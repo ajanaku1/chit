@@ -1,6 +1,6 @@
 # Feature Specification: Gas Sponsorship for Dapps (draft, not approved)
 
-**Feature Branch**: none yet · **Created**: 2026-09-15 · **Status**: proposal
+**Feature Branch**: none yet · **Created**: 2026-09-15 · **Status**: proposal; spike run on a fork the same day (see design.md, "Spike result")
 **Input**: `proposals/gas-sponsorship-2026-09-15/design.md`
 
 ## User Scenarios & Testing
@@ -118,8 +118,15 @@ rather than the operator's direct execute, and the hashes are recorded in
 ## Assumptions
 - ERC-4337 EntryPoint v0.7.0 on 46630, as recorded in the deployment file.
 - Chit submits `handleOps` itself; no public bundler is assumed.
-- Sender type on 46630 (smart account only, or EIP-7702 EOAs too) is checked
-  and recorded before the first spike.
+- Sender type on 46630: a smart account from the canonical SimpleAccount v0.7
+  factory, which is live on the chain, deployed by its first sponsored
+  operation (spike, 2026-09-15, on a fork). EIP-7702 EOAs are not assumed
+  until tested.
+- The sponsor escrow and paymaster are fresh deployments: the fleet escrow
+  deployed on 2026-08-31 predates the settler role the paymaster needs.
+- The fee (FR-006) is a percentage of the cost the EntryPoint reports to
+  `postOp`, which the spike measured at 95% to 98.5% of the operator's real
+  outlay; the published percentage must clear that gap before it is revenue.
 
 ## Out of scope
 Any change to the funding pool; mainnet; user token gating; sponsoring
