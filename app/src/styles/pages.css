@@ -89,3 +89,13 @@ main.privacy-page h1 { font-size: clamp(2.25rem, 6vw, 3.75rem); }
 .exclusions { color: var(--text-muted); line-height: 1.6; }
 /* The call to action sizes to its label. */
 .privacy-page > .linkbtn { align-self: flex-start; width: auto; }
+
+/* ---- Trade ---- */
+.order-list { display: grid; gap: 0.75rem; margin: 0 0 1.25rem; padding: 0; list-style: none; }
+.order { display: grid; gap: 0.5rem; padding: 0.9rem 1rem; border: 1px solid rgba(245, 239, 229, 0.1); border-radius: var(--radius-inner); background: rgba(0, 0, 0, 0.25); }
+.order__head { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; }
+.order__meta { color: var(--text-muted); font-size: 0.85rem; }
+.order__slices { display: grid; gap: 0.25rem; margin: 0; padding: 0; list-style: none; font-family: var(--font-mono); font-size: 0.8rem; }
+.order__slices li { display: flex; justify-content: space-between; gap: 0.75rem; overflow-wrap: anywhere; }
+.order__slices a { color: var(--soft-paper); }
+.order[data-done="true"] .order__head h3 { color: var(--paper); }

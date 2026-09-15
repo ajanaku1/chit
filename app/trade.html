@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#171513" />
+    <meta name="description" content="Chit Fleet Trade: buy a token with every wallet in your fleet, at its own moment." />
+    <title>Chit Fleet · Trade</title>
+    <link rel="icon" href="./favicon.svg" />
+    <link rel="stylesheet" href="./fleet.css" />
+  </head>
+  <body class="fleet-body">
+    <a class="skip-link" href="#trade">Skip to trade</a>
+    <div class="fleet-shell">
+      <header class="masthead">
+        <a class="brand-lockup" href="/" aria-label="Chit home">
+          <img src="./logo.svg" alt="" width="28" height="28" />
+          <span>Chit</span>
+        </a>
+        <nav class="nav" id="fleet-nav" aria-label="Fleet pages">
+          <a href="./balance.html">Balance</a>
+          <a href="./fleet.html">Set up</a>
+          <a href="./trade.html" aria-current="page">Trade</a>
+          <a href="./fleet-dashboard.html">Control Room</a>
+          <a href="./fleet-privacy.html">Boundary</a>
+        </nav>
+        <button id="hdr-wallet" type="button" class="wallet-btn" data-state="disconnected" aria-label="Connect wallet">Connect</button>
+        <button class="burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="fleet-nav"><span></span><span></span><span></span></button>
+        <div class="contract-row">
+          <span class="contract-row__label">CA</span>
+          <code id="contract-address">0xD523A627030509021cC39B6d7C8543417D3E50D8</code>
+          <button id="copy-contract-address" type="button" aria-label="Copy contract address">Copy</button>
+          <span id="copy-contract-status" class="sr-only" role="status" aria-live="polite"></span>
+        </div>
+      </header>
+      <p id="pool-status" class="pill" role="status" hidden><span class="pill__dot" aria-hidden="true"></span><span class="pill__text"></span></p>
+
+      <main id="trade" class="dash">
+        <div id="status-banner" class="status-banner" role="status" aria-live="polite" hidden></div>
+        <section class="dash-card" aria-labelledby="fleet-h">
+          <div class="dash-head"><h1 id="fleet-h">Trade</h1><span id="fleet-chip" class="state-chip" data-live="false">No fleet</span></div>
+          <label class="field"><span>Fleet</span><select id="fleet-switch" aria-label="Which fleet trades"></select></label>
+          <dl class="summary"><div><dt>ETH left to spend</dt><dd id="fleet-left">—</dd></div></dl>
+          <p class="cardlabel">Holdings</p>
+          <dl class="summary" id="holdings"><div><dt>Nothing bought yet</dt><dd>—</dd></div></dl>
+        </section>
+        <section class="dash-card" aria-labelledby="order-h">
+          <h2 id="order-h">Buy a token with every wallet</h2>
+          <p class="lead">One token, one total. Each wallet buys its own slice, at its own moment, inside about the window shown. Trades stay public; only who funded the fleet is withheld.</p>
+          <form id="order-form" novalidate>
+            <div class="field"><label for="o-token">Token address</label><input id="o-token" name="token" type="text" inputmode="text" placeholder="0x…" autocomplete="off" /></div>
+            <p id="o-quote" class="fineprint" role="status" aria-live="polite"></p>
+            <div class="field"><label for="o-total">Total to spend (ETH)</label><input id="o-total" name="total" type="text" inputmode="decimal" value="0.005" /></div>
+            <p id="o-plan" class="fineprint" role="status" aria-live="polite"></p>
+            <p id="trade-error" class="field-error" role="alert" hidden></p>
+            <button id="o-place" type="submit" class="primary big" disabled>Place order</button>
+          </form>
+        </section>
+        <section class="dash-card" aria-labelledby="orders-h">
+          <h2 id="orders-h">Orders</h2>
+          <p class="cardlabel">Running</p>
+          <ul id="orders-open" class="order-list"></ul>
+          <p class="cardlabel">Past</p>
+          <ul id="orders-past" class="order-list"></ul>
+        </section>
+      </main>
+
+      <footer class="fleet-foot">
+        <p>Testnet demonstration on Robinhood Chain. <a href="./fleet-privacy.html">Exactly what's private →</a></p>
+        <p class="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
+      </footer>
+    </div>
+    <script type="module" src="./trade-page.js"></script>
+  </body>
+</html>
