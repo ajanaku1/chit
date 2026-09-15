@@ -15,6 +15,7 @@ import { CampaignRouter, type RouterDeps } from "./campaign-routes.js";
 import { CampaignService } from "./campaign-service.js";
 import { createFleetPool } from "./chain-pool.js";
 import { createFleetChain, type FleetChain } from "./chain-service.js";
+import { createMarket, type MarketPort } from "./market.js";
 import { ledgerKey } from "./pool-ledger.js";
 import { createPoolService, type PoolPort } from "./pool-buy.js";
 import { validateFeeConfig, type FeeConfig } from "./eligibility.js";
@@ -36,6 +37,10 @@ const DEPLOYED_46630 = {
   escrow: "0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325",
   factory: "0x5c0e2ec619c11b66e0e0efb7931bccfa6b784ea6",
   policy: "0x57c7436bbbb40b08adef5c84f0aeaee0c4f3e011",
+  /** Uniswap v4 PoolManager on 46630 (deployments/fleet-46630.json, venue.poolManager). */
+  poolManager: "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+  /** The block that mined campaignEscrowTx 0xf464…708d; the fleet list scans events from here. */
+  escrowBlock: 110732061n,
 } as const;
 
 /**
@@ -81,6 +86,17 @@ const poolFromEnv = (): PoolPort | undefined => {
   if (!key || !address) return undefined;
   const { wallet, publicClient } = clients(key);
   return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKey(key));
+};
+
+/** Read-only market facts for the trading panel; the operator's client, no signing. */
+const marketFromEnv = (): MarketPort | undefined => {
+  const key = operatorKeyFromEnv();
+  if (!key) return undefined;
+  const poolManager = process.env.FLEET_POOL_MANAGER_ADDRESS || DEPLOYED_46630.poolManager;
+  const escrow = process.env.FLEET_ESCROW_ADDRESS || DEPLOYED_46630.escrow;
+  if (!isAddress(poolManager) || !isAddress(escrow)) return undefined;
+  const { publicClient } = clients(key);
+  return createMarket(publicClient, { poolManager, escrow, escrowFromBlock: DEPLOYED_46630.escrowBlock });
 };
 
 /** One operator-signed client pair for 46630, shared by every chain adapter. */
@@ -188,6 +204,7 @@ export const getFleetRouter = (): CampaignRouter => {
   const chain = chainFromEnv();
   const nonceSecret = nonceSecretFromEnv();
   const pool = poolFromEnv();
+  const market = marketFromEnv();
   const deps: RouterDeps = {
     // Ten minutes, not five: signing means leaving the browser for the wallet
     // app, and a trader who takes longer than the TTL comes back to an expired
@@ -198,6 +215,8 @@ export const getFleetRouter = (): CampaignRouter => {
     ...(chain ? { chain } : {}),
     // Without the pool, balance and withdrawal answer 503 the same way.
     ...(pool ? { pool } : {}),
+    // Without the market, tokenQuote, order, list and holdings answer 503 too.
+    ...(market ? { market } : {}),
   };
   router = new CampaignRouter(deps);
   return router;

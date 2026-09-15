@@ -32,6 +32,7 @@ const ROUTES = {
   "/api/fleet/control": "../api/fleet/control.js",
   "/api/fleet/balance": "../api/fleet/balance.js",
   "/api/fleet/sweep": "../api/fleet/sweep.js",
+  "/api/fleet/trade": "../api/fleet/trade.js",
 };
 
 const TYPES = {
