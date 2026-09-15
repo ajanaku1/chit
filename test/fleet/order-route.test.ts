@@ -4,9 +4,10 @@ import { privateKeyToAccount } from "viem/accounts";
 
 import { CampaignRouter, type RouterDeps } from "../../src/fleet/campaign-routes.js";
 import { CampaignService, challengeBytes, payloadHash } from "../../src/fleet/campaign-service.js";
+import { campaignKey } from "../../src/fleet/chain-service.js";
 import type { FeeConfig } from "../../src/fleet/eligibility.js";
 import type { MarketPort } from "../../src/fleet/market.js";
-import type { Address, AuthEnvelope, Uint } from "../../src/fleet/types.js";
+import type { Address, AuthEnvelope, Hex, Uint } from "../../src/fleet/types.js";
 import type { PackedUserOperation, SubmitResult, UserOperationSubmitter } from "../../src/fleet/user-operation.js";
 
 const trader = privateKeyToAccount(`0x${"11".repeat(32)}`);
@@ -59,6 +60,7 @@ class FakeChain implements UserOperationSubmitter {
  */
 class FakeMarket implements MarketPort {
   pools = new Map<string, bigint>([[TOKEN.toLowerCase(), 2505414483750479311864138015696n]]);
+  registered = new Map<string, Hex[]>();
 
   async tokenQuote(token: Address, amountInWei: Uint) {
     const sqrt = this.pools.get(token.toLowerCase()) ?? 0n;
@@ -74,8 +76,8 @@ class FakeMarket implements MarketPort {
     }));
   }
 
-  async campaignsOf() {
-    return [];
+  async campaignsOf(owner: Address) {
+    return this.registered.get(owner.toLowerCase()) ?? [];
   }
 }
 
@@ -210,4 +212,24 @@ test("trade refuses an order whose fields no longer hash to its id, or that anot
   const forged = await router.handle(await signed(service, "trade", { campaign, order: { ...order, totalWei: "1200000000000000" }, pending: [0] }), key("t9"));
   assert.equal(forged.status, 400);
   assert.equal((forged.body as Record<string, unknown>)["code"], "order_tampered");
+});
+
+test("list returns the fleets this wallet registered, and nothing for a stranger", async () => {
+  const { router, service, campaign, market } = await activeCampaign();
+  market.registered.set(trader.address.toLowerCase(), [campaignKey(campaign)]);
+  const mine = await router.handle(await signed(service, "list", {}));
+  assert.equal(mine.status, 200);
+  const fleets = (mine.body as { fleets: { campaign: string; state: string }[] }).fleets;
+  assert.equal(fleets.length, 1);
+  assert.equal(fleets[0]!.campaign, campaign);
+  assert.equal(fleets[0]!.state, "Active");
+});
+
+test("holdings reports each fleet wallet's ETH and the tokens the browser asks about", async () => {
+  const { router, service, campaign, accounts } = await activeCampaign();
+  const res = await router.handle(await signed(service, "holdings", { campaign, tokens: [TOKEN] }));
+  assert.equal(res.status, 200);
+  const holdings = (res.body as { holdings: { wallet: string; tokens: Record<string, string> }[] }).holdings;
+  assert.equal(holdings.length, accounts.length);
+  assert.ok(TOKEN.toLowerCase() in holdings[0]!.tokens);
 });
