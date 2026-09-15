@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { network } from "hardhat";
 import { parseEther } from "viem";
+import { TESTNET_CAPS } from "../../src/fleet/pool-caps.js";
 
 /**
  * The self-serve exit (FR-011, SC-007): a trader recovers deposit minus posted
@@ -22,7 +23,7 @@ describe("FleetPool self-serve exit", () => {
   const DAY = 24 * 60 * 60;
 
   const funded = async () => {
-    const pool = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
+    const pool = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address, TESTNET_CAPS.depositor, TESTNET_CAPS.draw, TESTNET_CAPS.pool]);
     await pool.write.deposit({ account: alice!.account, value: parseEther("0.1") });
     return pool;
   };

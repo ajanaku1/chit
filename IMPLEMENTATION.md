@@ -2051,3 +2051,29 @@ mirror's last sync; the deploy's own file is the fallback, not the source.
 
 T004 is blocked outside the code: branch protection and rulesets on a private
 repository need GitHub Pro (`403` from the API). T006 follows T004.
+## Mainnet ready: the chain from the environment, the caps at deployment (2026-09-16, advisor, branch feat/mainnet-beta)
+
+What was agreed: a capped beta on Robinhood Chain mainnet, holders first,
+labelled as a beta and as not audited by a firm, after the audit fixes are
+live. What stood in the way was not a deploy but six places that named the
+testnet: the service's chain id, RPC and recorded addresses, the app's
+network switcher and the chain id the wizard signs, the balance page's 0.5
+and 0.2, and the pool's caps as `constant`.
+
+Now: `FleetPool` takes its caps in the constructor (immutable, same getter
+names, a sanity check that no depositor can be the whole pool) so the same
+audited bytecode runs on testnet with room to test and on mainnet as a beta;
+`src/fleet/pool-caps.ts` publishes both sets. The service reads
+`FLEET_CHAIN_ID` and `FLEET_RPC_URL`, assumes the recorded testnet addresses
+only on testnet, reads the draw cap from the pool instead of a constant, and
+reports the caps in the balance view. The app reads `chain-target.json`,
+written by the deploy script: which chain, what to call it, and a beta note
+the shell shows on every page when the file says so; the balance page draws
+its limits from the pool's caps. `scripts/fleet-redeploy-live.ts` deploys
+or redeploys the set on either chain (fresh with an escrow on mainnet,
+guardian required there), records it per chain, writes the chain target and
+prints the host variables, the holders gate included (which is `CHIT_FEE_*`
+with a zero fee, all env). Rehearsed on a fork of mainnet at block
+63,969,832: the beta set, the caps read back as 0.1 / 0.05 / 1, the note
+written. `docs/runbooks/mainnet-beta.md` is the sequence, with what the beta
+is not.

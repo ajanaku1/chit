@@ -21,7 +21,7 @@ contract FleetPoolMainnetBlockersTest is Test {
     bytes32 internal constant CAMPAIGN = keccak256("campaign-1");
 
     function setUp() public {
-        pool = new FleetPool(ADMIN, OPERATOR);
+        pool = new FleetPool(ADMIN, OPERATOR, 0.5 ether, 0.2 ether, 5 ether);
         vm.deal(ALICE, 10 ether);
         vm.deal(BOB, 10 ether);
         vm.deal(OPERATOR, 10 ether);

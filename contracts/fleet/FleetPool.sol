@@ -74,9 +74,13 @@ contract FleetPool is Ownable2Step {
     uint256 public constant SIZE_MEDIUM = 0.05 ether;
     uint256 public constant SIZE_LARGE = 0.1 ether;
 
-    uint256 public constant DEPOSITOR_CAP = 0.5 ether;
-    uint256 public constant DRAW_CAP = 0.2 ether;
-    uint256 public constant POOL_CAP = 5 ether;
+    /// @notice The caps are set at deployment and never change: a testnet
+    ///         pool and a mainnet beta run the same code with different
+    ///         numbers, and a bigger cap is a new pool, after an audit, not
+    ///         a switch. The getters keep their old names.
+    uint256 public immutable DEPOSITOR_CAP;
+    uint256 public immutable DRAW_CAP;
+    uint256 public immutable POOL_CAP;
     uint256 public constant GAS_HEADROOM = 0.0002 ether;
 
     /// @notice How long a trader waits to recover their deposit without Chit.
@@ -162,6 +166,7 @@ contract FleetPool is Ownable2Step {
     error NoAccounts();
     error NotGuardian();
     error Reentered();
+    error BadCaps();
     error DelayTooShort();
     error ExitPending();
     error CommitBelowPrincipal();
@@ -178,9 +183,16 @@ contract FleetPool is Ownable2Step {
 
     event OperatorSet(address operator);
 
-    constructor(address admin_, address operator_) Ownable(admin_) {
+    constructor(address admin_, address operator_, uint256 depositorCap_, uint256 drawCap_, uint256 poolCap_) Ownable(admin_) {
         if (operator_ == address(0)) revert ZeroAddress();
+        // A depositor must be able to make at least one small deposit, a draw
+        // must fit in the pool, and no single depositor may be the whole pool
+        // (or the anonymity set is one).
+        if (depositorCap_ < SIZE_SMALL || drawCap_ == 0 || drawCap_ > poolCap_ || depositorCap_ >= poolCap_) revert BadCaps();
         operator = operator_;
+        DEPOSITOR_CAP = depositorCap_;
+        DRAW_CAP = drawCap_;
+        POOL_CAP = poolCap_;
     }
 
     /// @notice Replaces the hot key. Every money path is gated on the new one

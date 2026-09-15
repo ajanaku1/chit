@@ -28,8 +28,17 @@ import { isAddress, type Address, type Uint } from "./types.js";
 // (window.location.origin), so this must be the served site, chit.tools.
 // FLEET_ORIGIN overrides it for previews.
 const ORIGIN = process.env.FLEET_ORIGIN || "https://chit.tools";
-const FLEET_CHAIN_ID = 46630; // Robinhood Chain testnet
-const DEFAULT_RPC = "https://rpc.testnet.chain.robinhood.com";
+/**
+ * The chain the service runs on: 46630 (Robinhood Chain testnet, the default)
+ * or 4663 (Robinhood Chain mainnet, the capped beta). Everything below that
+ * names a chain reads it from here; the recorded testnet addresses are
+ * defaults only on testnet, and any other chain must name every address in
+ * the environment or the route answers 503 with the variable's name.
+ */
+const FLEET_CHAIN_ID = Number(process.env.FLEET_CHAIN_ID || 46630);
+const CHAIN_NAME = FLEET_CHAIN_ID === 4663 ? "Robinhood Chain" : FLEET_CHAIN_ID === 46630 ? "Robinhood Chain Testnet" : `chain ${FLEET_CHAIN_ID}`;
+const DEFAULT_RPC = FLEET_CHAIN_ID === 4663 ? "https://rpc.mainnet.chain.robinhood.com" : "https://rpc.testnet.chain.robinhood.com";
+const rpcFromEnv = (): string => process.env.FLEET_RPC_URL || process.env.ROBINHOOD_TESTNET_RPC_URL || DEFAULT_RPC;
 const BALANCE_OF_SELECTOR = "0x70a08231";
 
 /**
@@ -38,7 +47,7 @@ const BALANCE_OF_SELECTOR = "0x70a08231";
  * queue ids, hot operator and cold admin). Override with FLEET_*_ADDRESS only
  * after a redeploy.
  */
-const DEPLOYED_46630 = {
+const RECORDED_46630 = {
   escrow: "0x4c3374f29f51b316da909a91f01db6f26d10d012",
   factory: "0xf1ebd7494fd5cf74b1dd0623e2ab6a07afaefa5e",
   policy: "0x653285b2024343a31f8cbf349e86a621d5ae1c9d",
@@ -49,6 +58,9 @@ const DEPLOYED_46630 = {
   /** The block that mined campaignEscrowTx 0xb554…cffd; the fleet list scans events from here. */
   escrowBlock: 120343548n,
 } as const;
+/** Testnet's recorded set stands in for an unset variable only on testnet; elsewhere nothing is assumed. */
+const DEPLOYED_46630: { [K in keyof typeof RECORDED_46630]: (typeof RECORDED_46630)[K] | undefined } =
+  FLEET_CHAIN_ID === 46630 ? RECORDED_46630 : { escrow: undefined, factory: undefined, policy: undefined, poolManager: undefined, venueToken: undefined, escrowBlock: undefined };
 
 /**
  * Stage 1 on-chain wiring. The only required secret is the operator's testnet
@@ -172,15 +184,16 @@ const marketFromEnv = (): MarketPort | undefined => {
   const escrow = process.env.FLEET_ESCROW_ADDRESS || DEPLOYED_46630.escrow;
   if (!isAddress(poolManager) || !isAddress(escrow)) return undefined;
   const { publicClient } = clients(key);
-  return createMarket(publicClient, { poolManager, escrow, escrowFromBlock: DEPLOYED_46630.escrowBlock });
+  const escrowFromBlock = process.env.FLEET_ESCROW_BLOCK ? BigInt(process.env.FLEET_ESCROW_BLOCK) : DEPLOYED_46630.escrowBlock ?? 0n;
+  return createMarket(publicClient, { poolManager, escrow, escrowFromBlock });
 };
 
 /** One operator-signed client pair for 46630, shared by every chain adapter. */
 const clients = (key: `0x${string}`) => {
-  const rpcUrl = process.env.ROBINHOOD_TESTNET_RPC_URL || DEFAULT_RPC;
+  const rpcUrl = rpcFromEnv();
   const chain = defineChain({
     id: FLEET_CHAIN_ID,
-    name: "Robinhood Chain Testnet",
+    name: CHAIN_NAME,
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: { default: { http: [rpcUrl] } },
   });
@@ -346,8 +359,8 @@ export const getFleetRouter = (): CampaignRouter => {
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
     ...(allowedTokens ? { allowedTokens } : {}),
-    // The portfolio shows what the venue trades: the allowlist when there is one, else the venue's coin.
-    venueTokens: allowedTokens ?? [DEPLOYED_46630.venueToken],
+    // The portfolio shows what the venue trades: the allowlist when there is one, else the venue's coin, which only testnet records.
+    ...(allowedTokens ? { venueTokens: allowedTokens } : DEPLOYED_46630.venueToken ? { venueTokens: [DEPLOYED_46630.venueToken] } : {}),
     ...(maxSlippageBps !== undefined ? { maxSlippageBps } : {}),
     // Without the pool, balance and withdrawal answer 503 the same way.
     ...(pool ? { pool } : {}),

@@ -24,6 +24,7 @@ import {
 import { DRAW_CAP, drawShare, fundingProgress, fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
 import {
   banner,
+  chainIdDecimal,
   connectWallet,
   fleetApi,
   getConnectedWallet,
@@ -45,7 +46,8 @@ import { confirmRecovery, createRecoveryVault, type VaultContext } from "./fleet
 
 type Hex = `0x${string}`;
 
-const FLEET_CHAIN_ID = "46630";
+/** Read from chain-target.json once the page loads; testnet until then, which is what the file says by default. */
+const FLEET_CHAIN_ID = (): string => chainIdDecimal();
 
 const DEPOSITOR_ABI = [{
   type: "function", name: "depositorOf", stateMutability: "view",
@@ -56,7 +58,7 @@ const DEPOSITOR_ABI = [{
   ],
 }] as const;
 
-const STEPS =["welcome", "connect", "size", "backup", "launch", "done"] as const;
+const STEPS = ["welcome", "connect", "size", "backup", "launch", "done"] as const;
 type Step = (typeof STEPS)[number];
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -161,7 +163,7 @@ class FleetWizard {
     if (!wallet) throw new Error("wallet_unavailable");
     return {
       origin: window.location.origin,
-      primaryChainId: FLEET_CHAIN_ID,
+      primaryChainId: FLEET_CHAIN_ID(),
       primaryWallet: wallet,
       signMessage: async (message) => {
         const eth = walletProvider();
@@ -370,7 +372,7 @@ class FleetWizard {
 
       await this.#setup.configure({
         name: "my-fleet",
-        chainId: Number(FLEET_CHAIN_ID),
+        chainId: Number(FLEET_CHAIN_ID()),
         accounts: wallets,
         router: String(data.get("router") ?? "") as Hex,
         function: String(data.get("function") ?? ""),

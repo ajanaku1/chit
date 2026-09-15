@@ -84,6 +84,8 @@ export type BalanceView = {
   /** Held against campaigns still standing; not spendable, not lost. */
   openDraws: Uint;
   headroom: { sizes: Uint[]; perTraderRemaining: Uint; poolRemaining: Uint };
+  /** The pool's caps as deployed, so the app shows what the chain enforces and never a number of its own. */
+  caps?: { depositor: Uint; draw: Uint; pool: Uint };
   exit: { requestedAt?: string; amount?: Uint; availableAt?: string };
   pool: { paused: boolean };
   /** Where the trader's own deposit and exit transactions go. */
@@ -126,6 +128,8 @@ export type WithdrawReceipt = { payoutTx: Hex; chargeId: string };
 /** What the router may ask of the pool. */
 export type PoolPort = {
   balance(depositor: Address): Promise<BalanceView>;
+  /** The pool's caps as deployed; the service never assumes them. Optional so fakes that predate it still type-check. */
+  caps?(): Promise<{ depositor: bigint; draw: bigint; pool: bigint }>;
   withdraw(input: WithdrawInput): Promise<WithdrawReceipt>;
   /** Commits part of a balance to one campaign, funded only after the wait. */
   openDraw(input: { campaign: Hex; depositor: Address; amount: Uint }): Promise<DrawSummary>;
@@ -243,12 +247,14 @@ export const createPoolService = (
   const chainSeconds = async (): Promise<bigint> => (await publicClient.getBlock()).timestamp;
 
   return {
+    caps: () => pool.caps(),
     async balance(depositor) {
-      const [inputs, headroom, paused, record] = await Promise.all([
+      const [inputs, headroom, paused, record, caps] = await Promise.all([
         pool.ledgerInputs(depositor),
         pool.headroom(depositor),
         pool.paused(),
         pool.depositorOf(depositor),
+        pool.caps(),
       ]);
 
       const mine = (ref: Hex): boolean =>
@@ -279,6 +285,7 @@ export const createPoolService = (
           perTraderRemaining: headroom.perDepositor.toString(),
           poolRemaining: headroom.perPool.toString(),
         },
+        caps: { depositor: caps.depositor.toString(), draw: caps.draw.toString(), pool: caps.pool.toString() },
         exit,
         pool: { paused },
         poolAddress: pool.address,

@@ -14,6 +14,8 @@ export type BalanceState = {
   spent: string;
   openDraws: string;
   headroom: Headroom;
+  /** The deployed pool's caps, when the service reports them; the published testnet numbers otherwise. */
+  caps?: { depositor: string; draw: string; pool: string };
   exit: { requestedAt?: string; amount?: string; availableAt?: string };
   pool: { paused: boolean };
   /** Where the trader's own deposit and exit transactions go; set by the service. */
@@ -232,8 +234,10 @@ export const clearCachedBalance = (storage: Storage, wallet: string): void => {
   }
 };
 
-/** FleetPool's per-depositor cap: 0.5 ETH, refused on chain above it. */
+/** The testnet pool's per-depositor cap, 0.5 ETH: the fallback when a read predates `caps`. */
 export const TRADER_CAP = "500000000000000000";
+/** The per-depositor cap the page should show: the chain's, or the published testnet number. */
+export const traderCapOf = (view: Pick<BalanceState, "caps"> | undefined): string => view?.caps?.depositor ?? TRADER_CAP;
 
 /** How much of `cap` is taken, in wei, from what the contract says remains; never below zero. */
 export const capUsed = (remaining: string, cap: string): string => {
@@ -272,12 +276,17 @@ export const fundingProgress = (dueAt: string, now: Date, windowMs = 15 * 60_000
 };
 
 /** What the header's status pill says: only what the last balance read showed, never a guess. */
+/** "testnet 46630" or "Robinhood Chain 4663": whatever chain-target.json says, never a string of the page's own. */
+let chainLabelText = "testnet 46630";
+export const setChainLabel = (label: string): void => { chainLabelText = label; };
+export const chainLabel = (): string => chainLabelText;
+
 export const poolStatus = (state: Pick<BalanceState, "pool"> | undefined): { text: string; live: boolean } | undefined =>
   state === undefined
     ? undefined
     : state.pool.paused
       ? { text: "Pool paused by the operator", live: false }
-      : { text: "Pool live · testnet 46630", live: true };
+      : { text: `Pool live · ${chainLabel()}`, live: true };
 
 /** The status pill speaks only from a read young enough to trust, so it never says "live" on stale news. */
 export const freshPoolStatus = (

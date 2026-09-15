@@ -28,7 +28,7 @@ contract FleetPoolAtomicTest is Test {
         vm.warp(1_700_000_000);
         vm.txGasPrice(1 gwei);
 
-        pool = new FleetPool(OPERATOR, OPERATOR);
+        pool = new FleetPool(OPERATOR, OPERATOR, 0.5 ether, 0.2 ether, 5 ether);
         policy = new FleetSessionPolicy(OPERATOR, OPERATOR);
         sink = new FleetTestSink();
 
@@ -121,7 +121,7 @@ contract FleetPoolAtomicTest is Test {
     }
 
     function test_onlyThePolicyNamedPoolMayExecute() public {
-        FleetPool stranger = new FleetPool(OPERATOR, OPERATOR);
+        FleetPool stranger = new FleetPool(OPERATOR, OPERATOR, 0.5 ether, 0.2 ether, 5 ether);
         vm.prank(address(stranger));
         vm.expectRevert(FleetAccount.NotOperator.selector);
         fleet[3].execute(address(sink), 0, abi.encodeCall(FleetTestSink.buy, ()));

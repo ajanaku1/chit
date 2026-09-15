@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { network } from "hardhat";
 import { parseEther, type Address } from "viem";
+import { TESTNET_CAPS } from "../../src/fleet/pool-caps.js";
 
 /**
  * FleetPool deposits, sizes, caps, and pause (FR-001, FR-003, FR-004, FR-012).
@@ -20,7 +21,7 @@ describe("FleetPool deposits, caps, and pause", () => {
     [operator, alice, bob] = await viem.getWalletClients();
   });
 
-  const deploy = () => viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
+  const deploy = () => viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address, TESTNET_CAPS.depositor, TESTNET_CAPS.draw, TESTNET_CAPS.pool]);
 
   it("accepts only the published deposit sizes", async () => {
     const pool = await deploy();

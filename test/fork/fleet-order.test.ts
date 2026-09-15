@@ -13,6 +13,7 @@ import { ledgerKey } from "../../src/fleet/pool-ledger.js";
 import { createPoolService } from "../../src/fleet/pool-buy.js";
 import { createMemoryStore } from "../../src/fleet/store.js";
 import type { AuthEnvelope } from "../../src/fleet/types.js";
+import { TESTNET_CAPS } from "../../src/fleet/pool-caps.js";
 
 /**
  * A fleet buy as an order, end to end on a live EVM: the browser holds the
@@ -49,7 +50,7 @@ describe("A seeded fleet order over two polls", () => {
     const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
     const factory = await viem.deployContract("FleetAccountFactory", [operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
-    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
+    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address, TESTNET_CAPS.depositor, TESTNET_CAPS.draw, TESTNET_CAPS.pool]);
     // The pool funds and executes a buy in one transaction; the policy names it.
     await policy.write.setPool([poolContract.address]);
     const sink = await viem.deployContract("FleetTestSink", []);

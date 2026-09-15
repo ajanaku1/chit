@@ -22,6 +22,7 @@ await Promise.all([
   copyFile(new URL("./trade.html", import.meta.url), new URL("trade.html", output)),
   copyFile(new URL("./sessions.html", import.meta.url), new URL("sessions.html", output)),
   copyFile(new URL("./session-target.json", import.meta.url), new URL("session-target.json", output)),
+  copyFile(new URL("./chain-target.json", import.meta.url), new URL("chain-target.json", output)),
   copyFile(new URL("../brand/logo.svg", import.meta.url), new URL("logo.svg", output)),
   copyFile(new URL("../brand/favicon.svg", import.meta.url), new URL("favicon.svg", output)),
 ]);

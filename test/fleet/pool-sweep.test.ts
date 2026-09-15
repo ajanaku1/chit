@@ -39,6 +39,7 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
     address: "0x0000000000000000000000000000000000000901" as Address,
     depositorOf: async () => ({ deposited: 0n, spent: 0n, exitRequestedAt: 0n, exitAmount: 0n }),
     headroom: async () => ({ perDepositor: 0n, perPool: 0n }),
+    caps: async () => ({ depositor: 500000000000000000n, draw: 200000000000000000n, pool: 5000000000000000000n }),
     paused: async () => false,
     draws: async () => draws,
     drawOf: async (c) => draws.find((d) => d.campaign === c),

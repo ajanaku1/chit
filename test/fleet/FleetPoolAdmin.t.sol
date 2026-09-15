@@ -25,7 +25,7 @@ contract FleetPoolAdminTest is Test {
     function setUp() public {
         vm.deal(ALICE, 1 ether);
         vm.warp(1_700_000_000);
-        pool = new FleetPool(ADMIN, OPERATOR);
+        pool = new FleetPool(ADMIN, OPERATOR, 0.5 ether, 0.2 ether, 5 ether);
         policy = new FleetSessionPolicy(ADMIN, OPERATOR);
     }
 
@@ -131,9 +131,9 @@ contract FleetPoolAdminTest is Test {
 
     function test_constructorRefusesZeroRoles() public {
         vm.expectRevert(abi.encodeWithSelector(Ownable.OwnableInvalidOwner.selector, address(0)));
-        new FleetPool(address(0), OPERATOR);
+        new FleetPool(address(0), OPERATOR, 0.5 ether, 0.2 ether, 5 ether);
         vm.expectRevert(FleetPool.ZeroAddress.selector);
-        new FleetPool(ADMIN, address(0));
+        new FleetPool(ADMIN, address(0), 0.5 ether, 0.2 ether, 5 ether);
     }
 
     // --- the policy follows the same split -----------------------------------

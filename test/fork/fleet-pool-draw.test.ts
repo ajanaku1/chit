@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { network } from "hardhat";
 import { parseEther, type Address } from "viem";
+import { TESTNET_CAPS } from "../../src/fleet/pool-caps.js";
 
 /**
  * Draws: a campaign's claim on a balance, funded late and spent just in time
@@ -24,7 +25,7 @@ describe("FleetPool draws", () => {
   });
 
   const seeded = async () => {
-    const pool = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
+    const pool = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address, TESTNET_CAPS.depositor, TESTNET_CAPS.draw, TESTNET_CAPS.pool]);
     await pool.write.deposit({ account: alice!.account, value: parseEther("0.1") });
     return pool;
   };

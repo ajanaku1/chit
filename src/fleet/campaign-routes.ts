@@ -474,7 +474,9 @@ export class CampaignRouter {
   async #requireDrawable(wallet: string, amount: unknown, accounts = 1): Promise<Uint> {
     const pool = this.#pool();
     if (!isUint(amount) || BigInt(amount) === 0n) throw new FleetValidationError("invalid_draw");
-    if (BigInt(amount) > DRAW_CAP) throw new BudgetError("budget_exceeded", "draw_cap_exceeded");
+    // The cap is the deployed pool's, read once; the published constant only stands in for a pool that cannot say.
+    const drawCap = pool.caps ? (await pool.caps()).draw : DRAW_CAP;
+    if (BigInt(amount) > drawCap) throw new BudgetError("budget_exceeded", "draw_cap_exceeded");
     // Below its own headroom a draw can never be funded; refuse it here
     // rather than let every sweep revert on it.
     if (BigInt(amount) < minimumDraw(accounts)) throw new FleetValidationError("draw_below_minimum");

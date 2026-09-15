@@ -6,6 +6,7 @@ import { parseEther, type Address } from "viem";
 import { createFleetPool } from "../../src/fleet/chain-pool.js";
 import { ledgerKey, sealDepositor } from "../../src/fleet/pool-ledger.js";
 import { createPoolService } from "../../src/fleet/pool-buy.js";
+import { TESTNET_CAPS } from "../../src/fleet/pool-caps.js";
 
 /**
  * Getting money back, and stopping the pool. Closing must return a campaign's
@@ -31,7 +32,7 @@ describe("Pool control and recovery", () => {
   const setup = async () => {
     const [operator, trader] = await viem.getWalletClients();
     const publicClient = await viem.getPublicClient();
-    const contract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
+    const contract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address, TESTNET_CAPS.depositor, TESTNET_CAPS.draw, TESTNET_CAPS.pool]);
     const key = ledgerKey(OPERATOR_KEY);
     const service = createPoolService(
       operator!,

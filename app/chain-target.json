@@ -1,0 +1,9 @@
+{
+  "chainId": 46630,
+  "chainName": "Robinhood Chain Testnet",
+  "rpcUrls": [
+    "https://rpc.testnet.chain.robinhood.com"
+  ],
+  "beta": false,
+  "betaNote": ""
+}

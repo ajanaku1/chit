@@ -31,6 +31,9 @@ const POOL_ABI = parseAbi([
   "function headroom(address depositor) view returns (uint256 perDepositor, uint256 perPool)",
   "function claimable() view returns (uint256)",
   "function paused() view returns (bool)",
+  "function DEPOSITOR_CAP() view returns (uint256)",
+  "function DRAW_CAP() view returns (uint256)",
+  "function POOL_CAP() view returns (uint256)",
   "function totalDeposited() view returns (uint256)",
   "function campaignCount() view returns (uint256)",
   "function campaignAt(uint256 index) view returns (bytes32)",
@@ -62,6 +65,8 @@ export type FleetPool = {
   readonly address: Address;
   depositorOf(depositor: Address): Promise<DepositorRecord>;
   headroom(depositor: Address): Promise<{ perDepositor: bigint; perPool: bigint }>;
+  /** The pool's caps, immutable since deployment; read once and kept. */
+  caps(): Promise<{ depositor: bigint; draw: bigint; pool: bigint }>;
   paused(): Promise<boolean>;
   draws(): Promise<PoolDraw[]>;
   drawOf(campaign: Hex): Promise<PoolDraw | undefined>;
@@ -85,6 +90,8 @@ export type FleetPool = {
 };
 
 const ctx = (wallet: WalletClient) => ({ account: wallet.account ?? null, chain: wallet.chain ?? null });
+
+let capsCache: Promise<{ depositor: bigint; draw: bigint; pool: bigint }> | undefined;
 
 export const createFleetPool = (
   wallet: WalletClient,
@@ -158,6 +165,9 @@ export const createFleetPool = (
     },
 
     paused: () => read<boolean>("paused"),
+    caps: () => (capsCache ??= Promise.all([read<bigint>("DEPOSITOR_CAP"), read<bigint>("DRAW_CAP"), read<bigint>("POOL_CAP")])
+      .then(([depositor, draw, pool]) => ({ depositor, draw, pool }))
+      .catch((error: unknown) => { capsCache = undefined; throw error; })),
     draws: allDraws,
     drawOf: drawAt,
     queued: allQueued,

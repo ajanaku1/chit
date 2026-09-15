@@ -16,7 +16,7 @@ import {
   exitView,
   receiptOutcome,
   toEth,
-  TRADER_CAP,
+  traderCapOf,
   withdrawIssue,
   type BalanceState,
 } from "./fleet/balance.js";
@@ -107,10 +107,20 @@ const renderFigures = (view: BalanceState): void => {
   }
   shownAvailable = view.available;
 
-  const used = capShare(view.headroom.perTraderRemaining, TRADER_CAP);
+  const traderCap = traderCapOf(view);
+  const used = capShare(view.headroom.perTraderRemaining, traderCap);
   el("headroom-fill").style.setProperty("--fill", String(used));
   el("headroom-meter").setAttribute("aria-valuenow", String(used));
-  const headroomNote = `${toEth(capUsed(view.headroom.perTraderRemaining, TRADER_CAP))} of 0.5 ETH held`;
+  el("headroom-meter").setAttribute("aria-label", `Balance against the ${toEth(traderCap)} ETH limit`);
+  const headroomNote = `${toEth(capUsed(view.headroom.perTraderRemaining, traderCap))} of ${toEth(traderCap)} ETH held`;
+  if (view.caps) {
+    // The draw cap card is the chain's number, re-drawn in LED when it differs from the page's default.
+    const drawCap = document.querySelector<HTMLElement>("[data-cap='draw']");
+    if (drawCap && drawCap.dataset["led"] !== toEth(view.caps.draw)) {
+      drawCap.dataset["led"] = toEth(view.caps.draw);
+      renderLed(drawCap, toEth(view.caps.draw), "ETH");
+    }
+  }
   el("headroom-meter").setAttribute("aria-valuetext", headroomNote);
   el("headroom-note").textContent = headroomNote;
 

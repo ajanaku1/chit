@@ -7,7 +7,7 @@
  * keys and the backup never touch storage; sessionStorage clears with the tab.
  */
 
-import { freshPoolStatus, loadCachedBalance, poolStatus, showableBalance } from "./balance.js";
+import { freshPoolStatus, loadCachedBalance, poolStatus, setChainLabel, showableBalance } from "./balance.js";
 import { SetupError } from "./campaign-setup.js";
 import { hydrateLed } from "./led.js";
 import { revealOnEnter } from "./motion.js";
@@ -185,12 +185,53 @@ export const loadFleetSnapshot = (): FleetSnapshot | undefined => {
 };
 
 /** Robinhood Chain testnet, as verified live by eth_chainId (0xb626 = 46630). */
+/**
+ * The chain the app is on. Testnet by default; `chain-target.json`, written
+ * by the deploy scripts, overrides it (mainnet beta: 4663, with a note the
+ * shell shows on every page). Loaded once, before any wallet call, and
+ * mutated in place so every module that imported it sees the same object.
+ */
 export const ROBINHOOD_TESTNET = {
   chainId: "0xb626",
   chainName: "Robinhood Chain Testnet",
   rpcUrls: ["https://rpc.testnet.chain.robinhood.com"],
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-} as const;
+};
+export const CHAIN = ROBINHOOD_TESTNET;
+export type ChainTarget = { chainId: number; chainName: string; rpcUrls: string[]; beta?: boolean; betaNote?: string };
+export let chainTarget: ChainTarget = { chainId: 46630, chainName: ROBINHOOD_TESTNET.chainName, rpcUrls: [...ROBINHOOD_TESTNET.rpcUrls] };
+/** The chain id as the wizard signs it and the service checks it. */
+export const chainIdDecimal = (): string => String(chainTarget.chainId);
+
+let chainLoaded: Promise<void> | undefined;
+export const loadChainTarget = (): Promise<void> => {
+  chainLoaded ??= (async () => {
+    try {
+      const target = (await (await fetch("./chain-target.json")).json()) as Partial<ChainTarget>;
+      if (typeof target.chainId === "number" && target.chainId > 0) {
+        chainTarget = { chainId: target.chainId, chainName: target.chainName ?? `chain ${target.chainId}`, rpcUrls: target.rpcUrls?.length ? target.rpcUrls : ROBINHOOD_TESTNET.rpcUrls, ...(target.beta ? { beta: true, betaNote: target.betaNote ?? "" } : {}) };
+        ROBINHOOD_TESTNET.chainId = `0x${target.chainId.toString(16)}`;
+        ROBINHOOD_TESTNET.chainName = chainTarget.chainName;
+        ROBINHOOD_TESTNET.rpcUrls = chainTarget.rpcUrls;
+        setChainLabel(target.chainId === 46630 ? "testnet 46630" : `${chainTarget.chainName} ${target.chainId}`);
+      }
+    } catch {
+      // no target file: testnet, as built
+    }
+  })();
+  return chainLoaded;
+};
+
+/** The beta note, on every page, from the target and nowhere else: a page never claims a chain of its own. */
+const showBetaNote = (): void => {
+  if (!chainTarget.beta || document.getElementById("beta-note")) return;
+  const note = document.createElement("p");
+  note.id = "beta-note";
+  note.className = "callout";
+  note.setAttribute("role", "note");
+  note.textContent = chainTarget.betaNote || `Beta on ${chainTarget.chainName}: capped, not audited by a firm yet.`;
+  document.querySelector(".masthead")?.insertAdjacentElement("afterend", note);
+};
 
 export type Eip1193 = { request(args: { method: string; params?: unknown[] }): Promise<unknown> };
 
@@ -210,6 +251,7 @@ const chainIdOf = async (eth: Eip1193): Promise<string> => {
  * on 46630 afterwards.
  */
 export const ensureRobinhoodTestnet = async (eth: Eip1193): Promise<boolean> => {
+  await loadChainTarget();
   if ((await chainIdOf(eth)) === ROBINHOOD_TESTNET.chainId) return true;
   try {
     await eth.request({
@@ -981,4 +1023,5 @@ export const initShell = ({ pill = true }: { pill?: boolean } = {}): void => {
   if (pill) initPoolStatus();
   hydrateLed();
   revealOnEnter();
+  void loadChainTarget().then(showBetaNote);
 };
