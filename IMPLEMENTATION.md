@@ -1592,3 +1592,66 @@ policy and the factory on 46630, in that order, then `setPool`. The old
 `fundPrincipal`, `commit` and `rollback` are still in the contract for the
 Stage 1 shape and unused by the service; they should go once the atomic
 path is live, and the pre-audit's F2 and F3 tests with them.
+
+## Operator hardening: the store, the batch, the hash, the admin (2026-09-16)
+
+Four items handed back after the atomic buy, built on `feat/operator-hardening`
+on top of `audit/contract-fixes`. They are one problem: a single hot key on
+stateless instances whose transaction pattern leaked the link the pool hides.
+
+**The store** (`src/fleet/store.ts`, `store-neon.ts`). Idempotency results,
+challenge-nonce burns, executed-slice claims and the serialization of money
+operations lived in per-instance `Map`s; a retry that landed on a second Vercel
+instance saw none of them, and two instances signing together collided on the
+operator's nonce. They are now behind one port with a memory adapter (the old
+behaviour, the default without `DATABASE_URL`) and a Neon adapter where every
+guard is one atomic statement and the operator lock is a lease. The two-instance
+fork test now sends the second instance the *full* pending list and still gets
+every slice once; without the shared store it runs them twice (checked).
+
+**The batch.** A buy's charge used to be `queueSpend`, the operator's next
+nonce, seconds later; `README.md:68` admitted the join. `charge()` now records
+owed spend in the store and sends nothing; the *scheduled* sweep queues
+everything owed in one `queueSpendBatch`, shuffled, each entry on its own
+random timer. The opportunistic sweep that rides on trader requests never
+queues, or the batch would sit beside that request's buy. The balance subtracts
+owed spend at once (`owed` on the balance view), so nothing reads as available
+that a charge already claims. `queueSpend` is gone from the ABI.
+
+What this does and does not do, plainly: a charge no longer follows its buy in
+time or in the same window, and on a busy pool a batch mixes many depositors.
+On a quiet pool with one trader the batch is still the operator's next
+transaction, hours later; the observer test asserts the gap and the single
+batch, not nonce distance, because nonce distance is not a promise we can keep
+at low volume. Exit safety in numbers: owed spend waits at most one sweep
+interval to be queued, then at most `POST_WINDOW` (12 h) to post; at two sweeps
+a day that sums to `EXIT_DELAY` with zero margin. The plan sets the cron to every
+four hours; `vercel.json` is *not* changed here because the Vercel plan's cron
+allowance could not be read (CLI fetch failing); that check is the first step
+before touching it.
+
+**The hash.** Queue ids were `_queued.length`, so the k-th posting was the k-th
+queueing was the k-th buy. Ids are now `keccak256(entry, prevrandao, position)`,
+`postQueued(bytes32)`, `queuedSpendAt(i) → (id, entry)`.
+
+**The admin.** `operator` was `immutable` on the pool, the policy and the
+factory; rotation meant redeploy, and the only key was hot. `FleetPool` and
+`FleetSessionPolicy` are `Ownable2Step`: the owner is a cold admin that rotates
+the operator, unpauses, names the guardian and claims gas; the operator moves
+money and nothing else; `pause()` is guardian, operator or admin. The factory's
+operator stays immutable (rotating it changes every predicted account address).
+The deploy scripts require `FLEET_ADMIN_ADDRESS`, refuse the deployer's own
+address, deploy with the deployer as owner so `setPool` can run, then offer
+ownership to the admin, who accepts with one transaction per contract.
+
+Tests: 190 unit, 41 Solidity (26 → 41), the pool fork suite green with the
+observer's new gap assertion. Not mine and left for the author: `1291cd6`
+(retire the hackathon layer) removed `ChitCounter`/`ChitToken`, which five
+Stage 1 fork tests still deploy, so `fleet-foundation` is red on this branch.
+
+Still to do with the founder present (plan, phase 5): the second redeploy on
+46630 with `FLEET_ADMIN_ADDRESS` and `DATABASE_URL`; the cron cadence once the
+plan is confirmed; FR-012, SC-005, plan/research/data-model and the README
+sentence, written only after the redeploy passes; tasks T041–T046 so the
+progress sheet moves on their gates; the landing's Draw Cap sheet to
+`fundAndExecute`; and dropping `fundPrincipal`/`commit`/`rollback` after T040.

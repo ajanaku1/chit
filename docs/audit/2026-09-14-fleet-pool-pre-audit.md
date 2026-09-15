@@ -42,9 +42,9 @@ Reproduction: `test_finding_F2_operatorCanEmptyThePool`. 0.3 ETH from two trader
 This is the design, not a bug, and the pool cap exists for exactly this reason. It still needs to be stated as custody in the disclosure and mitigated before mainnet, because "operator can see the link" and "operator can take the money" are different sentences. Recommendations, cheapest first:
 
 - **R2a** A `guardian` address that can only call `setPaused(true)`. Pause already blocks `openDraw` and `fundPrincipal` while leaving exits open. A guardian lets a monitor, a second person, or a multisig stop an outflow in one transaction without holding the key that moves funds. Twenty lines, leaks nothing.
-- **R2b** The operator as a 2-of-3 multisig on mainnet, with the hot service key holding a bounded session of its own (the project already has that pattern in `FleetSessionPolicy`).
+- **R2b** The operator as a 2-of-3 multisig on mainnet, with the hot service key holding a bounded session of its own (the project already has that pattern in `FleetSessionPolicy`). *On `feat/operator-hardening` (2026-09-16): the split, not yet the multisig. `FleetPool` and `FleetSessionPolicy` are `Ownable2Step`; the owner is a cold admin that rotates the operator, unpauses, names the guardian and claims; the operator moves money and nothing else. The admin is any address, so a Safe drops in later without a redeploy. `test/fleet/FleetPoolAdmin.t.sol`.*
 - **R2c** A rate limit on outflow: `fund` plus `fundPrincipal` per rolling hour ≤ some fraction of the pool balance. Aggregate only, so it names no depositor. Turns "everything in one block" into "a fraction per hour, with the monitor watching".
-- **R2d** Two-step operator transfer with a delay, so a key can be rotated after a compromise instead of the contract being abandoned.
+- **R2d** Two-step operator transfer with a delay, so a key can be rotated after a compromise instead of the contract being abandoned. *On `feat/operator-hardening`: `setOperator` by the admin, in one step (the admin handover itself is the two-step); no delay, because the compromise case wants the rotation now.*
 
 ### F3 · High for mainnet, Medium on testnet · A failed buy pays the trader the principal, at the operator's expense
 
