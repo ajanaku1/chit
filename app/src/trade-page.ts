@@ -39,6 +39,7 @@ import {
   toEth,
 } from "./fleet/page-shared.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
+import { readStatus } from "./fleet/status-read.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -74,6 +75,9 @@ class TradePage {
   #quote: Quote | undefined;
   #timer: number | undefined;
   #quoteTimer: number | undefined;
+  /** The poll in flight, if any; a second request waits for it and runs once more. */
+  #polling: Promise<void> | undefined;
+  #pollAgain = false;
 
   start(): void {
     el<HTMLSelectElement>("fleet-switch").addEventListener("change", (event) => {
@@ -307,19 +311,42 @@ class TradePage {
   }
 
   /**
-   * Sends every due slice of every open order. A slice is marked sent in the
-   * store before its request leaves, so a reply that never arrives leaves it
-   * "unconfirmed" rather than sent again. A confirmed rejection (a 4xx from
-   * the service) settles the slice directly; anything else — a dropped
-   * connection, a timeout — is a lost reply, reconciled from a fresh `list`.
+   * One poll at a time. A timer tick and a freshly placed order both ask for a
+   * poll; running two together could send the same due slices twice, so a
+   * second request waits for the first and runs once more afterwards.
    */
   async #poll(): Promise<void> {
+    if (this.#polling) {
+      this.#pollAgain = true;
+      return this.#polling;
+    }
+    this.#polling = (async () => {
+      do {
+        this.#pollAgain = false;
+        await this.#pollOnce();
+      } while (this.#pollAgain);
+    })().finally(() => {
+      this.#polling = undefined;
+    });
+    return this.#polling;
+  }
+
+  /**
+   * Sends every due slice of every open order. Each order is re-read from the
+   * store right before it is touched, and a slice is marked sent there before
+   * its request leaves, so a reply that never arrives leaves it "unconfirmed"
+   * rather than sent again. A confirmed rejection (a 4xx from the service)
+   * settles the slice directly; anything else — a dropped connection, a
+   * timeout — is a lost reply, reconciled from the unsigned status read.
+   */
+  async #pollOnce(): Promise<void> {
     const wallet = this.#wallet;
     const store = this.#store;
     if (!wallet || !store) return;
     const now = Date.now();
-    for (const current of store.list()) {
-      if (current.cancelled) continue;
+    for (const id of store.list().map((record) => record.order.id)) {
+      const current = store.get(id);
+      if (!current || current.cancelled) continue;
       const dueNow = new Set(
         pendingIndices(current).filter((index) => {
           const slice = current.slices.find((entry) => entry.index === index);
@@ -327,7 +354,9 @@ class TradePage {
         }),
       );
       if (dueNow.size === 0) continue;
-      const remainingAtSend = this.#fleets.find((fleet) => fleet.campaign === current.order.campaign)?.remaining;
+      // The draw's remaining right now, without a signature: a lost reply is
+      // settled against how far it falls.
+      const remainingAtSend = await readStatus(current.order.campaign).then((body) => body.draw?.remaining, () => undefined);
       store.update(current.order.id, (record) => ({
         ...markSent(record, [...dueNow]),
         ...(remainingAtSend !== undefined ? { remainingAtSend } : {}),
@@ -348,7 +377,7 @@ class TradePage {
           );
         } else {
           store.update(current.order.id, (record) => markUnconfirmed(record, [...dueNow]));
-          await this.#reconcile(current.order.id, wallet);
+          await this.#reconcile(current.order.id);
         }
       }
     }
@@ -356,18 +385,16 @@ class TradePage {
     this.#schedule();
   }
 
-  /** Settles unconfirmed slices from a fresh `list`, never from a wallet or public RPC read. */
-  async #reconcile(orderId: string, wallet: Hex): Promise<void> {
+  /** Settles unconfirmed slices from the unsigned status read: no signature, no wallet or public RPC read. */
+  async #reconcile(orderId: string): Promise<void> {
     const store = this.#store;
     const record = store?.get(orderId);
-    if (!store || !record) return;
+    if (!store || !record || record.remainingAtSend === undefined) return;
     try {
-      const body = (await signedFleetApi(wallet, "list", {})) as { fleets?: Fleet[] };
-      this.#fleets = body.fleets ?? this.#fleets;
-      const fleet = this.#fleets.find((entry) => entry.campaign === record.order.campaign);
-      if (!fleet) return;
-      const before = BigInt(record.remainingAtSend ?? fleet.remaining);
-      const now = BigInt(fleet.remaining);
+      const remaining = (await readStatus(record.order.campaign)).draw?.remaining;
+      if (remaining === undefined) return;
+      const before = BigInt(record.remainingAtSend);
+      const now = BigInt(remaining);
       const spentDelta = (before > now ? before - now : 0n).toString();
       store.update(orderId, (current) => reconcile(current, spentDelta));
     } catch {
