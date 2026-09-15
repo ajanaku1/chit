@@ -14,7 +14,7 @@
 
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { createPublicClient, createWalletClient, defineChain, http, isHex, type Address, type Hex } from "viem";
+import { createPublicClient, createWalletClient, defineChain, http, isAddress, isHex, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 const DEFAULT_RPC = "https://rpc.testnet.chain.robinhood.com";
@@ -36,8 +36,25 @@ const keyFromEnv = (): Hex => {
   return value;
 };
 
+
+/**
+ * The cold admin. Required and never defaulted: a deploy without it would make
+ * the hot key its own admin, which is the thing the split exists to prevent.
+ */
+const adminFromEnv = (deployer: `0x${string}`): `0x${string}` => {
+  const value = process.env.FLEET_ADMIN_ADDRESS;
+  if (!value || !isAddress(value)) {
+    throw new Error("Set FLEET_ADMIN_ADDRESS to the cold admin key's address (not the deployer)");
+  }
+  if (value.toLowerCase() === deployer.toLowerCase()) {
+    throw new Error("FLEET_ADMIN_ADDRESS must not be the deployer: the admin is a different, cold key");
+  }
+  return value;
+};
+
 const main = async (): Promise<void> => {
   const account = privateKeyToAccount(keyFromEnv());
+  const admin = adminFromEnv(account.address);
   const transport = http(RPC_URL);
   const wallet = createWalletClient({ account, chain: robinhoodTestnet, transport });
   const publicClient = createPublicClient({ chain: robinhoodTestnet, transport });
@@ -48,7 +65,9 @@ const main = async (): Promise<void> => {
     bytecode: Hex;
   };
 
-  const hash = await wallet.deployContract({ abi: abi as never, bytecode, args: [account.address] as never });
+  // Deployed with the deployer as admin so this script can finish the wiring;
+  // the admin role is offered to the cold key at the end.
+  const hash = await wallet.deployContract({ abi: abi as never, bytecode, args: [account.address, account.address] as never });
   const receipt = await publicClient.waitForTransactionReceipt({ hash });
   if (receipt.status !== "success" || !receipt.contractAddress) throw new Error(`FleetPool deploy failed: ${hash}`);
   const address = receipt.contractAddress as Address;
@@ -60,14 +79,32 @@ const main = async (): Promise<void> => {
   const existing = JSON.parse(await readFile(RECORD, "utf8")) as { sessionPolicy?: string; policy?: string };
   const policyAddress = (existing.sessionPolicy ?? existing.policy) as `0x${string}` | undefined;
   if (policyAddress) {
-    const policyAbi = [{ type: "function", name: "setPool", stateMutability: "nonpayable", inputs: [{ name: "pool_", type: "address" }], outputs: [] }] as const;
-    const setPoolHash = await wallet.writeContract({ address: policyAddress, abi: policyAbi, functionName: "setPool", args: [address] });
-    const setPoolReceipt = await publicClient.waitForTransactionReceipt({ hash: setPoolHash });
-    if (setPoolReceipt.status !== "success") throw new Error(`policy.setPool failed: ${setPoolHash}`);
-    console.log(`FleetSessionPolicy.setPool(${address}) (${setPoolHash})`);
+    const policyAbi = [
+      { type: "function", name: "setPool", stateMutability: "nonpayable", inputs: [{ name: "pool_", type: "address" }], outputs: [] },
+      { type: "function", name: "owner", stateMutability: "view", inputs: [], outputs: [{ type: "address" }] },
+      { type: "function", name: "transferOwnership", stateMutability: "nonpayable", inputs: [{ name: "newOwner", type: "address" }], outputs: [] },
+    ] as const;
+    const policyOwner = await publicClient.readContract({ address: policyAddress, abi: policyAbi, functionName: "owner" });
+    if (policyOwner.toLowerCase() === account.address.toLowerCase()) {
+      const setPoolHash = await wallet.writeContract({ address: policyAddress, abi: policyAbi, functionName: "setPool", args: [address] });
+      const setPoolReceipt = await publicClient.waitForTransactionReceipt({ hash: setPoolHash });
+      if (setPoolReceipt.status !== "success") throw new Error(`policy.setPool failed: ${setPoolHash}`);
+      console.log(`FleetSessionPolicy.setPool(${address}) (${setPoolHash})`);
+      const offer = await wallet.writeContract({ address: policyAddress, abi: policyAbi, functionName: "transferOwnership", args: [admin] });
+      await publicClient.waitForTransactionReceipt({ hash: offer });
+      console.log(`FleetSessionPolicy.transferOwnership(${admin}) (${offer}); the admin accepts with acceptOwnership()`);
+    } else {
+      console.warn(`the policy is owned by ${policyOwner}, not the deployer: that admin must call setPool(${address}) itself`);
+    }
   } else {
     console.warn("no policy address in the record: run setPool by hand before the first pooled buy");
   }
+
+  // The pool's admin role goes to the cold key; nothing changes until it accepts.
+  const poolAbi = [{ type: "function", name: "transferOwnership", stateMutability: "nonpayable", inputs: [{ name: "newOwner", type: "address" }], outputs: [] }] as const;
+  const handover = await wallet.writeContract({ address, abi: poolAbi, functionName: "transferOwnership", args: [admin] });
+  await publicClient.waitForTransactionReceipt({ hash: handover });
+  console.log(`FleetPool.transferOwnership(${admin}) (${handover}); the admin accepts with acceptOwnership()`);
 
   // Read the caps back from the chain rather than restating them here: the
   // record should say what was deployed, not what we meant to deploy.

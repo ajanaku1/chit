@@ -23,6 +23,8 @@ export type FleetDeployment = {
   network: string;
   chainId: number;
   operator: Address;
+  /** The cold admin the policy's ownership was offered to; it accepts with one transaction. */
+  admin: Address;
   entryPoint: Address;
   router: Address;
   sessionPolicy: Address;
@@ -34,6 +36,7 @@ export type FleetDeployment = {
   campaignEscrowTx: Hex;
   paymasterTx: Hex;
   setSettlerTx: Hex;
+  adminHandoverTx: Hex;
   deployedAt: string;
 };
 
@@ -57,8 +60,14 @@ const loadArtifact = async (name: string): Promise<ContractArtifact> => {
 export type DeployClients = {
   wallet: WalletClient;
   publicClient: PublicClient;
-  /** The account that will own the operator role on every contract. */
+  /** The hot key: the operator role on every contract, and the deployer. */
   operator: Address;
+  /**
+   * The cold key: offered the policy's admin role (Ownable2Step) at the end of
+   * the deploy. It must not be the operator; a hot key that is also the admin
+   * can unpause itself, which is the thing the split exists to prevent.
+   */
+  admin: Address;
   /** Human-readable network label for the record. */
   network: string;
 };
@@ -66,10 +75,15 @@ export type DeployClients = {
 /**
  * Deploys FleetSessionPolicy, FleetAccountFactory, and FleetCampaignEscrow with
  * `operator` as their operator, waits for each receipt, and returns the record.
- * Reverts if any deployment does not land or leaves no code.
+ * The policy is deployed with the deployer as admin, so the pool deploy that
+ * follows can call setPool, then its admin role is offered to `admin`; the cold
+ * key completes the handover with acceptOwnership. Reverts if any deployment
+ * does not land or leaves no code.
  */
-export const deployFleet = async ({ wallet, publicClient, operator, network }: DeployClients): Promise<FleetDeployment> => {
+export const deployFleet = async ({ wallet, publicClient, operator, admin, network }: DeployClients): Promise<FleetDeployment> => {
   if (!isAddress(operator)) throw new Error("operator is not an address");
+  if (!isAddress(admin)) throw new Error("admin is not an address");
+  if (admin.toLowerCase() === operator.toLowerCase()) throw new Error("admin must not be the operator: the cold key is a different key");
   const chainId = await publicClient.getChainId();
 
   const deploy = async (name: string, args: readonly unknown[]): Promise<{ address: Address; tx: Hex }> => {
@@ -90,7 +104,7 @@ export const deployFleet = async ({ wallet, publicClient, operator, network }: D
     return { address: receipt.contractAddress, tx };
   };
 
-  const sessionPolicy = await deploy("FleetSessionPolicy", [operator]);
+  const sessionPolicy = await deploy("FleetSessionPolicy", [operator, operator]);
   const accountFactory = await deploy("FleetAccountFactory", [operator]);
   const campaignEscrow = await deploy("FleetCampaignEscrow", [operator]);
   const paymaster = await deploy("FleetPaymaster", [ROBINHOOD_TESTNET_ENTRYPOINT, operator, campaignEscrow.address]);
@@ -108,10 +122,25 @@ export const deployFleet = async ({ wallet, publicClient, operator, network }: D
   const settlerReceipt = await publicClient.waitForTransactionReceipt({ hash: setSettlerTx, confirmations: 1, timeout: 180_000 });
   if (settlerReceipt.status !== "success") throw new Error(`setSettler failed (${setSettlerTx})`);
 
+  // Offer the policy's admin role to the cold key. Two-step: nothing changes
+  // until it accepts, and the deployer keeps setPool for the pool deploy.
+  const policyArtifact = await loadArtifact("FleetSessionPolicy");
+  const adminHandoverTx = await wallet.writeContract({
+    address: sessionPolicy.address,
+    abi: policyArtifact.abi,
+    functionName: "transferOwnership",
+    args: [admin],
+    account: wallet.account ?? null,
+    chain: wallet.chain,
+  });
+  const handoverReceipt = await publicClient.waitForTransactionReceipt({ hash: adminHandoverTx, confirmations: 1, timeout: 180_000 });
+  if (handoverReceipt.status !== "success") throw new Error(`transferOwnership failed (${adminHandoverTx})`);
+
   return {
     network,
     chainId,
     operator,
+    admin,
     entryPoint: ROBINHOOD_TESTNET_ENTRYPOINT,
     router: ROBINHOOD_TESTNET_ROUTER,
     sessionPolicy: sessionPolicy.address,
@@ -123,6 +152,7 @@ export const deployFleet = async ({ wallet, publicClient, operator, network }: D
     campaignEscrowTx: campaignEscrow.tx,
     paymasterTx: paymaster.tx,
     setSettlerTx,
+    adminHandoverTx,
     deployedAt: new Date().toISOString(),
   };
 };
