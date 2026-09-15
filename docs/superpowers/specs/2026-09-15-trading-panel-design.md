@@ -43,8 +43,10 @@ switch between fleets. This step turns that plumbing into a trading panel.
   window the trader does not tune. No trader-specific rhythm to fingerprint.
 - **Token by address.** The trader pastes an address; the service confirms an ETH pool
   exists and quotes it before anything is signed.
-- **Fleet list and switcher** on the Control Room and the Trade page, from the escrow's
-  `CampaignRegistered(campaign, owner)` events, read by the service.
+- **Fleet list and switcher** on the Control Room and the Trade page. Stage 1 fleets come
+  from the escrow's `CampaignRegistered(campaign, owner)` events; Stage 2 (pooled) fleets are
+  never registered there, on purpose, so they come from the pool's draws whose sealed owner
+  reference opens to the caller, read operator-side. The service unions the two.
 - **No sells, charts, P&L, limit or copy trading, scheduling** in this step.
 
 ## The order
@@ -52,10 +54,12 @@ switch between fleets. This step turns that plumbing into a trading panel.
 An order is a signed JSON object the browser stores and re-sends:
 
 ```
-{ id, campaign, token, totalWei, wallets: [..], seed, windowMs, createdAt, owner }
+{ id, campaign, token, totalWei, wallets: [..], entropy, windowMs, createdAt, owner }
 ```
 
-- `id` is the keccak of the fields; `seed` is 32 random bytes from the browser.
+- `id` is the keccak of the fields; `entropy` is 32 random bytes from the browser. (It is
+  `seed` inside the service; on the wire it is `entropy`, because the request guard refuses
+  any body field named `seed` to keep wallet seeds out of requests.)
 - **Plan** (`src/fleet/order-plan.ts`, pure): `planSlices(order, capWei)` returns one slice
   per wallet: `{ index, wallet, amountWei, dueAt }`. Sizes are drawn from the seed within
   ±35% of `total / wallets`, then scaled so they sum to `total` and each is at most
@@ -89,7 +93,7 @@ An order is a signed JSON object the browser stores and re-sends:
 
 ## Quote and holdings
 
-- **`quote` action** (signed, no state change): given a token address, reads `symbol`,
+- **`tokenQuote` action** (signed, no state change; `quote` is already the CHIT fee quote): given a token address, reads `symbol`,
   `decimals`, and the v4 pool's `slot0` from the PoolManager (`extsload` on the pool id for
   the fixed key: fee 3000, spacing 60, no hooks). Returns `{ symbol, decimals, hasPool,
   priceX96, estimatedOut, windowMs, capWei }`. `estimatedOut` is labelled an estimate;
@@ -97,8 +101,9 @@ An order is a signed JSON object the browser stores and re-sends:
 - **`holdings` action** (signed): given a fleet and a list of token addresses (the browser
   supplies them from its order history), returns each wallet's ETH and token balances. The
   browser never reads these itself.
-- **`list` action** (signed): the fleets this owner registered, from escrow events, each with
-  id, state, ETH left and wallet count. Name is a browser-side label (`chit-fleet-names`),
+- **`list` action** (signed): this owner's fleets (escrow events for Stage 1, the pool's sealed
+  owner references for Stage 2), each with id, state, ETH left and wallet count. An id from
+  `list` is the fleet's chain key, and every action accepts it as such. Name is a browser-side label (`chit-fleet-names`),
   since the chain has none.
 
 ## Pages
