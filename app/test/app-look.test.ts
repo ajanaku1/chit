@@ -457,6 +457,6 @@ test("polls never overlap, each sends from a fresh read, and lost replies reconc
 
 test("copying a slice's hash is announced, as copying the contract address is", async () => {
   assert.match(await read("trade.html"), /<span id="copy-status" class="sr-only" role="status" aria-live="polite"><\/span>/, "no live region for copy feedback");
-  const row = /#hashRow\([\s\S]*?\n  \}/.exec(await read("src/trade-page.ts"));
+  const row = /  #hashRow\(hash: string\)[\s\S]*?\n  \}/.exec(await read("src/trade-page.ts"));
   assert.ok(row && /copy-status/.test(row[0]), "the Copy button only changes its own text, which assistive tech may not announce");
 });
