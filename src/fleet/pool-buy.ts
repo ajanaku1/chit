@@ -7,7 +7,7 @@
  * never publishes a transfer from a depositor to a payee.
  */
 
-import { parseAbi, parseEther, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
+import { parseEther, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 
 import type { FleetPool, PoolDraw } from "./chain-pool.js";
 import { DRAW_STATE } from "./chain-pool.js";
@@ -82,7 +82,6 @@ export type BalanceView = {
 /** Mirrors the contract constant, so the app refuses what the chain would. */
 export const DRAW_CAP = parseEther("0.2");
 
-const ACCOUNT_ABI = parseAbi(["function execute(address target, uint256 value, bytes data) returns (bytes)"]);
 
 const DRAW_LABEL = ["None", "Pending", "Funded", "Closed"] as const;
 export type DrawState = "Pending" | "Funded" | "Closed";
@@ -353,12 +352,16 @@ export const createPoolService = (
   };
 
   /**
-   * One buy: reserve and send the principal, execute, then settle at the real
-   * cost. The principal cannot be checked by simulation first, because the
-   * account does not hold it until this call sends it. On failure the pool is
-   * made whole and the draw is charged nothing, so a failed buy never costs the
-   * trader; the operator absorbs the principal, which lands in the trader's own
-   * fleet account and is theirs to sweep with the owner escape hatch.
+   * One buy, one transaction. The pool sends the principal to the account and
+   * tells it to execute; if the buy reverts, the transaction reverts and the
+   * principal never left. The draw is charged principal plus the gas the
+   * contract measured, capped by the ceiling; the charge for the depositor
+   * is read back as the draw's spent delta rather than trusted from here.
+   *
+   * There is no rollback any more, and no window between funding and buying
+   * for the account's owner to act in. A failed buy costs the operator the
+   * gas of a reverted transaction, bounded by the limit below, and nothing
+   * else.
    */
   async function settle(
     campaign: Hex,
@@ -367,49 +370,16 @@ export const createPoolService = (
   ): Promise<PooledBuyOutcome & { charged?: bigint }> {
     const principal = BigInt(buy.value);
     const gasCeiling = BigInt(buy.maxCost);
-    const args = [target, principal, buy.callData] as const;
-
-    try {
-      await pool.fundPrincipal(campaign, buy.account, principal, gasCeiling);
-    } catch (error) {
-      return { account: buy.account, status: "rejected", reason: reasonOf(error) };
-    }
-
+    const before = (await pool.drawOf(campaign))?.spent ?? 0n;
     let hash: Hex;
-    let charged: bigint;
     try {
-      hash = await wallet.writeContract({
-        ...ctx(wallet), address: buy.account, abi: ACCOUNT_ABI, functionName: "execute", args,
-        // The ceiling is a promise to the trader; the transaction is bounded
-        // by it, not only charged up to it.
-        ...(await gasLimitFor(gasCeiling)),
-      } as never);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("execute_reverted");
-      const gas = receipt.gasUsed * receipt.effectiveGasPrice;
-      charged = principal + (gas > gasCeiling ? gasCeiling : gas);
+      const limit = await gasLimitFor(gasCeiling);
+      hash = await pool.fundAndExecute(campaign, buy.account, principal, gasCeiling, target, buy.callData, limit.gas);
     } catch (error) {
-      // The buy did not happen. The principal is already in the trader's own
-      // fleet account; the pool is made whole by the operator so the draw is
-      // charged nothing.
-      await pool.rollback(campaign, principal);
       return { account: buy.account, status: "rejected", reason: reasonOf(error) };
     }
-
-    // The buy is mined. From here a failure is an accounting failure, never
-    // a reason to roll back: a rollback now would refund a principal that was
-    // spent and leave the trader with both the tokens and the money.
-    try {
-      await pool.commit(campaign, charged);
-    } catch (error) {
-      try {
-        await pool.commit(campaign, charged);
-      } catch {
-        console.error(`buy ${hash} mined but not committed: ${messageOf(error)}`);
-        return { account: buy.account, status: "sponsored", txHash: hash, reason: "commit_pending" };
-      }
-    }
-    return { account: buy.account, status: "sponsored", txHash: hash, charged };
+    const after = (await pool.drawOf(campaign))?.spent ?? before;
+    return { account: buy.account, status: "sponsored", txHash: hash, charged: after - before };
   }
 
   /**

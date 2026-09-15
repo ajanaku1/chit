@@ -13,6 +13,10 @@ pragma solidity ^0.8.28;
 ///      contract cannot decrypt it, so it cannot check that a posting names the
 ///      right depositor; that is operator trust, disclosed in the product, and
 ///      auditable after the fact by anyone holding the ledger key.
+interface IFleetAccount {
+    function execute(address target, uint256 value, bytes calldata data) external returns (bytes memory);
+}
+
 contract FleetPool {
     enum DrawState {
         None,
@@ -69,6 +73,13 @@ contract FleetPool {
 
     /// @notice How long a trader waits to recover their deposit without Chit.
     uint64 public constant EXIT_DELAY = 24 hours;
+
+    /// @notice Gas the outer transaction spends around the inner call, added to
+    ///         what the inner call measured so the charge covers the whole
+    ///         transaction and not only the buy. Capped by the ceiling either way.
+    uint256 public constant EXECUTE_OVERHEAD_GAS = 90_000;
+
+    bool private _executing;
 
     /// @notice The shortest wait between opening a draw and funding its fleet.
     ///         The wait is what stops a deposit and its fleet funding from
@@ -138,6 +149,7 @@ contract FleetPool {
     error TransferFailed();
     error NoAccounts();
     error NotGuardian();
+    error Reentered();
     error DelayTooShort();
     error ExitPending();
     error CommitBelowPrincipal();
@@ -344,6 +356,44 @@ contract FleetPool {
 
         emit PrincipalSent(campaign, account, principal);
         if (principal != 0) _send(account, principal);
+    }
+
+    /// @notice Funds one buy's principal and runs the buy, in one transaction.
+    ///         The account is sent the principal and told to execute; if the
+    ///         buy reverts, this whole call reverts and the principal never
+    ///         left. The draw is charged the principal plus the gas measured
+    ///         here, capped by the ceiling. No reservation, no rollback, and
+    ///         nothing the account's owner can pull between the two steps,
+    ///         because there are no two steps.
+    /// @dev The account admits this contract through its policy's `pool`.
+    function fundAndExecute(
+        bytes32 campaign,
+        address account,
+        uint256 principal,
+        uint256 gasCeiling,
+        address target,
+        bytes calldata data
+    ) external onlyOperator returns (bytes memory result) {
+        if (paused) revert Paused();
+        if (_executing) revert Reentered();
+        Draw storage draw = _draws[campaign];
+        if (draw.state != DrawState.Funded) revert DrawNotFunded();
+        if (draw.reserved != 0) revert ReservationOpen();
+        if (draw.spent + principal + gasCeiling > draw.amount) revert DrawExceeded();
+
+        _executing = true;
+        uint256 gasBefore = gasleft();
+        totalOutflow += principal;
+        emit PrincipalSent(campaign, account, principal);
+        if (principal != 0) _send(account, principal);
+        result = IFleetAccount(account).execute(target, principal, data);
+
+        uint256 gasCost = (gasBefore - gasleft() + EXECUTE_OVERHEAD_GAS) * tx.gasprice;
+        uint256 actual = principal + (gasCost > gasCeiling ? gasCeiling : gasCost);
+        draw.spent += actual;
+        totalDrawSpent += actual;
+        emit Committed(campaign, actual);
+        _executing = false;
     }
 
     /// @notice Settles the in-flight buy at its real cost (principal plus gas).

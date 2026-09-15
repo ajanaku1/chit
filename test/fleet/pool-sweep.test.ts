@@ -27,6 +27,7 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
   const calls: Call[] = [];
   let refuseFund = new Set<Hex>();
   let commitFailures = 0;
+  let failBuy = false;
   const pool: FleetPool = {
     address: "0x0000000000000000000000000000000000000901" as Address,
     depositorOf: async () => ({ deposited: 0n, spent: 0n, exitRequestedAt: 0n, exitAmount: 0n }),
@@ -44,6 +45,13 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
       return "0x01";
     },
     fundPrincipal: async (...args) => { calls.push({ fn: "fundPrincipal", args }); return "0x01"; },
+    fundAndExecute: async (...args) => {
+      calls.push({ fn: "fundAndExecute", args });
+      if (failBuy) throw new Error("fundAndExecute reverted: CallFailed()");
+      const d = draws.find((x) => x.campaign === args[0]);
+      if (d) d.spent += (args[2] as bigint) + 1000n;
+      return `0x${"b".repeat(64)}`;
+    },
     commit: async (...args) => {
       calls.push({ fn: "commit", args });
       if (commitFailures > 0) { commitFailures -= 1; throw new Error("rpc: nonce too low"); }
@@ -60,6 +68,7 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
     pool, calls,
     refuse: (c: Hex) => { refuseFund = new Set([...refuseFund, c]); },
     failCommits: (n: number) => { commitFailures = n; },
+    failBuys: () => { failBuy = true; },
   };
 };
 
@@ -137,11 +146,10 @@ describe("withdraw", () => {
   });
 });
 
-describe("a mined buy", () => {
-  it("is never rolled back when only the commit fails; the commit is retried and the buy reported", async () => {
+describe("an atomic buy", () => {
+  it("funds and executes in one call, charges what the draw's spent moved by, and never rolls back", async () => {
     const funded = { ...draw(6, ALICE, parseEther("0.01")), state: DRAW_STATE.funded };
-    const { pool, calls, failCommits } = makePool([funded]);
-    failCommits(1);
+    const { pool, calls } = makePool([funded]);
     const service = createPoolService(wallet, publicClient, pool, KEY, { delaySeconds: () => 120 });
 
     const report = await service.buy({
@@ -150,23 +158,41 @@ describe("a mined buy", () => {
     });
 
     assert.equal(report.results[0]?.status, "sponsored");
-    assert.equal(calls.filter((c) => c.fn === "commit").length, 2, "the commit was retried once");
-    assert.equal(calls.filter((c) => c.fn === "rollback").length, 0, "and nothing was rolled back");
+    assert.equal(calls.filter((c) => c.fn === "fundAndExecute").length, 1, "one transaction");
+    assert.equal(calls.filter((c) => ["fundPrincipal", "commit", "rollback"].includes(c.fn)).length, 0, "no reservation, no commit, no rollback");
+    const queued = calls.find((c) => c.fn === "queueSpend");
+    assert.equal(queued?.args[1], coarseCharge(parseEther("0.001") + 1000n), "the depositor is charged the draw's spent delta, in coarse form");
   });
 
-  it("bounds the execute transaction by the gas ceiling", async () => {
+  it("reports a reverted buy as rejected, with nothing moved and nothing to roll back", async () => {
     const funded = { ...draw(7, ALICE, parseEther("0.01")), state: DRAW_STATE.funded };
-    const { pool } = makePool([funded]);
-    let seen: { gas?: bigint } = {};
-    const w = { ...wallet, writeContract: async (req: { gas?: bigint }) => { seen = req; return `0x${"b".repeat(64)}`; } } as unknown as WalletClient;
-    const service = createPoolService(w, publicClient, pool, KEY, { delaySeconds: () => 120 });
+    const { pool, calls, failBuys } = makePool([funded]);
+    failBuys();
+    const service = createPoolService(wallet, publicClient, pool, KEY, { delaySeconds: () => 120 });
 
-    await service.buy({
+    const report = await service.buy({
       campaign: campaign(7), depositor: ALICE, target: account(9),
       buys: [{ account: account(1), value: "1", callData: "0x", maxCost: parseEther("0.0001").toString() }],
     });
 
-    assert.equal(seen.gas, parseEther("0.0001") / 1_000_000_000n, "gas limit = ceiling / gas price");
+    assert.equal(report.results[0]?.status, "rejected");
+    assert.equal(report.results[0]?.reason, "CallFailed");
+    assert.equal(calls.filter((c) => c.fn === "rollback").length, 0);
+    assert.equal(calls.filter((c) => c.fn === "queueSpend").length, 0, "nothing charged for a buy that did not happen");
+  });
+
+  it("bounds the transaction by the gas ceiling", async () => {
+    const funded = { ...draw(8, ALICE, parseEther("0.01")), state: DRAW_STATE.funded };
+    const { pool, calls } = makePool([funded]);
+    const service = createPoolService(wallet, publicClient, pool, KEY, { delaySeconds: () => 120 });
+
+    await service.buy({
+      campaign: campaign(8), depositor: ALICE, target: account(9),
+      buys: [{ account: account(1), value: "1", callData: "0x", maxCost: parseEther("0.0001").toString() }],
+    });
+
+    const call = calls.find((c) => c.fn === "fundAndExecute");
+    assert.equal(call?.args[6], parseEther("0.0001") / 1_000_000_000n, "gas limit = ceiling / gas price");
   });
 });
 

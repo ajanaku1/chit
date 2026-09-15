@@ -1555,3 +1555,34 @@ Still open, and wanting the founder in the room: the time join (a charge is
 queued in the operator's next transaction after the buy; breaking that needs
 the contract to carry uncharged spend until a sweep batches it), random
 queue ids, and a multisig operator (F2, F8).
+
+## The atomic buy: funding and execution in one transaction (2026-09-15)
+
+F3 and A22 were the same defect from two sides: the service sent the
+principal in one transaction and executed the buy in another, so a buy that
+reverted left the principal in the trader's own account and the operator
+refunded the pool from its wallet; and between the two transactions the
+account's owner could take the principal with the escape hatch. Both gaps
+were the gap between two transactions. Now there is one.
+
+`FleetPool.fundAndExecute` sends the principal and calls the account's
+`execute` in the same call; a revert anywhere reverts the funding too. The
+draw is charged principal plus the gas measured around the inner call,
+capped by the ceiling, so the reservation, the commit and the rollback have
+nothing left to do. `FleetAccount.execute` admits the pool as a caller
+through `FleetSessionPolicy.pool()`, which the operator sets once with
+`setPool`; the deploy script does it right after deploying the pool. The
+service's `settle` is one write and reads the charge back as the draw's
+spent delta.
+
+Tests: `test/fleet/FleetPoolAtomic.t.sol` (a buy lands and is charged
+principal plus measured gas; a reverting buy moves nothing and leaves no
+reservation; the owner has no gap to act in; only the policy-named pool may
+execute; pause and the draw cap hold). The pool fork tests set the pool on
+the policy in their setup. 26 Solidity, 53 fork, 169 unit, green.
+
+Three contracts change bytecode, so this is a redeploy of the pool, the
+policy and the factory on 46630, in that order, then `setPool`. The old
+`fundPrincipal`, `commit` and `rollback` are still in the contract for the
+Stage 1 shape and unused by the service; they should go once the atomic
+path is live, and the pre-audit's F2 and F3 tests with them.
