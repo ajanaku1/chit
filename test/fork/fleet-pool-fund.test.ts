@@ -162,16 +162,18 @@ describe("Pooled funding and buys", () => {
     assert.ok(draw.spent < parseEther("0.02"), "and stay inside the draw");
     assert.equal(draw.reserved, 0n, "nothing left in flight");
 
-    // The charge against the depositor is queued, not posted beside the buy.
-    assert.equal(await s.poolContract.read.queuedSpendCount(), 2n);
+    // Every charge against the depositor is queued, not posted beside what
+    // caused it: the headroom the sweep seeded, then one per buy.
+    assert.equal(await s.poolContract.read.queuedSpendCount(), 3n);
+    assert.equal((await s.poolContract.read.queuedSpendAt([0n])).amount, HEADROOM * 5n, "the seeded headroom is a charge like any other");
     assert.equal((await s.poolContract.read.queuedSpendAt([0n])).posted, false);
     assert.equal((await s.poolContract.read.depositorOf([s.trader!.account.address]))[1], 0n);
 
     await travel(200);
     const posted = await s.elsewhere("sweep", {});
-    assert.deepEqual((posted.body as { posted: string[] }).posted, ["0", "1"]);
+    assert.deepEqual((posted.body as { posted: string[] }).posted, ["0", "1", "2"]);
     const spent = (await s.poolContract.read.depositorOf([s.trader!.account.address]))[1];
-    assert.equal(spent, draw.spent - HEADROOM * 5n, "the trader is charged what their buys cost");
+    assert.equal(spent, draw.spent, "the trader is charged exactly what left the pool for their fleet: headroom, principal and gas");
   });
 
   it("funds a due fleet on an ordinary request, without waiting for the cron", async () => {

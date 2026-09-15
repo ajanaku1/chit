@@ -17,9 +17,25 @@ import type { Uint } from "./types.js";
 /** Matches the contract's own delay, so the app never promises a shorter wait. */
 export const EXIT_DELAY_SECONDS = 24 * 60 * 60;
 
-/** The random window that separates a settlement from the charge it causes. */
-export const MIN_DELAY_SECONDS = 60;
+/**
+ * The random window that separates a settlement from the charge it causes.
+ * The contract refuses anything under 60 seconds; the service floor sits
+ * above it so a block that lands late never turns an activation into a
+ * DelayTooShort revert.
+ */
+export const MIN_DELAY_SECONDS = 90;
 export const MAX_DELAY_SECONDS = 900;
+
+/** Mirrors FleetPool.GAS_HEADROOM: what fund() seeds into each account. */
+export const GAS_HEADROOM = parseEther("0.0002");
+
+/**
+ * The smallest draw that can fund a fleet of this size and still buy once.
+ * A draw below its own headroom is a draw fund() reverts on forever; the
+ * service refuses it before it is opened rather than tripping over it in
+ * every sweep.
+ */
+export const minimumDraw = (accounts: number): bigint => GAS_HEADROOM * BigInt(Math.max(1, accounts)) + 1n;
 
 export type BalanceView = {
   available: Uint;
@@ -175,6 +191,13 @@ export const createPoolService = (
 
     async withdraw({ depositor, amount, destination }) {
       const value = BigInt(amount);
+      // The charge is queued before the payout, not after. Queue first and a
+      // failure between the two leaves a charge the sweep posts against a
+      // payout that never happened, which the exit refunds; pay first and the
+      // same failure leaves ETH paid and nothing recorded, and a retry pays
+      // it again. Recorded-but-unpaid is recoverable; paid-but-unrecorded is
+      // not.
+      const queuedSpendTx = await pool.queueSpend(sealDepositor(ledgerKey, depositor), value, await dueAt());
       // Paid by the operator, not the pool: a pool payout would publish the
       // depositor beside the address they chose to be paid at.
       const payoutTx = await wallet.sendTransaction({
@@ -185,8 +208,6 @@ export const createPoolService = (
       } as never);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: payoutTx });
       if (receipt.status !== "success") throw new Error(`withdrawal payout reverted: ${payoutTx}`);
-
-      const queuedSpendTx = await pool.queueSpend(sealDepositor(ledgerKey, depositor), value, await dueAt());
       return { payoutTx, queuedSpendTx };
     },
 
@@ -227,17 +248,16 @@ export const createPoolService = (
     /**
      * Idempotent by construction: it acts only on draws whose wait is over and
      * charges whose time has come, so running it twice funds nothing twice.
+     *
+     * Charges are posted before draws are funded, and every draw is its own
+     * try: a single draw that cannot be funded (an account that refuses ETH,
+     * a draw smaller than its own headroom) used to abort the sweep before
+     * the posting loop, which stopped funding and posting for every other
+     * trader until someone noticed, and let every queued charge run out its
+     * twelve hour window. Now it costs that one draw and nothing else.
      */
-     async sweep(accountsOf) {
+    async sweep(accountsOf) {
       const seconds = await chainSeconds();
-      const funded: Hex[] = [];
-      for (const draw of await pool.draws()) {
-        if (draw.state !== DRAW_STATE.pending || draw.dueAt > seconds) continue;
-        const accounts = await accountsOf(draw.campaign);
-        if (accounts.length === 0) continue;
-        await pool.fund(draw.campaign, accounts);
-        funded.push(draw.campaign);
-      }
 
       const posted: string[] = [];
       for (const entry of await pool.queued()) {
@@ -250,6 +270,28 @@ export const createPoolService = (
         } catch {
           // Past its window: the charge is the operator's loss, never the
           // trader's, and the exit must not be blocked waiting for it.
+        }
+      }
+
+      const funded: Hex[] = [];
+      for (const draw of await pool.draws()) {
+        if (draw.state !== DRAW_STATE.pending || draw.dueAt > seconds) continue;
+        try {
+          const accounts = await accountsOf(draw.campaign);
+          if (accounts.length === 0) continue;
+          const seeded = GAS_HEADROOM * BigInt(accounts.length);
+          // fund() reverts DrawExceeded on this; skipping is cheaper than
+          // paying for the revert on every sweep until the draw is closed.
+          if (draw.amount - draw.spent < seeded) continue;
+          await pool.fund(draw.campaign, accounts);
+          funded.push(draw.campaign);
+          // The headroom left the pool for accounts the trader owns. It is
+          // charged like any other spend: queued to the depositor, posted on
+          // its own timer, so nothing pairs the fund with a wallet.
+          const depositor = openDepositor(ledgerKey, draw.ownerRef);
+          if (depositor) await pool.queueSpend(sealDepositor(ledgerKey, depositor), seeded, await dueAt());
+        } catch (error) {
+          console.error(`sweep: draw ${draw.campaign} not funded: ${messageOf(error)}`);
         }
       }
       return { funded, posted };
@@ -294,27 +336,65 @@ export const createPoolService = (
       return { account: buy.account, status: "rejected", reason: reasonOf(error) };
     }
 
+    let hash: Hex;
+    let charged: bigint;
     try {
-      const hash = await wallet.writeContract({
+      hash = await wallet.writeContract({
         ...ctx(wallet), address: buy.account, abi: ACCOUNT_ABI, functionName: "execute", args,
+        // The ceiling is a promise to the trader; the transaction is bounded
+        // by it, not only charged up to it.
+        ...(await gasLimitFor(gasCeiling)),
       } as never);
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status !== "success") throw new Error("execute_reverted");
-
       const gas = receipt.gasUsed * receipt.effectiveGasPrice;
-      const charged = principal + (gas > gasCeiling ? gasCeiling : gas);
-      await pool.commit(campaign, charged);
-      return { account: buy.account, status: "sponsored", txHash: hash, charged };
+      charged = principal + (gas > gasCeiling ? gasCeiling : gas);
     } catch (error) {
-      // The principal is already in the trader's own fleet account; the pool is
-      // made whole by the operator so the draw is charged nothing.
+      // The buy did not happen. The principal is already in the trader's own
+      // fleet account; the pool is made whole by the operator so the draw is
+      // charged nothing.
       await pool.rollback(campaign, principal);
       return { account: buy.account, status: "rejected", reason: reasonOf(error) };
+    }
+
+    // The buy is mined. From here a failure is an accounting failure, never
+    // a reason to roll back: a rollback now would refund a principal that was
+    // spent and leave the trader with both the tokens and the money.
+    try {
+      await pool.commit(campaign, charged);
+    } catch (error) {
+      try {
+        await pool.commit(campaign, charged);
+      } catch {
+        console.error(`buy ${hash} mined but not committed: ${messageOf(error)}`);
+        return { account: buy.account, status: "sponsored", txHash: hash, reason: "commit_pending" };
+      }
+    }
+    return { account: buy.account, status: "sponsored", txHash: hash, charged };
+  }
+
+  /**
+   * A gas limit that keeps the execute transaction inside the ceiling at the
+   * price the node will charge. If the node cannot say, the transaction runs
+   * without a limit, as before; the ceiling is still what the draw is charged.
+   */
+  async function gasLimitFor(gasCeiling: bigint): Promise<{ gas?: bigint }> {
+    try {
+      const price = await publicClient.getGasPrice();
+      if (price === 0n) return {};
+      const limit = gasCeiling / price;
+      return { gas: limit > 21_000n ? limit : 21_000n };
+    } catch {
+      return {};
     }
   }
 };
 
 const ctx = (wallet: WalletClient) => ({ account: wallet.account ?? null, chain: wallet.chain ?? null });
+
+/** The first line of an error, which for viem is the sentence and never the request arguments. */
+const messageOf = (error: unknown): string =>
+  (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "";
 
 const reasonOf = (error: unknown): string => {
   const message = error instanceof Error ? error.message : String(error);
