@@ -12,6 +12,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { keccak256, recoverMessageAddress, stringToBytes } from "viem";
 
+import { createMemoryStore, type StorePort } from "./store.js";
 import type { Address, ApiErrorCode, AuthEnvelope, Hex } from "./types.js";
 
 export const CHALLENGE_VERSION = "fleet-mission-v1";
@@ -127,13 +128,13 @@ export const assertNoSecrets = (value: unknown, seen = new WeakSet<object>()): v
 };
 
 type IssuedNonce = { primaryWallet: string; action: string; payloadHash: Hex; expiresAt: number; consumed: boolean };
-type IdempotencyRecord = { payloadHash: Hex; result: unknown };
 
 export class CampaignService {
   readonly #config: ServiceConfig;
   readonly #now: () => Date;
   readonly #nonces = new Map<string, IssuedNonce>();
-  readonly #results = new Map<string, IdempotencyRecord>();
+  /** Idempotency results and the burn of MAC nonces: shared across instances when the store is. */
+  readonly #store: StorePort;
 
   /**
    * With a secret, nonces are HMACs over the challenge fields, so any service
@@ -141,11 +142,15 @@ export class CampaignService {
    * issued (stateless across serverless functions). Without one, nonces are
    * random and live only in this instance's memory.
    */
-  constructor(config: ServiceConfig, deps: { now?: () => Date; randomNonce?: () => string; nonceSecret?: string } = {}) {
+  constructor(
+    config: ServiceConfig,
+    deps: { now?: () => Date; randomNonce?: () => string; nonceSecret?: string; store?: StorePort } = {},
+  ) {
     this.#config = config;
     this.#now = deps.now ?? (() => new Date());
     this.#randomNonce = deps.randomNonce ?? (() => crypto.randomUUID());
     this.#nonceSecret = deps.nonceSecret;
+    this.#store = deps.store ?? createMemoryStore();
   }
 
   readonly #randomNonce: () => string;
@@ -171,9 +176,8 @@ export class CampaignService {
     if (issued + this.#config.maxTtlSeconds * 1000 <= this.#now().getTime()) {
       throw new ServiceError("challenge_invalid", "challenge_expired");
     }
-    // Best-effort replay guard within this instance; a replay elsewhere is
-    // bounded by the TTL and the idempotency key on every state-changing action.
-    if (this.#nonces.get(auth.nonce)?.consumed) throw new ServiceError("challenge_invalid", "nonce_used");
+    // The burn itself happens after signature recovery (see verify): a forged
+    // signature must not spend the real signer's nonce.
   }
 
   /** Drops challenges that can no longer be presented, consumed or not. */
@@ -246,6 +250,12 @@ export class CampaignService {
       throw new ServiceError("challenge_invalid", "signature_mismatch");
     }
 
+    // The replay guard for MAC nonces lives in the store, so the instance that
+    // verifies a challenge is not the only one that remembers it did.
+    if (this.#nonceSecret && !(await this.#store.burnNonce(auth.nonce, Date.parse(auth.expiresAt), this.#now().getTime()))) {
+      throw new ServiceError("challenge_invalid", "nonce_used");
+    }
+
     // Kept, marked, rather than deleted: a replay must report reuse, not an
     // unknown challenge, until the entry ages out with its own expiry.
     this.#nonces.set(auth.nonce, {
@@ -288,14 +298,14 @@ export class CampaignService {
 
     const scoped = [key, scope.primaryWallet.toLowerCase(), scope.action, scope.campaign].join("|");
     const hash = payloadHash(body);
-    const existing = this.#results.get(scoped);
+    const existing = await this.#store.idempotency.get(scoped);
     if (existing) {
       if (existing.payloadHash !== hash) throw new ServiceError("idempotency_conflict", "payload_changed");
       return existing.result as T;
     }
 
     const result = await action();
-    this.#results.set(scoped, { payloadHash: hash, result });
+    await this.#store.idempotency.put(scoped, { payloadHash: hash, result });
     return result;
   }
 }

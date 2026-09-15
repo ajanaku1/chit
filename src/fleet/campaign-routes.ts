@@ -16,6 +16,7 @@ import { CampaignService, ServiceError, assertNoSecrets } from "./campaign-servi
 import { CampaignStateError, canSponsor, transition } from "./campaign-state.js";
 import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
 import type { MarketPort } from "./market.js";
+import { createMemoryStore, type StorePort } from "./store.js";
 import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } from "./order-plan.js";
 import { DRAW_CAP, MIN_GAS_CEILING, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
@@ -51,6 +52,12 @@ export type RouterDeps = {
   pool?: PoolPort;
   /** Read-only market facts for the trading panel; absent means tokenQuote/order/holdings/list answer 503. */
   market?: MarketPort;
+  /**
+   * Slice claims and the operator lock, shared across instances when the
+   * store is (Neon on chit.tools). Absent means this instance's memory, which
+   * is the right default for a single process and for unit tests.
+   */
+  store?: StorePort;
   /**
    * Tokens a sponsored buy may target. Absent means any 20-byte value, which
    * on a public chain means any reverting or worthless pool is a free way to
@@ -156,12 +163,13 @@ export class CampaignRouter {
   readonly #randomId: () => string;
   /** Ordinary traffic sweeps, but not every request: a sweep is many reads. */
   readonly #sweepGate = createSweepGate(10_000);
-  /** Slices this instance has executed, keyed `${orderId}|${index}`: stops a double-poll running one twice. */
-  readonly #executedSlices = new Set<string>();
+  /** Slice claims and the operator lock; see RouterDeps.store. */
+  readonly #store: StorePort;
 
   constructor(deps: RouterDeps) {
     this.#deps = deps;
     this.#randomId = deps.randomId ?? (() => crypto.randomUUID());
+    this.#store = deps.store ?? createMemoryStore();
   }
 
   async handle(request: unknown, idempotencyKey?: string): Promise<RouterResult> {
@@ -286,26 +294,16 @@ export class CampaignRouter {
   }
 
   /**
-   * One money operation per wallet at a time, on this instance. Every route
-   * that moves money is check-then-act against chain state: read the balance,
-   * decide, write. Two of them interleaved for the same wallet both pass the
-   * check and both write, and the operator pays twice. Serializing per wallet
-   * closes that on one instance; a second instance is still a second
-   * instance, which is why the balance is re-read after every write below.
+   * One money operation at a time, across instances. Every route that moves
+   * money is check-then-act against chain state: read the balance, decide,
+   * write. Two of them interleaved both pass the check and both write, and
+   * the operator pays twice; two instances signing together also collide on
+   * the operator's nonce. The store's lock closes both: per wallet for the
+   * check-then-act, and one operator lock for the signing. The balance is
+   * still re-read after every write, because the chain is the truth.
    */
-  readonly #inFlight = new Map<string, Promise<unknown>>();
-
   async #serialized<T>(wallet: string, work: () => Promise<T>): Promise<T> {
-    const key = wallet.toLowerCase();
-    const previous = this.#inFlight.get(key) ?? Promise.resolve();
-    const run = previous.then(work, work);
-    const settled = run.then(() => undefined, () => undefined);
-    this.#inFlight.set(key, settled);
-    try {
-      return await run;
-    } finally {
-      if (this.#inFlight.get(key) === settled) this.#inFlight.delete(key);
-    }
+    return this.#store.withLock(`wallet:${wallet.toLowerCase()}`, () => this.#store.withLock("operator", work));
   }
 
   /** A trader who has asked to leave gets nothing new drawn, bought or paid until they are out. */
@@ -701,8 +699,8 @@ export class CampaignRouter {
   /**
    * Executes the slices of a browser-held order that are due and that the
    * browser still reports pending. The plan is recomputed from the order, so
-   * any instance agrees on it; the per-instance guard stops a double-poll from
-   * running one slice twice, and the browser's pending list stops the rest.
+   * any instance agrees on it; a slice is claimed in the store before it runs,
+   * so two polls landing on two instances still run it once.
    */
   async #trade(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = await this.#campaign(wallet, body);
@@ -713,8 +711,11 @@ export class CampaignRouter {
     }
     const pending = new Set((Array.isArray(body["pending"]) ? (body["pending"] as unknown[]) : []).map(Number));
     const now = this.#now();
-    const due = slices.filter((s) => pending.has(s.index) && Date.parse(s.dueAt) <= now.getTime() && !this.#executedSlices.has(`${order.id}|${s.index}`));
-    for (const slice of due) this.#executedSlices.add(`${order.id}|${slice.index}`);
+    const due = [];
+    for (const slice of slices) {
+      if (!pending.has(slice.index) || Date.parse(slice.dueAt) > now.getTime()) continue;
+      if (await this.#store.claimSlice(`${order.id}|${slice.index}`)) due.push(slice);
+    }
 
     const { submitter, chain } = this.#deps;
     if (!submitter && !chain) throw new ServiceError("dependency_evidence_invalid", "submitter_unconfigured");
@@ -729,7 +730,7 @@ export class CampaignRouter {
           ? await this.#buyOnChain(record, session, chain, [slice.wallet], order.token, slice.amountWei, now)
           : await this.#buyInMemory(record, session, submitter!, [slice.wallet], order.token, slice.amountWei, now);
       const result = results[0] ?? { status: "rejected", reason: "no_result" };
-      if (result["status"] !== "sponsored") this.#executedSlices.delete(`${order.id}|${slice.index}`);
+      if (result["status"] !== "sponsored") await this.#store.releaseSlice(`${order.id}|${slice.index}`);
       executed.push({ index: slice.index, wallet: slice.wallet, amountWei: slice.amountWei, ...result });
     }
     const later = slices
