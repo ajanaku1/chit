@@ -35,6 +35,7 @@
   --font-sans:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;
   --font-metric:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
   --font-chip:var(--font-sans);
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
 
   --ease-out:cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out:cubic-bezier(0.77, 0, 0.175, 1);
@@ -89,7 +90,7 @@ button{background:none;border:0;color:inherit;cursor:pointer}
   display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:start;
   grid-template-areas:"brand action" "contract contract";
   gap:calc(24 * var(--u))}
-.brand-lockup{grid-area:brand}
+.brand-lockup{grid-area:brand; display:flex; align-items:center; gap:calc(44 * var(--u))}
 .nav{grid-area:nav}
 .btn-nav{grid-area:action; justify-self:end; align-self:center;
   padding:calc(9 * var(--u)) calc(15 * var(--u)); border-radius:var(--radius-control);
@@ -256,7 +257,7 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
 /* ── 6. SCREEN B — THE NUMBERS ──────────────────────────── */
 .screen--metrics{display:flex; flex-direction:column;
   padding:calc(120 * var(--u)) var(--gutter) calc(52 * var(--u)); isolation:isolate}
-.metrics__head,.cards{width:min(100%, calc(var(--card-count) * var(--card-ref-w) * 1px + (var(--card-count) - 1) * var(--card-gap)));
+.metrics__head,.limits{width:min(100%, calc(var(--card-count) * var(--card-ref-w) * 1px + (var(--card-count) - 1) * var(--card-gap)));
   margin-inline:auto}
 .metrics__head{display:grid; grid-template-columns:minmax(0,1fr) minmax(0, clamp(260px, 32vw, 483px));
   gap:clamp(16px,3vw,40px); align-items:start; z-index:2; flex:0 0 auto}
@@ -272,8 +273,12 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
 .desktop-break{display:none}
 @container (min-width:26.5em){.desktop-break{display:inline}}
 
-.cards{flex:1 1 auto; container-type:size; display:flex; justify-content:space-between;
-  align-items:center; gap:var(--card-gap); min-height:0; margin-top:clamp(14px, 9.4vh, 92px);
+/* One stage for the cards and the limit sheets: a sheet opens exactly in
+   the cards' footprint, so screen B never grows and never scrolls. */
+.limits{position:relative; flex:1 1 auto; display:flex; min-height:0; margin-top:clamp(14px, 9.4vh, 92px)}
+.cards{flex:1 1 auto; width:100%; container-type:size; display:flex; justify-content:space-between;
+  align-items:center; gap:var(--card-gap); min-height:0;
+  transition:opacity .5s var(--ease-out), scale .5s var(--ease-out), filter .5s var(--ease-out);
   --card-w:min( (100cqw - (var(--card-count) - 1) * var(--card-gap)) / var(--card-count),
                 100cqh * var(--card-ref-w) / var(--card-ref-h), var(--card-ref-w) * 1px )}
 
@@ -305,14 +310,14 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
   color:rgba(245,239,229,.87); font-size:calc(19.95 * var(--cu)); letter-spacing:calc(-.36 * var(--cu));
   line-height:1.45; text-align:center; text-shadow:0 1px 2px rgba(40,14,7,.18)}
 .learn-more{position:absolute; z-index:6; top:83.75%; left:50%;
+  display:inline-flex; align-items:center; justify-content:center;
   width:calc(111 * var(--cu)); height:calc(45 * var(--cu)); transform:translateX(-50%);
   border:0; border-radius:999px; color:var(--ink); background:rgba(245,239,229,.97);
   box-shadow:0 1px 0 rgba(245,239,229,.5) inset, 0 1px 3px rgba(40,18,10,.10);
   font-size:calc(14 * var(--cu)); letter-spacing:calc(-.25 * var(--cu));
   transition:transform .18s ease, box-shadow .18s ease}
-.learn-more:hover:not([disabled]){transform:translateX(-50%) translateY(calc(-2 * var(--cu)));
+.learn-more:hover{transform:translateX(-50%) translateY(calc(-2 * var(--cu)));
   box-shadow:0 8px 20px rgba(40,18,10,.20)}
-.learn-more[disabled]{cursor:not-allowed; opacity:.45}
 .learn-more:focus-visible{outline:3px solid var(--coral); outline-offset:3px}
 
 /* 6.3 CARD 1 — funding delay */
@@ -426,6 +431,119 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
 .metric--exit{top:48.5%; transform:translateX(2.1cqw)}
 .metric--exit .dot-number{width:23%}
 
+/* 6.6 LIMIT SHEETS — what each Learn More opens.
+   Ink glass, the hero's .card-glass recipe on the darkened wash: paper type,
+   one hairline rim, the LED figure in coral. Every length is --u. */
+.limits.has-open .cards{opacity:0; scale:.97; filter:blur(calc(6 * var(--u))); pointer-events:none}
+.limit{position:absolute; inset:0 0 auto 0; max-height:100%; z-index:8; display:flex; flex-direction:column;
+  padding:calc(40 * var(--u)) calc(44 * var(--u)) calc(32 * var(--u));
+  border-radius:var(--radius-card); background:rgba(13,12,11,.66);
+  backdrop-filter:blur(calc(40 * var(--u))); -webkit-backdrop-filter:blur(calc(40 * var(--u)));
+  --accent:var(--coral);
+  opacity:0; visibility:hidden; translate:0 calc(24 * var(--u)); scale:.985;
+  transition:opacity .5s var(--ease-out), translate .5s var(--ease-out), scale .5s var(--ease-out), visibility 0s .5s}
+.limit::before{content:""; position:absolute; inset:0; border-radius:inherit; padding:var(--hairline);
+  background:linear-gradient(127.6deg, rgba(245,239,229,.22) 4.14%, rgba(245,239,229,.06) 54.67%, rgba(255,90,60,.18) 100%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none}
+/* the card's own hue, carried in as one glow behind the head */
+.limit::after{content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:-1;
+  background:radial-gradient(ellipse 60% 40% at 88% 0%, var(--accent), transparent 70%); opacity:.22}
+.limit--delay{--accent:#C85434}
+.limit--draw{--accent:#D99C7A}
+.limit--exit{--accent:#FF5A3C}
+.limit.is-open,.limit:target{opacity:1; visibility:visible; translate:none; scale:none; transition-delay:0s}
+.limit:focus{outline:none}
+.limit:focus-visible{outline:2px solid var(--coral); outline-offset:calc(-2 * var(--u))}
+
+.limit__head{position:relative; z-index:1; display:grid; grid-template-columns:minmax(0,1fr) auto;
+  gap:calc(40 * var(--u)); align-items:start; flex:0 0 auto}
+.limit__eyebrow{display:flex; align-items:center; gap:calc(14 * var(--u));
+  font-size:clamp(11px, calc(12 * var(--u)), 13px); line-height:1.05; letter-spacing:var(--track-wide);
+  text-transform:uppercase; color:var(--text-muted)}
+.limit__index{font-variant-numeric:tabular-nums; color:var(--coral)}
+.limit__index::after{content:""; display:inline-block; width:calc(18 * var(--u)); height:var(--hairline);
+  margin-left:calc(14 * var(--u)); vertical-align:middle; background:rgba(245,239,229,.24)}
+.limit__title{max-inline-size:calc(760 * var(--u)); margin-top:calc(18 * var(--u));
+  font-size:clamp(22px, calc(34 * var(--u)), 40px); font-weight:400; line-height:1.15; letter-spacing:var(--track-tight);
+  color:var(--paper)}
+.limit__figure{display:flex; align-items:flex-end; gap:calc(12 * var(--u)); color:var(--coral);
+  padding-top:calc(6 * var(--u))}
+.limit__figure .dot-number{width:calc(120 * var(--u))}
+.limit--draw .limit__figure .dot-number{width:calc(150 * var(--u))}
+.limit__unit{display:flex; flex-direction:column; gap:calc(6 * var(--u)); color:var(--paper);
+  font-size:clamp(18px, calc(26 * var(--u)), 30px); line-height:1; letter-spacing:var(--track-narrow)}
+.limit__unit small{font-size:clamp(11px, calc(12 * var(--u)), 13px); letter-spacing:var(--track-narrow);
+  color:var(--text-muted); white-space:nowrap}
+
+.limit__body{position:relative; z-index:1; flex:1 1 auto; min-height:0; overflow:auto;
+  display:grid; grid-template-columns:minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr);
+  gap:calc(40 * var(--u)); margin-top:calc(40 * var(--u)); padding-top:calc(28 * var(--u));
+  border-top:var(--hairline) solid rgba(245,239,229,.12)}
+.limit__label{font-size:clamp(11px, calc(12 * var(--u)), 13px); line-height:1.05; letter-spacing:var(--track-wide);
+  text-transform:uppercase; color:var(--text-muted); margin-bottom:calc(16 * var(--u))}
+.limit__col > p:not(.limit__label){font-size:clamp(13.5px, calc(15.5 * var(--u)), 19px); line-height:1.55;
+  letter-spacing:var(--track-narrow); color:rgba(245,239,229,.82)}
+.limit__code{display:grid; gap:calc(8 * var(--u))}
+.limit__code li{display:grid; gap:calc(4 * var(--u)); padding:calc(9 * var(--u)) calc(12 * var(--u));
+  border:var(--hairline) solid rgba(245,239,229,.12); border-radius:var(--radius-control);
+  background:rgba(245,239,229,.04)}
+.limit__code code{font-family:var(--font-mono); font-size:clamp(12px, calc(12.5 * var(--u)), 15px); line-height:1.35;
+  letter-spacing:0; color:var(--paper); overflow-wrap:anywhere}
+.limit__code span{font-size:clamp(12px, calc(12.5 * var(--u)), 15px); line-height:1.4; letter-spacing:var(--track-narrow);
+  color:var(--text-muted)}
+.limit__code span code{font-size:inherit; color:rgba(245,239,229,.8)}
+
+.limit__foot{position:relative; z-index:1; display:flex; justify-content:space-between; align-items:center;
+  gap:calc(18 * var(--u)); margin-top:calc(24 * var(--u)); flex:0 0 auto}
+.limit__close,.limit__next{display:inline-flex; align-items:center; gap:calc(10 * var(--u));
+  block-size:calc(44 * var(--u)); padding-inline:calc(18 * var(--u)); border-radius:var(--radius-control);
+  font-size:clamp(13px, calc(14 * var(--u)), 16px); letter-spacing:var(--track-narrow); white-space:nowrap;
+  transition:background .2s, border-color .2s, color .2s}
+.limit__close{border:var(--hairline) solid rgba(245,239,229,.14)}
+.limit__close:hover{border-color:rgba(245,239,229,.38)}
+.limit__next{color:var(--text-muted)}
+.limit__next:hover{color:var(--coral)}
+.limit__next span{transition:translate .2s var(--ease-out)}
+.limit__next:hover span{translate:calc(3 * var(--u)) 0}
+
+/* 6.7 MODAL SHEETS — Launch app / Open the app, and Read the boundary.
+   The limit sheet's glass, centred over whichever screen is showing. */
+.modal{position:absolute; inset:0; z-index:7; display:grid; place-items:center;
+  padding:calc(100 * var(--u)) var(--gutter) calc(40 * var(--u));
+  background:rgba(13,12,11,.55);
+  backdrop-filter:blur(calc(14 * var(--u))) saturate(.8);
+  -webkit-backdrop-filter:blur(calc(14 * var(--u))) saturate(.8);
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .4s var(--ease-out), visibility 0s .4s}
+.modal.is-open,.modal:target{opacity:1; visibility:visible; pointer-events:auto; transition-delay:0s}
+.modal:focus{outline:none}
+/* visibility is inherited from .modal on purpose: a child that set its own
+   would stay clickable through the closed, transparent scrim */
+.modal .limit{position:relative; inset:auto; width:min(100%, calc(1180 * var(--u))); max-height:100%;
+  opacity:1; visibility:inherit; transition:translate .5s var(--ease-out), scale .5s var(--ease-out)}
+.modal.is-open .limit,.modal:target .limit{translate:none; scale:none}
+.limit--boundary .limit__head{grid-template-columns:1fr}
+.limit__label--gap{margin-top:calc(24 * var(--u))}
+.limit__code--plain{display:flex; flex-wrap:wrap; gap:calc(8 * var(--u))}
+.limit__code--plain li{padding:calc(6 * var(--u)) calc(11 * var(--u));
+  font-size:clamp(12.5px, calc(13.5 * var(--u)), 16px); letter-spacing:var(--track-narrow); color:rgba(245,239,229,.86)}
+.progress__specs{display:grid; gap:calc(16 * var(--u))}
+.progress__specs li{display:grid; gap:calc(8 * var(--u))}
+.progress__specs .spec__row{display:flex; justify-content:space-between; gap:calc(12 * var(--u));
+  font-size:clamp(13.5px, calc(15.5 * var(--u)), 19px); letter-spacing:var(--track-narrow); color:rgba(245,239,229,.86)}
+.progress__specs .spec__count{font-variant-numeric:tabular-nums; color:var(--text-muted); white-space:nowrap}
+.progress__specs .spec__count strong{font-weight:400; color:var(--paper)}
+.bar{height:calc(6 * var(--u)); border-radius:calc(3 * var(--u)); background:rgba(245,239,229,.10); overflow:hidden}
+.bar span{display:block; height:100%; width:var(--pct, 0%); border-radius:inherit; background:var(--coral);
+  transition:width .8s var(--ease-out)}
+.limit__stamp,.limit__fine{font-size:clamp(11.5px, calc(12.5 * var(--u)), 14px); line-height:1.5;
+  letter-spacing:var(--track-narrow); color:var(--text-muted)}
+.limit__stamp{margin-top:calc(16 * var(--u))}
+.limit__fine{max-inline-size:calc(520 * var(--u)); text-align:right}
+.limit--progress .limit__code li[data-state="done"] code{color:var(--coral)}
+
 /* ── 7. THE MORPH ───────────────────────────────────────── */
 .hero__body,.trusted{transition:opacity var(--morph-dur) var(--morph-ease), translate var(--morph-dur) var(--morph-ease)}
 .panel{transition:opacity var(--morph-dur) var(--morph-ease), translate var(--morph-dur) var(--morph-ease), scale var(--morph-dur) var(--morph-ease)}
@@ -520,6 +638,9 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
     justify-content:center; align-content:center;
     --card-w:min((100cqw - var(--card-gap)) / 2, (100cqh - var(--card-gap)) / 2 * 429 / 554, 429px)}
   .card:last-child{grid-column:1 / -1; justify-self:center}
+  .limit{padding:calc(32 * var(--u))}
+  .limit__body{grid-template-columns:1fr 1fr}
+  .limit__col:first-child{grid-column:1 / -1}
 }
 
 @media (max-width:767px){
@@ -532,14 +653,11 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
   .masthead{position:sticky; top:0; left:auto; right:auto;
     padding:calc(16 * var(--u)) var(--gutter);
     background:linear-gradient(180deg, rgba(13,12,11,.92), rgba(13,12,11,0))}
-  .nav{display:none}
-  .nav.is-open{display:block; position:fixed; inset:0; z-index:20; background:rgba(13,12,11,.97);
-    padding:calc(96 * var(--u)) var(--gutter)}
-  .nav.is-open ul{flex-direction:column; gap:calc(28 * var(--u)); white-space:normal}
-  .nav.is-open a{font-size:calc(28 * var(--u)); opacity:1}
-  .burger{display:grid; gap:calc(5 * var(--u)); width:calc(40 * var(--u)); height:calc(40 * var(--u));
-    place-content:center; justify-self:end}
-  .burger span{display:block; width:calc(18 * var(--u)); height:var(--hairline); background:var(--paper)}
+  .brand-lockup{gap:calc(18 * var(--u))}
+  .nav a{font-size:calc(13 * var(--u)); opacity:.7}
+  .modal{position:fixed; z-index:30; place-items:start; overflow:auto; padding:0; background:var(--surface-bottom)}
+  .modal .limit{position:relative; inset:auto; max-height:none; overflow:visible; width:100%; min-height:100%;
+    padding-top:calc(48 * var(--u))}
   /* This slot used to hold the app link, which mobile hid behind the burger.
      It now holds the only working destination on the page, so it stays. */
   .btn-nav{font-size:calc(13 * var(--u)); padding:calc(8 * var(--u)) calc(12 * var(--u))}
@@ -549,6 +667,18 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
   .cards{container-type:inline-size; flex:0 0 auto; flex-direction:column; align-items:center;
     --card-w:min(100cqw, 429px)}
   .morph-cue{display:none}
+  .limits{display:block}
+  .limits.has-open .cards{opacity:1; scale:none; filter:none; pointer-events:auto}
+  /* the masthead is sticky and paints above the screen's own stacking
+     context, so the sheet starts below it rather than under it */
+  .limit{position:fixed; inset:0; max-height:none; z-index:30; border-radius:0; overflow:auto;
+    padding:calc(150 * var(--u)) var(--gutter) calc(32 * var(--u)); backdrop-filter:none;
+    background:var(--surface-bottom)}
+  .limit__head{grid-template-columns:1fr}
+  .limit__title{font-size:calc(28 * var(--u))}
+  .limit__body{grid-template-columns:1fr; overflow:visible; flex:none}
+  .limit__foot{flex-direction:column-reverse; align-items:stretch}
+  .limit__close,.limit__next{justify-content:center}
   .panel__title{white-space:normal}
   .metrics__head{grid-template-columns:1fr}
   .entrance-active .card{--entrance-delay:.40s !important}
@@ -565,4 +695,5 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
   .morph-cue__ring{animation:none}
   .is-ready [data-reveal]:not(.is-revealed){animation:none; opacity:var(--o,1)}
   .entrance-active *{animation:none !important}
+  .limit,.cards{transition:none}
 }
