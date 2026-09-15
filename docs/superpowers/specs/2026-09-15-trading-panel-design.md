@@ -28,7 +28,7 @@ switch between fleets. This step turns that plumbing into a trading panel.
    the service.** The trader signs an order once; the browser keeps it; the open page drives
    execution, exactly as it drives funding today ("the trader's open page is what funds a
    fleet"). The slice plan is derived from a seed inside the order, so any instance
-   reproduces it, and each slice's reservation key is checked on chain, so no slice runs twice.
+   reproduces it; see "Idempotency, stated plainly" below for what keeps a slice from running twice.
 3. **One request, bounded time.** Vercel functions must answer within the request. A request
    executes only the slices that are due, never the whole order.
 4. **Trades are public; the funding link is private.** The browser never asks a public or
@@ -66,12 +66,21 @@ An order is a signed JSON object the browser stores and re-sends:
 - **Placement** (`order` action, signed): validates the token has a pool, the total fits
   the fleet's remaining draw, every slice fits the cap, the fleet is Active. Returns the
   plan for display. Nothing executes.
-- **Execution** (`trade` action, signed): the browser sends the order; the service recomputes
-  the plan, skips slices whose reservation key is already reserved or committed on the
-  escrow, executes the due ones through the existing `#buyOne` path (reservation key
-  `${campaign}|order|${id}|${index}`), and returns per-slice results plus the next due time.
-  The browser calls `trade` on the existing poll cadence while any slice is pending, and
-  stops when all are done, failed, or the order is cancelled.
+- **Execution** (`trade` action, signed): the browser sends the order and the indices it
+  still holds as pending; the service recomputes the plan and executes the due ones among
+  them through the existing pooled-buy path, one slice at a time, returning per-slice
+  results plus the next due time. The browser calls `trade` on the existing poll cadence
+  while any slice is pending, and stops when all are done, failed, or the order is cancelled.
+- **Idempotency, stated plainly.** The pool contract has no per-slice reservation key and
+  pooled fleets are never registered in the escrow, so the service cannot see on chain
+  whether a slice already ran. Two guards stand in: a per-instance memory of executed
+  slices, and the browser's pending list. So the browser **marks a slice as sent the moment
+  it sends `trade`**, before any response; if the response is lost, that slice becomes
+  "unconfirmed", is never re-sent, and is reconciled from `holdings` and the draw's `spent`.
+  A rejected slice is retried at most twice, then marked failed. Every slice is under the
+  session's trade cap and the whole order under the fleet's draw, which the contract
+  enforces, so the exposure of any mistake is bounded by the draw. A true on-chain
+  per-slice key needs a pool contract change and is recorded under "Later".
 - **Cancel** is local: the browser marks the order cancelled and stops calling `trade`.
   Slices already committed stay committed. A cancelled order's remaining slices can never
   run, because nothing sends them.
@@ -150,6 +159,8 @@ to main when its gates are green.
 - **Sells.** Require a second approved operation in `FleetSessionPolicy` (token `approve`
   to Permit2 or the router) and a redeploy; then a `sell` mirror of the buy. User's go needed.
 - **Slippage protection.** `minOut` from the quote with a tolerance.
+- **On-chain per-slice idempotency.** A reservation key per slice in `FleetPool`, so a
+  re-sent slice is a no-op on chain. Contract change; goes with the audit.
 - **Cross-device order history.** Needs service-side storage, which the fleet path does not
   have today.
 - **Charts, P&L, limit and copy trading, scheduling.** Still excluded.
