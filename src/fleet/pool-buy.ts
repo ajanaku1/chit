@@ -369,7 +369,7 @@ export const createPoolService = (
         if (!depositor) continue;
         try {
           await pool.postQueued(entry.id, depositor);
-          posted.push(entry.id.toString());
+          posted.push(entry.id);
         } catch {
           // Past its window: the charge is the operator's loss, never the
           // trader's, and the exit must not be blocked waiting for it.

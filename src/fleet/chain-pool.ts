@@ -16,7 +16,7 @@ const POOL_ABI = parseAbi([
   "function executeExit()",
   "function setPaused(bool paused_)",
   "function queueSpendBatch(bytes[] encDepositors, uint256[] amounts, uint64[] dueAts) returns (uint256[])",
-  "function postQueued(uint256 id, address depositor)",
+  "function postQueued(bytes32 id, address depositor)",
   "function claimOperator(uint256 amount)",
   "function openDraw(bytes32 campaign, uint256 amount, uint64 dueAt, bytes ownerRef)",
   "function topUpDraw(bytes32 campaign, uint256 amount)",
@@ -35,7 +35,7 @@ const POOL_ABI = parseAbi([
   "function campaignCount() view returns (uint256)",
   "function campaignAt(uint256 index) view returns (bytes32)",
   "function queuedSpendCount() view returns (uint256)",
-  "function queuedSpendAt(uint256 index) view returns ((bytes encDepositor, uint256 amount, uint64 dueAt, uint64 queuedAt, bool posted))",
+  "function queuedSpendAt(uint256 index) view returns (bytes32 id, (bytes encDepositor, uint256 amount, uint64 dueAt, uint64 queuedAt, bool posted) entry)",
 ]);
 
 export const DRAW_STATE = { none: 0, pending: 1, funded: 2, closed: 3 } as const;
@@ -48,7 +48,8 @@ export type PoolDraw = DrawView & {
   dueAt: bigint;
 };
 
-export type PoolQueued = QueuedView & { id: bigint; dueAt: bigint; queuedAt: bigint };
+/** `id` is the contract's hash for the entry, never its position. */
+export type PoolQueued = QueuedView & { id: Hex; dueAt: bigint; queuedAt: bigint };
 
 export type DepositorRecord = {
   deposited: bigint;
@@ -78,7 +79,7 @@ export type FleetPool = {
   closeDraw(campaign: Hex): Promise<Hex>;
   /** One transaction for a sweep's worth of charges; each entry on its own timer. */
   queueSpendBatch(encDepositors: readonly Hex[], amounts: readonly bigint[], dueAts: readonly bigint[]): Promise<Hex>;
-  postQueued(id: bigint, depositor: Address): Promise<Hex>;
+  postQueued(id: Hex, depositor: Address): Promise<Hex>;
   claimable(): Promise<bigint>;
   claimOperator(amount: bigint): Promise<Hex>;
 };
@@ -133,10 +134,10 @@ export const createFleetPool = (
     const count = await read<bigint>("queuedSpendCount");
     const entries: PoolQueued[] = [];
     for (let i = 0n; i < count; i += 1n) {
-      const raw = await read<{
+      const [id, raw] = await read<[Hex, {
         encDepositor: Hex; amount: bigint; dueAt: bigint; queuedAt: bigint; posted: boolean;
-      }>("queuedSpendAt", [i]);
-      entries.push({ id: i, ...raw });
+      }]>("queuedSpendAt", [i]);
+      entries.push({ id, ...raw });
     }
     return entries;
   };
