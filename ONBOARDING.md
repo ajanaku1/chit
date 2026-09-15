@@ -73,6 +73,7 @@ Read them in this order. **`Goal.md` wins on any conflict.**
 | [specs/002-private-funding-pool/](specs/002-private-funding-pool/) | Stage 2, same shape. `tasks.md` shows T001–T040 status. |
 | [IMPLEMENTATION.md](IMPLEMENTATION.md) | The running build log. ~60KB, newest at the bottom. Read the tail before starting work — it explains most of the "why is it like this" questions. |
 | [verify.sh](verify.sh) | The done predicates. Has the final vote. |
+| [PROGRESS.md](PROGRESS.md) | How the landing's "how far along" sheet is computed from the task lists. Progress is read, never typed. |
 | The workspace laws | Not in this repo. They live one level up in the workspace and govern every project in it, so the parts that bind this build are reproduced in [§7](#7-the-rules). Ask the founder for the file itself. |
 
 Traceability runs: approved design → FR/SC numbers in the spec → COMP components
@@ -322,6 +323,10 @@ These are not style preferences. They come from the workspace laws and from [pla
 - **Never exceed 200 changed lines in a commit** without asking.
 - **Never touch** `.env*`, deploy keys, deployed addresses, or hackathon
   submission artifacts unattended.
+- **Never type progress.** The landing reports how far along Chit is from the
+  ticked boxes in `specs/*/tasks.md`, recomputed on every push to `main`
+  ([PROGRESS.md](PROGRESS.md)). Tick the box when the gate passes; never edit
+  `landing/public/progress.json` by hand.
 
 **Stop and ask before:** deploying any contract to 46630; the live pooled buy
 (T040); any Vercel production deploy or env change; anything touching real funds
