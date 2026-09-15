@@ -1,12 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+
 /// @title Fleet session policy
 /// @notice One bounded session per campaign, authorizing exactly one approved
 ///         buy from a generated fleet account (FR-007, FR-008, FR-013).
 /// @dev Mirrors `src/fleet/session-policy.ts` so a request the service refuses
 ///      off chain is refused here too, and revocation is terminal on both sides.
-contract FleetSessionPolicy {
+/// @dev The same two keys as FleetPool: the operator opens, pauses, resumes and
+///      revokes sessions; the admin names the pool and rotates the operator.
+contract FleetSessionPolicy is Ownable2Step {
     struct Session {
         uint256 chainId;
         address router;
@@ -21,10 +26,10 @@ contract FleetSessionPolicy {
         bool exists;
     }
 
-    address public immutable operator;
+    address public operator;
 
     /// @notice The funding pool allowed to drive a fleet account's execute in
-    ///         the same transaction that funds it. Set by the operator; zero
+    ///         the same transaction that funds it. Set by the admin; zero
     ///         means only the operator executes, as before.
     address public pool;
 
@@ -40,6 +45,7 @@ contract FleetSessionPolicy {
     event GasSpent(bytes32 indexed campaign, address indexed account, uint256 gasCost);
 
     error NotOperator();
+    error ZeroAddress();
     error SessionMissing();
     error SessionExists();
     error RevokedTerminal();
@@ -63,13 +69,22 @@ contract FleetSessionPolicy {
         _;
     }
 
-    constructor(address operator_) {
+    event OperatorSet(address operator);
+
+    constructor(address admin_, address operator_) Ownable(admin_) {
+        if (operator_ == address(0)) revert ZeroAddress();
         operator = operator_;
     }
 
-    function setPool(address pool_) external onlyOperator {
+    function setPool(address pool_) external onlyOwner {
         pool = pool_;
         emit PoolSet(pool_);
+    }
+
+    function setOperator(address operator_) external onlyOwner {
+        if (operator_ == address(0)) revert ZeroAddress();
+        operator = operator_;
+        emit OperatorSet(operator_);
     }
 
     /// @notice Opens the campaign's single session over its generated accounts.

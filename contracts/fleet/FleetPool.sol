@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
+
 /// @title Fleet private funding pool
 /// @notice Stage 2 custody boundary. Traders deposit fixed sizes into one shared
 ///         pool that carries no campaign identifier; the operator funds each
@@ -17,7 +20,11 @@ interface IFleetAccount {
     function execute(address target, uint256 value, bytes calldata data) external returns (bytes memory);
 }
 
-contract FleetPool {
+/// @dev Two keys. The operator is hot: the service signs with it all day, and
+///      it can move money and nothing else. The owner is the admin, cold and
+///      two-step: it rotates the operator, unpauses, names the guardian and
+///      claims gas. A leaked operator key is replaced; the pool is not.
+contract FleetPool is Ownable2Step {
     enum DrawState {
         None,
         Pending,
@@ -50,12 +57,13 @@ contract FleetPool {
         bool posted;
     }
 
-    address public immutable operator;
+    /// @notice The hot key. Set by the admin; see `setOperator`.
+    address public operator;
 
     /// @notice A second key that can stop the money and nothing else. The
     ///         operator key moves funds; if it is compromised, the pause is the
     ///         only brake, and a brake only the same key can pull is no brake.
-    ///         The guardian may pause. Only the operator may unpause or change
+    ///         The guardian may pause. Only the admin may unpause or change
     ///         the guardian. A monitor, a second person or a multisig can hold
     ///         it without ever being able to move a wei.
     address public guardian;
@@ -161,14 +169,27 @@ contract FleetPool {
     error EmptyBatch();
     error LengthMismatch();
     error UnknownSpend();
+    error ZeroAddress();
 
     modifier onlyOperator() {
         if (msg.sender != operator) revert NotOperator();
         _;
     }
 
-    constructor(address operator_) {
+    event OperatorSet(address operator);
+
+    constructor(address admin_, address operator_) Ownable(admin_) {
+        if (operator_ == address(0)) revert ZeroAddress();
         operator = operator_;
+    }
+
+    /// @notice Replaces the hot key. Every money path is gated on the new one
+    ///         from this block; nothing in flight is affected, because nothing
+    ///         is ever in flight across blocks (the buy is one transaction).
+    function setOperator(address operator_) external onlyOwner {
+        if (operator_ == address(0)) revert ZeroAddress();
+        operator = operator_;
+        emit OperatorSet(operator_);
     }
 
     // --- trader side: nothing here names a campaign ------------------------
@@ -222,12 +243,14 @@ contract FleetPool {
 
     // --- operator side, depositor-keyed ------------------------------------
 
-    function setPaused(bool paused_) external onlyOperator {
+    /// @notice Unpausing is the admin's: a compromised hot key that pauses
+    ///         itself out of the guardian's reach cannot then resume.
+    function setPaused(bool paused_) external onlyOwner {
         paused = paused_;
         emit PausedSet(paused_);
     }
 
-    function setGuardian(address guardian_) external onlyOperator {
+    function setGuardian(address guardian_) external onlyOwner {
         guardian = guardian_;
         emit GuardianSet(guardian_);
     }
@@ -235,7 +258,7 @@ contract FleetPool {
     /// @notice The brake. Callable by the guardian or the operator; releasing
     ///         it is the operator's alone, through setPaused(false).
     function pause() external {
-        if (msg.sender != guardian && msg.sender != operator) revert NotGuardian();
+        if (msg.sender != guardian && msg.sender != operator && msg.sender != owner()) revert NotGuardian();
         paused = true;
         emit PausedSet(true);
     }
@@ -296,7 +319,8 @@ contract FleetPool {
     /// @notice Reimburses the operator for gas it fronted, and never more. The
     ///         bound is campaign-side accounting only, so claiming publishes no
     ///         depositor.
-    function claimOperator(uint256 amount) external onlyOperator {
+    /// @dev Paid to the operator, which fronted the gas; claimed by the admin.
+    function claimOperator(uint256 amount) external onlyOwner {
         if (paused) revert Paused();
         if (amount > claimable()) revert ClaimExceeded();
         totalClaimed += amount;
