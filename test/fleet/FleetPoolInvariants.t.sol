@@ -282,7 +282,7 @@ contract Handler is Test {
         uint64[] memory dues = new uint64[](1);
         amounts[0] = amount;
         dues[0] = due;
-        uint256 id = pool.queueSpendBatch(refs, amounts, dues)[0];
+        bytes32 id = pool.queueSpendBatch(refs, amounts, dues)[0];
         vm.warp(due);
         pool.postQueued(id, t);
         ghostPosted += amount;

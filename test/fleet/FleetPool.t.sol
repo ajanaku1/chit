@@ -164,7 +164,7 @@ contract FleetPoolTest is Test {
         dues[0] = uint64(block.timestamp + 12 hours + 1);
         vm.expectRevert(FleetPool.DueBeyondWindow.selector);
         pool.queueSpendBatch(refs, amounts, dues);
-        uint256 id = _queueOne(0.01 ether, uint64(block.timestamp + 12 hours));
+        bytes32 id = _queueOne(0.01 ether, uint64(block.timestamp + 12 hours));
         vm.warp(block.timestamp + 12 hours);
         pool.postQueued(id, ALICE);
         vm.stopPrank();
@@ -183,7 +183,7 @@ contract FleetPoolTest is Test {
         assertEq(pool.totalDrawSpent(), 0, "no campaign has spent anything");
 
         vm.prank(OPERATOR);
-        uint256 id = _queueOne(1 ether, uint64(block.timestamp));
+        bytes32 id = _queueOne(1 ether, uint64(block.timestamp));
         vm.prank(OPERATOR);
         pool.postQueued(id, ALICE);
 
@@ -288,7 +288,7 @@ contract FleetPoolTest is Test {
         pool.requestExit();
 
         vm.prank(OPERATOR);
-        uint256 id = _queueOne(0.03 ether, uint64(block.timestamp + 60));
+        bytes32 id = _queueOne(0.03 ether, uint64(block.timestamp + 60));
         vm.warp(block.timestamp + 60);
         vm.prank(OPERATOR);
         pool.postQueued(id, ALICE);
@@ -352,16 +352,41 @@ contract FleetPoolTest is Test {
     function test_queueSpendBatch_queuesEveryEntryWithItsOwnDueTime() public {
         (bytes[] memory refs, uint256[] memory amounts, uint64[] memory dues) = _batch(3);
         vm.prank(OPERATOR);
-        uint256[] memory ids = pool.queueSpendBatch(refs, amounts, dues);
+        bytes32[] memory ids = pool.queueSpendBatch(refs, amounts, dues);
         assertEq(ids.length, 3);
         assertEq(pool.queuedSpendCount(), 3);
         for (uint256 i = 0; i < 3; i++) {
-            FleetPool.QueuedSpend memory q = pool.queuedSpendAt(ids[i]);
+            (bytes32 id, FleetPool.QueuedSpend memory q) = pool.queuedSpendAt(i);
+            assertEq(id, ids[i]);
             assertEq(q.amount, amounts[i]);
             assertEq(q.dueAt, dues[i]);
             assertEq(q.queuedAt, uint64(block.timestamp));
             assertEq(q.posted, false);
         }
+    }
+
+    // --- random ids: a posting cannot be matched to its queueing by counting ---
+
+    /// Sequential ids made SpendPosted a lookup: the k-th posting was the k-th
+    /// queueing, which was the k-th buy. Ids are now hashes with chain entropy
+    /// in them, so two identical entries in one batch still get two ids, and
+    /// neither says where in the batch it sat.
+    function test_queueIds_areDistinctForIdenticalEntriesAndNotSequential() public {
+        (bytes[] memory refs, uint256[] memory amounts, uint64[] memory dues) = _batch(3);
+        refs[1] = refs[0];
+        amounts[1] = amounts[0];
+        dues[1] = dues[0];
+        vm.prank(OPERATOR);
+        bytes32[] memory ids = pool.queueSpendBatch(refs, amounts, dues);
+        assertTrue(ids[0] != ids[1], "identical entries, distinct ids");
+        assertTrue(ids[0] != bytes32(0) && ids[1] != bytes32(0) && ids[2] != bytes32(0));
+        assertTrue(uint256(ids[1]) != uint256(ids[0]) + 1 && uint256(ids[2]) != uint256(ids[1]) + 1, "not a counter");
+    }
+
+    function test_postQueued_refusesAnUnknownId() public {
+        vm.prank(OPERATOR);
+        vm.expectRevert(FleetPool.UnknownSpend.selector);
+        pool.postQueued(keccak256("never queued"), ALICE);
     }
 
     function test_queueSpendBatch_refusesTheWholeBatchWhenOneEntryIsBeyondTheWindow() public {
@@ -404,13 +429,13 @@ contract FleetPoolTest is Test {
     }
 
     /// One charge through the batch entry point; the single-entry function is gone.
-    function _queueOne(uint256 amount, uint64 due) internal returns (uint256 id) {
+    function _queueOne(uint256 amount, uint64 due) internal returns (bytes32 id) {
         bytes[] memory refs = new bytes[](1);
         uint256[] memory amounts = new uint256[](1);
         uint64[] memory dues = new uint64[](1);
         amounts[0] = amount;
         dues[0] = due;
-        uint256[] memory ids = pool.queueSpendBatch(refs, amounts, dues);
+        bytes32[] memory ids = pool.queueSpendBatch(refs, amounts, dues);
         return ids[0];
     }
 
