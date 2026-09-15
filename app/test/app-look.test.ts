@@ -443,3 +443,14 @@ test("the Trade page's select and per-slice Copy buttons fit their rows", async 
   const copy = pages.find(([name]) => name === ".order__slices .ghost");
   assert.ok(copy && /min-height:\s*1\.\d+rem/.test(copy[1]), "per-slice Copy is a full-size pill and wraps the row");
 });
+
+test("polls never overlap, each sends from a fresh read, and lost replies reconcile from the unsigned status read", async () => {
+  const script = await read("src/trade-page.ts");
+  assert.match(script, /#polling/, "two polls can run at once and send the same slices twice");
+  const once = /async #pollOnce\([\s\S]*?\n  \}/.exec(script);
+  assert.ok(once, "no #pollOnce");
+  assert.ok(once[0].indexOf("store.get(") < once[0].indexOf("markSent("), "a poll works from a stale snapshot instead of re-reading the order");
+  assert.match(once[0], /readStatus\(/, "remainingAtSend is not a fresh read taken before the send");
+  const reconcile = /async #reconcile\([\s\S]*?\n  \}/.exec(script);
+  assert.ok(reconcile && /readStatus\(/.test(reconcile[0]) && !/signedFleetApi\(wallet, "list"/.test(reconcile[0]), "reconcile must not cost a wallet signature");
+});
