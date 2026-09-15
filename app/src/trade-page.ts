@@ -508,9 +508,11 @@ class TradePage {
         .writeText(hash)
         .then(() => {
           copy.textContent = "Copied";
+          el("copy-status").textContent = "Transaction hash copied.";
         })
         .catch(() => {
           copy.textContent = "Copy failed";
+          el("copy-status").textContent = "Copy failed. Try again.";
         })
         .finally(() => {
           globalThis.setTimeout(() => {
