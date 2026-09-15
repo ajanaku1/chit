@@ -1,0 +1,114 @@
+{
+  "rule": "PROGRESS.md",
+  "generatedAt": "2026-09-15T09:06:05.227Z",
+  "commit": "e41c00f",
+  "committedAt": "2026-09-14T22:10:35+03:00",
+  "commits": 223,
+  "tasks": {
+    "done": 80,
+    "total": 81,
+    "percent": 98
+  },
+  "stages": [
+    {
+      "stage": 1,
+      "name": "Private gas",
+      "status": "Live on 46630"
+    },
+    {
+      "stage": 2,
+      "name": "Private funding pool",
+      "status": "Built, gates green, live validation pending"
+    },
+    {
+      "stage": 3,
+      "name": "Trustless shielded pool",
+      "status": "Not built"
+    }
+  ],
+  "specs": [
+    {
+      "id": "001-fleet-mission",
+      "title": "Fleet Mission",
+      "done": 41,
+      "total": 41,
+      "phases": [
+        {
+          "name": "Evidence and harness",
+          "done": 8,
+          "total": 8
+        },
+        {
+          "name": "Foundational controls",
+          "done": 8,
+          "total": 8
+        },
+        {
+          "name": "US1 creation",
+          "done": 8,
+          "total": 8
+        },
+        {
+          "name": "US2 bounded buy",
+          "done": 8,
+          "total": 8
+        },
+        {
+          "name": "US3 lifecycle",
+          "done": 5,
+          "total": 5
+        },
+        {
+          "name": "Acceptance",
+          "done": 4,
+          "total": 4
+        }
+      ],
+      "open": []
+    },
+    {
+      "id": "002-private-funding-pool",
+      "title": "Private Funding Pool",
+      "done": 39,
+      "total": 40,
+      "phases": [
+        {
+          "name": "Setup",
+          "done": 3,
+          "total": 3
+        },
+        {
+          "name": "Foundational",
+          "done": 9,
+          "total": 9
+        },
+        {
+          "name": "User Story 1 — Hold a Chit balance",
+          "done": 7,
+          "total": 7
+        },
+        {
+          "name": "User Story 2 — Fund a fleet from the balance and trade",
+          "done": 8,
+          "total": 8
+        },
+        {
+          "name": "User Story 3 — Control and get money back privately",
+          "done": 6,
+          "total": 6
+        },
+        {
+          "name": "Polish and cross-cutting",
+          "done": 6,
+          "total": 7
+        }
+      ],
+      "open": [
+        {
+          "id": "T040",
+          "text": "Live: deploy the pool, run the quickstart live validation on chit.tools, record tx hashes under `pooledBuy`"
+        }
+      ]
+    }
+  ]
+}

@@ -8,8 +8,9 @@ landing-brief.md
 .env.*
 !.env.example
 
-# build output
-public/
+# build output. The landing's source lives in landing/public and is tracked;
+# only the assembled root public/ is output.
+/public/
 node_modules/
 artifacts/
 cache/
