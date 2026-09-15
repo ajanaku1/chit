@@ -137,11 +137,11 @@ describe("sweep", () => {
     const o = opts();
     const service = createPoolService(wallet, publicClient, pool, KEY, o);
 
-    await service.sweep(async () => [account(1), account(2), account(3)]);
+    await service.sweep(async () => [account(1), account(2), account(3)], { queueOwed: true });
     assert.equal(await o.store.owedFor(ALICE), coarseCharge(GAS_HEADROOM * 3n).toString(), "the coarse form of the headroom that left the pool is owed");
     assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 0, "nothing depositor-keyed leaves in the sweep that funded");
 
-    const second = await service.sweep(async () => []);
+    const second = await service.sweep(async () => [], { queueOwed: true });
     const batch = calls.find((c) => c.fn === "queueSpendBatch");
     assert.ok(batch, "the next sweep queues it");
     assert.deepEqual(batch.args[1], [coarseCharge(GAS_HEADROOM * 3n)]);
@@ -157,7 +157,7 @@ describe("sweep", () => {
     await o.store.recordOwed({ id: "b", depositor: BOB, amount: "2000", incurredAt: "2026-09-15T00:00:01Z" });
     await o.store.recordOwed({ id: "c", depositor: ALICE, amount: "3000", incurredAt: "2026-09-15T00:00:02Z" });
 
-    const report = await service.sweep(async () => []);
+    const report = await service.sweep(async () => [], { queueOwed: true });
 
     const batches = calls.filter((c) => c.fn === "queueSpendBatch");
     assert.equal(batches.length, 1, "one transaction for the whole batch");
@@ -179,15 +179,27 @@ describe("sweep", () => {
     await o.store.recordOwed({ id: "a", depositor: ALICE, amount: "1000", incurredAt: "2026-09-15T00:00:00Z" });
 
     failBatches(true);
-    const failed = await service.sweep(async () => []);
+    const failed = await service.sweep(async () => [], { queueOwed: true });
     assert.equal(failed.queued, 0);
     assert.equal(await o.store.owedFor(ALICE), "1000", "still owed");
 
     failBatches(false);
-    const retried = await service.sweep(async () => []);
+    const retried = await service.sweep(async () => [], { queueOwed: true });
     assert.equal(retried.queued, 1);
     assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 2);
     assert.equal(await o.store.owedFor(ALICE), "0");
+  });
+
+  it("queues nothing owed unless asked to: a sweep riding on a trader's request must not put a batch beside that request's buy", async () => {
+    const { pool, calls } = makePool([]);
+    const o = opts();
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
+    await o.store.recordOwed({ id: "a", depositor: ALICE, amount: "1000", incurredAt: "2026-09-15T00:00:00Z" });
+
+    const report = await service.sweep(async () => []);
+    assert.equal(report.queued, 0);
+    assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 0);
+    assert.equal(await o.store.owedFor(ALICE), "1000", "still owed, for the scheduled sweep");
   });
 
   it("caps a batch and carries the rest to the next sweep", async () => {
@@ -197,8 +209,8 @@ describe("sweep", () => {
     for (let i = 0; i < BATCH_LIMIT + 2; i++) {
       await o.store.recordOwed({ id: `o${i}`, depositor: ALICE, amount: "1000", incurredAt: new Date(i * 1000).toISOString() });
     }
-    assert.equal((await service.sweep(async () => [])).queued, BATCH_LIMIT);
-    assert.equal((await service.sweep(async () => [])).queued, 2);
+    assert.equal((await service.sweep(async () => [], { queueOwed: true })).queued, BATCH_LIMIT);
+    assert.equal((await service.sweep(async () => [], { queueOwed: true })).queued, 2);
     assert.equal((calls[0]!.args[0] as Hex[]).length, BATCH_LIMIT);
   });
 });
