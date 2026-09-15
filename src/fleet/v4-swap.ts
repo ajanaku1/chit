@@ -77,8 +77,20 @@ const encodeFixtureBuy = (signature: string, token: Address, value: bigint): Hex
   return `${selector}${token.slice(2).padStart(64, "0")}${value.toString(16).padStart(64, "0")}` as Hex;
 };
 
-/** Calldata for one sponsored buy against the campaign's approved function. */
-export const encodeBuyCall = (signature: string, token: Address, value: bigint, now: Date): Hex =>
+/**
+ * Calldata for one sponsored buy against the campaign's approved function.
+ * `minOut` is the least the swap may return; zero means a market order that
+ * any watcher of the public mempool can sandwich, so the router never passes
+ * zero for a real venue (see `minOutFor`).
+ */
+export const encodeBuyCall = (signature: string, token: Address, value: bigint, now: Date, minOut = 0n): Hex =>
   signature === UNIVERSAL_ROUTER_EXECUTE
-    ? encodeV4EthBuy({ token, amountIn: value, deadline: BigInt(Math.floor(now.getTime() / 1000) + 3600) })
+    ? encodeV4EthBuy({ token, amountIn: value, minOut, deadline: BigInt(Math.floor(now.getTime() / 1000) + 3600) })
     : encodeFixtureBuy(signature, token, value);
+
+/** Ten thousand basis points; the slippage the operator tolerates is expressed in them. */
+export const BPS = 10_000n;
+
+/** The least output a buy may accept: the spot estimate less the tolerated slippage. */
+export const minOutFor = (estimatedOut: bigint, maxSlippageBps: number): bigint =>
+  (estimatedOut * (BPS - BigInt(maxSlippageBps))) / BPS;

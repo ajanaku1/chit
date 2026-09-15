@@ -63,8 +63,34 @@ const operatorKeyFromEnv = (): `0x${string}` | undefined => {
  * the key itself is never used directly.
  */
 const nonceSecretFromEnv = (): string | undefined => {
+  const own = process.env.FLEET_NONCE_SECRET;
+  if (own && own.length >= 32) return own;
   const key = operatorKeyFromEnv();
-  return key ? keccak256(stringToBytes(`chit-fleet-challenge-v1|${key}`)) : undefined;
+  if (!key) return undefined;
+  warnOnce("nonce", "FLEET_NONCE_SECRET is not set: challenge nonces are keyed from the operator key");
+  return keccak256(stringToBytes(`chit-fleet-challenge-v1|${key}`));
+};
+
+/**
+ * The ledger key opens every sealed depositor reference the pool holds. It
+ * used to be derived from the operator key, so one leaked variable was the
+ * custodian, the ledger and the nonce secret at once (audit A34). It can now
+ * be its own secret. Changing it on a pool that already holds draws makes
+ * their references unreadable, so set it before the first draw or not at
+ * all; the derivation stays as the default so nothing deployed breaks.
+ */
+const ledgerKeyFromEnv = (operatorKey: `0x${string}`): `0x${string}` => {
+  const own = process.env.FLEET_LEDGER_KEY;
+  if (own && isHex(own) && own.length === 66) return own;
+  warnOnce("ledger", "FLEET_LEDGER_KEY is not set: the ledger key is derived from the operator key");
+  return ledgerKey(operatorKey);
+};
+
+const warned = new Set<string>();
+const warnOnce = (what: string, message: string): void => {
+  if (warned.has(what)) return;
+  warned.add(what);
+  console.warn(message);
 };
 
 /**
@@ -85,7 +111,31 @@ const poolFromEnv = (): PoolPort | undefined => {
   const address = poolAddressFromEnv();
   if (!key || !address) return undefined;
   const { wallet, publicClient } = clients(key);
-  return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKey(key));
+  return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKeyFromEnv(key));
+};
+
+/**
+ * Tokens a sponsored buy may target, comma separated. Unset means any token,
+ * which is the testnet default and is logged as such: on a chain where anyone
+ * can seed a pool, an open buy route is a way to spend the operator's gas on
+ * swaps that were never meant to fill.
+ */
+const allowedTokensFromEnv = (): Address[] | undefined => {
+  const raw = process.env.FLEET_TOKEN_ALLOWLIST;
+  if (!raw) return undefined;
+  const tokens = raw.split(",").map((t) => t.trim()).filter(Boolean);
+  const bad = tokens.filter((t) => !isAddress(t));
+  if (bad.length > 0) throw new Error(`FLEET_TOKEN_ALLOWLIST holds a value that is not an address: ${bad.join(", ")}`);
+  return tokens as Address[];
+};
+
+/** Slippage a sponsored buy tolerates, in basis points; unset means the router's default. */
+const maxSlippageFromEnv = (): number | undefined => {
+  const raw = process.env.FLEET_MAX_SLIPPAGE_BPS;
+  if (!raw) return undefined;
+  const bps = Number(raw);
+  if (!Number.isInteger(bps) || bps < 1 || bps > 5_000) throw new Error(`FLEET_MAX_SLIPPAGE_BPS must be an integer between 1 and 5000, got ${raw}`);
+  return bps;
 };
 
 /** Read-only market facts for the trading panel; the operator's client, no signing. */
@@ -168,6 +218,45 @@ const chitBalanceOf = async (wallet: Address): Promise<Uint> => {
   return BigInt(payload.result).toString();
 };
 
+/**
+ * Every address the service is configured with must hold code. This is the
+ * check that would have caught the September outage in a minute instead of
+ * five days: FLEET_POOL_ADDRESS held the operator's own address, an EOA, and
+ * every pool read came back empty until someone looked. It runs once, off
+ * the request path, and marks the router unhealthy with a reason that names
+ * the variable; the next request then answers 503 with that reason logged.
+ */
+let addressFault: string | undefined;
+
+const verifyDeployedAddresses = async (): Promise<void> => {
+  const key = operatorKeyFromEnv();
+  if (!key) return;
+  const { publicClient } = clients(key);
+  const expected: Array<[string, string | undefined]> = [
+    ["FLEET_POOL_ADDRESS", process.env.FLEET_POOL_ADDRESS],
+    ["FLEET_ESCROW_ADDRESS", process.env.FLEET_ESCROW_ADDRESS || DEPLOYED_46630.escrow],
+    ["FLEET_FACTORY_ADDRESS", process.env.FLEET_FACTORY_ADDRESS || DEPLOYED_46630.factory],
+    ["FLEET_POLICY_ADDRESS", process.env.FLEET_POLICY_ADDRESS || DEPLOYED_46630.policy],
+  ];
+  for (const [name, address] of expected) {
+    if (!address || !isAddress(address)) continue;
+    try {
+      const code = await publicClient.getCode({ address });
+      if (!code || code === "0x") {
+        addressFault = `${name} points at ${address}, which holds no code`;
+        console.error(`fleet service misconfigured: ${addressFault}`);
+        return;
+      }
+    } catch (error) {
+      // The RPC, not the configuration; the request path has its own retries.
+      console.warn(`could not verify ${name}: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
+    }
+  }
+};
+
+/** The configuration fault the boot check found, if any; for the request path and for tests. */
+export const configurationFault = (): string | undefined => addressFault;
+
 // Campaign records live for the instance's lifetime in this MVP; durable
 // storage is a later, separately-evidenced step.
 let router: CampaignRouter | undefined;
@@ -178,6 +267,10 @@ export const handleFleetRequest = async (
   allowedActions?: readonly string[],
 ): Promise<Response> => {
   const active = getFleetRouter();
+  if (addressFault) {
+    console.error(`fleet route refused: ${addressFault}`);
+    return Response.json({ code: "dependency_evidence_invalid", retryable: false, reason: "misconfigured_address" }, { status: 503 });
+  }
   try {
     const body: unknown = await request.json();
     const action = (body as { action?: unknown }).action;
@@ -188,7 +281,10 @@ export const handleFleetRequest = async (
     const result = await active.handle(body, idempotencyKey);
     return Response.json(result.body, { status: result.status, headers: { "cache-control": "no-store" } });
   } catch (error) {
-    console.error("fleet route failed", error);
+    // The name and the first line, never the whole error: a viem error prints
+    // the request it was building, and for a withdrawal that is the payee and
+    // the amount beside the operator's address, in a log.
+    console.error("fleet route failed:", error instanceof Error ? `${error.name}: ${error.message.split("\n")[0]}` : String(error));
     return Response.json({ code: "dependency_evidence_invalid", retryable: true }, { status: 503 });
   }
 };
@@ -205,6 +301,10 @@ export const getFleetRouter = (): CampaignRouter => {
   const nonceSecret = nonceSecretFromEnv();
   const pool = poolFromEnv();
   const market = marketFromEnv();
+  const allowedTokens = allowedTokensFromEnv();
+  const maxSlippageBps = maxSlippageFromEnv();
+  if (!allowedTokens) console.warn("FLEET_TOKEN_ALLOWLIST is not set: sponsored buys may target any token");
+  void verifyDeployedAddresses();
   const deps: RouterDeps = {
     // Ten minutes, not five: signing means leaving the browser for the wallet
     // app, and a trader who takes longer than the TTL comes back to an expired
@@ -213,6 +313,8 @@ export const getFleetRouter = (): CampaignRouter => {
     ...(feeConfig ? { feeConfig, chitBalanceOf } : {}),
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
+    ...(allowedTokens ? { allowedTokens } : {}),
+    ...(maxSlippageBps !== undefined ? { maxSlippageBps } : {}),
     // Without the pool, balance and withdrawal answer 503 the same way.
     ...(pool ? { pool } : {}),
     // Without the market, tokenQuote, order, list and holdings answer 503 too.

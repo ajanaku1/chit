@@ -17,10 +17,10 @@ import { CampaignStateError, canSponsor, transition } from "./campaign-state.js"
 import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
 import type { MarketPort } from "./market.js";
 import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } from "./order-plan.js";
-import { DRAW_CAP, createSweepGate, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
+import { DRAW_CAP, MIN_GAS_CEILING, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
-import { UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall } from "./v4-swap.js";
+import { UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall, minOutFor } from "./v4-swap.js";
 import {
   FleetValidationError,
   isAddress,
@@ -51,6 +51,18 @@ export type RouterDeps = {
   pool?: PoolPort;
   /** Read-only market facts for the trading panel; absent means tokenQuote/order/holdings/list answer 503. */
   market?: MarketPort;
+  /**
+   * Tokens a sponsored buy may target. Absent means any 20-byte value, which
+   * on a public chain means any reverting or worthless pool is a free way to
+   * spend the operator's gas; set it to the venue tokens the operator stands
+   * behind.
+   */
+  allowedTokens?: readonly Address[];
+  /**
+   * Slippage a sponsored buy tolerates, in basis points of the spot estimate;
+   * default 200. A buy on a real venue is refused when no quote can be read.
+   */
+  maxSlippageBps?: number;
   /** Confirms a funding reference against chain evidence and returns its wei amount. */
   verifyFunding?: (reference: string) => Promise<Uint>;
   /** Lands authorized UserOperations; absent means sponsorship is not configured. */
@@ -273,6 +285,34 @@ export class CampaignRouter {
     return pool;
   }
 
+  /**
+   * One money operation per wallet at a time, on this instance. Every route
+   * that moves money is check-then-act against chain state: read the balance,
+   * decide, write. Two of them interleaved for the same wallet both pass the
+   * check and both write, and the operator pays twice. Serializing per wallet
+   * closes that on one instance; a second instance is still a second
+   * instance, which is why the balance is re-read after every write below.
+   */
+  readonly #inFlight = new Map<string, Promise<unknown>>();
+
+  async #serialized<T>(wallet: string, work: () => Promise<T>): Promise<T> {
+    const key = wallet.toLowerCase();
+    const previous = this.#inFlight.get(key) ?? Promise.resolve();
+    const run = previous.then(work, work);
+    const settled = run.then(() => undefined, () => undefined);
+    this.#inFlight.set(key, settled);
+    try {
+      return await run;
+    } finally {
+      if (this.#inFlight.get(key) === settled) this.#inFlight.delete(key);
+    }
+  }
+
+  /** A trader who has asked to leave gets nothing new drawn, bought or paid until they are out. */
+  #refuseIfExiting(balance: { exit: { requestedAt?: string } }): void {
+    if (balance.exit.requestedAt) throw new CampaignStateError("state_invalid", "exit_pending");
+  }
+
   /** What the trader holds, is holding back, and may still deposit (FR-002, FR-003). */
   async #balance(wallet: string): Promise<RouterResult> {
     const pool = this.#pool();
@@ -292,19 +332,22 @@ export class CampaignRouter {
     const amount = body["amount"];
     if (!isUint(amount) || BigInt(amount) === 0n) throw new FleetValidationError("invalid_amount");
 
-    const before = await pool.balance(wallet as Address);
-    if (before.pool.paused) throw new CampaignStateError("state_invalid", "pool_paused");
-    if (BigInt(amount) > BigInt(before.available)) {
-      throw new BudgetError("budget_exceeded", "insufficient_balance");
-    }
+    return this.#serialized(wallet, async () => {
+      const before = await pool.balance(wallet as Address);
+      if (before.pool.paused) throw new CampaignStateError("state_invalid", "pool_paused");
+      this.#refuseIfExiting(before);
+      if (BigInt(amount) > BigInt(before.available)) {
+        throw new BudgetError("budget_exceeded", "insufficient_balance");
+      }
 
-    const receipt = await pool.withdraw({ depositor: wallet as Address, amount, destination });
-    const after = await pool.balance(wallet as Address);
-    const samePayee = destination.toLowerCase() === wallet.toLowerCase();
-    return {
-      status: 200,
-      body: { ...receipt, available: after.available, ...(samePayee ? { warning: "destination_is_primary" } : {}) },
-    };
+      const receipt = await pool.withdraw({ depositor: wallet as Address, amount, destination });
+      const after = await pool.balance(wallet as Address);
+      const samePayee = destination.toLowerCase() === wallet.toLowerCase();
+      return {
+        status: 200,
+        body: { ...receipt, available: after.available, ...(samePayee ? { warning: "destination_is_primary" } : {}) },
+      };
+    });
   }
 
   async #quote(wallet: Address, quoteId: string) {
@@ -394,13 +437,17 @@ export class CampaignRouter {
   }
 
   /** The draw a trader may commit: within the cap and within their balance. */
-  async #requireDrawable(wallet: string, amount: unknown): Promise<Uint> {
+  async #requireDrawable(wallet: string, amount: unknown, accounts = 1): Promise<Uint> {
     const pool = this.#pool();
     if (!isUint(amount) || BigInt(amount) === 0n) throw new FleetValidationError("invalid_draw");
     if (BigInt(amount) > DRAW_CAP) throw new BudgetError("budget_exceeded", "draw_cap_exceeded");
+    // Below its own headroom a draw can never be funded; refuse it here
+    // rather than let every sweep revert on it.
+    if (BigInt(amount) < minimumDraw(accounts)) throw new FleetValidationError("draw_below_minimum");
 
     const balance = await pool.balance(wallet as Address);
     if (balance.pool.paused) throw new CampaignStateError("state_invalid", "pool_paused");
+    this.#refuseIfExiting(balance);
     if (BigInt(amount) > BigInt(balance.available)) {
       throw new BudgetError("budget_exceeded", "insufficient_balance");
     }
@@ -410,10 +457,12 @@ export class CampaignRouter {
   /** Raises a depleted campaign's draw from the balance (FR-013). */
   async #topUp(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = await this.#campaign(wallet, body);
-    const amount = await this.#requireDrawable(wallet, body["amount"]);
-    record.draw = await this.#pool().topUpDraw({ campaign: this.#key(record), amount });
-    if (record.state === "Depleted") record.state = "Active";
-    return { status: 200, body: this.#result(record) };
+    return this.#serialized(wallet, async () => {
+      const amount = await this.#requireDrawable(wallet, body["amount"]);
+      record.draw = await this.#pool().topUpDraw({ campaign: this.#key(record), amount });
+      if (record.state === "Depleted") record.state = "Active";
+      return { status: 200, body: this.#result(record) };
+    });
   }
 
   /**
@@ -535,8 +584,15 @@ export class CampaignRouter {
     const value = String(body["value"] ?? "");
     const token = String(body["token"] ?? "");
     if (!/^0x[0-9a-fA-F]{40}$/.test(token)) throw new FleetValidationError("invalid_token");
-    const requested = Array.isArray(body["accounts"]) ? (body["accounts"] as Address[]) : [];
-    if (requested.length === 0) throw new FleetValidationError("no_accounts");
+    const allowed = this.#deps.allowedTokens;
+    if (allowed && !allowed.some((t) => t.toLowerCase() === token.toLowerCase())) {
+      throw new PolicyRejection("token_not_allowed");
+    }
+    // A record restored from the chain by another instance may not know its
+    // fleet size yet; enrolment on chain still refuses strangers, so the cap
+    // is only applied when the size is known.
+    const fleetSize = Math.max(record.policy.accounts, record.accounts.length, record.chainAccounts?.length ?? 0);
+    const requested = parseRequestedAccounts(body["accounts"], fleetSize);
 
     if (chain) await this.#syncEnrolled(record, chain, requested);
 
@@ -727,6 +783,19 @@ export class CampaignRouter {
     token: string, value: Uint, now: Date, wallet: string,
   ): Promise<Record<string, unknown>[]> {
     const pool = this.#pool();
+    return this.#serialized(wallet, async () => {
+    this.#refuseIfExiting(await pool.balance(wallet as Address));
+    // The cached record may be Active on this instance while the chain says
+    // paused or revoked, because the control route ran on another instance.
+    // Money moves on what the chain says, never on what this instance remembers.
+    const chain = this.#deps.chain;
+    if (chain) {
+      const live = await chain.sessionOf(this.#key(record));
+      if (live?.revoked) { record.state = "Revoked"; throw new CampaignStateError("state_invalid", "session_revoked"); }
+      if (live?.paused) { record.state = "Paused"; throw new CampaignStateError("state_invalid", "session_paused"); }
+    }
+    if (BigInt(record.policy.perAccountGas) < MIN_GAS_CEILING) throw new PolicyRejection("gas_ceiling_too_low");
+    const minOut = await this.#minOut(record, token as Address, value);
     const refused: Record<string, unknown>[] = [];
     const buys: PooledBuy[] = [];
     for (const account of requested) {
@@ -734,7 +803,7 @@ export class CampaignRouter {
         buys.push({
           account,
           value,
-          callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now),
+          callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now, minOut),
           maxCost: record.policy.perAccountGas,
         });
       } else {
@@ -751,6 +820,7 @@ export class CampaignRouter {
     });
     record.draw = report.draw;
     return [...refused, ...report.results.map((result) => ({ ...result, draw: report.draw }))];
+    });
   }
 
   async #buyInMemory(
@@ -773,11 +843,12 @@ export class CampaignRouter {
     record: CampaignRecord, session: SessionKey, chain: FleetChain,
     requested: Address[], token: string, value: Uint, now: Date,
   ): Promise<Record<string, unknown>[]> {
+    const minOut = await this.#minOut(record, token as Address, value);
     const refused: Record<string, unknown>[] = [];
     const permitted: ChainBuy[] = [];
     for (const account of requested) {
       if (this.#permitted(record, session, account, value, now)) {
-        permitted.push(this.#chainBuy(record, account, token, value, now));
+        permitted.push(this.#chainBuy(record, account, token, value, now, minOut));
       } else {
         refused.push({ account, status: "rejected", budget: this.#budget(record) });
       }
@@ -807,11 +878,29 @@ export class CampaignRouter {
     }
   }
 
-  #chainBuy(record: CampaignRecord, account: Address, token: string, value: Uint, now: Date): ChainBuy {
+  /**
+   * The least a buy on the real venue may return. Read from the pool's spot
+   * price at request time, less the tolerated slippage. Without it every
+   * sponsored buy was a market order with amountOutMinimum zero, which on a
+   * public chain is an invitation to be sandwiched for the whole principal.
+   * The fixture venue used by tests has no pool and takes no minimum.
+   */
+  async #minOut(record: CampaignRecord, token: Address, value: Uint): Promise<bigint> {
+    if (record.policy.function !== UNIVERSAL_ROUTER_EXECUTE) return 0n;
+    const market = this.#deps.market;
+    if (!market) throw new ServiceError("dependency_evidence_invalid", "market_unconfigured");
+    const quote = await market.tokenQuote(token, value);
+    if (!quote.hasPool) throw new PolicyRejection("no_pool_for_token");
+    const minOut = minOutFor(BigInt(quote.estimatedOut), this.#deps.maxSlippageBps ?? 200);
+    if (minOut === 0n) throw new PolicyRejection("no_quote_for_token");
+    return minOut;
+  }
+
+  #chainBuy(record: CampaignRecord, account: Address, token: string, value: Uint, now: Date, minOut = 0n): ChainBuy {
     const reservation = `${record.id}|buy|${account.toLowerCase()}|${value}|${token.toLowerCase()}`;
     return {
       account, key: campaignKey(reservation), value,
-      callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now),
+      callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now, minOut),
       maxCost: record.policy.perAccountGas,
     };
   }
@@ -927,13 +1016,19 @@ export class CampaignRouter {
   async #activate(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = await this.#campaign(wallet, body);
     const pool = this.#deps.pool;
-    const amount = pool ? await this.#requireDrawable(wallet, body["draw"]) : undefined;
+    return this.#serialized(wallet, async () => {
+    const fleetSize = record.accounts.length;
+    let amount = pool ? await this.#requireDrawable(wallet, body["draw"], fleetSize) : undefined;
     const nextState = transition(record.state, pool ? "fund" : "activate");
 
     if (this.#deps.chain && !record.chainAccounts) {
       record.chainAccounts = await this.#deps.chain.activate(this.#key(record), record.accounts, record.policy);
     }
     if (pool && amount) {
+      // The chain activation took time; the balance is read again right
+      // before the draw is opened, so a withdrawal or another activation
+      // that landed meanwhile cannot leave this draw unbacked.
+      amount = await this.#requireDrawable(wallet, amount, fleetSize);
       record.draw = await pool.openDraw({
         campaign: this.#key(record), depositor: wallet as Address, amount,
       });
@@ -946,6 +1041,7 @@ export class CampaignRouter {
         accounts: record.chainAccounts ?? record.accounts.map((account) => account.ownerAddress),
       },
     };
+    });
   }
 
   async #read(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
@@ -963,6 +1059,27 @@ export class CampaignRouter {
     };
   }
 }
+
+/**
+ * The accounts a buy names: addresses only, no repeats, never more than the
+ * fleet has (when the size is known). Anything else used to reach the chain
+ * as a fleet account that was never enrolled, and cost the operator a refused
+ * transaction each.
+ */
+const parseRequestedAccounts = (raw: unknown, fleetSize: number): Address[] => {
+  if (!Array.isArray(raw) || raw.length === 0) throw new FleetValidationError("no_accounts");
+  const seen = new Set<string>();
+  const accounts: Address[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "string" || !isAddress(entry)) throw new FleetValidationError("invalid_accounts");
+    const key = entry.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    accounts.push(entry as Address);
+  }
+  if (fleetSize > 0 && accounts.length > fleetSize) throw new FleetValidationError("too_many_accounts");
+  return accounts;
+};
 
 /** Approved-function calldata for the demo buy: router.function(token, value). */
 const encodeExecuteData = (token: Address, value: Uint): `0x${string}` =>

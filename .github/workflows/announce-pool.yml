@@ -1,4 +1,4 @@
-name: Post pool numbers to Telegram
+name: Post pool and token numbers to Telegram
 
 # Once a day, the pool's last 24 hours read from the chain: deposits, fleets
 # funded, sponsored buys, closes, exits, what the pool holds. See
@@ -22,6 +22,7 @@ jobs:
         with:
           sparse-checkout: |
             scripts/announce-pool.mjs
+            scripts/announce-token.mjs
             deployments/fleet-46630.json
           sparse-checkout-cone-mode: false
 
@@ -34,3 +35,12 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node scripts/announce-pool.mjs
+
+      # The token's numbers from mainnet: supply, burned, locked, in the pool,
+      # price and liquidity, links. Asked for in the group.
+      - name: Read the token and post
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node scripts/announce-token.mjs
