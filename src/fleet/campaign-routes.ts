@@ -412,17 +412,19 @@ export class CampaignRouter {
   }
 
   /** Funds every draw whose wait is over and posts every charge now due. */
+  /** The scheduled sweep: the one place owed charges are queued, in a batch, off any trader's request. */
   async #sweep(): Promise<RouterResult> {
     const pool = this.#pool();
     const chain = this.#deps.chain;
-    const report = await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []));
+    const report = await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []), { queueOwed: true });
     return { status: 200, body: report };
   }
 
   /**
    * Sweeps as a side effect of ordinary traffic, so a fleet is funded when its
    * wait is over even where the schedule is coarser than the wait. Best effort:
-   * the request it rides on must not fail because a sweep did.
+   * the request it rides on must not fail because a sweep did. It never queues
+   * owed charges: that batch must not share a window with this request's buy.
    */
   async #sweepOpportunistically(): Promise<void> {
     const { pool, chain } = this.#deps;

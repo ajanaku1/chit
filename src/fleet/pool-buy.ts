@@ -140,8 +140,13 @@ export type PoolPort = {
    */
   campaignsOf?(depositor: Address): Promise<Hex[]>;
   closeDraw(campaign: Hex): Promise<DrawSummary | undefined>;
-  /** Queues what is owed in one batch, posts every charge now due, funds every draw whose wait is over. */
-  sweep(accountsOf: AccountsResolver): Promise<{ funded: Hex[]; posted: string[]; queued?: number }>;
+  /**
+   * Posts every charge now due and funds every draw whose wait is over. With
+   * `queueOwed`, first queues what is owed in one batch: only the scheduled
+   * sweep passes it, because a sweep that rides on a trader's request would
+   * put that batch in the same window as the request's own buy.
+   */
+  sweep(accountsOf: AccountsResolver, options?: { queueOwed?: boolean }): Promise<{ funded: Hex[]; posted: string[]; queued?: number }>;
   buy(input: PooledBuyInput): Promise<PooledBuyReport>;
 };
 
@@ -350,10 +355,11 @@ export const createPoolService = (
      * trader until someone noticed, and let every queued charge run out its
      * twelve hour window. Now it costs that one draw and nothing else.
      */
-    async sweep(accountsOf) {
-      // Owed first, and on its own: what this batch queues is charges that
-      // were recorded in earlier requests, never in this transaction window.
-      const queued = await queueOwed();
+    async sweep(accountsOf, options = {}) {
+      // Owed first, and only on the scheduled sweep: what the batch queues is
+      // charges recorded in earlier requests, sent from a transaction window
+      // that no trader's request opened.
+      const queued = options.queueOwed ? await queueOwed() : 0;
       const seconds = await chainSeconds();
 
       const posted: string[] = [];
