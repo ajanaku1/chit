@@ -77,6 +77,12 @@ export type PoolPort = {
   drawOf(campaign: Hex): Promise<DrawSummary | undefined>;
   /** The depositor behind a campaign, opened from its sealed owner reference. */
   ownerOf(campaign: Hex): Promise<Address | undefined>;
+  /**
+   * Every campaign whose sealed owner reference opens to this depositor. Read
+   * operator-side from the draws the chain already holds; nothing is published.
+   * Optional so fakes that predate it still type-check.
+   */
+  campaignsOf?(depositor: Address): Promise<Hex[]>;
   closeDraw(campaign: Hex): Promise<DrawSummary | undefined>;
   /** Funds every draw whose wait is over and posts every charge now due. */
   sweep(accountsOf: AccountsResolver): Promise<{ funded: Hex[]; posted: string[] }>;
@@ -202,6 +208,13 @@ export const createPoolService = (
     async ownerOf(campaign) {
       const draw = await pool.drawOf(campaign);
       return draw ? openDepositor(ledgerKey, draw.ownerRef) : undefined;
+    },
+
+    async campaignsOf(depositor) {
+      const draws = await pool.draws();
+      return draws
+        .filter((draw) => openDepositor(ledgerKey, draw.ownerRef)?.toLowerCase() === depositor.toLowerCase())
+        .map((draw) => draw.campaign);
     },
 
     async closeDraw(campaign) {

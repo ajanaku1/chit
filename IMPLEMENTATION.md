@@ -1445,3 +1445,42 @@ gas only, the exit with the operator gone, bills posted during the wait. The
 accounting identity and honest-operator solvency hold as invariants. The
 fuzzer's one catch was in my own invariant, which double counted rollbacks;
 `totalOutflow` is already net of them.
+
+
+## Trading panel, plan 1: fleet buys as browser-held orders (2026-09-15)
+
+Design: `docs/superpowers/specs/2026-09-15-trading-panel-design.md`. The service
+gains five signed actions. `tokenQuote` reads a token's venue pool price straight
+from the PoolManager's storage (`extsload` at StateLibrary's slot 6) with its
+symbol and decimals; checked live, the seeded FLEET token quotes with a pool and
+an unknown address without one. `order` validates a fleet buy (the token has a
+pool, the total fits the fleet's remaining draw, every slice fits the session's
+trade cap, the wallets are enrolled) and returns a plan: one slice per wallet,
+sizes within ±35% of the average, due times spread across a window that grows
+from five minutes at five wallets to thirty at fifty, all derived from entropy
+the browser chose. `trade` executes the due, still-pending slices of an order the
+browser holds and re-sends, one slice at a time through the same pooled-buy path
+a plain buy uses. `list` returns the fleets an owner holds; `holdings` reads each
+fleet wallet's ETH and the tokens the browser asks about.
+
+Two things the user approved were changed by what the code enforces. Sells are
+out: the on-chain `FleetSessionPolicy` allows one router and one selector per
+fleet, and a sell needs a token approval first, so selling waits for a policy
+change and a redeploy. And orders live in the browser, not on the service: the
+fleet path keeps no state between requests, so the order is signed once, kept by
+the browser, and driven by the open page the way funding already is. Its plan is
+reproducible from the entropy; a per-instance guard and the browser's own pending
+list keep a slice from running twice, and the accepted worst case across
+instances is one repeated slice, itself under the trade cap.
+
+Three things the fork test found. The wire field could not be called `seed`: the
+wallet-recovery guard refuses any body carrying that name, so it is `entropy` on
+the wire and `seed` inside. A fresh service instance restores a fleet from chain
+without its accounts and refused every order as `wallets_not_enrolled`; it now
+asks the factory's own event, as a plain buy does. And pooled fleets are never
+registered in the Stage 1 escrow, on purpose, because that registration publishes
+the owner beside the campaign key, so the fleet list cannot come from escrow
+events alone: it unions those Stage 1 fleets with the pool's draws whose sealed
+owner reference opens to the caller, read operator-side, publishing nothing. The
+`fleet-trade` gate runs a five-slice order on a fresh chain across two service
+instances and two polls.

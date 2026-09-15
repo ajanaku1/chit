@@ -15,6 +15,8 @@ import { campaignKey, type ChainBuy, type FleetChain } from "./chain-service.js"
 import { CampaignService, ServiceError, assertNoSecrets } from "./campaign-service.js";
 import { CampaignStateError, canSponsor, transition } from "./campaign-state.js";
 import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
+import type { MarketPort } from "./market.js";
+import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } from "./order-plan.js";
 import { DRAW_CAP, createSweepGate, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
@@ -47,6 +49,8 @@ export type RouterDeps = {
   chain?: FleetChain;
   /** Stage 2 pool; absent means balance and withdrawal answer 503, never a guess. */
   pool?: PoolPort;
+  /** Read-only market facts for the trading panel; absent means tokenQuote/order/holdings/list answer 503. */
+  market?: MarketPort;
   /** Confirms a funding reference against chain evidence and returns its wei amount. */
   verifyFunding?: (reference: string) => Promise<Uint>;
   /** Lands authorized UserOperations; absent means sponsorship is not configured. */
@@ -69,6 +73,12 @@ type CampaignRecord = {
   budget: CampaignBudget;
   /** Set once the fleet exists on-chain: the factory-created account addresses. */
   chainAccounts?: Address[];
+  /**
+   * Set when this record was restored from an escrow key rather than looked
+   * up by id: `campaignKey` has no inverse, so a key-restored record's `id`
+   * is the key itself, and every chain call must use this, not `campaignKey(id)`.
+   */
+  chainKey?: Hex;
   /** Last on-chain budget read; authoritative whenever `chain` is configured. */
   chainBudget?: Budget;
   /** Stage 2: this campaign's claim on the trader's pool balance. */
@@ -97,17 +107,45 @@ const CONTROL_EVENTS = {
   close: "close",
 } as const;
 
+/**
+ * A trading-panel validation refusal. Unlike a bare `FleetValidationError`
+ * (which the fleet-api.md route table collapses to `policy_rejected` at 422,
+ * a mapping earlier routes already rely on), the reason here is itself the
+ * stable wire code the browser switches on, surfaced at 400.
+ */
+class TradeValidationError extends FleetValidationError {}
+
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 
+/**
+ * The wire shape of an order carries `entropy` where `Order` carries `seed`.
+ * `assertNoSecrets` refuses any request body field literally named `seed`
+ * anywhere in its tree, on the assumption it is wallet recovery material; an
+ * order's seed is a public PRNG input the browser stores and re-sends openly,
+ * not that, so it is renamed at this boundary rather than weakening that guard.
+ */
+const toWireOrder = (order: Order): Record<string, unknown> => {
+  const { seed, ...rest } = order;
+  return { ...rest, entropy: seed };
+};
+const fromWireOrder = (wire: Record<string, unknown>): Record<string, unknown> => {
+  const { entropy, ...rest } = wire;
+  return { ...rest, seed: entropy };
+};
+
 export class CampaignRouter {
   readonly #deps: RouterDeps;
   readonly #campaigns = new Map<string, CampaignRecord>();
+  /** `campaignKey(id)` has no inverse; this remembers it for every record this instance created or restored. */
+  readonly #keyIndex = new Map<Hex, string>();
   readonly #randomId: () => string;
   /** Ordinary traffic sweeps, but not every request: a sweep is many reads. */
   readonly #sweepGate = createSweepGate(10_000);
+  /** Slices this instance has executed, keyed `${orderId}|${index}`: stops a double-poll running one twice. */
+  readonly #executedSlices = new Set<string>();
 
   constructor(deps: RouterDeps) {
     this.#deps = deps;
@@ -151,6 +189,10 @@ export class CampaignRouter {
 
     if (action === "read") return this.#read(wallet, body);
     if (action === "balance") return this.#balance(wallet);
+    if (action === "tokenQuote") return this.#tokenQuote(wallet, body);
+    if (action === "order") return this.#order(wallet, body);
+    if (action === "list") return this.#list(wallet);
+    if (action === "holdings") return this.#holdings(wallet, body);
 
     if (typeof idempotencyKey !== "string") {
       throw new ServiceError("idempotency_conflict", "key_required");
@@ -172,6 +214,8 @@ export class CampaignRouter {
           return this.#activate(wallet, body);
         case "buy":
           return this.#buy(wallet, body);
+        case "trade":
+          return this.#trade(wallet, body);
         case "withdraw":
           return this.#withdraw(wallet, body);
         case "topUp":
@@ -219,6 +263,7 @@ export class CampaignRouter {
       budget: new CampaignBudget("0"),
     };
     this.#campaigns.set(record.id, record);
+    this.#keyIndex.set(campaignKey(record.id).toLowerCase() as Hex, record.id);
     return { status: 201, body: this.#result(record, { fee: true }) };
   }
 
@@ -291,7 +336,7 @@ export class CampaignRouter {
   async #syncDraw(record: CampaignRecord): Promise<void> {
     const pool = this.#deps.pool;
     if (!pool) return;
-    const draw = await pool.drawOf(campaignKey(record.id));
+    const draw = await pool.drawOf(this.#key(record));
     if (!draw) return;
     record.draw = draw;
     if (record.state === "Activating" && draw.state === "Funded") {
@@ -366,7 +411,7 @@ export class CampaignRouter {
   async #topUp(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = await this.#campaign(wallet, body);
     const amount = await this.#requireDrawable(wallet, body["amount"]);
-    record.draw = await this.#pool().topUpDraw({ campaign: campaignKey(record.id), amount });
+    record.draw = await this.#pool().topUpDraw({ campaign: this.#key(record), amount });
     if (record.state === "Depleted") record.state = "Active";
     return { status: 200, body: this.#result(record) };
   }
@@ -377,21 +422,45 @@ export class CampaignRouter {
    * Before activation the policy exists only in the creating instance.
    */
   async #restore(id: string, wallet: string): Promise<CampaignRecord | undefined> {
+    if (!id) return undefined;
+    // An id `list` handed out is the chain key itself; hashing it again would
+    // look up a campaign that does not exist.
+    if (/^0x[0-9a-fA-F]{64}$/.test(id)) return this.#restoreByKey(id.toLowerCase() as Hex, wallet);
+    return this.#restoreFromKey(id, campaignKey(id), wallet);
+  }
+
+  /**
+   * `list` learns campaigns by their escrow key, not their friendly id, and
+   * `campaignKey` has no inverse: the restored record's id is the key itself,
+   * remembered on `chainKey` so every later chain call uses the key, not a
+   * re-hash of it.
+   */
+  async #restoreByKey(key: Hex, wallet: string): Promise<CampaignRecord | undefined> {
+    return this.#restoreFromKey(key, key, wallet, key);
+  }
+
+  async #restoreFromKey(id: string, key: Hex, wallet: string, chainKey?: Hex): Promise<CampaignRecord | undefined> {
     const chain = this.#deps.chain;
-    if (!chain || !id) return undefined;
-    const key = campaignKey(id);
+    if (!chain) return undefined;
     const pool = this.#deps.pool;
     const found = pool ? await this.#pooledCampaign(chain, pool, key, wallet) : await chain.loadCampaign(key);
     if (!found?.session || found.owner.toLowerCase() !== wallet) return undefined;
 
     const record = restoredRecord(id, wallet, found, this.#now());
+    if (chainKey) record.chainKey = chainKey;
     const draw = await pool?.drawOf(key);
     if (draw) {
       record.draw = draw;
       record.state = drawnState(draw, found, this.#now());
     }
     this.#campaigns.set(id, record);
+    this.#keyIndex.set(key.toLowerCase() as Hex, id);
     return record;
+  }
+
+  /** `campaignKey(record.id)`, except for a record `list` restored by its escrow key, which has no inverse. */
+  #key(record: CampaignRecord): Hex {
+    return record.chainKey ?? campaignKey(record.id);
   }
 
   /**
@@ -426,7 +495,7 @@ export class CampaignRouter {
     if (nextState !== record.state) {
       if (this.#deps.chain) {
         // Funding is what the escrow holds, read on-chain: never a claim.
-        const budget = await this.#deps.chain.readBudget(campaignKey(record.id));
+        const budget = await this.#deps.chain.readBudget(this.#key(record));
         if (BigInt(budget.unused) < BigInt(record.policy.perAccountGas)) {
           throw new BudgetError("budget_exceeded", "campaign_unfunded");
         }
@@ -502,6 +571,147 @@ export class CampaignRouter {
     return { status: 200, body: { results } };
   }
 
+  #market(): MarketPort {
+    const market = this.#deps.market;
+    if (!market) throw new ServiceError("dependency_evidence_invalid", "market_unconfigured");
+    return market;
+  }
+
+  /** The token's pool and price, with the per-slice cap and window this fleet would get. */
+  async #tokenQuote(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
+    const token = String(body["token"] ?? "");
+    if (!/^0x[0-9a-fA-F]{40}$/.test(token)) throw new TradeValidationError("invalid_token");
+    const total = /^\d+$/.test(String(body["totalWei"] ?? "")) ? String(body["totalWei"]) : "0";
+    const quote = await this.#market().tokenQuote(token as Address, total);
+    return { status: 200, body: { ...quote, windowMs: windowFor(record.policy.accounts), capWei: record.policy.maxTradeValue } };
+  }
+
+  /** Validates an order and returns its plan. Nothing executes here. */
+  async #order(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
+    const { order, slices } = await this.#validatedOrder(record, wallet as Address, fromWireOrder(body));
+    return { status: 200, body: { order: toWireOrder(order), slices } };
+  }
+
+  /**
+   * Checks an order against fleet policy and the market, and returns its plan.
+   * Shared by `order` (placement) and `trade` (execution recomputes the same
+   * plan from the browser-held order so any instance agrees on it).
+   */
+  async #validatedOrder(record: CampaignRecord, owner: Address, body: Record<string, unknown>): Promise<{ order: Order; slices: Slice[] }> {
+    if (!canSponsor(record.state)) throw new PolicyRejection(`state_not_sponsorable:${record.state}`);
+    const token = String(body["token"] ?? "");
+    if (!/^0x[0-9a-fA-F]{40}$/.test(token)) throw new TradeValidationError("invalid_token");
+    const wallets = Array.isArray(body["wallets"]) ? (body["wallets"] as Address[]) : [];
+    const seed = String(body["seed"] ?? "");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(seed)) throw new TradeValidationError("invalid_seed");
+    const createdAt = String(body["createdAt"] ?? "");
+    if (Number.isNaN(Date.parse(createdAt))) throw new TradeValidationError("invalid_created_at");
+    const totalWei = String(body["totalWei"] ?? "");
+    if (!/^\d+$/.test(totalWei)) throw new TradeValidationError("invalid_total");
+
+    // A fresh instance restores the fleet from chain without its accounts; ask
+    // the chain before refusing, as a plain buy does.
+    if (this.#deps.chain) await this.#syncEnrolled(record, this.#deps.chain, wallets);
+    const enrolled = new Set((record.chainAccounts ?? this.#session(record).accounts).map((a) => a.toLowerCase()));
+    if (wallets.length === 0 || wallets.some((w) => !enrolled.has(String(w).toLowerCase()))) throw new TradeValidationError("wallets_not_enrolled");
+
+    const remaining = record.draw ? record.draw.remaining : this.#budget(record).unused;
+    if (BigInt(totalWei) > BigInt(remaining)) throw new TradeValidationError("over_draw");
+
+    const quote = await this.#market().tokenQuote(token as Address, totalWei);
+    if (!quote.hasPool) throw new TradeValidationError("no_pool");
+
+    const draft: Omit<Order, "id"> = {
+      campaign: record.id, token: token as Address, totalWei, wallets, seed: seed as Hex,
+      windowMs: Number(body["windowMs"] ?? windowFor(record.policy.accounts)), createdAt, owner,
+    };
+    let slices: Slice[];
+    try {
+      slices = planSlices(draft, record.policy.maxTradeValue);
+    } catch (error) {
+      if (error instanceof PlanError) throw new TradeValidationError(error.code);
+      throw error;
+    }
+    return { order: { ...draft, id: orderId(draft) }, slices };
+  }
+
+  /**
+   * Executes the slices of a browser-held order that are due and that the
+   * browser still reports pending. The plan is recomputed from the order, so
+   * any instance agrees on it; the per-instance guard stops a double-poll from
+   * running one slice twice, and the browser's pending list stops the rest.
+   */
+  async #trade(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
+    const given = asRecord(body["order"]);
+    const { order, slices } = await this.#validatedOrder(record, wallet as Address, { ...fromWireOrder(given), campaign: record.id });
+    if (String(given["id"] ?? "").toLowerCase() !== order.id.toLowerCase() || String(given["owner"] ?? "").toLowerCase() !== wallet.toLowerCase()) {
+      throw new TradeValidationError("order_tampered");
+    }
+    const pending = new Set((Array.isArray(body["pending"]) ? (body["pending"] as unknown[]) : []).map(Number));
+    const now = this.#now();
+    const due = slices.filter((s) => pending.has(s.index) && Date.parse(s.dueAt) <= now.getTime() && !this.#executedSlices.has(`${order.id}|${s.index}`));
+    for (const slice of due) this.#executedSlices.add(`${order.id}|${slice.index}`);
+
+    const { submitter, chain } = this.#deps;
+    if (!submitter && !chain) throw new ServiceError("dependency_evidence_invalid", "submitter_unconfigured");
+    if (chain) await this.#syncEnrolled(record, chain, due.map((s) => s.wallet));
+    const session = this.#session(record);
+    const executed: Record<string, unknown>[] = [];
+    for (const slice of due) {
+      // One slice at a time: sizes differ per wallet, and the pooled path takes one value per call.
+      const results = this.#deps.pool && record.draw
+        ? await this.#buyFromPool(record, session, [slice.wallet], order.token, slice.amountWei, now, wallet)
+        : chain
+          ? await this.#buyOnChain(record, session, chain, [slice.wallet], order.token, slice.amountWei, now)
+          : await this.#buyInMemory(record, session, submitter!, [slice.wallet], order.token, slice.amountWei, now);
+      const result = results[0] ?? { status: "rejected", reason: "no_result" };
+      if (result["status"] !== "sponsored") this.#executedSlices.delete(`${order.id}|${slice.index}`);
+      executed.push({ index: slice.index, wallet: slice.wallet, amountWei: slice.amountWei, ...result });
+    }
+    const later = slices
+      .filter((s) => pending.has(s.index) && !executed.some((e) => e["index"] === s.index))
+      .map((s) => Date.parse(s.dueAt))
+      .filter((t) => t > now.getTime());
+    return { status: 200, body: { executed, nextDueAt: later.length ? new Date(Math.min(...later)).toISOString() : null, draw: record.draw } };
+  }
+
+  /** The fleets this wallet registered on the escrow, in the state the chain gives them now. */
+  async #list(wallet: string): Promise<RouterResult> {
+    // Stage 1 fleets are registered on the escrow; Stage 2 fleets never are (that
+    // registration would publish the owner beside the campaign), so those come
+    // from the pool's sealed owner references instead. Union, dedupe, keep order.
+    const [escrowKeys, poolKeys] = await Promise.all([
+      this.#market().campaignsOf(wallet as Address),
+      this.#deps.pool?.campaignsOf?.(wallet as Address) ?? Promise.resolve([] as Hex[]),
+    ]);
+    const keys = [...new Set([...escrowKeys, ...poolKeys].map((k) => k.toLowerCase() as Hex))];
+    const fleets: Record<string, unknown>[] = [];
+    for (const key of keys) {
+      const id = this.#keyIndex.get(key.toLowerCase() as Hex) ?? key;
+      const record = this.#campaigns.get(id) ?? (await this.#restoreByKey(key as Hex, wallet));
+      if (!record) continue;
+      await this.#syncDraw(record);
+      fleets.push({
+        campaign: record.id, state: record.state,
+        remaining: record.draw ? record.draw.remaining : this.#budget(record).unused,
+        accounts: (await this.#accountsOf(record)).length,
+      });
+    }
+    return { status: 200, body: { fleets } };
+  }
+
+  /** Each of this fleet's enrolled accounts' ETH and the tokens the browser asks about. */
+  async #holdings(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
+    const tokens = (Array.isArray(body["tokens"]) ? (body["tokens"] as string[]) : [])
+      .filter((t) => /^0x[0-9a-fA-F]{40}$/.test(t)) as Address[];
+    const accounts = await this.#accountsOf(record);
+    return { status: 200, body: { holdings: await this.#market().holdings(accounts, tokens) } };
+  }
+
   /**
    * Pooled buys: each permitted account's principal leaves the pool only inside
    * its own buy, and the charge against the depositor is queued separately so
@@ -529,7 +739,7 @@ export class CampaignRouter {
     if (buys.length === 0) return refused;
 
     const report = await pool.buy({
-      campaign: campaignKey(record.id),
+      campaign: this.#key(record),
       depositor: wallet as Address,
       target: record.policy.router,
       buys,
@@ -568,7 +778,7 @@ export class CampaignRouter {
       }
     }
     if (permitted.length === 0) return refused;
-    const report = await chain.buy(campaignKey(record.id), record.policy.router, permitted);
+    const report = await chain.buy(this.#key(record), record.policy.router, permitted);
     record.chainBudget = report.budget;
     return [...refused, ...report.results.map((r) => ({ ...r, budget: report.budget }))];
   }
@@ -665,14 +875,14 @@ export class CampaignRouter {
     const nextState = transition(record.state, event);
     const chain = this.#deps.chain;
     if (chain && record.chainAccounts && nextState !== record.state) {
-      await chain.control(campaignKey(record.id), event === "close" ? "revoke" : event);
+      await chain.control(this.#key(record), event === "close" ? "revoke" : event);
     }
     record.state = nextState;
     if (event === "close") {
       // With a pool, the unspent draw was never moved: closing releases it back
       // to the balance and transfers nothing, so nothing is published.
       if (this.#deps.pool) {
-        const closed = await this.#deps.pool.closeDraw(campaignKey(record.id));
+        const closed = await this.#deps.pool.closeDraw(this.#key(record));
         const credited = record.draw?.remaining ?? "0";
         if (closed) record.draw = closed;
         return { status: 200, body: { ...this.#result(record), creditedToBalance: credited } };
@@ -684,11 +894,20 @@ export class CampaignRouter {
   }
 
   /** Accounts the chain says are enrolled join the record, so restored records can buy. */
+  /** The fleet's accounts, fetched from the factory's own event when a restored record has none. */
+  async #accountsOf(record: CampaignRecord): Promise<readonly Address[]> {
+    if (!record.chainAccounts?.length && this.#deps.chain) {
+      const found = await this.#deps.chain.accountsOf(this.#key(record));
+      if (found.length) record.chainAccounts = found.map((a) => a.toLowerCase() as Address);
+    }
+    return record.chainAccounts ?? this.#session(record).accounts;
+  }
+
   async #syncEnrolled(record: CampaignRecord, chain: FleetChain, requested: readonly Address[]): Promise<void> {
     const known = new Set((record.chainAccounts ?? []).map((account) => account.toLowerCase()));
     for (const account of requested) {
       if (known.has(account.toLowerCase())) continue;
-      if (await chain.isEnrolled(campaignKey(record.id), account)) {
+      if (await chain.isEnrolled(this.#key(record), account)) {
         record.chainAccounts = [...(record.chainAccounts ?? []), account.toLowerCase() as Address];
         known.add(account.toLowerCase());
       }
@@ -707,11 +926,11 @@ export class CampaignRouter {
     const nextState = transition(record.state, pool ? "fund" : "activate");
 
     if (this.#deps.chain && !record.chainAccounts) {
-      record.chainAccounts = await this.#deps.chain.activate(campaignKey(record.id), record.accounts, record.policy);
+      record.chainAccounts = await this.#deps.chain.activate(this.#key(record), record.accounts, record.policy);
     }
     if (pool && amount) {
       record.draw = await pool.openDraw({
-        campaign: campaignKey(record.id), depositor: wallet as Address, amount,
+        campaign: this.#key(record), depositor: wallet as Address, amount,
       });
     }
     record.state = nextState;
@@ -796,6 +1015,9 @@ const restoredRecord = (id: string, owner: string, found: OnChainCampaign, now: 
 
 /** Maps every thrown domain error onto the fleet-api.md status table. */
 const errorResult = (error: unknown): RouterResult => {
+  if (error instanceof TradeValidationError) {
+    return { status: 400, body: { code: error.reason, retryable: false } };
+  }
   let code: string | undefined;
   let status: number | undefined;
   if (error instanceof ServiceError || error instanceof CampaignStateError || error instanceof BudgetError) {
