@@ -20,7 +20,9 @@ const owner = (n: number): `0x${string}` => `0x${n.toString(16).padStart(40, "0"
 const salt = (n: number): `0x${string}` => `0x${n.toString(16).padStart(64, "0")}`;
 const TOKEN = owner(0x77);
 const ROUTER = owner(0x88);
-const FUNDING = "1000000000000000"; // 0.001 ETH of budget
+// Comfortably above the 5-wallet aggregate cap (5 * maxTradeValue = 2.5e15) so
+// an over-cap order is refused for the cap, not mistaken for over-draw.
+const FUNDING = "3000000000000000"; // 0.003 ETH of budget
 const ACTUAL_COST = "120000000000"; // per sponsored op
 
 const policy = () => ({
@@ -109,7 +111,7 @@ const activeCampaign = async (options: { now?: () => Date } = {}) => {
     verifyFunding: async () => FUNDING,
     submitter: chain,
     market,
-    now: options.now,
+    ...(options.now ? { now: options.now } : {}),
   };
   const router = new CampaignRouter(deps);
 
@@ -145,7 +147,10 @@ test("tokenQuote says whether the token has a pool, and what the fleet may spend
 
 test("order returns the plan without executing, and refuses what the fleet cannot do", async () => {
   const { router, service, campaign, accounts, chain } = await activeCampaign();
-  const body = { campaign, token: TOKEN, totalWei: "1000000000000000", wallets: accounts, seed: SEED, createdAt: "2026-09-15T12:00:00.000Z" };
+  // The wire field is `entropy`, not `seed`: the service's forbidden-field
+  // guard treats a body field literally named `seed` as wallet-recovery
+  // material, and this seed is public PRNG input, not that.
+  const body = { campaign, token: TOKEN, totalWei: "1000000000000000", wallets: accounts, entropy: SEED, createdAt: "2026-09-15T12:00:00.000Z" };
   const placed = await router.handle(await signed(service, "order", body));
   assert.equal(placed.status, 200);
   const result = placed.body as { order: { id: string; windowMs: number }; slices: { amountWei: string }[] };

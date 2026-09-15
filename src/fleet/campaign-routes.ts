@@ -15,6 +15,8 @@ import { campaignKey, type ChainBuy, type FleetChain } from "./chain-service.js"
 import { CampaignService, ServiceError, assertNoSecrets } from "./campaign-service.js";
 import { CampaignStateError, canSponsor, transition } from "./campaign-state.js";
 import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
+import type { MarketPort } from "./market.js";
+import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } from "./order-plan.js";
 import { DRAW_CAP, createSweepGate, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
@@ -47,6 +49,8 @@ export type RouterDeps = {
   chain?: FleetChain;
   /** Stage 2 pool; absent means balance and withdrawal answer 503, never a guess. */
   pool?: PoolPort;
+  /** Read-only market facts for the trading panel; absent means tokenQuote/order/holdings/list answer 503. */
+  market?: MarketPort;
   /** Confirms a funding reference against chain evidence and returns its wei amount. */
   verifyFunding?: (reference: string) => Promise<Uint>;
   /** Lands authorized UserOperations; absent means sponsorship is not configured. */
@@ -69,6 +73,12 @@ type CampaignRecord = {
   budget: CampaignBudget;
   /** Set once the fleet exists on-chain: the factory-created account addresses. */
   chainAccounts?: Address[];
+  /**
+   * Set when this record was restored from an escrow key rather than looked
+   * up by id: `campaignKey` has no inverse, so a key-restored record's `id`
+   * is the key itself, and every chain call must use this, not `campaignKey(id)`.
+   */
+  chainKey?: Hex;
   /** Last on-chain budget read; authoritative whenever `chain` is configured. */
   chainBudget?: Budget;
   /** Stage 2: this campaign's claim on the trader's pool balance. */
@@ -97,10 +107,34 @@ const CONTROL_EVENTS = {
   close: "close",
 } as const;
 
+/**
+ * A trading-panel validation refusal. Unlike a bare `FleetValidationError`
+ * (which the fleet-api.md route table collapses to `policy_rejected` at 422,
+ * a mapping earlier routes already rely on), the reason here is itself the
+ * stable wire code the browser switches on, surfaced at 400.
+ */
+class TradeValidationError extends FleetValidationError {}
+
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+
+/**
+ * The wire shape of an order carries `entropy` where `Order` carries `seed`.
+ * `assertNoSecrets` refuses any request body field literally named `seed`
+ * anywhere in its tree, on the assumption it is wallet recovery material; an
+ * order's seed is a public PRNG input the browser stores and re-sends openly,
+ * not that, so it is renamed at this boundary rather than weakening that guard.
+ */
+const toWireOrder = (order: Order): Record<string, unknown> => {
+  const { seed, ...rest } = order;
+  return { ...rest, entropy: seed };
+};
+const fromWireOrder = (wire: Record<string, unknown>): Record<string, unknown> => {
+  const { entropy, ...rest } = wire;
+  return { ...rest, seed: entropy };
+};
 
 export class CampaignRouter {
   readonly #deps: RouterDeps;
@@ -151,6 +185,8 @@ export class CampaignRouter {
 
     if (action === "read") return this.#read(wallet, body);
     if (action === "balance") return this.#balance(wallet);
+    if (action === "tokenQuote") return this.#tokenQuote(wallet, body);
+    if (action === "order") return this.#order(wallet, body);
 
     if (typeof idempotencyKey !== "string") {
       throw new ServiceError("idempotency_conflict", "key_required");
@@ -502,6 +538,69 @@ export class CampaignRouter {
     return { status: 200, body: { results } };
   }
 
+  #market(): MarketPort {
+    const market = this.#deps.market;
+    if (!market) throw new ServiceError("dependency_evidence_invalid", "market_unconfigured");
+    return market;
+  }
+
+  /** The token's pool and price, with the per-slice cap and window this fleet would get. */
+  async #tokenQuote(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
+    const token = String(body["token"] ?? "");
+    if (!/^0x[0-9a-fA-F]{40}$/.test(token)) throw new TradeValidationError("invalid_token");
+    const total = /^\d+$/.test(String(body["totalWei"] ?? "")) ? String(body["totalWei"]) : "0";
+    const quote = await this.#market().tokenQuote(token as Address, total);
+    return { status: 200, body: { ...quote, windowMs: windowFor(record.policy.accounts), capWei: record.policy.maxTradeValue } };
+  }
+
+  /** Validates an order and returns its plan. Nothing executes here. */
+  async #order(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const record = await this.#campaign(wallet, body);
+    const { order, slices } = await this.#validatedOrder(record, wallet as Address, fromWireOrder(body));
+    return { status: 200, body: { order: toWireOrder(order), slices } };
+  }
+
+  /**
+   * Checks an order against fleet policy and the market, and returns its plan.
+   * Shared by `order` (placement) and `trade` (execution recomputes the same
+   * plan from the browser-held order so any instance agrees on it).
+   */
+  async #validatedOrder(record: CampaignRecord, owner: Address, body: Record<string, unknown>): Promise<{ order: Order; slices: Slice[] }> {
+    if (!canSponsor(record.state)) throw new PolicyRejection(`state_not_sponsorable:${record.state}`);
+    const token = String(body["token"] ?? "");
+    if (!/^0x[0-9a-fA-F]{40}$/.test(token)) throw new TradeValidationError("invalid_token");
+    const wallets = Array.isArray(body["wallets"]) ? (body["wallets"] as Address[]) : [];
+    const seed = String(body["seed"] ?? "");
+    if (!/^0x[0-9a-fA-F]{64}$/.test(seed)) throw new TradeValidationError("invalid_seed");
+    const createdAt = String(body["createdAt"] ?? "");
+    if (Number.isNaN(Date.parse(createdAt))) throw new TradeValidationError("invalid_created_at");
+    const totalWei = String(body["totalWei"] ?? "");
+    if (!/^\d+$/.test(totalWei)) throw new TradeValidationError("invalid_total");
+
+    const enrolled = new Set((record.chainAccounts ?? this.#session(record).accounts).map((a) => a.toLowerCase()));
+    if (wallets.length === 0 || wallets.some((w) => !enrolled.has(String(w).toLowerCase()))) throw new TradeValidationError("wallets_not_enrolled");
+
+    const remaining = record.draw ? record.draw.remaining : this.#budget(record).unused;
+    if (BigInt(totalWei) > BigInt(remaining)) throw new TradeValidationError("over_draw");
+
+    const quote = await this.#market().tokenQuote(token as Address, totalWei);
+    if (!quote.hasPool) throw new TradeValidationError("no_pool");
+
+    const draft: Omit<Order, "id"> = {
+      campaign: record.id, token: token as Address, totalWei, wallets, seed: seed as Hex,
+      windowMs: Number(body["windowMs"] ?? windowFor(record.policy.accounts)), createdAt, owner,
+    };
+    let slices: Slice[];
+    try {
+      slices = planSlices(draft, record.policy.maxTradeValue);
+    } catch (error) {
+      if (error instanceof PlanError) throw new TradeValidationError(error.code);
+      throw error;
+    }
+    return { order: { ...draft, id: orderId(draft) }, slices };
+  }
+
   /**
    * Pooled buys: each permitted account's principal leaves the pool only inside
    * its own buy, and the charge against the depositor is queued separately so
@@ -796,6 +895,9 @@ const restoredRecord = (id: string, owner: string, found: OnChainCampaign, now: 
 
 /** Maps every thrown domain error onto the fleet-api.md status table. */
 const errorResult = (error: unknown): RouterResult => {
+  if (error instanceof TradeValidationError) {
+    return { status: 400, body: { code: error.reason, retryable: false } };
+  }
   let code: string | undefined;
   let status: number | undefined;
   if (error instanceof ServiceError || error instanceof CampaignStateError || error instanceof BudgetError) {
