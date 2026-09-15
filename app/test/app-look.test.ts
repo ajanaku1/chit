@@ -421,3 +421,15 @@ test("the Trade page: fleet card, order form, orders list, and the honest line a
   assert.match(await read("build.mjs"), /"trade-page": new URL\("\.\/src\/trade-page\.ts"/);
   assert.match(await read("build.mjs"), /"\.\/trade\.html"/);
 });
+
+test("the Trade page marks slices sent before it asks, never re-sends an unconfirmed one, and asks before it signs", async () => {
+  const script = await read("src/trade-page.ts");
+  const poll = /async #poll\([\s\S]*?\n  \}/.exec(script);
+  assert.ok(poll, "no #poll");
+  assert.ok(poll[0].indexOf("markSent(") < poll[0].indexOf('signedFleetApi(wallet, "trade"'), "the request leaves before the slices are marked sent");
+  assert.match(poll[0], /markUnconfirmed\(/, "a lost reply leaves slices pending, so they would be re-sent");
+  assert.match(script, /pending: pendingIndices\(/, "the service must receive only what the browser still holds");
+  const place = /async #place\([\s\S]*?\n  \}/.exec(script);
+  assert.ok(place && place[0].indexOf("confirmDialog(") < place[0].indexOf('signedFleetApi(wallet, "order"'), "placing an order does not confirm first");
+  assert.match(await read("src/fleet/page-shared.ts"), /\["quote", "challenge", "read", "balance", "status", "tokenQuote", "order", "list", "holdings"\]/, "signed reads must not carry an idempotency key");
+});
