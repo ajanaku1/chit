@@ -37,6 +37,7 @@ test("an empty slot0 means no pool, and an estimate follows the square of the pr
   assert.equal(decodeSlot0(`0x${"0".repeat(64)}`).sqrtPriceX96, 0n);
   const out = estimateOut(10n ** 15n, VENUE_SQRT);
   assert.ok(out > 0n);
-  assert.equal(estimateOut(2n * 10n ** 15n, VENUE_SQRT), out * 2n);
+  const doubled = estimateOut(2n * 10n ** 15n, VENUE_SQRT);
+  assert.ok(doubled - out * 2n <= 1n && out * 2n - doubled <= 1n, "doubling the input doubles the estimate, to a wei of truncation");
   assert.equal(estimateOut(10n ** 15n, 0n), 0n);
 });
