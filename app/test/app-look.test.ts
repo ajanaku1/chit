@@ -13,7 +13,7 @@ const appRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = dirname(appRoot);
 const read = (path: string): Promise<string> => readFile(join(appRoot, path), "utf8");
 
-const PAGES = ["fleet.html", "fleet-dashboard.html", "balance.html", "fleet-privacy.html", "trade.html"] as const;
+const PAGES = ["fleet.html", "fleet-dashboard.html", "balance.html", "fleet-privacy.html", "trade.html", "sessions.html"] as const;
 const NEW_STYLES = ["src/styles/tokens.css", "src/styles/components.css", "src/styles/pages.css"] as const;
 
 const cssColor = (css: string, name: string): string => {
@@ -90,6 +90,7 @@ const NAV: ReadonlyArray<readonly [string, string]> = [
   ["./trade.html", "Trade"],
   ["./fleet-dashboard.html", "Control Room"],
   ["./fleet-privacy.html", "Boundary"],
+  ["./sessions.html", "Sessions"],
 ];
 
 test("every page wears the landing's masthead and the same nav", async () => {
