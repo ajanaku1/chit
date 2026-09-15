@@ -9,7 +9,7 @@ import { CampaignService, challengeBytes, payloadHash } from "../../src/fleet/ca
 import { createFleetPool } from "../../src/fleet/chain-pool.js";
 import { campaignKey, createFleetChain } from "../../src/fleet/chain-service.js";
 import { ledgerKey } from "../../src/fleet/pool-ledger.js";
-import { createPoolService } from "../../src/fleet/pool-buy.js";
+import { CHARGE_GRAIN, createPoolService } from "../../src/fleet/pool-buy.js";
 import type { AuthEnvelope } from "../../src/fleet/types.js";
 
 /**
@@ -165,7 +165,8 @@ describe("Pooled funding and buys", () => {
     // Every charge against the depositor is queued, not posted beside what
     // caused it: the headroom the sweep seeded, then one per buy.
     assert.equal(await s.poolContract.read.queuedSpendCount(), 3n);
-    assert.equal((await s.poolContract.read.queuedSpendAt([0n])).amount, HEADROOM * 5n, "the seeded headroom is a charge like any other");
+    const headroomCharge = (await s.poolContract.read.queuedSpendAt([0n])).amount;
+    assert.ok(headroomCharge < HEADROOM * 5n && HEADROOM * 5n - headroomCharge <= CHARGE_GRAIN, "the seeded headroom is a charge like any other, posted in its coarse form");
     assert.equal((await s.poolContract.read.queuedSpendAt([0n])).posted, false);
     assert.equal((await s.poolContract.read.depositorOf([s.trader!.account.address]))[1], 0n);
 
@@ -173,7 +174,8 @@ describe("Pooled funding and buys", () => {
     const posted = await s.elsewhere("sweep", {});
     assert.deepEqual((posted.body as { posted: string[] }).posted, ["0", "1", "2"]);
     const spent = (await s.poolContract.read.depositorOf([s.trader!.account.address]))[1];
-    assert.equal(spent, draw.spent, "the trader is charged exactly what left the pool for their fleet: headroom, principal and gas");
+    assert.ok(spent < draw.spent && draw.spent - spent <= 3n * CHARGE_GRAIN, "the trader is charged what left the pool for their fleet, less at most one grain per charge, which is the pool's");
+    assert.equal(spent % CHARGE_GRAIN, 0n, "and never the exact figure the campaign side recorded");
   });
 
   it("funds a due fleet on an ordinary request, without waiting for the cron", async () => {

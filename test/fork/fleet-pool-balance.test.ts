@@ -7,7 +7,7 @@ import { CampaignRouter } from "../../src/fleet/campaign-routes.js";
 import { CampaignService, challengeBytes, payloadHash } from "../../src/fleet/campaign-service.js";
 import { createFleetPool } from "../../src/fleet/chain-pool.js";
 import { ledgerKey } from "../../src/fleet/pool-ledger.js";
-import { createPoolService } from "../../src/fleet/pool-buy.js";
+import { coarseCharge, createPoolService } from "../../src/fleet/pool-buy.js";
 import type { AuthEnvelope } from "../../src/fleet/types.js";
 
 /**
@@ -85,13 +85,17 @@ describe("Pool balance through the router", () => {
     assert.equal(await publicClient.getBalance({ address: contract.address as Address }), parseEther("0.1"));
     assert.equal(await contract.read.queuedSpendCount(), 1n);
     const queued = await contract.read.queuedSpendAt([0n]);
-    assert.equal(queued.amount, parseEther("0.03"));
+    // The charge is the coarse form of the payout, one grain below it, so the
+    // transfer to the payee and the charge to the depositor never carry the
+    // same number; the grain is the pool's.
+    assert.equal(queued.amount, coarseCharge(parseEther("0.03")));
+    assert.ok(queued.amount < parseEther("0.03"));
     assert.equal(queued.posted, false);
 
     // Available drops immediately, so the same ETH cannot be withdrawn twice
     // while the posting is still in flight.
     const second = await elsewhere("balance", {});
-    assert.equal((second.body as { available: string }).available, parseEther("0.07").toString());
+    assert.equal((second.body as { available: string }).available, (parseEther("0.1") - coarseCharge(parseEther("0.03"))).toString());
     const tooMuch = await elsewhere("withdraw", { amount: parseEther("0.08").toString(), destination });
     assert.equal(tooMuch.status, 422, JSON.stringify(tooMuch.body));
   });

@@ -33,6 +33,28 @@ export const MAX_DELAY_SECONDS = 900;
  */
 export const MIN_GAS_CEILING = parseEther("0.00005");
 
+/**
+ * Charges are posted to a depositor in coarse units, always strictly below
+ * the exact amount the campaign side recorded. Posted exactly, the wei value
+ * of a buy (principal plus the gas the receipt reported) appeared once
+ * campaign-keyed in Committed and once depositor-keyed in SpendPosted, and
+ * that pair joined a fleet to its wallet across two public logs. Rounded
+ * down to a grain, the two never match, and many charges land on the same
+ * few values. The difference, at most one grain, is the pool's, never the
+ * trader's; at today's prices a grain is a few cents.
+ *
+ * What this does not do: move the queueing in time. The charge is still
+ * queued in the operator's next transaction after the buy, and that
+ * adjacency is a join of its own. Breaking it needs the contract to carry
+ * uncharged spend until a sweep batches it, which is a design change.
+ */
+export const CHARGE_GRAIN = parseEther("0.00001");
+
+export const coarseCharge = (exact: bigint): bigint => {
+  if (exact <= CHARGE_GRAIN) return 0n;
+  return ((exact - 1n) / CHARGE_GRAIN) * CHARGE_GRAIN;
+};
+
 /** Mirrors FleetPool.GAS_HEADROOM: what fund() seeds into each account. */
 export const GAS_HEADROOM = parseEther("0.0002");
 
@@ -154,6 +176,13 @@ export const createPoolService = (
     return block.timestamp + BigInt(delay());
   };
 
+  /** Queues the coarse form of a charge to its depositor; a charge under one grain is the pool's. */
+  const charge = async (depositor: Address, exact: bigint): Promise<Hex | undefined> => {
+    const posted = coarseCharge(exact);
+    if (posted === 0n) return undefined;
+    return pool.queueSpend(sealDepositor(ledgerKey, depositor), posted, await dueAt());
+  };
+
   const chainSeconds = async (): Promise<bigint> => (await publicClient.getBlock()).timestamp;
 
   return {
@@ -204,9 +233,12 @@ export const createPoolService = (
       // same failure leaves ETH paid and nothing recorded, and a retry pays
       // it again. Recorded-but-unpaid is recoverable; paid-but-unrecorded is
       // not.
-      const queuedSpendTx = await pool.queueSpend(sealDepositor(ledgerKey, depositor), value, await dueAt());
+      const queuedSpendTx = (await charge(depositor, value)) ?? `0x${"0".repeat(64)}`;
       // Paid by the operator, not the pool: a pool payout would publish the
-      // depositor beside the address they chose to be paid at.
+      // depositor beside the address they chose to be paid at. The payout is
+      // the exact amount asked for; the charge posted later is its coarse
+      // form, so the transfer to the payee and the charge to the depositor
+      // never carry the same number.
       const payoutTx = await wallet.sendTransaction({
         account: wallet.account ?? null,
         chain: wallet.chain ?? null,
@@ -296,7 +328,7 @@ export const createPoolService = (
           // charged like any other spend: queued to the depositor, posted on
           // its own timer, so nothing pairs the fund with a wallet.
           const depositor = openDepositor(ledgerKey, draw.ownerRef);
-          if (depositor) await pool.queueSpend(sealDepositor(ledgerKey, depositor), seeded, await dueAt());
+          if (depositor) await charge(depositor, seeded);
         } catch (error) {
           console.error(`sweep: draw ${draw.campaign} not funded: ${messageOf(error)}`);
         }
@@ -310,7 +342,7 @@ export const createPoolService = (
         const outcome = await settle(campaign, target, entry);
         results.push(outcome);
         if (outcome.status === "sponsored" && outcome.charged) {
-          await pool.queueSpend(sealDepositor(ledgerKey, depositor), outcome.charged, await dueAt());
+          await charge(depositor, outcome.charged);
         }
       }
       return {

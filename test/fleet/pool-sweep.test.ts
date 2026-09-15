@@ -5,7 +5,7 @@ import { parseEther, type Address, type Hex, type PublicClient, type WalletClien
 import type { FleetPool, PoolDraw, PoolQueued } from "../../src/fleet/chain-pool.js";
 import { DRAW_STATE } from "../../src/fleet/chain-pool.js";
 import { ledgerKey, sealDepositor } from "../../src/fleet/pool-ledger.js";
-import { GAS_HEADROOM, MIN_DELAY_SECONDS, createPoolService, minimumDraw } from "../../src/fleet/pool-buy.js";
+import { CHARGE_GRAIN, GAS_HEADROOM, MIN_DELAY_SECONDS, coarseCharge, createPoolService, minimumDraw } from "../../src/fleet/pool-buy.js";
 
 /**
  * The pool service's money operations, against a pool that records what it
@@ -117,7 +117,8 @@ describe("sweep", () => {
 
     const queue = calls.find((c) => c.fn === "queueSpend");
     assert.ok(queue, "a charge was queued after funding");
-    assert.equal(queue.args[1], GAS_HEADROOM * 3n, "for exactly the headroom that left the pool");
+    assert.equal(queue.args[1], coarseCharge(GAS_HEADROOM * 3n), "for the coarse form of the headroom that left the pool");
+    assert.ok((queue.args[1] as bigint) < GAS_HEADROOM * 3n, "strictly below the amount the campaign side recorded");
     assert.equal(queue.args[2], 1_700_000_000n + 120n, "on its own timer, not in the funding transaction");
   });
 });
@@ -166,6 +167,19 @@ describe("a mined buy", () => {
     });
 
     assert.equal(seen.gas, parseEther("0.0001") / 1_000_000_000n, "gas limit = ceiling / gas price");
+  });
+});
+
+describe("coarse charges", () => {
+  it("post strictly below the exact amount, on a grain, so a campaign-side amount never reappears depositor-side", () => {
+    for (const exact of [CHARGE_GRAIN + 1n, GAS_HEADROOM, parseEther("0.0123"), parseEther("0.05") + 7n]) {
+      const posted = coarseCharge(exact);
+      assert.ok(posted < exact, `${posted} < ${exact}`);
+      assert.equal(posted % CHARGE_GRAIN, 0n, "a multiple of the grain");
+      assert.ok(exact - posted <= CHARGE_GRAIN, "the pool eats at most one grain");
+    }
+    assert.equal(coarseCharge(CHARGE_GRAIN), 0n, "a charge of one grain or less is the pool's");
+    assert.equal(coarseCharge(1n), 0n);
   });
 });
 
