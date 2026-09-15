@@ -13,7 +13,7 @@ const appRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const repoRoot = dirname(appRoot);
 const read = (path: string): Promise<string> => readFile(join(appRoot, path), "utf8");
 
-const PAGES = ["fleet.html", "fleet-dashboard.html", "balance.html", "fleet-privacy.html"] as const;
+const PAGES = ["fleet.html", "fleet-dashboard.html", "balance.html", "fleet-privacy.html", "trade.html"] as const;
 const NEW_STYLES = ["src/styles/tokens.css", "src/styles/components.css", "src/styles/pages.css"] as const;
 
 const cssColor = (css: string, name: string): string => {
@@ -87,6 +87,7 @@ test("the app is dark-only: no theme switch, ink browser chrome", async () => {
 const NAV: ReadonlyArray<readonly [string, string]> = [
   ["./balance.html", "Balance"],
   ["./fleet.html", "Set up"],
+  ["./trade.html", "Trade"],
   ["./fleet-dashboard.html", "Control Room"],
   ["./fleet-privacy.html", "Boundary"],
 ];
@@ -408,4 +409,15 @@ test("every action on the Control Room is a styled pill or row, never a bare but
   assert.match(html, /<button type="button" class="ghost" data-action="topUp">Top up<\/button>/, "Top up renders as an unstyled bar");
   const rows = rules(await read("src/styles/pages.css")).find(([name]) => name === ".control-list button");
   assert.ok(rows && /border-radius:\s*var\(--radius-inner\)/.test(rows[1]), "control rows keep square corners inside a rounded card");
+});
+
+test("the Trade page: fleet card, order form, orders list, and the honest line about public trades", async () => {
+  const html = await read("trade.html");
+  assert.match(html, /<main id="trade" class="dash">/);
+  for (const id of ["fleet-switch", "fleet-chip", "fleet-left", "holdings", "order-form", "o-token", "o-quote", "o-total", "o-plan", "o-place", "orders-open", "orders-past", "trade-error"]) assert.match(html, new RegExp(`id="${id}"`), `no #${id}`);
+  assert.match(html, /<button id="o-place" type="submit" class="primary big" disabled>Place order<\/button>/);
+  assert.match(html, /Trades stay public/);
+  assert.doesNotMatch(html, /organic|volume/i, "the stagger hides the funder, it does not sell volume");
+  assert.match(await read("build.mjs"), /"trade-page": new URL\("\.\/src\/trade-page\.ts"/);
+  assert.match(await read("build.mjs"), /"\.\/trade\.html"/);
 });
