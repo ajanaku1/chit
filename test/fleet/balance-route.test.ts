@@ -45,7 +45,7 @@ const makeRouter = (over: Partial<BalanceView> = {}) => {
     balance: async () => view(over),
     withdraw: async ({ amount, destination }) => {
       calls.push({ amount, destination });
-      return { payoutTx: `0x${"a".repeat(64)}` as Hex, queuedSpendTx: `0x${"b".repeat(64)}` as Hex };
+      return { payoutTx: `0x${"a".repeat(64)}` as Hex, chargeId: "owed-1" };
     },
     openDraw: unused,
     topUpDraw: unused,
@@ -98,14 +98,14 @@ test("balance refuses an unsigned request", async () => {
   assert.equal(result.status, 401);
 });
 
-test("a withdrawal within the balance is paid and reports both transactions", async () => {
+test("a withdrawal within the balance is paid and reports the payout and the recorded charge", async () => {
   const { router, service, calls } = makeRouter();
   const body = { amount: parseEther("0.03").toString(), destination: fresh };
   const result = await router.handle(await signed(service, "withdraw", body), key("withdraw1"));
   assert.equal(result.status, 200, JSON.stringify(result.body));
-  const paid = result.body as { payoutTx: string; queuedSpendTx: string; warning?: string };
+  const paid = result.body as { payoutTx: string; chargeId: string; warning?: string };
   assert.match(paid.payoutTx, /^0xa+$/);
-  assert.match(paid.queuedSpendTx, /^0xb+$/);
+  assert.equal(paid.chargeId, "owed-1");
   assert.equal(paid.warning, undefined);
   assert.deepEqual(calls, [{ amount: parseEther("0.03").toString(), destination: fresh }]);
 });

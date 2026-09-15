@@ -59,7 +59,7 @@ const makeRouter = (knobs: Knobs = {}) => {
       if (knobs.slowWithdraw) await new Promise((r) => setTimeout(r, 20));
       paid.push(input);
       available -= BigInt(input.amount);
-      return { payoutTx: `0x${"a".repeat(64)}`, queuedSpendTx: `0x${"b".repeat(64)}` };
+      return { payoutTx: `0x${"a".repeat(64)}`, chargeId: "owed-1" };
     },
     openDraw: async () => draw,
     topUpDraw: async ({ amount }) => { draw = { ...draw, amount, remaining: amount }; return draw; },
@@ -216,7 +216,7 @@ test("a buy on the real venue carries a minimum output from the spot quote, and 
   const draw: DrawSummary = { amount: parseEther("0.02").toString(), spent: "0", remaining: parseEther("0.02").toString(), dueAt: "2026-09-08T12:05:00.000Z", state: "Funded" };
   const capturing: PoolPort = {
     balance: async () => ({ available: parseEther("0.08").toString(), deposited: parseEther("0.1").toString(), spent: "0", openDraws: "0", headroom: { sizes: [], perTraderRemaining: "0", poolRemaining: "0" }, exit: {}, pool: { paused: false }, poolAddress: POOL }),
-    withdraw: async () => ({ payoutTx: `0x${"a".repeat(64)}`, queuedSpendTx: `0x${"b".repeat(64)}` }),
+    withdraw: async () => ({ payoutTx: `0x${"a".repeat(64)}`, chargeId: "owed-1" }),
     openDraw: async () => draw, topUpDraw: async () => draw, drawOf: async () => draw,
     ownerOf: async () => trader.address.toLowerCase() as Address, closeDraw: async () => draw,
     sweep: async () => ({ funded: [], posted: [] }),
