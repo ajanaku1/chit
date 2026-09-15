@@ -8,6 +8,7 @@
  * 503 instead of substituting a default fact.
  */
 
+import { neon } from "@neondatabase/serverless";
 import { createPublicClient, createWalletClient, defineChain, http, isHex, keccak256, stringToBytes, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -18,6 +19,8 @@ import { createFleetChain, type FleetChain } from "./chain-service.js";
 import { createMarket, type MarketPort } from "./market.js";
 import { ledgerKey } from "./pool-ledger.js";
 import { createPoolService, type PoolPort } from "./pool-buy.js";
+import { createMemoryStore, type StorePort } from "./store.js";
+import { createNeonStore } from "./store-neon.js";
 import { validateFeeConfig, type FeeConfig } from "./eligibility.js";
 import { isAddress, type Address, type Uint } from "./types.js";
 
@@ -84,6 +87,23 @@ const ledgerKeyFromEnv = (operatorKey: `0x${string}`): `0x${string}` => {
   if (own && isHex(own) && own.length === 66) return own;
   warnOnce("ledger", "FLEET_LEDGER_KEY is not set: the ledger key is derived from the operator key");
   return ledgerKey(operatorKey);
+};
+
+/**
+ * The shared store. With DATABASE_URL, Neon: every instance sees the same
+ * idempotency results, nonce burns, slice claims and operator lock. Without
+ * it, this instance's memory, with a warning, because on Vercel that means a
+ * retry on a second instance can run twice.
+ */
+const storeFromEnv = (): StorePort => {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    warnOnce("store", "DATABASE_URL is not set: idempotency and slice claims live in this instance only");
+    return createMemoryStore();
+  }
+  const store = createNeonStore(neon(url));
+  void store.initialize().catch((err: unknown) => console.error("fleet store: initialize failed", err));
+  return store;
 };
 
 const warned = new Set<string>();
@@ -303,13 +323,15 @@ export const getFleetRouter = (): CampaignRouter => {
   const market = marketFromEnv();
   const allowedTokens = allowedTokensFromEnv();
   const maxSlippageBps = maxSlippageFromEnv();
+  const store = storeFromEnv();
   if (!allowedTokens) console.warn("FLEET_TOKEN_ALLOWLIST is not set: sponsored buys may target any token");
   void verifyDeployedAddresses();
   const deps: RouterDeps = {
     // Ten minutes, not five: signing means leaving the browser for the wallet
     // app, and a trader who takes longer than the TTL comes back to an expired
     // challenge, which reads as "it asked me to start over again".
-    service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 600 }, nonceSecret ? { nonceSecret } : {}),
+    service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 600 }, { store, ...(nonceSecret ? { nonceSecret } : {}) }),
+    store,
     ...(feeConfig ? { feeConfig, chitBalanceOf } : {}),
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
