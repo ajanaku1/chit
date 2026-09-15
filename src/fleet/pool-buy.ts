@@ -26,6 +26,13 @@ export const EXIT_DELAY_SECONDS = 24 * 60 * 60;
 export const MIN_DELAY_SECONDS = 90;
 export const MAX_DELAY_SECONDS = 900;
 
+/**
+ * The least a gas ceiling may be. A ceiling the trader sets to a few wei
+ * makes every execute fail on gas, which is a free way to hand the trader the
+ * principal (see the rollback in settle) at the operator's expense.
+ */
+export const MIN_GAS_CEILING = parseEther("0.00005");
+
 /** Mirrors FleetPool.GAS_HEADROOM: what fund() seeds into each account. */
 export const GAS_HEADROOM = parseEther("0.0002");
 
