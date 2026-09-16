@@ -30,7 +30,11 @@ const api = async (method, payload = {}) => {
 };
 
 const me = await api("getMe");
-await api("deleteWebhook", { drop_pending_updates: false });
+// Whatever Telegram queued before this process existed is not answered now: a
+// community bot has a day of group chatter waiting, and yesterday's commands
+// do not want today's replies.
+await api("deleteWebhook", { drop_pending_updates: true });
+const startedAt = Math.floor(Date.now() / 1000);
 await api("setMyCommands", { commands: [
   { command: "start", description: "your testnet wallet and the card; everything else is a button" },
   { command: "pool", description: "the pool's numbers, also in the group" },
@@ -52,6 +56,7 @@ while (!stopping) {
   }
   for (const update of updates) {
     offset = update.update_id + 1;
+    if (update.message && update.message.date < startedAt - 5) continue;
     const who = update.message?.from?.id ?? update.callback_query?.from?.id;
     const what = update.message?.text ?? update.callback_query?.data ?? "?";
     console.log(`${new Date().toISOString()} ${who}: ${what}`);

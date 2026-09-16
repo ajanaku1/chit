@@ -298,8 +298,10 @@ export class ChitBot {
     if (at && at !== this.#d.botUsername.toLowerCase()) return;
 
     if (!isPrivate) {
+      // In a group the bot answers its own commands and nothing else: /raid,
+      // /report, /ban and the rest belong to other bots in the same room.
       if (cmd === "/pool") return this.#pool(chatId);
-      if (cmd.startsWith("/")) {
+      if (cmd === "/start" || cmd === "/help") {
         return this.#say(chatId, `the playground is in private: <a href="https://t.me/${esc(this.#d.botUsername)}?start=go">open the bot</a> and press Start. testnet, test ETH, nothing to lose.`);
       }
       return;

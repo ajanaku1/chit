@@ -377,9 +377,12 @@ test("the faucet is once a day and within a daily budget; the group is sent to p
   assert.equal(chain.calls.filter((c) => c.startsWith("faucet")).length, n + 1, "the second wallet waits for tomorrow");
   assert.match(telegram.texts().at(-2)!, /daily budget/);
 
-  await bot.handle(group("/buy"));
+  await bot.handle(group("/start"));
   assert.match(telegram.last(), /open the bot/);
   assert.equal(chain.calls.filter((c) => c.startsWith("buy")).length, 0, "no trade from a group");
+  const quiet = telegram.sent.length;
+  for (const other of ["/raid https://x.com/x", "/report", "/stop", "/aiban", "/buy"]) await bot.handle(group(other));
+  assert.equal(telegram.sent.length, quiet, "other bots' commands in the group get no answer at all");
   await bot.handle(group("/pool"));
   assert.match(telegram.last(), /holds <code>0\.1465 ETH<\/code>/);
   assert.match(telegram.last(), /3 draws opened/, "campaignCount is draws, not fleets funded");
