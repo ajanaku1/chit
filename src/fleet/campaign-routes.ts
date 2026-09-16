@@ -16,6 +16,7 @@ import { CampaignService, ServiceError, assertNoSecrets } from "./campaign-servi
 import { CampaignStateError, canSponsor, transition } from "./campaign-state.js";
 import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuote, type FeeConfig } from "./eligibility.js";
 import type { MarketPort } from "./market.js";
+import { createMemoryStore, type StorePort } from "./store.js";
 import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } from "./order-plan.js";
 import { DRAW_CAP, MIN_GAS_CEILING, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
@@ -51,6 +52,17 @@ export type RouterDeps = {
   pool?: PoolPort;
   /** Read-only market facts for the trading panel; absent means tokenQuote/order/holdings/list answer 503. */
   market?: MarketPort;
+  /**
+   * The tokens the venue trades: the default portfolio, so a trader sees what
+   * their fleet holds without the browser remembering which orders it placed.
+   */
+  venueTokens?: readonly Address[];
+  /**
+   * Slice claims and the operator lock, shared across instances when the
+   * store is (Neon on chit.tools). Absent means this instance's memory, which
+   * is the right default for a single process and for unit tests.
+   */
+  store?: StorePort;
   /**
    * Tokens a sponsored buy may target. Absent means any 20-byte value, which
    * on a public chain means any reverting or worthless pool is a free way to
@@ -156,19 +168,20 @@ export class CampaignRouter {
   readonly #randomId: () => string;
   /** Ordinary traffic sweeps, but not every request: a sweep is many reads. */
   readonly #sweepGate = createSweepGate(10_000);
-  /** Slices this instance has executed, keyed `${orderId}|${index}`: stops a double-poll running one twice. */
-  readonly #executedSlices = new Set<string>();
+  /** Slice claims and the operator lock; see RouterDeps.store. */
+  readonly #store: StorePort;
 
   constructor(deps: RouterDeps) {
     this.#deps = deps;
     this.#randomId = deps.randomId ?? (() => crypto.randomUUID());
+    this.#store = deps.store ?? createMemoryStore();
   }
 
   async handle(request: unknown, idempotencyKey?: string): Promise<RouterResult> {
     try {
       return await this.#dispatch(asRecord(request), idempotencyKey);
     } catch (error) {
-      return errorResult(error);
+      return errorResult(error, String(asRecord(request)["action"] ?? "?"));
     }
   }
 
@@ -286,26 +299,16 @@ export class CampaignRouter {
   }
 
   /**
-   * One money operation per wallet at a time, on this instance. Every route
-   * that moves money is check-then-act against chain state: read the balance,
-   * decide, write. Two of them interleaved for the same wallet both pass the
-   * check and both write, and the operator pays twice. Serializing per wallet
-   * closes that on one instance; a second instance is still a second
-   * instance, which is why the balance is re-read after every write below.
+   * One money operation at a time, across instances. Every route that moves
+   * money is check-then-act against chain state: read the balance, decide,
+   * write. Two of them interleaved both pass the check and both write, and
+   * the operator pays twice; two instances signing together also collide on
+   * the operator's nonce. The store's lock closes both: per wallet for the
+   * check-then-act, and one operator lock for the signing. The balance is
+   * still re-read after every write, because the chain is the truth.
    */
-  readonly #inFlight = new Map<string, Promise<unknown>>();
-
   async #serialized<T>(wallet: string, work: () => Promise<T>): Promise<T> {
-    const key = wallet.toLowerCase();
-    const previous = this.#inFlight.get(key) ?? Promise.resolve();
-    const run = previous.then(work, work);
-    const settled = run.then(() => undefined, () => undefined);
-    this.#inFlight.set(key, settled);
-    try {
-      return await run;
-    } finally {
-      if (this.#inFlight.get(key) === settled) this.#inFlight.delete(key);
-    }
+    return this.#store.withLock(`wallet:${wallet.toLowerCase()}`, () => this.#store.withLock("operator", work));
   }
 
   /** A trader who has asked to leave gets nothing new drawn, bought or paid until they are out. */
@@ -399,7 +402,9 @@ export class CampaignRouter {
     if (!id) throw new FleetValidationError("invalid_campaign");
     const pool = this.#pool();
     const chain = this.#deps.chain;
-    const key = campaignKey(id);
+    // An id `list` handed out is the chain key itself; hashing it again looks
+    // up a campaign that does not exist. The same rule #restore follows.
+    const key = isChainKey(id) ? (id.toLowerCase() as Hex) : campaignKey(id);
 
     await this.#sweepOpportunistically();
     const [draw, session] = await Promise.all([pool.drawOf(key), chain?.sessionOf(key)]);
@@ -414,17 +419,19 @@ export class CampaignRouter {
   }
 
   /** Funds every draw whose wait is over and posts every charge now due. */
+  /** The scheduled sweep: the one place owed charges are queued, in a batch, off any trader's request. */
   async #sweep(): Promise<RouterResult> {
     const pool = this.#pool();
     const chain = this.#deps.chain;
-    const report = await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []));
+    const report = await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []), { queueOwed: true });
     return { status: 200, body: report };
   }
 
   /**
    * Sweeps as a side effect of ordinary traffic, so a fleet is funded when its
    * wait is over even where the schedule is coarser than the wait. Best effort:
-   * the request it rides on must not fail because a sweep did.
+   * the request it rides on must not fail because a sweep did. It never queues
+   * owed charges: that batch must not share a window with this request's buy.
    */
   async #sweepOpportunistically(): Promise<void> {
     const { pool, chain } = this.#deps;
@@ -474,7 +481,7 @@ export class CampaignRouter {
     if (!id) return undefined;
     // An id `list` handed out is the chain key itself; hashing it again would
     // look up a campaign that does not exist.
-    if (/^0x[0-9a-fA-F]{64}$/.test(id)) return this.#restoreByKey(id.toLowerCase() as Hex, wallet);
+    if (isChainKey(id)) return this.#restoreByKey(id.toLowerCase() as Hex, wallet);
     return this.#restoreFromKey(id, campaignKey(id), wallet);
   }
 
@@ -701,8 +708,8 @@ export class CampaignRouter {
   /**
    * Executes the slices of a browser-held order that are due and that the
    * browser still reports pending. The plan is recomputed from the order, so
-   * any instance agrees on it; the per-instance guard stops a double-poll from
-   * running one slice twice, and the browser's pending list stops the rest.
+   * any instance agrees on it; a slice is claimed in the store before it runs,
+   * so two polls landing on two instances still run it once.
    */
   async #trade(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = await this.#campaign(wallet, body);
@@ -713,8 +720,11 @@ export class CampaignRouter {
     }
     const pending = new Set((Array.isArray(body["pending"]) ? (body["pending"] as unknown[]) : []).map(Number));
     const now = this.#now();
-    const due = slices.filter((s) => pending.has(s.index) && Date.parse(s.dueAt) <= now.getTime() && !this.#executedSlices.has(`${order.id}|${s.index}`));
-    for (const slice of due) this.#executedSlices.add(`${order.id}|${slice.index}`);
+    const due = [];
+    for (const slice of slices) {
+      if (!pending.has(slice.index) || Date.parse(slice.dueAt) > now.getTime()) continue;
+      if (await this.#store.claimSlice(`${order.id}|${slice.index}`)) due.push(slice);
+    }
 
     const { submitter, chain } = this.#deps;
     if (!submitter && !chain) throw new ServiceError("dependency_evidence_invalid", "submitter_unconfigured");
@@ -729,7 +739,8 @@ export class CampaignRouter {
           ? await this.#buyOnChain(record, session, chain, [slice.wallet], order.token, slice.amountWei, now)
           : await this.#buyInMemory(record, session, submitter!, [slice.wallet], order.token, slice.amountWei, now);
       const result = results[0] ?? { status: "rejected", reason: "no_result" };
-      if (result["status"] !== "sponsored") this.#executedSlices.delete(`${order.id}|${slice.index}`);
+      if (result["status"] !== "sponsored") console.warn(`trade: slice ${slice.index} of ${order.id} ${String(result["status"])}: ${String(result["reason"] ?? "")}`);
+      if (result["status"] !== "sponsored") await this.#store.releaseSlice(`${order.id}|${slice.index}`);
       executed.push({ index: slice.index, wallet: slice.wallet, amountWei: slice.amountWei, ...result });
     }
     const later = slices
@@ -767,10 +778,18 @@ export class CampaignRouter {
   /** Each of this fleet's enrolled accounts' ETH and the tokens the browser asks about. */
   async #holdings(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = await this.#campaign(wallet, body);
-    const tokens = (Array.isArray(body["tokens"]) ? (body["tokens"] as string[]) : [])
+    const asked = (Array.isArray(body["tokens"]) ? (body["tokens"] as string[]) : [])
       .filter((t) => /^0x[0-9a-fA-F]{40}$/.test(t)) as Address[];
+    // The venue's tokens are always in the portfolio; the browser's list adds to them.
+    const tokens = [...new Map([...(this.#deps.venueTokens ?? []), ...asked].map((t) => [t.toLowerCase(), t as Address])).values()];
     const accounts = await this.#accountsOf(record);
-    return { status: 200, body: { holdings: await this.#market().holdings(accounts, tokens) } };
+    const market = this.#market();
+    const [holdings, quotes] = await Promise.all([
+      market.holdings(accounts, tokens),
+      Promise.all(tokens.map((t) => market.tokenQuote(t, "0").catch(() => undefined))),
+    ]);
+    const symbols = Object.fromEntries(tokens.map((t, i) => [t.toLowerCase(), quotes[i]?.symbol ?? "?"]));
+    return { status: 200, body: { holdings, symbols } };
   }
 
   /**
@@ -799,7 +818,8 @@ export class CampaignRouter {
     const refused: Record<string, unknown>[] = [];
     const buys: PooledBuy[] = [];
     for (const account of requested) {
-      if (this.#permitted(record, session, account, value, now)) {
+      const refusal = this.#refusal(record, session, account, value, now);
+      if (refusal === undefined) {
         buys.push({
           account,
           value,
@@ -807,7 +827,7 @@ export class CampaignRouter {
           maxCost: record.policy.perAccountGas,
         });
       } else {
-        refused.push({ account, status: "rejected", draw: record.draw });
+        refused.push({ account, status: "rejected", reason: refusal, draw: record.draw });
       }
     }
     if (buys.length === 0) return refused;
@@ -847,10 +867,11 @@ export class CampaignRouter {
     const refused: Record<string, unknown>[] = [];
     const permitted: ChainBuy[] = [];
     for (const account of requested) {
-      if (this.#permitted(record, session, account, value, now)) {
+      const refusal = this.#refusal(record, session, account, value, now);
+      if (refusal === undefined) {
         permitted.push(this.#chainBuy(record, account, token, value, now, minOut));
       } else {
-        refused.push({ account, status: "rejected", budget: this.#budget(record) });
+        refused.push({ account, status: "rejected", reason: refusal, budget: this.#budget(record) });
       }
     }
     if (permitted.length === 0) return refused;
@@ -860,7 +881,8 @@ export class CampaignRouter {
   }
 
   /** True when the session policy admits a buy for this account; false on a policy refusal. */
-  #permitted(record: CampaignRecord, session: SessionKey, account: Address, value: Uint, now: Date): boolean {
+  /** Why the policy refuses this account for this buy, or undefined when it permits it. */
+  #refusal(record: CampaignRecord, session: SessionKey, account: Address, value: Uint, now: Date): string | undefined {
     try {
       authorize({
         session,
@@ -871,9 +893,9 @@ export class CampaignRouter {
         },
         state: record.state, spentGas: this.#budget(record).spent, now,
       });
-      return true;
+      return undefined;
     } catch (error) {
-      if (error instanceof PolicyRejection) return false;
+      if (error instanceof PolicyRejection) return error.reason;
       throw error;
     }
   }
@@ -1135,24 +1157,34 @@ const restoredRecord = (id: string, owner: string, found: OnChainCampaign, now: 
   };
 };
 
+/** A 32-byte hex id is a chain key `list` handed out, not a friendly id to hash. */
+const isChainKey = (id: string): boolean => /^0x[0-9a-fA-F]{64}$/.test(id);
+
 /** Maps every thrown domain error onto the fleet-api.md status table. */
-const errorResult = (error: unknown): RouterResult => {
+const errorResult = (error: unknown, action = "?"): RouterResult => {
   if (error instanceof TradeValidationError) {
     return { status: 400, body: { code: error.reason, retryable: false } };
   }
   let code: string | undefined;
   let status: number | undefined;
+  // The reason travels with the code: "policy_rejected" alone sent a trader
+  // who pasted the wrong token to the logs, which do not record it either.
+  let reason: string | undefined;
   if (error instanceof ServiceError || error instanceof CampaignStateError || error instanceof BudgetError) {
     code = error.code;
+    reason = (error as { reason?: string }).reason;
   } else if (error instanceof PolicyRejection) {
     code = "policy_rejected";
     status = POLICY_REJECTED_STATUS;
+    reason = error.reason;
   } else if (error instanceof FleetValidationError) {
     code = "policy_rejected";
+    reason = (error as { reason?: string }).reason ?? error.message;
   } else if (error instanceof EligibilityError) {
     code = error.code === "ineligible" ? "ineligible" : "policy_rejected";
   }
   status ??= code === undefined ? undefined : STATUS[code];
   if (code === undefined || status === undefined) throw error;
-  return { status, body: { code, retryable: code === "challenge_invalid" } };
+  if (status >= 400 && code !== "challenge_invalid") console.warn(`fleet route refused: ${action} ${code}${reason ? ` (${reason})` : ""}`);
+  return { status, body: { code, retryable: code === "challenge_invalid", ...(reason ? { reason } : {}) } };
 };

@@ -1,0 +1,44 @@
+name: Buyback keeper
+
+# Once an hour, if the buyback is due and holds something, somebody calls
+# buyAndBurn; this is that somebody. Anyone else may call it too. Needs the
+# repository variable BUYBACK_ADDRESS and the secret BUYBACK_KEEPER_KEY (a
+# throwaway with dust ETH for gas); without them the job reads, prints and
+# passes. See scripts/buyback-keeper.mjs and docs/chit-buyback.md.
+
+on:
+  schedule:
+    - cron: '7 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: buyback-keeper
+  cancel-in-progress: false
+
+jobs:
+  keep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/buyback-keeper.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # viem alone, not the whole tree: the keeper is one file.
+      - name: Install viem
+        run: npm install --no-save --no-audit --no-fund viem@2
+
+      - name: Call buyAndBurn when due
+        env:
+          BUYBACK_ADDRESS: ${{ vars.BUYBACK_ADDRESS }}
+          BUYBACK_KEEPER_KEY: ${{ secrets.BUYBACK_KEEPER_KEY }}
+        run: node scripts/buyback-keeper.mjs

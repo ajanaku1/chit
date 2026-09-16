@@ -52,7 +52,7 @@ const makeRouter = () => {
       pool: { paused: false },
       poolAddress: POOL,
     }),
-    withdraw: async () => ({ payoutTx: `0x${"a".repeat(64)}`, queuedSpendTx: `0x${"b".repeat(64)}` }),
+    withdraw: async () => ({ payoutTx: `0x${"a".repeat(64)}`, chargeId: "owed-1" }),
     openDraw: async () => draw,
     topUpDraw: async ({ amount }) => {
       draw = { ...draw, amount, remaining: amount };

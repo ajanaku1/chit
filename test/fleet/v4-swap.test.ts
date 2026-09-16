@@ -3,8 +3,13 @@ import { describe, it } from "node:test";
 import { decodeAbiParameters, decodeFunctionData, parseAbi, type Address } from "viem";
 
 import {
-  NATIVE_ETH, UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, VENUE_POOL,
-  encodeBuyCall, encodeV4EthBuy,
+  encodeBuyCall,
+  encodeV4EthBuy,
+  minOutFor,
+  NATIVE_ETH,
+  UNIVERSAL_ROUTER_EXECUTE,
+  UNIVERSAL_ROUTER_EXECUTE_SELECTOR,
+  VENUE_POOL,
 } from "../../src/fleet/v4-swap.js";
 
 const TOKEN = "0x00000000000000000000000000000000000f1ee7" as Address;
@@ -49,4 +54,15 @@ describe("Uniswap v4 buy calldata", () => {
     const { args } = decodeFunctionData({ abi: EXECUTE, data });
     assert.equal(args[2], 1_700_003_600n);
   });
+});
+
+it("the output floor is the quote less the slippage allowance; the fee and the impact are already in the quote", () => {
+  // The venue charges 0.3% on every swap and a buy moves a thin pool. Both are
+  // in quoteExactIn (see market.test.ts), so a floor that took the fee off
+  // again would spend it twice; and a floor set against a fee-free spot
+  // estimate spent 0.3 of the 2% allowance before the price moved at all,
+  // which is how every buy came back V4TooLittleReceived.
+  const quote = 1_000_000_000_000_000_000n;
+  assert.equal(minOutFor(quote, 200), 980_000_000_000_000_000n, "(1 - 0.02)");
+  assert.equal(minOutFor(quote, 0), quote, "zero slippage is the quote itself");
 });

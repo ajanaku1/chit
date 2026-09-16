@@ -18,7 +18,6 @@
   "exclude": [
     "${configDir}/dist",
     "${configDir}/node_modules",
-    "${configDir}/spikes",
     "${configDir}/app",
     "${configDir}/video"
   ]

@@ -124,18 +124,7 @@ landing/              The marketing site at the root of chit.tools
 scripts/              Live deploy + journey runners, local dev server, site assembly
 test/                 Service unit tests (test/fleet) and fork tests (test/fork)
 deployments/          Recorded live addresses and tx hashes. Never invent one.
-spikes/               Older experiments, still built by app/build.mjs
 ```
-
-### Legacy layer, be aware
-
-The repo also carries the **original public hackathon project**: a confidential
-ERC-4337 paymaster using iExec Nox on Sepolia (`contracts/Chit*.sol`, most of
-`src/*.ts` outside `src/fleet/`, `spikes/`, and the whole of `README.md`). It is
-a different product on a different chain. It still builds and its `verify.sh`
-tags (`phase-0`…`phase-4`, `low-stake`, `active-sponsor`, `factory-gate`) still
-run. **`README.md` describes that project, not this one.** Do not take it as
-documentation of the fleet build.
 
 ---
 

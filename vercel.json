@@ -19,5 +19,12 @@
       "path": "/api/fleet/sweep",
       "schedule": "0 15 * * *"
     }
+  ],
+  "redirects": [
+    {
+      "source": "/app",
+      "destination": "/app/fleet.html",
+      "permanent": false
+    }
   ]
 }

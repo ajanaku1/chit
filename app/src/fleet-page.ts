@@ -21,7 +21,7 @@ import {
   type SetupQuote,
 } from "./fleet/campaign-setup.js";
 import { DRAW_CAP, drawShare, fundingProgress, fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
-import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initShell, parseEth, saveFleetSnapshot, toEth, walletProvider } from "./fleet/page-shared.js";
+import { banner, connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initShell, parseEth, saveFleetSnapshot, toEth, walletProvider } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { prefersReducedMotion } from "./fleet/motion.js";
 import { readStatus } from "./fleet/status-read.js";
@@ -38,13 +38,6 @@ const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
   if (!node) throw new Error(`missing element: ${id}`);
   return node as T;
-};
-
-const banner = (message: string, tone: "pending" | "error" | "ok"): void => {
-  const node = el("status-banner");
-  node.textContent = message;
-  node.dataset["tone"] = tone;
-  node.hidden = false;
 };
 
 class FleetWizard {

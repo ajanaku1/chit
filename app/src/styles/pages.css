@@ -64,7 +64,8 @@
 .control-list button span { color: var(--text-muted); font-size: 0.85rem; }
 .control-list button[data-action="revoke"] { border-color: rgba(122, 36, 21, 0.9); }
 .account-list { display: grid; gap: 0.4rem; margin: 0.75rem 0 1rem; padding: 0; list-style: none; }
-.account-list li { padding: 0.6rem 0.8rem; border-radius: var(--radius-inner); background: rgba(0, 0, 0, 0.25); font-family: var(--font-mono); font-size: 0.82rem; overflow-wrap: anywhere; }
+.account-list li { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.3rem 1rem; padding: 0.6rem 0.8rem; border-radius: var(--radius-inner); background: rgba(0, 0, 0, 0.25); font-family: var(--font-mono); font-size: 0.82rem; overflow-wrap: anywhere; }
+.account-list__holdings { color: var(--paper); white-space: nowrap; }
 .buy-report { width: 100%; margin-top: 1rem; border-collapse: collapse; font-size: 0.85rem; }
 .buy-report th, .buy-report td { padding: 0.5rem 0.4rem; border-bottom: 1px solid rgba(245, 239, 229, 0.08); overflow-wrap: anywhere; text-align: left; }
 .buy-report th { color: var(--text-muted); font-weight: 500; }

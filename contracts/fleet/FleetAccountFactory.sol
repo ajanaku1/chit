@@ -47,8 +47,13 @@ contract FleetAccount {
     }
 
     /// @notice Runs one policy-authorized call on behalf of the campaign.
+    /// @dev The operator may call it directly (Stage 1). The pool the policy
+    ///      names may call it too, which is how a pooled buy is funded and
+    ///      executed in one transaction: if the buy reverts, so does the
+    ///      funding, and no principal is ever left in this account by a buy
+    ///      that did not happen.
     function execute(address target, uint256 value, bytes calldata data) external returns (bytes memory) {
-        if (msg.sender != operator) revert NotOperator();
+        if (msg.sender != operator && msg.sender != policy.pool()) revert NotOperator();
         if (data.length < 4) revert EmptyCallData();
 
         policy.check(campaign, address(this), target, bytes4(data[:4]), value, 0);

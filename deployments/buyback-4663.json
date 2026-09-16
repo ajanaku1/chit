@@ -1,0 +1,28 @@
+{
+  "chainId": 4663,
+  "buyback": {
+    "address": "0xe5a7dbd4fd12edfb5b2c1e584b5d1ea9131f8b64",
+    "deployTx": "0x9ccca4516943c3de0975e266929df30f8a7b9469506aab10f1b781c0624c26b6",
+    "deployedAt": "2026-09-16T09:48:35.373Z",
+    "block": 64413263,
+    "deployer": "0x16483c648aaDc929469A6388B5b6e3f1BE098887"
+  },
+  "token": "0xd523a627030509021cc39b6d7c8543417d3e50d8",
+  "router": "0x8876789976decbfcbbbe364623c63652db8c0904",
+  "poolManager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+  "poolId": "0x84a4f18cfab0b389a63c4d8a56d08f021a6fd5efb0b0b3617cfbbd6706f09f41",
+  "poolKey": {
+    "currency0": "0x0000000000000000000000000000000000000000",
+    "currency1": "0xd523a627030509021cc39b6d7c8543417d3e50d8",
+    "fee": 0,
+    "tickSpacing": 200,
+    "hooks": "0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044"
+  },
+  "params": {
+    "spendBps": 100,
+    "minSpendWei": "2000000000000000",
+    "maxSpendWei": "100000000000000000",
+    "intervalSeconds": 3600,
+    "maxSlipBps": 500
+  }
+}

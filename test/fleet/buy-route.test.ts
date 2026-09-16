@@ -128,6 +128,9 @@ test("a request above the trade cap is rejected before any sponsorship", async (
     await signed(service, "buy", buyBody(campaign, [owner(1)], "500000000000001")), key("cap"));
   assert.equal(result.status, 403);
   assert.equal((result.body as { code: string }).code, "policy_rejected");
+  // The reason travels with the code, so the app can say what was wrong
+  // instead of "policy_rejected" alone.
+  assert.equal((result.body as { reason?: string }).reason, "trade_value_exceeded");
   assert.equal(chain.submissions.length, 0, "nothing was submitted");
 });
 

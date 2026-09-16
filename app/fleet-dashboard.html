@@ -92,15 +92,11 @@
           </div>
 
           <div class="dash-card" data-reveal>
-            <p class="cardlabel">Wallets</p>
-            <p class="lead small" id="wallets-note">Each wallet makes its trades in public; the link back to you stays off the chain.</p>
+            <p class="cardlabel">Wallets and what they hold</p>
+            <p class="lead small" id="wallets-note">Each wallet makes its trades in public; the link back to you stays off the chain. Balances are read from the chain each time this page refreshes.</p>
             <ul id="fleet-accounts" class="account-list" aria-label="Fleet wallets"></ul>
-            <button id="run-buy" type="button" class="primary" disabled>Run one buy per wallet</button>
-            <p class="hint" id="buy-note">Live buys arrive when the testnet service is deployed.</p>
-            <table class="buy-report" id="buy-report" hidden>
-              <thead><tr><th>Wallet</th><th>Result</th></tr></thead>
-              <tbody id="buy-rows"></tbody>
-            </table>
+            <a id="run-buy" class="primary linkbtn" href="./trade.html">Trade from these wallets</a>
+            <p class="hint" id="buy-note">Buys are placed as orders on the Trade page: a token, a total, and slices spread across the fleet and over time.</p>
           </div>
         </section>
       </main>

@@ -102,7 +102,7 @@ contract Handler is Test {
     uint256[] internal sizes;
 
     constructor() {
-        pool = new FleetPool(address(this));
+        pool = new FleetPool(address(this), address(this));
         sizes.push(0.01 ether);
         sizes.push(0.05 ether);
         sizes.push(0.1 ether);
@@ -277,7 +277,12 @@ contract Handler is Test {
     /// posts it inside the window; the ledger is this mapping.
     function _charge(address t, uint256 amount) internal {
         uint64 due = uint64(block.timestamp + 60);
-        uint256 id = pool.queueSpend("", amount, due);
+        bytes[] memory refs = new bytes[](1);
+        uint256[] memory amounts = new uint256[](1);
+        uint64[] memory dues = new uint64[](1);
+        amounts[0] = amount;
+        dues[0] = due;
+        bytes32 id = pool.queueSpendBatch(refs, amounts, dues)[0];
         vm.warp(due);
         pool.postQueued(id, t);
         ghostPosted += amount;

@@ -1,9 +1,0 @@
-{
-  "chainId": 11155111,
-  "factory": "0xae9f63B7E7b0aC875AaDBEC56efCccFb88Ea87e6",
-  "round": "0xdf1b4073be7e71e17e9b09eaa4f203b80f801e9639b7fbbd3f07b2c0f8643478",
-  "creator": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
-  "paymaster": "0x9f4A6871D8cb2be0A02e180901b65AEA9033f022",
-  "settlement": "0xcc25c854C5c2745987302b2E7797C46C3019a46a",
-  "serviceOperator": "0x527e7Bdc2ef3eA0A10592Cc1B2DC40B974CD8c2F"
-}

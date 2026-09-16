@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
 import { network } from "hardhat";
-import { parseEther, type Address, type Hex } from "viem";
+import { keccak256, parseEther, toBytes, type Address, type Hex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 import { CampaignRouter } from "../../src/fleet/campaign-routes.js";
@@ -52,10 +52,13 @@ describe("What an observer can see", () => {
     const publicClient = await viem.getPublicClient();
     const chainId = await publicClient.getChainId();
 
-    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address]);
+    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
     const factory = await viem.deployContract("FleetAccountFactory", [operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
-    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address]);
+    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
+    // The pool funds and executes a buy in one transaction; the policy names it
+    // so the fleet accounts admit it as an executor.
+    await policy.write.setPool([poolContract.address]);
     const sink = await viem.deployContract("FleetTestSink", []);
 
     const pool = createPoolService(
@@ -114,6 +117,10 @@ describe("What an observer can see", () => {
     await call("buy", {
       campaign, accounts: [fleet[0], fleet[1]], token: sink.address, value: parseEther("0.0005").toString(),
     });
+    // The charges leave with the scheduled sweep, on the cron's clock, not the
+    // trader's: four hours later, as vercel.json schedules it.
+    await travel(4 * 3600);
+    await call("sweep", {});
     await travel(200);
     await call("sweep", {});
     await call("close", { campaign });
@@ -155,6 +162,33 @@ describe("What an observer can see", () => {
         }
       }
     }
+
+    // The join that survived the log check: a charge used to be queued in the
+    // operator's next transaction after the buy, seconds later. Now a block
+    // that queues charges carries nothing campaign-keyed, and it comes hours
+    // after the last campaign-keyed event, with whatever else was owed.
+    const topic = (name: string): Hex =>
+      keccak256(toBytes(name));
+    const CAMPAIGN_SIDE = new Set([
+      topic("DrawFunded(bytes32,uint256)"),
+      topic("PrincipalSent(bytes32,address,uint256)"),
+      topic("Committed(bytes32,uint256)"),
+    ]);
+    const SPEND_QUEUED = topic("SpendQueued(bytes32,uint256,uint64)");
+    const poolLogs = logs.filter((log) => log.address.toLowerCase() === poolContract.address.toLowerCase());
+    const queuedBlocks = poolLogs.filter((log) => log.topics[0] === SPEND_QUEUED).map((log) => log.blockNumber);
+    const campaignBlocks = poolLogs.filter((log) => CAMPAIGN_SIDE.has(log.topics[0] as Hex)).map((log) => log.blockNumber);
+    assert.ok(queuedBlocks.length > 0 && campaignBlocks.length > 0, "both kinds of event happened");
+    const timestampOf = async (block: bigint) => (await publicClient.getBlock({ blockNumber: block })).timestamp;
+    const lastCampaignAt = await timestampOf(campaignBlocks.reduce((a, b) => (a > b ? a : b)));
+    for (const block of queuedBlocks) {
+      assert.ok(!campaignBlocks.includes(block), "a block queues a charge beside a campaign-keyed event");
+      const at = await timestampOf(block);
+      assert.ok(at - lastCampaignAt >= 3600n, `a charge was queued ${at - lastCampaignAt}s after the last campaign-keyed event; the sweep's clock is hours`);
+    }
+    const batch = poolLogs.filter((log) => log.topics[0] === SPEND_QUEUED);
+    assert.equal(new Set(batch.map((log) => log.transactionHash)).size, 1, "every charge left in one batch transaction");
+    assert.equal(batch.length, 3, "the headroom and the two buys");
 
     // And the journey did happen: the fleet traded, the draw was charged, and
     // the trader's balance is what is left.

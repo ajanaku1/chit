@@ -4,8 +4,9 @@ import { parseEther, type Address, type Hex, type PublicClient, type WalletClien
 
 import type { FleetPool, PoolDraw, PoolQueued } from "../../src/fleet/chain-pool.js";
 import { DRAW_STATE } from "../../src/fleet/chain-pool.js";
-import { ledgerKey, sealDepositor } from "../../src/fleet/pool-ledger.js";
-import { CHARGE_GRAIN, GAS_HEADROOM, MIN_DELAY_SECONDS, coarseCharge, createPoolService, minimumDraw } from "../../src/fleet/pool-buy.js";
+import { ledgerKey, openDepositor, sealDepositor } from "../../src/fleet/pool-ledger.js";
+import { BATCH_LIMIT, CHARGE_GRAIN, GAS_HEADROOM, MIN_DELAY_SECONDS, coarseCharge, createPoolService, minimumDraw } from "../../src/fleet/pool-buy.js";
+import { createMemoryStore } from "../../src/fleet/store.js";
 
 /**
  * The pool service's money operations, against a pool that records what it
@@ -13,6 +14,11 @@ import { CHARGE_GRAIN, GAS_HEADROOM, MIN_DELAY_SECONDS, coarseCharge, createPool
  * A11, A12 and A37 as behaviour: a sweep that survives one bad draw, headroom
  * that is charged, a withdrawal that is recorded before it is paid, a mined
  * buy that is never rolled back, and a delay floor above the contract's.
+ *
+ * And the join those left: a charge used to be queued in the operator's next
+ * transaction after the buy that caused it. Now a buy records what is owed in
+ * the store and queues nothing; the sweep queues everything owed in one
+ * shuffled batch, each entry on its own timer.
  */
 
 const KEY = ledgerKey(`0x${"7".repeat(64)}`);
@@ -27,6 +33,8 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
   const calls: Call[] = [];
   let refuseFund = new Set<Hex>();
   let commitFailures = 0;
+  let failBuy = false;
+  let failBatch = false;
   const pool: FleetPool = {
     address: "0x0000000000000000000000000000000000000901" as Address,
     depositorOf: async () => ({ deposited: 0n, spent: 0n, exitRequestedAt: 0n, exitAmount: 0n }),
@@ -44,6 +52,13 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
       return "0x01";
     },
     fundPrincipal: async (...args) => { calls.push({ fn: "fundPrincipal", args }); return "0x01"; },
+    fundAndExecute: async (...args) => {
+      calls.push({ fn: "fundAndExecute", args });
+      if (failBuy) throw new Error("fundAndExecute reverted: CallFailed()");
+      const d = draws.find((x) => x.campaign === args[0]);
+      if (d) d.spent += (args[2] as bigint) + 1000n;
+      return `0x${"b".repeat(64)}`;
+    },
     commit: async (...args) => {
       calls.push({ fn: "commit", args });
       if (commitFailures > 0) { commitFailures -= 1; throw new Error("rpc: nonce too low"); }
@@ -51,7 +66,11 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
     },
     rollback: async (...args) => { calls.push({ fn: "rollback", args }); return "0x01"; },
     closeDraw: async (...args) => { calls.push({ fn: "closeDraw", args }); return "0x01"; },
-    queueSpend: async (...args) => { calls.push({ fn: "queueSpend", args }); return "0x01"; },
+    queueSpendBatch: async (...args) => {
+      calls.push({ fn: "queueSpendBatch", args });
+      if (failBatch) throw new Error("rpc: nonce too low");
+      return `0x${"c".repeat(64)}`;
+    },
     postQueued: async (...args) => { calls.push({ fn: "postQueued", args }); return "0x01"; },
     claimable: async () => 0n,
     claimOperator: async () => "0x01",
@@ -60,6 +79,8 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
     pool, calls,
     refuse: (c: Hex) => { refuseFund = new Set([...refuseFund, c]); },
     failCommits: (n: number) => { commitFailures = n; },
+    failBuys: () => { failBuy = true; },
+    failBatches: (on: boolean) => { failBatch = on; },
   };
 };
 
@@ -81,18 +102,20 @@ const draw = (n: number, owner: Address, amount: bigint, spent = 0n): PoolDraw =
   dueAt: 1_699_999_000n, ownerRef: sealDepositor(KEY, owner), state: DRAW_STATE.pending,
 });
 
+const opts = () => ({ delaySeconds: () => 120, store: createMemoryStore(), random: () => 0.5 });
+
 describe("sweep", () => {
   it("posts every due charge and funds every other draw when one draw cannot be funded", async () => {
     const queued: PoolQueued[] = [
-      { id: 0n, encDepositor: sealDepositor(KEY, ALICE), amount: 1n, dueAt: 1_699_999_000n, queuedAt: 1_699_998_000n, posted: false },
+      { id: `0x${"a1".repeat(32)}` as Hex, encDepositor: sealDepositor(KEY, ALICE), amount: 1n, dueAt: 1_699_999_000n, queuedAt: 1_699_998_000n, posted: false },
     ];
     const { pool, calls, refuse } = makePool([draw(1, ALICE, parseEther("0.01")), draw(2, BOB, parseEther("0.01"))], queued);
     refuse(campaign(1));
-    const service = createPoolService(wallet, publicClient, pool, KEY, { delaySeconds: () => 120 });
+    const service = createPoolService(wallet, publicClient, pool, KEY, opts());
 
     const report = await service.sweep(async () => [account(1), account(2)]);
 
-    assert.deepEqual(report.posted, ["0"], "the charge was posted although the first draw failed");
+    assert.deepEqual(report.posted, [`0x${"a1".repeat(32)}` as Hex], "the charge was posted although the first draw failed");
     assert.deepEqual(report.funded, [campaign(2)], "the second draw was funded although the first failed");
     const order = calls.map((c) => c.fn);
     assert.equal(order.indexOf("postQueued") < order.indexOf("fund"), true, "charges are posted before any draw is funded");
@@ -101,7 +124,7 @@ describe("sweep", () => {
   it("skips a draw smaller than its own headroom instead of reverting on it every sweep", async () => {
     const tiny = draw(3, ALICE, GAS_HEADROOM * 2n - 1n);
     const { pool, calls } = makePool([tiny, draw(4, BOB, parseEther("0.01"))]);
-    const service = createPoolService(wallet, publicClient, pool, KEY, { delaySeconds: () => 120 });
+    const service = createPoolService(wallet, publicClient, pool, KEY, opts());
 
     const report = await service.sweep(async () => [account(1), account(2)]);
 
@@ -109,40 +132,127 @@ describe("sweep", () => {
     assert.equal(calls.filter((c) => c.fn === "fund" && (c.args[0] as Hex) === campaign(3)).length, 0, "fund was never attempted for the tiny draw");
   });
 
-  it("charges the seeded headroom to the depositor, queued like any other spend", async () => {
+  it("charges the seeded headroom to the depositor: recorded in this sweep, queued in the next", async () => {
     const { pool, calls } = makePool([draw(5, ALICE, parseEther("0.01"))]);
-    const service = createPoolService(wallet, publicClient, pool, KEY, { delaySeconds: () => 120 });
+    const o = opts();
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
 
-    await service.sweep(async () => [account(1), account(2), account(3)]);
+    await service.sweep(async () => [account(1), account(2), account(3)], { queueOwed: true });
+    assert.equal(await o.store.owedFor(ALICE), coarseCharge(GAS_HEADROOM * 3n).toString(), "the coarse form of the headroom that left the pool is owed");
+    assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 0, "nothing depositor-keyed leaves in the sweep that funded");
 
-    const queue = calls.find((c) => c.fn === "queueSpend");
-    assert.ok(queue, "a charge was queued after funding");
-    assert.equal(queue.args[1], coarseCharge(GAS_HEADROOM * 3n), "for the coarse form of the headroom that left the pool");
-    assert.ok((queue.args[1] as bigint) < GAS_HEADROOM * 3n, "strictly below the amount the campaign side recorded");
-    assert.equal(queue.args[2], 1_700_000_000n + 120n, "on its own timer, not in the funding transaction");
+    const second = await service.sweep(async () => [], { queueOwed: true });
+    const batch = calls.find((c) => c.fn === "queueSpendBatch");
+    assert.ok(batch, "the next sweep queues it");
+    assert.deepEqual(batch.args[1], [coarseCharge(GAS_HEADROOM * 3n)]);
+    assert.deepEqual(batch.args[2], [1_700_000_000n + 120n], "on its own timer");
+    assert.equal(second.queued, 1);
+  });
+
+  it("queues everything owed in one batch, each entry sealed to its depositor and on its own timer", async () => {
+    const { pool, calls } = makePool([]);
+    const o = { ...opts(), delaySeconds: (() => { let n = 0; return () => 100 + (n++) * 50; })() };
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
+    await o.store.recordOwed({ id: "a", depositor: ALICE, amount: "1000", incurredAt: "2026-09-15T00:00:00Z" });
+    await o.store.recordOwed({ id: "b", depositor: BOB, amount: "2000", incurredAt: "2026-09-15T00:00:01Z" });
+    await o.store.recordOwed({ id: "c", depositor: ALICE, amount: "3000", incurredAt: "2026-09-15T00:00:02Z" });
+
+    const report = await service.sweep(async () => [], { queueOwed: true });
+
+    const batches = calls.filter((c) => c.fn === "queueSpendBatch");
+    assert.equal(batches.length, 1, "one transaction for the whole batch");
+    const [refs, amounts, dues] = batches[0]!.args as [Hex[], bigint[], bigint[]];
+    assert.equal(refs.length, 3);
+    const opened = refs.map((r) => openDepositor(KEY, r));
+    assert.deepEqual([...opened].sort(), [ALICE, ALICE, BOB].sort(), "each entry opens to its own depositor");
+    assert.deepEqual([...amounts].sort(), [1000n, 2000n, 3000n]);
+    assert.deepEqual([...dues].sort(), [1_700_000_100n, 1_700_000_150n, 1_700_000_200n], "three different due times");
+    assert.equal(report.queued, 3);
+    assert.equal(await o.store.owedFor(ALICE), "0", "queued spend is the chain's now");
+    assert.equal(await o.store.owedFor(BOB), "0");
+  });
+
+  it("leaves owed spend for the next sweep when the batch transaction fails", async () => {
+    const { pool, calls, failBatches } = makePool([]);
+    const o = opts();
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
+    await o.store.recordOwed({ id: "a", depositor: ALICE, amount: "1000", incurredAt: "2026-09-15T00:00:00Z" });
+
+    failBatches(true);
+    const failed = await service.sweep(async () => [], { queueOwed: true });
+    assert.equal(failed.queued, 0);
+    assert.equal(await o.store.owedFor(ALICE), "1000", "still owed");
+
+    failBatches(false);
+    const retried = await service.sweep(async () => [], { queueOwed: true });
+    assert.equal(retried.queued, 1);
+    assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 2);
+    assert.equal(await o.store.owedFor(ALICE), "0");
+  });
+
+  it("queues nothing owed unless asked to: a sweep riding on a trader's request must not put a batch beside that request's buy", async () => {
+    const { pool, calls } = makePool([]);
+    const o = opts();
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
+    await o.store.recordOwed({ id: "a", depositor: ALICE, amount: "1000", incurredAt: "2026-09-15T00:00:00Z" });
+
+    const report = await service.sweep(async () => []);
+    assert.equal(report.queued, 0);
+    assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 0);
+    assert.equal(await o.store.owedFor(ALICE), "1000", "still owed, for the scheduled sweep");
+  });
+
+  it("caps a batch and carries the rest to the next sweep", async () => {
+    const { pool, calls } = makePool([]);
+    const o = opts();
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
+    for (let i = 0; i < BATCH_LIMIT + 2; i++) {
+      await o.store.recordOwed({ id: `o${i}`, depositor: ALICE, amount: "1000", incurredAt: new Date(i * 1000).toISOString() });
+    }
+    assert.equal((await service.sweep(async () => [], { queueOwed: true })).queued, BATCH_LIMIT);
+    assert.equal((await service.sweep(async () => [], { queueOwed: true })).queued, 2);
+    assert.equal((calls[0]!.args[0] as Hex[]).length, BATCH_LIMIT);
+  });
+});
+
+describe("balance", () => {
+  it("subtracts spend that is owed but not yet on the chain", async () => {
+    const { pool } = makePool([]);
+    const funded: FleetPool = { ...pool, ledgerInputs: async () => ({ deposited: parseEther("0.05"), spent: 0n, draws: [], queued: [] }) as never };
+    const o = opts();
+    const service = createPoolService(wallet, publicClient, funded, KEY, o);
+    await o.store.recordOwed({ id: "a", depositor: ALICE, amount: parseEther("0.01").toString(), incurredAt: "2026-09-15T00:00:00Z" });
+
+    const view = await service.balance(ALICE);
+    assert.equal(view.available, parseEther("0.04").toString());
+    assert.equal(view.owed, parseEther("0.01").toString());
   });
 });
 
 describe("withdraw", () => {
   it("records the charge before it pays, so a failure between the two is recoverable", async () => {
-    const { pool } = makePool([]);
+    const { pool, calls } = makePool([]);
     const order: string[] = [];
-    const recording: FleetPool = { ...pool, queueSpend: async (...args) => { order.push("queue"); return pool.queueSpend(...args); } };
+    const o = opts();
+    const store = { ...o.store, recordOwed: async (e: Parameters<typeof o.store.recordOwed>[0]) => { order.push("record"); return o.store.recordOwed(e); } };
     const w = { ...wallet, sendTransaction: async () => { order.push("pay"); return `0x${"a".repeat(64)}`; } } as unknown as WalletClient;
-    const service = createPoolService(w, publicClient, recording, KEY, { delaySeconds: () => 120 });
+    const service = createPoolService(w, publicClient, pool, KEY, { ...o, store });
 
-    await service.withdraw({ depositor: ALICE, amount: parseEther("0.01").toString(), destination: BOB });
+    const receipt = await service.withdraw({ depositor: ALICE, amount: parseEther("0.01").toString(), destination: BOB });
 
-    assert.deepEqual(order, ["queue", "pay"]);
+    assert.deepEqual(order, ["record", "pay"]);
+    assert.equal(typeof receipt.chargeId, "string");
+    assert.equal(await o.store.owedFor(ALICE), coarseCharge(parseEther("0.01")).toString());
+    assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 0, "the payout and the charge never share the operator's transaction window");
   });
 });
 
-describe("a mined buy", () => {
-  it("is never rolled back when only the commit fails; the commit is retried and the buy reported", async () => {
+describe("an atomic buy", () => {
+  it("funds and executes in one call, charges what the draw's spent moved by, and never rolls back", async () => {
     const funded = { ...draw(6, ALICE, parseEther("0.01")), state: DRAW_STATE.funded };
-    const { pool, calls, failCommits } = makePool([funded]);
-    failCommits(1);
-    const service = createPoolService(wallet, publicClient, pool, KEY, { delaySeconds: () => 120 });
+    const { pool, calls } = makePool([funded]);
+    const o = opts();
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
 
     const report = await service.buy({
       campaign: campaign(6), depositor: ALICE, target: account(9),
@@ -150,23 +260,42 @@ describe("a mined buy", () => {
     });
 
     assert.equal(report.results[0]?.status, "sponsored");
-    assert.equal(calls.filter((c) => c.fn === "commit").length, 2, "the commit was retried once");
-    assert.equal(calls.filter((c) => c.fn === "rollback").length, 0, "and nothing was rolled back");
+    assert.equal(calls.filter((c) => c.fn === "fundAndExecute").length, 1, "one transaction");
+    assert.equal(calls.filter((c) => ["fundPrincipal", "commit", "rollback"].includes(c.fn)).length, 0, "no reservation, no commit, no rollback");
+    assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 0, "the buy queues nothing: no depositor-keyed transaction follows it");
+    assert.equal(await o.store.owedFor(ALICE), coarseCharge(parseEther("0.001") + 1000n).toString(), "the depositor owes the draw's spent delta, in coarse form");
   });
 
-  it("bounds the execute transaction by the gas ceiling", async () => {
+  it("reports a reverted buy as rejected, with nothing moved and nothing to roll back", async () => {
     const funded = { ...draw(7, ALICE, parseEther("0.01")), state: DRAW_STATE.funded };
-    const { pool } = makePool([funded]);
-    let seen: { gas?: bigint } = {};
-    const w = { ...wallet, writeContract: async (req: { gas?: bigint }) => { seen = req; return `0x${"b".repeat(64)}`; } } as unknown as WalletClient;
-    const service = createPoolService(w, publicClient, pool, KEY, { delaySeconds: () => 120 });
+    const { pool, calls, failBuys } = makePool([funded]);
+    failBuys();
+    const o = opts();
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
 
-    await service.buy({
+    const report = await service.buy({
       campaign: campaign(7), depositor: ALICE, target: account(9),
       buys: [{ account: account(1), value: "1", callData: "0x", maxCost: parseEther("0.0001").toString() }],
     });
 
-    assert.equal(seen.gas, parseEther("0.0001") / 1_000_000_000n, "gas limit = ceiling / gas price");
+    assert.equal(report.results[0]?.status, "rejected");
+    assert.equal(report.results[0]?.reason, "CallFailed");
+    assert.equal(calls.filter((c) => c.fn === "rollback").length, 0);
+    assert.equal(await o.store.owedFor(ALICE), "0", "nothing charged for a buy that did not happen");
+  });
+
+  it("bounds the transaction by the gas ceiling", async () => {
+    const funded = { ...draw(8, ALICE, parseEther("0.01")), state: DRAW_STATE.funded };
+    const { pool, calls } = makePool([funded]);
+    const service = createPoolService(wallet, publicClient, pool, KEY, opts());
+
+    await service.buy({
+      campaign: campaign(8), depositor: ALICE, target: account(9),
+      buys: [{ account: account(1), value: "1", callData: "0x", maxCost: parseEther("0.0001").toString() }],
+    });
+
+    const call = calls.find((c) => c.fn === "fundAndExecute");
+    assert.equal(call?.args[6], parseEther("0.0001") / 1_000_000_000n, "gas limit = ceiling / gas price");
   });
 });
 

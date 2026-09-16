@@ -22,7 +22,7 @@ describe("FleetPool self-serve exit", () => {
   const DAY = 24 * 60 * 60;
 
   const funded = async () => {
-    const pool = await viem.deployContract("FleetPool", [operator!.account.address]);
+    const pool = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
     await pool.write.deposit({ account: alice!.account, value: parseEther("0.1") });
     return pool;
   };
@@ -37,8 +37,9 @@ describe("FleetPool self-serve exit", () => {
     const pool = await funded();
     const publicClient = await viem.getPublicClient();
     const enc = `0x${"e1".repeat(32)}` as const;
-    await pool.write.queueSpend([enc, parseEther("0.02"), 0n]);
-    await pool.write.postQueued([0n, alice!.account.address]);
+    await pool.write.queueSpendBatch([[enc], [parseEther("0.02")], [0n]]);
+    const [id] = await pool.read.queuedSpendAt([0n]);
+    await pool.write.postQueued([id, alice!.account.address]);
 
     await pool.write.requestExit({ account: alice!.account });
     await assert.rejects(pool.write.executeExit({ account: alice!.account }), "the delay is not optional");
@@ -71,8 +72,9 @@ describe("FleetPool self-serve exit", () => {
     const publicClient = await viem.getPublicClient();
     await pool.write.requestExit({ account: alice!.account });
     // The trader keeps trading after asking to leave; that spend still counts.
-    await pool.write.queueSpend([`0x${"e2".repeat(32)}`, parseEther("0.03"), 0n]);
-    await pool.write.postQueued([0n, alice!.account.address]);
+    await pool.write.queueSpendBatch([[`0x${"e2".repeat(32)}`], [parseEther("0.03")], [0n]]);
+    const [id] = await pool.read.queuedSpendAt([0n]);
+    await pool.write.postQueued([id, alice!.account.address]);
 
     await travel(DAY + 1);
     const before = await publicClient.getBalance({ address: alice!.account.address });
@@ -87,13 +89,14 @@ describe("FleetPool self-serve exit", () => {
     // Chain time, not wall time: earlier cases in this file have already
     // travelled forward, so the wall clock is behind the EVM.
     const block = await (await viem.getPublicClient()).getBlock();
-    await pool.write.queueSpend([`0x${"e3".repeat(32)}`, parseEther("0.02"), block.timestamp + 60n]);
-    await assert.rejects(pool.write.postQueued([0n, alice!.account.address]), "not due yet");
+    await pool.write.queueSpendBatch([[`0x${"e3".repeat(32)}`], [parseEther("0.02")], [block.timestamp + 60n]]);
+    const [id] = await pool.read.queuedSpendAt([0n]);
+    await assert.rejects(pool.write.postQueued([id, alice!.account.address]), "not due yet");
 
     // The window is what lets the exit be safe without the operator: an unposted
     // spend cannot ambush a trader who already waited out the exit delay.
     await travel(DAY + 1);
-    await assert.rejects(pool.write.postQueued([0n, alice!.account.address]), "too late to post");
+    await assert.rejects(pool.write.postQueued([id, alice!.account.address]), "too late to post");
     const [, spent] = await pool.read.depositorOf([alice!.account.address]);
     assert.equal(spent, 0n, "the operator ate the loss, not the trader");
   });
@@ -101,10 +104,11 @@ describe("FleetPool self-serve exit", () => {
   it("posts a queued spend inside its window and only once", async () => {
     const pool = await funded();
     const block = await (await viem.getPublicClient()).getBlock();
-    await pool.write.queueSpend([`0x${"e4".repeat(32)}`, parseEther("0.01"), block.timestamp + 60n]);
+    await pool.write.queueSpendBatch([[`0x${"e4".repeat(32)}`], [parseEther("0.01")], [block.timestamp + 60n]]);
+    const [id] = await pool.read.queuedSpendAt([0n]);
     await travel(120);
-    await pool.write.postQueued([0n, alice!.account.address]);
+    await pool.write.postQueued([id, alice!.account.address]);
     assert.equal((await pool.read.depositorOf([alice!.account.address]))[1], parseEther("0.01"));
-    await assert.rejects(pool.write.postQueued([0n, alice!.account.address]), "no double posting");
+    await assert.rejects(pool.write.postQueued([id, alice!.account.address]), "no double posting");
   });
 });

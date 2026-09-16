@@ -52,12 +52,14 @@ test("the depositor-side and campaign-side surfaces both exist and stay separate
   assert.ok(ev("Deposited") && ev("SpendPosted") && ev("ExitPaid"), "depositor-side events");
   assert.ok(ev("DrawOpened") && ev("DrawFunded") && ev("PrincipalSent"), "campaign-side events");
 
-  // queueSpend carries the encrypted reference, never a readable address.
-  const queue = fn("queueSpend");
-  assert.ok(queue, "missing queueSpend");
+  // Charges are queued in one batch per sweep, never one per buy, and each
+  // entry carries the encrypted reference, never a readable address.
+  assert.equal(fn("queueSpend"), undefined, "the single entry point is gone: a charge must never ride the operator's next nonce after a buy");
+  const queue = fn("queueSpendBatch");
+  assert.ok(queue, "missing queueSpendBatch");
   assert.deepEqual(
     queue!.inputs?.map((i) => i.type),
-    ["bytes", "uint256", "uint64"],
+    ["bytes[]", "uint256[]", "uint64[]"],
     "the depositor reaches a queued spend only as ciphertext",
   );
 });

@@ -15,13 +15,14 @@ const POOL_ABI = parseAbi([
   "function requestExit()",
   "function executeExit()",
   "function setPaused(bool paused_)",
-  "function queueSpend(bytes encDepositor, uint256 amount, uint64 dueAt) returns (uint256)",
-  "function postQueued(uint256 id, address depositor)",
+  "function queueSpendBatch(bytes[] encDepositors, uint256[] amounts, uint64[] dueAts) returns (uint256[])",
+  "function postQueued(bytes32 id, address depositor)",
   "function claimOperator(uint256 amount)",
   "function openDraw(bytes32 campaign, uint256 amount, uint64 dueAt, bytes ownerRef)",
   "function topUpDraw(bytes32 campaign, uint256 amount)",
   "function fund(bytes32 campaign, address[] accounts)",
   "function fundPrincipal(bytes32 campaign, address account, uint256 principal, uint256 gasCeiling)",
+  "function fundAndExecute(bytes32 campaign, address account, uint256 principal, uint256 gasCeiling, address target, bytes data) returns (bytes)",
   "function commit(bytes32 campaign, uint256 actual)",
   "function rollback(bytes32 campaign, uint256 principalReturned) payable",
   "function closeDraw(bytes32 campaign)",
@@ -34,7 +35,7 @@ const POOL_ABI = parseAbi([
   "function campaignCount() view returns (uint256)",
   "function campaignAt(uint256 index) view returns (bytes32)",
   "function queuedSpendCount() view returns (uint256)",
-  "function queuedSpendAt(uint256 index) view returns ((bytes encDepositor, uint256 amount, uint64 dueAt, uint64 queuedAt, bool posted))",
+  "function queuedSpendAt(uint256 index) view returns (bytes32 id, (bytes encDepositor, uint256 amount, uint64 dueAt, uint64 queuedAt, bool posted) entry)",
 ]);
 
 export const DRAW_STATE = { none: 0, pending: 1, funded: 2, closed: 3 } as const;
@@ -47,7 +48,8 @@ export type PoolDraw = DrawView & {
   dueAt: bigint;
 };
 
-export type PoolQueued = QueuedView & { id: bigint; dueAt: bigint; queuedAt: bigint };
+/** `id` is the contract's hash for the entry, never its position. */
+export type PoolQueued = QueuedView & { id: Hex; dueAt: bigint; queuedAt: bigint };
 
 export type DepositorRecord = {
   deposited: bigint;
@@ -70,11 +72,14 @@ export type FleetPool = {
   topUpDraw(campaign: Hex, amount: bigint): Promise<Hex>;
   fund(campaign: Hex, accounts: readonly Address[]): Promise<Hex>;
   fundPrincipal(campaign: Hex, account: Address, principal: bigint, gasCeiling: bigint): Promise<Hex>;
+  /** Funds the principal and runs the buy in one transaction; reverts whole if the buy does. */
+  fundAndExecute(campaign: Hex, account: Address, principal: bigint, gasCeiling: bigint, target: Address, data: Hex, gas?: bigint): Promise<Hex>;
   commit(campaign: Hex, actual: bigint): Promise<Hex>;
   rollback(campaign: Hex, principalReturned: bigint): Promise<Hex>;
   closeDraw(campaign: Hex): Promise<Hex>;
-  queueSpend(encDepositor: Hex, amount: bigint, dueAt: bigint): Promise<Hex>;
-  postQueued(id: bigint, depositor: Address): Promise<Hex>;
+  /** One transaction for a sweep's worth of charges; each entry on its own timer. */
+  queueSpendBatch(encDepositors: readonly Hex[], amounts: readonly bigint[], dueAts: readonly bigint[]): Promise<Hex>;
+  postQueued(id: Hex, depositor: Address): Promise<Hex>;
   claimable(): Promise<bigint>;
   claimOperator(amount: bigint): Promise<Hex>;
 };
@@ -129,10 +134,10 @@ export const createFleetPool = (
     const count = await read<bigint>("queuedSpendCount");
     const entries: PoolQueued[] = [];
     for (let i = 0n; i < count; i += 1n) {
-      const raw = await read<{
+      const [id, raw] = await read<[Hex, {
         encDepositor: Hex; amount: bigint; dueAt: bigint; queuedAt: bigint; posted: boolean;
-      }>("queuedSpendAt", [i]);
-      entries.push({ id: i, ...raw });
+      }]>("queuedSpendAt", [i]);
+      entries.push({ id, ...raw });
     }
     return entries;
   };
@@ -172,11 +177,21 @@ export const createFleetPool = (
     fund: (campaign, accounts) => write("fund", [campaign, accounts]),
     fundPrincipal: (campaign, account, principal, gasCeiling) =>
       write("fundPrincipal", [campaign, account, principal, gasCeiling]),
+    fundAndExecute: async (campaign, account, principal, gasCeiling, target, data, gas) => {
+      const hash = await wallet.writeContract({
+        ...ctx(wallet), address, abi: POOL_ABI, functionName: "fundAndExecute",
+        args: [campaign, account, principal, gasCeiling, target, data],
+        ...(gas === undefined ? {} : { gas }),
+      } as never);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status !== "success") throw new Error(`fundAndExecute reverted: ${hash}`);
+      return hash;
+    },
     commit: (campaign, actual) => write("commit", [campaign, actual]),
     rollback: (campaign, principalReturned) =>
       write("rollback", [campaign, principalReturned], principalReturned),
     closeDraw: (campaign) => write("closeDraw", [campaign]),
-    queueSpend: (encDepositor, amount, dueAt) => write("queueSpend", [encDepositor, amount, dueAt]),
+    queueSpendBatch: (encDepositors, amounts, dueAts) => write("queueSpendBatch", [encDepositors, amounts, dueAts]),
     postQueued: (id, depositor) => write("postQueued", [id, depositor]),
     claimable: () => read<bigint>("claimable"),
     claimOperator: (amount) => write("claimOperator", [amount]),

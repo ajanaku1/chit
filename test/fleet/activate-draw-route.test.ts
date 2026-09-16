@@ -59,7 +59,7 @@ const makeRouter = (over: { available?: string; paused?: boolean } = {}) => {
   });
   const pool: PoolPort = {
     balance: async () => balance(),
-    withdraw: async () => ({ payoutTx: `0x${"a".repeat(64)}`, queuedSpendTx: `0x${"b".repeat(64)}` }),
+    withdraw: async () => ({ payoutTx: `0x${"a".repeat(64)}`, chargeId: "owed-1" }),
     openDraw: async ({ campaign, amount, depositor }) => {
       opened.push({ campaign, amount, depositor });
       return drawSummary({ amount, remaining: amount });

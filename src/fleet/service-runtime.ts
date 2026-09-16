@@ -8,6 +8,7 @@
  * 503 instead of substituting a default fact.
  */
 
+import { neon } from "@neondatabase/serverless";
 import { createPublicClient, createWalletClient, defineChain, http, isHex, keccak256, stringToBytes, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
@@ -18,6 +19,8 @@ import { createFleetChain, type FleetChain } from "./chain-service.js";
 import { createMarket, type MarketPort } from "./market.js";
 import { ledgerKey } from "./pool-ledger.js";
 import { createPoolService, type PoolPort } from "./pool-buy.js";
+import { createMemoryStore, type StorePort } from "./store.js";
+import { createNeonStore } from "./store-neon.js";
 import { validateFeeConfig, type FeeConfig } from "./eligibility.js";
 import { isAddress, type Address, type Uint } from "./types.js";
 
@@ -30,17 +33,21 @@ const DEFAULT_RPC = "https://rpc.testnet.chain.robinhood.com";
 const BALANCE_OF_SELECTOR = "0x70a08231";
 
 /**
- * Deployed Stage 1 contracts on 46630, as recorded in deployments/fleet-46630.json
- * (deployed 2026-08-31). Override with FLEET_*_ADDRESS only after a redeploy.
+ * Deployed contracts on 46630, as recorded in deployments/fleet-46630.json
+ * (the hardened set, deployed 2026-09-16: atomic buy, batch queueing, hashed
+ * queue ids, hot operator and cold admin). Override with FLEET_*_ADDRESS only
+ * after a redeploy.
  */
 const DEPLOYED_46630 = {
-  escrow: "0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325",
-  factory: "0x5c0e2ec619c11b66e0e0efb7931bccfa6b784ea6",
-  policy: "0x57c7436bbbb40b08adef5c84f0aeaee0c4f3e011",
+  escrow: "0x4c3374f29f51b316da909a91f01db6f26d10d012",
+  factory: "0xf1ebd7494fd5cf74b1dd0623e2ab6a07afaefa5e",
+  policy: "0x653285b2024343a31f8cbf349e86a621d5ae1c9d",
   /** Uniswap v4 PoolManager on 46630 (deployments/fleet-46630.json, venue.poolManager). */
   poolManager: "0x8366a39cc670b4001a1121b8f6a443a643e40951",
-  /** The block that mined campaignEscrowTx 0xf464…708d; the fleet list scans events from here. */
-  escrowBlock: 110732061n,
+  /** The venue's test coin (deployments/fleet-46630.json, venue.token): the default portfolio when no allowlist is set. */
+  venueToken: "0x13283ab8e1f2bc4297e9ec6480c80c59674af554",
+  /** The block that mined campaignEscrowTx 0xb554…cffd; the fleet list scans events from here. */
+  escrowBlock: 120343548n,
 } as const;
 
 /**
@@ -86,6 +93,23 @@ const ledgerKeyFromEnv = (operatorKey: `0x${string}`): `0x${string}` => {
   return ledgerKey(operatorKey);
 };
 
+/**
+ * The shared store. With DATABASE_URL, Neon: every instance sees the same
+ * idempotency results, nonce burns, slice claims and operator lock. Without
+ * it, this instance's memory, with a warning, because on Vercel that means a
+ * retry on a second instance can run twice.
+ */
+const storeFromEnv = (): StorePort => {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    warnOnce("store", "DATABASE_URL is not set: idempotency and slice claims live in this instance only");
+    return createMemoryStore();
+  }
+  const store = createNeonStore(neon(url));
+  void store.initialize().catch((err: unknown) => console.error("fleet store: initialize failed", err));
+  return store;
+};
+
 const warned = new Set<string>();
 const warnOnce = (what: string, message: string): void => {
   if (warned.has(what)) return;
@@ -106,12 +130,14 @@ const poolAddressFromEnv = (): Address | undefined => {
  * Stage 2 pool service. Needs the operator signer and FLEET_POOL_ADDRESS; the
  * ledger key derives from the operator key, so no new secret is introduced.
  */
-const poolFromEnv = (): PoolPort | undefined => {
+const poolFromEnv = (store: StorePort): PoolPort | undefined => {
   const key = operatorKeyFromEnv();
   const address = poolAddressFromEnv();
   if (!key || !address) return undefined;
   const { wallet, publicClient } = clients(key);
-  return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKeyFromEnv(key));
+  // The same store the router uses: owed spend recorded by a buy on one
+  // instance is queued by a sweep on another.
+  return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKeyFromEnv(key), { store });
 };
 
 /**
@@ -275,7 +301,10 @@ export const handleFleetRequest = async (
     const body: unknown = await request.json();
     const action = (body as { action?: unknown }).action;
     if (allowedActions && !allowedActions.includes(String(action))) {
-      return Response.json({ code: "state_invalid", retryable: false }, { status: 409 });
+      // Named and logged: a bare state_invalid here once hid a browser sending
+      // "trade" to the campaign function for a whole afternoon.
+      console.warn(`fleet route refused: ${String(action)} is not served by this function`);
+      return Response.json({ code: "state_invalid", retryable: false, reason: `unknown_action:${String(action)}` }, { status: 409 });
     }
     const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
     const result = await active.handle(body, idempotencyKey);
@@ -299,7 +328,8 @@ export const getFleetRouter = (): CampaignRouter => {
   const feeConfig = feeConfigFromEnv();
   const chain = chainFromEnv();
   const nonceSecret = nonceSecretFromEnv();
-  const pool = poolFromEnv();
+  const store = storeFromEnv();
+  const pool = poolFromEnv(store);
   const market = marketFromEnv();
   const allowedTokens = allowedTokensFromEnv();
   const maxSlippageBps = maxSlippageFromEnv();
@@ -309,11 +339,14 @@ export const getFleetRouter = (): CampaignRouter => {
     // Ten minutes, not five: signing means leaving the browser for the wallet
     // app, and a trader who takes longer than the TTL comes back to an expired
     // challenge, which reads as "it asked me to start over again".
-    service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 600 }, nonceSecret ? { nonceSecret } : {}),
+    service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 600 }, { store, ...(nonceSecret ? { nonceSecret } : {}) }),
+    store,
     ...(feeConfig ? { feeConfig, chitBalanceOf } : {}),
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
     ...(allowedTokens ? { allowedTokens } : {}),
+    // The portfolio shows what the venue trades: the allowlist when there is one, else the venue's coin.
+    venueTokens: allowedTokens ?? [DEPLOYED_46630.venueToken],
     ...(maxSlippageBps !== undefined ? { maxSlippageBps } : {}),
     // Without the pool, balance and withdrawal answer 503 the same way.
     ...(pool ? { pool } : {}),

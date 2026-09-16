@@ -47,7 +47,7 @@ export const decodeSlot0 = (word: Hex): { sqrtPriceX96: bigint; tick: number } =
   return { sqrtPriceX96, tick };
 };
 
-/** ETH is currency0, so amountOut ≈ amountIn · (sqrtP / 2^96)². */
+/** ETH is currency0, so amountOut ≈ amountIn · (sqrtP / 2^96)²: the spot price, before any impact. */
 export const estimateOut = (amountIn: bigint, sqrtPriceX96: bigint): bigint => (amountIn * sqrtPriceX96 * sqrtPriceX96) >> 192n;
 
 /** The pool's active liquidity lives three words after slot0 in v4's Pool.State. */
@@ -106,7 +106,7 @@ export const createMarket = (
       client.readContract({ address: token, abi: ERC20_ABI, functionName: "symbol" }).catch(() => "?"),
       client.readContract({ address: token, abi: ERC20_ABI, functionName: "decimals" }).catch(() => 18),
       client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slot0Slot(id)] }),
-      client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [liquiditySlot(id)] }),
+      client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [liquiditySlot(id)] }).catch(() => "0x0" as Hex),
     ]);
     const { sqrtPriceX96 } = decodeSlot0(word);
     const liquidity = BigInt(liq) & ((1n << 128n) - 1n);

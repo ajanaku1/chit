@@ -5,8 +5,8 @@
  * allows, straight from the tested control-room view.
  */
 
-import { buildBuyReport, buildControlRoomView, confirmationFor, isLiveState, type AccountBuyResult, type CampaignState, type ControlAction } from "./fleet/control-room.js";
-import { clearFleetSnapshot, confirmDialog, getConnectedWallet, initHeaderWallet, initShell, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
+import { buildControlRoomView, confirmationFor, isLiveState, type CampaignState, type ControlAction } from "./fleet/control-room.js";
+import { banner, clearFleetSnapshot, confirmDialog, getConnectedWallet, initHeaderWallet, initShell, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { StatusUnavailable, readStatus } from "./fleet/status-read.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
@@ -18,13 +18,6 @@ const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
   if (!node) throw new Error(`missing element: ${id}`);
   return node as T;
-};
-
-const banner = (message: string, tone: "pending" | "error" | "ok"): void => {
-  const node = el("status-banner");
-  node.textContent = message;
-  node.dataset["tone"] = tone;
-  node.hidden = false;
 };
 
 const KNOWN_STATES: readonly CampaignState[] = [
@@ -49,7 +42,6 @@ class FleetDashboard {
     for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>("[data-action]"))) {
       button.addEventListener("click", () => void this.#control(button.dataset["action"] as ControlAction));
     }
-    el("run-buy").addEventListener("click", () => void this.#runBuy());
     // The header owns the wallet button; follow it rather than bind it again.
     window.addEventListener("chit-wallet-changed", () => void this.#refresh());
     void this.#refresh();
@@ -103,7 +95,8 @@ class FleetDashboard {
     for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>("[data-action]"))) {
       button.disabled = !view.availableActions.includes(button.dataset["action"] as ControlAction);
     }
-    (el("run-buy") as HTMLButtonElement).disabled = state !== "Active";
+    // Trading lives on the Trade page; the link only makes sense for a fleet that can trade.
+    (el("run-buy") as HTMLAnchorElement).hidden = state !== "Active";
 
     const budget = view.budget;
     el("b-funded").textContent = `${toEth(budget.funded)} ETH`;
@@ -129,8 +122,40 @@ class FleetDashboard {
     list.innerHTML = "";
     for (const account of this.#snapshot.accounts) {
       const item = document.createElement("li");
-      item.textContent = account;
+      item.dataset["wallet"] = account.toLowerCase();
+      const address = document.createElement("span");
+      address.className = "account-list__address";
+      address.textContent = account;
+      const holdings = document.createElement("span");
+      holdings.className = "account-list__holdings";
+      holdings.textContent = "…";
+      item.append(address, holdings);
       list.appendChild(item);
+    }
+  }
+
+  /**
+   * What each wallet holds now: ETH and the venue's tokens, read from the
+   * chain by the service. Best effort; the list stays readable without it.
+   */
+  async #portfolio(wallet: `0x${string}`): Promise<void> {
+    try {
+      const body = (await signedFleetApi(wallet, "holdings", { campaign: this.#snapshot.campaign })) as {
+        holdings?: { wallet: string; eth: string; tokens: Record<string, string> }[];
+        symbols?: Record<string, string>;
+      };
+      for (const holding of body.holdings ?? []) {
+        const item = document.querySelector<HTMLElement>(`#fleet-accounts li[data-wallet="${holding.wallet.toLowerCase()}"] .account-list__holdings`);
+        if (!item) continue;
+        const parts = [`${toEth(holding.eth)} ETH`];
+        for (const [token, amount] of Object.entries(holding.tokens)) {
+          if (BigInt(amount) === 0n) continue;
+          parts.push(`${toEth(amount)} ${body.symbols?.[token.toLowerCase()] ?? token.slice(0, 8)}`);
+        }
+        item.textContent = parts.join(" · ");
+      }
+    } catch {
+      for (const node of Array.from(document.querySelectorAll<HTMLElement>("#fleet-accounts .account-list__holdings"))) node.textContent = "";
     }
   }
 
@@ -147,6 +172,7 @@ class FleetDashboard {
       this.#available = String(balance.available ?? "0");
       this.#poolPaused = Boolean(balance.pool?.paused);
       this.#render();
+      void this.#portfolio(wallet);
       // A fleet still being funded is finished by requests like this one.
       const delay = pollDelayMs(state, this.#draw?.dueAt, new Date());
       if (delay !== undefined) globalThis.setTimeout(() => void this.#refresh(), delay);
@@ -205,38 +231,7 @@ class FleetDashboard {
     }
   }
 
-  async #runBuy(): Promise<void> {
-    try {
-      const wallet = getConnectedWallet();
-      if (!wallet) throw new Error("not_connected");
-      const body = await signedFleetApi(wallet, "buy", {
-        campaign: this.#snapshot.campaign,
-        accounts: this.#snapshot.accounts,
-        token: "0x0000000000000000000000000000000000000000",
-        value: "0",
-      });
-      this.#renderBuyReport((body["results"] as AccountBuyResult[] | undefined) ?? []);
-    } catch (error) {
-      this.#pendingOrError("buy", error);
-    }
-  }
 
-  #renderBuyReport(results: AccountBuyResult[]): void {
-    const report = buildBuyReport(results);
-    const rows = el("buy-rows");
-    rows.innerHTML = "";
-    for (const row of report.rows) {
-      const tr = document.createElement("tr");
-      const account = document.createElement("td");
-      account.textContent = row.account;
-      const status = document.createElement("td");
-      status.textContent = row.status;
-      status.className = row.status;
-      tr.append(account, status);
-      rows.appendChild(tr);
-    }
-    el("buy-report").hidden = false;
-  }
 
   #pendingOrError(action: string, error: unknown): void {
     const code = (error as Error).message;

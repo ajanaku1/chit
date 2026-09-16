@@ -7,11 +7,14 @@
  * never publishes a transfer from a depositor to a payee.
  */
 
-import { parseAbi, parseEther, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
+import { randomUUID } from "node:crypto";
+
+import { parseEther, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 
 import type { FleetPool, PoolDraw } from "./chain-pool.js";
 import { DRAW_STATE } from "./chain-pool.js";
 import { availableBalance, depositSizes, openDepositor, sealDepositor } from "./pool-ledger.js";
+import { createMemoryStore, type StorePort } from "./store.js";
 import type { Uint } from "./types.js";
 
 /** Matches the contract's own delay, so the app never promises a shorter wait. */
@@ -43,10 +46,13 @@ export const MIN_GAS_CEILING = parseEther("0.00005");
  * few values. The difference, at most one grain, is the pool's, never the
  * trader's; at today's prices a grain is a few cents.
  *
- * What this does not do: move the queueing in time. The charge is still
- * queued in the operator's next transaction after the buy, and that
- * adjacency is a join of its own. Breaking it needs the contract to carry
- * uncharged spend until a sweep batches it, which is a design change.
+ * The other half is time. A charge used to be queued in the operator's next
+ * transaction after the buy that caused it, and that adjacency was a join of
+ * its own. Now a buy, a withdrawal or a funding records what is owed in the
+ * store and sends nothing depositor-keyed; the sweep queues everything owed
+ * in one shuffled batch, each entry on its own random timer, in a transaction
+ * that follows no campaign-keyed one. Until it is queued, the balance shows
+ * it as owed, so nothing reads as available that a charge already claims.
  */
 export const CHARGE_GRAIN = parseEther("0.00001");
 
@@ -54,6 +60,9 @@ export const coarseCharge = (exact: bigint): bigint => {
   if (exact <= CHARGE_GRAIN) return 0n;
   return ((exact - 1n) / CHARGE_GRAIN) * CHARGE_GRAIN;
 };
+
+/** The most charges one sweep queues in one transaction; the rest wait for the next. */
+export const BATCH_LIMIT = 32;
 
 /** Mirrors FleetPool.GAS_HEADROOM: what fund() seeds into each account. */
 export const GAS_HEADROOM = parseEther("0.0002");
@@ -68,6 +77,8 @@ export const minimumDraw = (accounts: number): bigint => GAS_HEADROOM * BigInt(M
 
 export type BalanceView = {
   available: Uint;
+  /** Recorded against this depositor and not yet queued on chain; already subtracted from `available`. Optional so fakes that predate it still type-check. */
+  owed?: Uint;
   deposited: Uint;
   spent: Uint;
   /** Held against campaigns still standing; not spendable, not lost. */
@@ -82,7 +93,6 @@ export type BalanceView = {
 /** Mirrors the contract constant, so the app refuses what the chain would. */
 export const DRAW_CAP = parseEther("0.2");
 
-const ACCOUNT_ABI = parseAbi(["function execute(address target, uint256 value, bytes data) returns (bytes)"]);
 
 const DRAW_LABEL = ["None", "Pending", "Funded", "Closed"] as const;
 export type DrawState = "Pending" | "Funded" | "Closed";
@@ -110,7 +120,8 @@ export type PooledBuyReport = { results: PooledBuyOutcome[]; draw: DrawSummary }
 export type AccountsResolver = (campaign: Hex) => Promise<Address[]>;
 
 export type WithdrawInput = { depositor: Address; amount: Uint; destination: Address };
-export type WithdrawReceipt = { payoutTx: Hex; queuedSpendTx: Hex };
+/** The payout's hash and the id of the charge recorded for it, queued by a later sweep. */
+export type WithdrawReceipt = { payoutTx: Hex; chargeId: string };
 
 /** What the router may ask of the pool. */
 export type PoolPort = {
@@ -129,8 +140,13 @@ export type PoolPort = {
    */
   campaignsOf?(depositor: Address): Promise<Hex[]>;
   closeDraw(campaign: Hex): Promise<DrawSummary | undefined>;
-  /** Funds every draw whose wait is over and posts every charge now due. */
-  sweep(accountsOf: AccountsResolver): Promise<{ funded: Hex[]; posted: string[] }>;
+  /**
+   * Posts every charge now due and funds every draw whose wait is over. With
+   * `queueOwed`, first queues what is owed in one batch: only the scheduled
+   * sweep passes it, because a sweep that rides on a trader's request would
+   * put that batch in the same window as the request's own buy.
+   */
+  sweep(accountsOf: AccountsResolver, options?: { queueOwed?: boolean }): Promise<{ funded: Hex[]; posted: string[]; queued?: number }>;
   buy(input: PooledBuyInput): Promise<PooledBuyReport>;
 };
 
@@ -153,6 +169,11 @@ export type PoolServiceOptions = {
   now?: () => Date;
   /** Seconds to wait before a charge is posted; random inside the window by default. */
   delaySeconds?: () => number;
+  /** Where owed spend waits for its batch; the same store the router uses, so instances agree. */
+  store?: StorePort;
+  /** Drives the batch shuffle; Math.random by default, fixed in tests. */
+  random?: () => number;
+  randomId?: () => string;
 };
 
 const randomDelay = (): number =>
@@ -169,6 +190,9 @@ export const createPoolService = (
 ): PoolPort => {
   const now = options.now ?? (() => new Date());
   const delay = options.delaySeconds ?? randomDelay;
+  const store = options.store ?? createMemoryStore();
+  const random = options.random ?? Math.random;
+  const randomId = options.randomId ?? (() => randomUUID());
 
   /** Chain time plus the wait: the contract compares this to block.timestamp. */
   const dueAt = async (): Promise<bigint> => {
@@ -176,11 +200,44 @@ export const createPoolService = (
     return block.timestamp + BigInt(delay());
   };
 
-  /** Queues the coarse form of a charge to its depositor; a charge under one grain is the pool's. */
-  const charge = async (depositor: Address, exact: bigint): Promise<Hex | undefined> => {
+  /**
+   * Records the coarse form of a charge as owed; a charge under one grain is
+   * the pool's. Nothing is sent: the sweep queues it, in a batch, later.
+   */
+  const charge = async (depositor: Address, exact: bigint): Promise<string | undefined> => {
     const posted = coarseCharge(exact);
     if (posted === 0n) return undefined;
-    return pool.queueSpend(sealDepositor(ledgerKey, depositor), posted, await dueAt());
+    const id = randomId();
+    await store.recordOwed({ id, depositor, amount: posted.toString(), incurredAt: now().toISOString() });
+    return id;
+  };
+
+  /**
+   * One transaction for everything owed: entries shuffled so their order says
+   * nothing about the order of the buys, each with its own random due time.
+   * A failed transaction releases the rows for the next sweep.
+   */
+  const queueOwed = async (): Promise<number> => {
+    const owed = await store.takeOwed(BATCH_LIMIT);
+    if (owed.length === 0) return 0;
+    for (let i = owed.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [owed[i], owed[j]] = [owed[j]!, owed[i]!];
+    }
+    const base = await chainSeconds();
+    try {
+      const tx = await pool.queueSpendBatch(
+        owed.map((o) => sealDepositor(ledgerKey, o.depositor)),
+        owed.map((o) => BigInt(o.amount)),
+        owed.map(() => base + BigInt(delay())),
+      );
+      await store.confirmOwed(owed.map((o) => o.id), tx);
+      return owed.length;
+    } catch (error) {
+      await store.releaseOwed(owed.map((o) => o.id));
+      console.error(`sweep: batch of ${owed.length} charges not queued: ${messageOf(error)}`);
+      return 0;
+    }
   };
 
   const chainSeconds = async (): Promise<bigint> => (await publicClient.getBlock()).timestamp;
@@ -209,8 +266,11 @@ export const createPoolService = (
             availableAt: iso(record.exitRequestedAt + BigInt(EXIT_DELAY_SECONDS)),
           };
 
+      const owed = BigInt(await store.owedFor(depositor));
+      const available = availableBalance(ledgerKey, depositor, inputs) - owed;
       return {
-        available: availableBalance(ledgerKey, depositor, inputs).toString(),
+        available: (available > 0n ? available : 0n).toString(),
+        owed: owed.toString(),
         deposited: record.deposited.toString(),
         spent: record.spent.toString(),
         openDraws: openDraws.toString(),
@@ -227,13 +287,13 @@ export const createPoolService = (
 
     async withdraw({ depositor, amount, destination }) {
       const value = BigInt(amount);
-      // The charge is queued before the payout, not after. Queue first and a
-      // failure between the two leaves a charge the sweep posts against a
+      // The charge is recorded before the payout, not after. Record first and
+      // a failure between the two leaves a charge the sweep queues against a
       // payout that never happened, which the exit refunds; pay first and the
       // same failure leaves ETH paid and nothing recorded, and a retry pays
       // it again. Recorded-but-unpaid is recoverable; paid-but-unrecorded is
       // not.
-      const queuedSpendTx = (await charge(depositor, value)) ?? `0x${"0".repeat(64)}`;
+      const chargeId = (await charge(depositor, value)) ?? "";
       // Paid by the operator, not the pool: a pool payout would publish the
       // depositor beside the address they chose to be paid at. The payout is
       // the exact amount asked for; the charge posted later is its coarse
@@ -247,7 +307,7 @@ export const createPoolService = (
       } as never);
       const receipt = await publicClient.waitForTransactionReceipt({ hash: payoutTx });
       if (receipt.status !== "success") throw new Error(`withdrawal payout reverted: ${payoutTx}`);
-      return { payoutTx, queuedSpendTx };
+      return { payoutTx, chargeId };
     },
 
     async openDraw({ campaign, depositor, amount }) {
@@ -295,7 +355,11 @@ export const createPoolService = (
      * trader until someone noticed, and let every queued charge run out its
      * twelve hour window. Now it costs that one draw and nothing else.
      */
-    async sweep(accountsOf) {
+    async sweep(accountsOf, options = {}) {
+      // Owed first, and only on the scheduled sweep: what the batch queues is
+      // charges recorded in earlier requests, sent from a transaction window
+      // that no trader's request opened.
+      const queued = options.queueOwed ? await queueOwed() : 0;
       const seconds = await chainSeconds();
 
       const posted: string[] = [];
@@ -305,7 +369,7 @@ export const createPoolService = (
         if (!depositor) continue;
         try {
           await pool.postQueued(entry.id, depositor);
-          posted.push(entry.id.toString());
+          posted.push(entry.id);
         } catch {
           // Past its window: the charge is the operator's loss, never the
           // trader's, and the exit must not be blocked waiting for it.
@@ -325,15 +389,15 @@ export const createPoolService = (
           await pool.fund(draw.campaign, accounts);
           funded.push(draw.campaign);
           // The headroom left the pool for accounts the trader owns. It is
-          // charged like any other spend: queued to the depositor, posted on
-          // its own timer, so nothing pairs the fund with a wallet.
+          // charged like any other spend: recorded now, queued by a later
+          // sweep, posted on its own timer, so nothing pairs the fund with a wallet.
           const depositor = openDepositor(ledgerKey, draw.ownerRef);
           if (depositor) await charge(depositor, seeded);
         } catch (error) {
           console.error(`sweep: draw ${draw.campaign} not funded: ${messageOf(error)}`);
         }
       }
-      return { funded, posted };
+      return { funded, posted, queued };
     },
 
     async buy({ campaign, depositor, target, buys }) {
@@ -353,12 +417,16 @@ export const createPoolService = (
   };
 
   /**
-   * One buy: reserve and send the principal, execute, then settle at the real
-   * cost. The principal cannot be checked by simulation first, because the
-   * account does not hold it until this call sends it. On failure the pool is
-   * made whole and the draw is charged nothing, so a failed buy never costs the
-   * trader; the operator absorbs the principal, which lands in the trader's own
-   * fleet account and is theirs to sweep with the owner escape hatch.
+   * One buy, one transaction. The pool sends the principal to the account and
+   * tells it to execute; if the buy reverts, the transaction reverts and the
+   * principal never left. The draw is charged principal plus the gas the
+   * contract measured, capped by the ceiling; the charge for the depositor
+   * is read back as the draw's spent delta rather than trusted from here.
+   *
+   * There is no rollback any more, and no window between funding and buying
+   * for the account's owner to act in. A failed buy costs the operator the
+   * gas of a reverted transaction, bounded by the limit below, and nothing
+   * else.
    */
   async function settle(
     campaign: Hex,
@@ -367,49 +435,19 @@ export const createPoolService = (
   ): Promise<PooledBuyOutcome & { charged?: bigint }> {
     const principal = BigInt(buy.value);
     const gasCeiling = BigInt(buy.maxCost);
-    const args = [target, principal, buy.callData] as const;
-
-    try {
-      await pool.fundPrincipal(campaign, buy.account, principal, gasCeiling);
-    } catch (error) {
-      return { account: buy.account, status: "rejected", reason: reasonOf(error) };
-    }
-
+    const before = (await pool.drawOf(campaign))?.spent ?? 0n;
     let hash: Hex;
-    let charged: bigint;
     try {
-      hash = await wallet.writeContract({
-        ...ctx(wallet), address: buy.account, abi: ACCOUNT_ABI, functionName: "execute", args,
-        // The ceiling is a promise to the trader; the transaction is bounded
-        // by it, not only charged up to it.
-        ...(await gasLimitFor(gasCeiling)),
-      } as never);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash });
-      if (receipt.status !== "success") throw new Error("execute_reverted");
-      const gas = receipt.gasUsed * receipt.effectiveGasPrice;
-      charged = principal + (gas > gasCeiling ? gasCeiling : gas);
+      const limit = await gasLimitFor(gasCeiling);
+      hash = await pool.fundAndExecute(campaign, buy.account, principal, gasCeiling, target, buy.callData, limit.gas);
     } catch (error) {
-      // The buy did not happen. The principal is already in the trader's own
-      // fleet account; the pool is made whole by the operator so the draw is
-      // charged nothing.
-      await pool.rollback(campaign, principal);
+      // Logged as well as returned: a refused buy the browser shows as "failed"
+      // should be findable in the function logs, first line only, no secrets.
+      console.warn(`buy refused for ${buy.account}: ${messageOf(error)}`);
       return { account: buy.account, status: "rejected", reason: reasonOf(error) };
     }
-
-    // The buy is mined. From here a failure is an accounting failure, never
-    // a reason to roll back: a rollback now would refund a principal that was
-    // spent and leave the trader with both the tokens and the money.
-    try {
-      await pool.commit(campaign, charged);
-    } catch (error) {
-      try {
-        await pool.commit(campaign, charged);
-      } catch {
-        console.error(`buy ${hash} mined but not committed: ${messageOf(error)}`);
-        return { account: buy.account, status: "sponsored", txHash: hash, reason: "commit_pending" };
-      }
-    }
-    return { account: buy.account, status: "sponsored", txHash: hash, charged };
+    const after = (await pool.drawOf(campaign))?.spent ?? before;
+    return { account: buy.account, status: "sponsored", txHash: hash, charged: after - before };
   }
 
   /**

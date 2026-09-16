@@ -42,10 +42,13 @@ describe("Pooled funding and buys", () => {
     const publicClient = await viem.getPublicClient();
     const chainId = await publicClient.getChainId();
 
-    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address]);
+    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
     const factory = await viem.deployContract("FleetAccountFactory", [operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
-    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address]);
+    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
+    // The pool funds and executes a buy in one transaction; the policy names it
+    // so the fleet accounts admit it as an executor.
+    await policy.write.setPool([poolContract.address]);
     const sink = await viem.deployContract("FleetTestSink", []);
 
     const key = ledgerKey(OPERATOR_KEY);
@@ -162,17 +165,27 @@ describe("Pooled funding and buys", () => {
     assert.ok(draw.spent < parseEther("0.02"), "and stay inside the draw");
     assert.equal(draw.reserved, 0n, "nothing left in flight");
 
-    // Every charge against the depositor is queued, not posted beside what
-    // caused it: the headroom the sweep seeded, then one per buy.
-    assert.equal(await s.poolContract.read.queuedSpendCount(), 3n);
-    const headroomCharge = (await s.poolContract.read.queuedSpendAt([0n])).amount;
-    assert.ok(headroomCharge < HEADROOM * 5n && HEADROOM * 5n - headroomCharge <= CHARGE_GRAIN, "the seeded headroom is a charge like any other, posted in its coarse form");
-    assert.equal((await s.poolContract.read.queuedSpendAt([0n])).posted, false);
+    // Nothing depositor-keyed has left the operator yet: the buy queued no
+    // charge in its own window, and neither did the sweep that funded.
+    assert.equal(await s.poolContract.read.queuedSpendCount(), 0n, "a buy is followed by no charge");
     assert.equal((await s.poolContract.read.depositorOf([s.trader!.account.address]))[1], 0n);
+
+    // The next sweep queues everything owed in one batch: the headroom the
+    // earlier sweep seeded, then one per buy.
+    const batched = await s.elsewhere("sweep", {});
+    assert.equal((batched.body as { queued: number }).queued, 3);
+    assert.equal(await s.poolContract.read.queuedSpendCount(), 3n);
+    const entries = await Promise.all([0n, 1n, 2n].map((i) => s.poolContract.read.queuedSpendAt([i])));
+    const amounts = entries.map(([, e]) => e.amount);
+    assert.ok(amounts.some((a) => a < HEADROOM * 5n && HEADROOM * 5n - a <= CHARGE_GRAIN), "the seeded headroom is a charge like any other, in its coarse form");
+    assert.equal(entries[0]![1].posted, false);
+    const ids = entries.map(([id]) => id);
+    assert.equal(new Set(ids).size, 3, "three distinct hashed ids");
+    assert.ok(ids.every((id) => !/^0x0+[0-2]$/.test(id)), "none of them is a counter");
 
     await travel(200);
     const posted = await s.elsewhere("sweep", {});
-    assert.deepEqual((posted.body as { posted: string[] }).posted, ["0", "1", "2"]);
+    assert.deepEqual([...(posted.body as { posted: string[] }).posted].sort(), [...ids].sort(), "every queued charge posted, by id");
     const spent = (await s.poolContract.read.depositorOf([s.trader!.account.address]))[1];
     assert.ok(spent < draw.spent && draw.spent - spent <= 3n * CHARGE_GRAIN, "the trader is charged what left the pool for their fleet, less at most one grain per charge, which is the pool's");
     assert.equal(spent % CHARGE_GRAIN, 0n, "and never the exact figure the campaign side recorded");

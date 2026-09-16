@@ -11,6 +11,7 @@ import { campaignKey, createFleetChain } from "../../src/fleet/chain-service.js"
 import { createMarket, type MarketPort } from "../../src/fleet/market.js";
 import { ledgerKey } from "../../src/fleet/pool-ledger.js";
 import { createPoolService } from "../../src/fleet/pool-buy.js";
+import { createMemoryStore } from "../../src/fleet/store.js";
 import type { AuthEnvelope } from "../../src/fleet/types.js";
 
 /**
@@ -45,10 +46,12 @@ describe("A seeded fleet order over two polls", () => {
     const publicClient = await viem.getPublicClient();
     const chainId = await publicClient.getChainId();
 
-    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address]);
+    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
     const factory = await viem.deployContract("FleetAccountFactory", [operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
-    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address]);
+    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address]);
+    // The pool funds and executes a buy in one transaction; the policy names it.
+    await policy.write.setPool([poolContract.address]);
     const sink = await viem.deployContract("FleetTestSink", []);
 
     const pool = createPoolService(
@@ -72,10 +75,12 @@ describe("A seeded fleet order over two polls", () => {
     /** The chain's clock, so the service and the EVM agree on what is due. */
     const clock = async () => new Date(Number((await publicClient.getBlock()).timestamp) * 1000);
 
-    // Each router is its own serverless instance: separate memory, one chain.
+    // Each router is its own serverless instance: separate memory, one chain,
+    // and one store between them, as Neon is between instances on chit.tools.
+    const store = createMemoryStore();
     const instance = () => {
-      const service = new CampaignService(serviceConfig, { nonceSecret: NONCE_SECRET });
-      return { service, router: new CampaignRouter({ service, pool, chain, market, now: () => nowValue }) };
+      const service = new CampaignService(serviceConfig, { nonceSecret: NONCE_SECRET, store });
+      return { service, router: new CampaignRouter({ service, pool, chain, market, store, now: () => nowValue }) };
     };
     let nowValue = await clock();
     const first = instance();
@@ -160,20 +165,23 @@ describe("A seeded fleet order over two polls", () => {
     assert.ok(done1.length >= 3 && done1.length < 5, `expected the due slices only, got ${done1.length}`);
     for (const e of done1) assert.equal(e.status, "sponsored");
 
-    // Past the window, from another instance, with the browser's pending list.
+    // Past the window, from another instance, and with the browser claiming
+    // EVERY slice is still pending: the store, not the browser, is the guard.
     await travel(31 * 60);
-    const pending = slices.map((x) => x.index).filter((i) => !done1.some((e) => e.index === i));
-    const second = await s.elsewhere("trade", { campaign: s.campaign, order, pending });
+    const second = await s.elsewhere("trade", { campaign: s.campaign, order, pending: slices.map((x) => x.index) });
     const done2 = (second.body as { executed: { index: number; status: string }[]; nextDueAt: string | null }).executed;
     assert.equal(done1.length + done2.length, 5, "every slice ran once across the two polls");
-    for (const e of done2) assert.equal(e.status, "sponsored");
+    for (const e of done2) {
+      assert.equal(e.status, "sponsored");
+      assert.ok(!done1.some((d) => d.index === e.index), `slice ${e.index} ran on both instances`);
+    }
     assert.equal((second.body as { nextDueAt: string | null }).nextDueAt, null);
 
-    // Asking the same instance again for a slice it already ran does nothing.
-    // Across instances the browser's pending list is the guard, which the
-    // second poll above exercised: it sent only what the first had not run.
+    // Asking again, on the same instance or a third one, for slices already run does nothing.
     const again = await s.same("trade", { campaign: s.campaign, order, pending: [done1[0]!.index] });
     assert.equal((again.body as { executed: unknown[] }).executed.length, 0);
+    const third = await s.elsewhere("trade", { campaign: s.campaign, order, pending: slices.map((x) => x.index) });
+    assert.equal((third.body as { executed: unknown[] }).executed.length, 0);
 
     // The draw paid for exactly the five slices, and the sink received them.
     const read = await s.same("read", { campaign: s.campaign });

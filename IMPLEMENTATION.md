@@ -1545,6 +1545,169 @@ one `evm_mine` first; and the bundler transaction has to be priced like the
 operation, or the refund at the operation's price does not match what the bundler
 paid at the node's default.
 
+## The hackathon layer is retired (2026-09-15)
+
+The repo carried two products. The first, a confidential ERC-4337 paymaster on iExec Nox for Sepolia, was the hackathon entry; the second, Chit Fleet on Robinhood Chain, is the one that is live. The first still owned the front door: `/app/` served "New sponsorship round", the hackathon's page, while the real app sat at `/app/fleet.html`. Today the hackathon is gone from this tree: its six pages and their tests, `spikes/`, the seven `Chit*.sol` contracts, the twenty-two service modules and their tests, the four API routes, five live scripts, nine Sepolia deployment records, the Nox plugin and Sepolia fork in `hardhat.config.ts`, and the six `verify.sh` phases that checked them against Sepolia. `/app` now lands on the fleet wizard, locally and on Vercel. Nothing under `src/fleet`, `api/fleet`, `contracts/fleet`, `test/fleet` or `test/fork/fleet-*` imported any of it; the Fleet suites are unchanged and green. The public hackathon repo, `ajanaku1/chit`, keeps the code and its history.
+
+Two checks in `verify.sh` were already red before this change and were left alone: "scaffolding files are gitignored" and the app's `npm run build`, which fails on the store work in flight in another branch, not on this one.
+
+## Audit fixes, round one: service guards on main, contract one-liners on a branch (2026-09-15)
+
+Three commits on `main` close the service-side findings that needed no
+redeploy. `pool-buy.ts`: the sweep posts charges first and funds each draw in
+its own try (A3), skips a draw below its own headroom (A3), charges the seeded
+headroom to the depositor (A1), queues a withdrawal's charge before paying it
+(A12), retries a failed commit after a mined buy instead of rolling it back
+(A11), bounds the execute transaction by the gas ceiling (A9), and keeps the
+delay floor above the contract's (A37). `campaign-routes.ts`: a wallet whose
+exit is pending gets no draw, buy or withdrawal (F7); a buy re-reads the
+session from the chain and refuses on paused or revoked (A14); withdraw,
+activate, top-up and buy are serialized per wallet and activate re-reads the
+balance after the chain activation (A5, A6); a draw below its minimum, a token
+outside `FLEET_TOKEN_ALLOWLIST`, a malformed account list and a gas ceiling
+below the floor are refused (A3, A8, A41, A9). `service-runtime.ts`: every
+configured address must hold code, checked once at boot, refused with a named
+reason after (A33); the catch-all logs an error's first line only (A63).
+Tests: `test/fleet/pool-sweep.test.ts`, `test/fleet/money-route-guards.test.ts`;
+the pooled funding fork test now expects the headroom charge.
+
+`audit/contract-fixes` holds the contract changes, which need a redeploy on
+46630 and are the founder's call: `deposit` refuses a wallet whose exit is
+pending (F1), `commit` refuses an amount below the principal that left (F4),
+`queueSpend` refuses a `dueAt` beyond `POST_WINDOW` (F5), and `paused` now
+gates `fund`, `topUpDraw` and `claimOperator` too (A36), so a guardian that
+can only pause would actually stop the money. The pre-audit tests for F1, F4
+and F5 assert the refusal now; F2 and F3 still pass as reproductions. The
+spec's error list matches the contract again (A67, partly).
+
+Later the same day, two more. On `main`: charges are posted in coarse units,
+rounded down to a grain of 0.00001 ETH and always strictly below the exact
+amount, so the wei value in `Committed` never reappears in `SpendPosted`
+and a withdrawal's payout never equals its charge (A4 and A30, the amount
+half; the grain is the pool's). On the branch: a `guardian` the operator
+sets, which can call `pause()` and nothing else; only the operator unpauses
+or changes it (R2a from the pre-audit). No constructor change, so nothing
+in the deploy scripts moves.
+
+Still open, and wanting the founder in the room: the time join (a charge is
+queued in the operator's next transaction after the buy; breaking that needs
+the contract to carry uncharged spend until a sweep batches it), random
+queue ids, and a multisig operator (F2, F8).
+
+## The atomic buy: funding and execution in one transaction (2026-09-15)
+
+F3 and A22 were the same defect from two sides: the service sent the
+principal in one transaction and executed the buy in another, so a buy that
+reverted left the principal in the trader's own account and the operator
+refunded the pool from its wallet; and between the two transactions the
+account's owner could take the principal with the escape hatch. Both gaps
+were the gap between two transactions. Now there is one.
+
+`FleetPool.fundAndExecute` sends the principal and calls the account's
+`execute` in the same call; a revert anywhere reverts the funding too. The
+draw is charged principal plus the gas measured around the inner call,
+capped by the ceiling, so the reservation, the commit and the rollback have
+nothing left to do. `FleetAccount.execute` admits the pool as a caller
+through `FleetSessionPolicy.pool()`, which the operator sets once with
+`setPool`; the deploy script does it right after deploying the pool. The
+service's `settle` is one write and reads the charge back as the draw's
+spent delta.
+
+Tests: `test/fleet/FleetPoolAtomic.t.sol` (a buy lands and is charged
+principal plus measured gas; a reverting buy moves nothing and leaves no
+reservation; the owner has no gap to act in; only the policy-named pool may
+execute; pause and the draw cap hold). The pool fork tests set the pool on
+the policy in their setup. 26 Solidity, 53 fork, 169 unit, green.
+
+Three contracts change bytecode, so this is a redeploy of the pool, the
+policy and the factory on 46630, in that order, then `setPool`. The old
+`fundPrincipal`, `commit` and `rollback` are still in the contract for the
+Stage 1 shape and unused by the service; they should go once the atomic
+path is live, and the pre-audit's F2 and F3 tests with them.
+
+## Operator hardening: the store, the batch, the hash, the admin (2026-09-16)
+
+Four items handed back after the atomic buy, built on `feat/operator-hardening`
+on top of `audit/contract-fixes`. They are one problem: a single hot key on
+stateless instances whose transaction pattern leaked the link the pool hides.
+
+**The store** (`src/fleet/store.ts`, `store-neon.ts`). Idempotency results,
+challenge-nonce burns, executed-slice claims and the serialization of money
+operations lived in per-instance `Map`s; a retry that landed on a second Vercel
+instance saw none of them, and two instances signing together collided on the
+operator's nonce. They are now behind one port with a memory adapter (the old
+behaviour, the default without `DATABASE_URL`) and a Neon adapter where every
+guard is one atomic statement and the operator lock is a lease. The two-instance
+fork test now sends the second instance the *full* pending list and still gets
+every slice once; without the shared store it runs them twice (checked).
+
+**The batch.** A buy's charge used to be `queueSpend`, the operator's next
+nonce, seconds later; `README.md:68` admitted the join. `charge()` now records
+owed spend in the store and sends nothing; the *scheduled* sweep queues
+everything owed in one `queueSpendBatch`, shuffled, each entry on its own
+random timer. The opportunistic sweep that rides on trader requests never
+queues, or the batch would sit beside that request's buy. The balance subtracts
+owed spend at once (`owed` on the balance view), so nothing reads as available
+that a charge already claims. `queueSpend` is gone from the ABI.
+
+What this does and does not do, plainly: a charge no longer follows its buy in
+time or in the same window, and on a busy pool a batch mixes many depositors.
+On a quiet pool with one trader the batch is still the operator's next
+transaction, hours later; the observer test asserts the gap and the single
+batch, not nonce distance, because nonce distance is not a promise we can keep
+at low volume. Exit safety in numbers: owed spend waits at most one sweep
+interval to be queued, then at most `POST_WINDOW` (12 h) to post; at two sweeps
+a day that sums to `EXIT_DELAY` with zero margin. The plan sets the cron to every
+four hours. The Vercel plan is Hobby, whose crons run at most daily, so the
+cadence lives in `.github/workflows/sweep.yml` (every four hours, plan
+independent) with the two daily Vercel crons kept as a fallback. Because the
+scheduled sweep now picks the batch's moment, `GET /api/fleet/sweep` honours
+`CRON_SECRET` when set (`src/fleet/sweep-trigger.ts`); unset, it is open as before.
+
+**The hash.** Queue ids were `_queued.length`, so the k-th posting was the k-th
+queueing was the k-th buy. Ids are now `keccak256(entry, prevrandao, position)`,
+`postQueued(bytes32)`, `queuedSpendAt(i) → (id, entry)`.
+
+**The admin.** `operator` was `immutable` on the pool, the policy and the
+factory; rotation meant redeploy, and the only key was hot. `FleetPool` and
+`FleetSessionPolicy` are `Ownable2Step`: the owner is a cold admin that rotates
+the operator, unpauses, names the guardian and claims gas; the operator moves
+money and nothing else; `pause()` is guardian, operator or admin. The factory's
+operator stays immutable (rotating it changes every predicted account address).
+The deploy scripts require `FLEET_ADMIN_ADDRESS`, refuse the deployer's own
+address, deploy with the deployer as owner so `setPool` can run, then offer
+ownership to the admin, who accepts with one transaction per contract.
+
+Tests: 190 unit, 41 Solidity (26 → 41), the pool fork suite green with the
+observer's new gap assertion. `1291cd6` (retire the hackathon layer) had
+removed `ChitCounter`/`ChitToken`, which five Stage 1 fork tests still
+deployed; they were test fixtures, not product, so the counter is back as
+`contracts/fleet/FleetTestCounter.sol` and the token test uses
+`FleetVenueToken`. `fleet-foundation` is green again.
+
+Still to do with the founder present (plan, phase 5): the second redeploy on
+46630 with `FLEET_ADMIN_ADDRESS` and `DATABASE_URL`; the cron cadence once the
+plan is confirmed; FR-012, SC-005, plan/research/data-model and the README
+sentence, written only after the redeploy passes; tasks T041–T046 so the
+progress sheet moves on their gates; the landing's Draw Cap sheet to
+`fundAndExecute`; and dropping `fundPrincipal`/`commit`/`rollback` after T040.
+
+## CHIT buyback and burn, a contract and not a wallet (2026-09-16, advisor, branch feat/chit-buyback)
+
+Tokenomics only, proposed to the group and not deployed: `ChitBuyback.sol`
+takes ETH by plain transfer, and anyone can call `buyAndBurn`, which
+spends 1% of the balance (floor 0.002, cap 0.1 ETH) no more than hourly,
+quotes the buy from the pool's own state on chain, refuses a fill more than
+5% under it, buys through the Universal Router and calls `burn()` on the
+token. No owner, no withdraw, no parameter that changes. On a fork of
+mainnet against the live CHIT pool: 0.01 ETH bought 177,001.70 CHIT, the
+hook took exactly 2.00%, the supply fell by the burn; the floor, the cap,
+the interval and the guard each proved. A keeper workflow calls it hourly,
+the daily post reads the day's events and the contract's counters, a deploy
+script checks the pool id and a price before recording. The team's rule for
+what goes in (10% of fees, one point more per 100k of mcap) stays the
+team's, posted as a promise; a fee splitter can automate the deposit later.
+`docs/chit-buyback.md`.
 ## Chit Bot, the testnet playground (2026-09-16, advisor, branch feat/chit-bot)
 
 The Telegram trading bot, the card every degen knows, on a chain that has

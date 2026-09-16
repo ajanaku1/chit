@@ -130,6 +130,11 @@ export const encodeBuyCall = (signature: string, token: Address, value: bigint, 
 /** Ten thousand basis points; the slippage the operator tolerates is expressed in them. */
 export const BPS = 10_000n;
 
-/** The least output a buy may accept: the spot estimate less the tolerated slippage. */
+/**
+ * The least output a trade may accept: the quote less the tolerated
+ * slippage. The quote (`quoteExactIn`) already has the pool's fee and the
+ * trade's own price impact in it, so the allowance is slippage and nothing
+ * else; taking the fee off here again would spend it twice.
+ */
 export const minOutFor = (estimatedOut: bigint, maxSlippageBps: number): bigint =>
   (estimatedOut * (BPS - BigInt(maxSlippageBps))) / BPS;

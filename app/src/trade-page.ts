@@ -144,7 +144,10 @@ class TradePage {
     this.#render();
   }
 
-  /** Sums holdings across the fleet's wallets for every token an order has ever touched. */
+  /**
+   * Sums holdings across the fleet's wallets: the venue's tokens always (the
+   * service adds them), plus any token an order in this browser has touched.
+   */
   async #holdings(): Promise<void> {
     const wallet = this.#wallet;
     const fleet = this.#fleet;
@@ -153,19 +156,20 @@ class TradePage {
     for (const record of this.#store?.list() ?? []) {
       if (record.order.campaign === fleet.campaign) tokens.set(record.order.token.toLowerCase(), record.symbol);
     }
-    if (tokens.size === 0) return;
     try {
       const body = (await signedFleetApi(wallet, "holdings", {
         campaign: fleet.campaign,
         tokens: [...tokens.keys()],
-      })) as { holdings?: Holding[] };
+      })) as { holdings?: Holding[]; symbols?: Record<string, string> };
       const totals = new Map<string, bigint>();
       for (const holding of body.holdings ?? []) {
         for (const [token, amount] of Object.entries(holding.tokens)) {
           const key = token.toLowerCase();
           totals.set(key, (totals.get(key) ?? 0n) + BigInt(amount));
+          if (!tokens.has(key)) tokens.set(key, body.symbols?.[key] ?? key.slice(0, 8));
         }
       }
+      if (tokens.size === 0) return;
       const dl = el("holdings");
       dl.replaceChildren();
       for (const [token, symbol] of tokens) {
@@ -371,7 +375,7 @@ class TradePage {
         store.update(current.order.id, (record) => applyResults(record, executed));
       } catch (error) {
         if (error instanceof RequestFailed && error.status >= 400 && error.status < 500) {
-          const reason = error.code;
+          const reason = error.reason ? `${error.code}: ${error.reason}` : error.code;
           store.update(current.order.id, (record) =>
             applyResults(record, [...dueNow].map((index) => ({ index, status: "rejected", reason }))),
           );
@@ -473,7 +477,8 @@ class TradePage {
     for (const slice of record.slices) {
       const row = document.createElement("li");
       const label = document.createElement("span");
-      label.textContent = `${toEth(slice.amountWei)} ETH · ${slice.state}`;
+      // The reason rides along: "failed" alone says nothing a trader can act on.
+      label.textContent = `${toEth(slice.amountWei)} ETH · ${slice.state}${slice.reason && slice.state !== "sponsored" ? ` · ${slice.reason}` : ""}`;
       row.append(label);
       if (slice.txHash) row.append(this.#hashRow(slice.txHash));
       slices.append(row);

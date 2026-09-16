@@ -18,3 +18,7 @@
 /*.md
 /hardhat.config.ts
 /verify.sh
+
+# screen recordings dropped in the root are never part of a deploy
+/*.mov
+/*.mp4

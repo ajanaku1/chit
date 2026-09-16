@@ -17,8 +17,17 @@ on:
   push:
     branches: [main]
   # Run by hand once after setting the secrets: the bot says hello in the
-  # group, which proves the token and the chat id before the first push.
+  # group, which proves the token and the chat id before the first push. With
+  # a range given, it announces that range instead: for a push it missed.
   workflow_dispatch:
+    inputs:
+      before:
+        description: 'Announce commits after this ref (exclusive); leave empty to just say hello'
+        required: false
+      after:
+        description: 'Up to this ref (inclusive); defaults to main'
+        required: false
+        default: 'main'
 
 permissions:
   contents: read
@@ -46,4 +55,6 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANNOUNCE_BEFORE: ${{ inputs.before }}
+          ANNOUNCE_AFTER: ${{ inputs.after }}
         run: node scripts/announce-push.mjs

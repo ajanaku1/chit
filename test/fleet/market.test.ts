@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { decodeSlot0, estimateOut, poolIdFor, slot0Slot } from "../../src/fleet/market.js";
+import { decodeSlot0, estimateOut, poolIdFor, quoteExactIn, slot0Slot } from "../../src/fleet/market.js";
 import { NATIVE_ETH, VENUE_POOL, venuePoolKey } from "../../src/fleet/v4-swap.js";
 
 /** The seeded venue pool on 46630, from deployments/fleet-46630.json. */
@@ -61,4 +61,20 @@ test("an exact-in quote includes the fee and the price impact, and shrinks towar
   assert.ok(back < parseEther("0.001") && back > parseEther("0.0008"), `a round trip at one state loses fee and impact twice: ${back}`);
   assert.equal(quoteExactIn(1n, sqrtP, 0n, true, 3000), 0n, "no liquidity, no fill");
   assert.notEqual(liquiditySlot(`0x${"11".repeat(32)}`), slot0Slot(`0x${"11".repeat(32)}`));
+});
+
+test("a quote with liquidity follows the pool's curve: more in, less out per wei, and never above the spot estimate", () => {
+  // The venue pool on 46630 as read on 2026-09-16: ~0.006 ETH of depth. A
+  // 0.0002 ETH buy moves it about 3%; the spot estimate ignores that and
+  // every buy came back V4TooLittleReceived. The quote must include it.
+  const L = 158113883008418966n;
+  const sqrtP = 2088889848049424137305055772769n;
+  const small = quoteExactIn(2n * 10n ** 14n, sqrtP, L, true, 0);
+  const spot = estimateOut(2n * 10n ** 14n, sqrtP);
+  assert.ok(small < spot, "impact makes the real output lower than spot");
+  const impact = Number(spot - small) / Number(spot);
+  assert.ok(impact > 0.03 && impact < 0.035, `about 3.2% impact on this pool, got ${(impact * 100).toFixed(2)}%`);
+  const big = quoteExactIn(10n ** 15n, sqrtP, L, true, 0);
+  assert.ok(big < 5n * small, "five times the input buys less than five times the output");
+  assert.equal(quoteExactIn(2n * 10n ** 14n, sqrtP, 0n, true, 0), 0n, "without a liquidity reading there is no fill here; the venue quote falls back to the spot estimate");
 });

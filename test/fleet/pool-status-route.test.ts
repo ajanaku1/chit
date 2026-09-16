@@ -64,6 +64,23 @@ test("status answers without a signature while a fleet is being funded", async (
   assert.equal(body.draw.dueAt, draw.dueAt);
 });
 
+test("status accepts the chain key itself, as list hands it out, without hashing it again", async () => {
+  const key = `0x${"e3".repeat(32)}`;
+  // The fakes answer only for the key as given: a re-hash finds nothing.
+  const pool = {
+    drawOf: async (asked: string) => (asked === key ? draw : undefined),
+    ownerOf: async () => "0x00000000000000000000000000000000000a11ce" as Address,
+  } as unknown as PoolPort;
+  const chain = { sessionOf: async (asked: string) => (asked === key ? session : undefined) } as unknown as FleetChain;
+  const router = new CampaignRouter({ service: new CampaignService(serviceConfig), pool, chain });
+  const result = await router.handle({ action: "status", body: { campaign: key } });
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal((result.body as { campaign: string }).campaign, key);
+  // And a friendly id is still hashed, as before.
+  const byId = await router.handle({ action: "status", body: { campaign: "c-1" } });
+  assert.equal(byId.status, 409);
+});
+
 test("status reports Active once the draw is funded", async () => {
   const funded = { ...draw, state: "Funded" as const };
   const result = await makeRouter({ draw: funded }).handle({ action: "status", body: { campaign: "c-1" } });
