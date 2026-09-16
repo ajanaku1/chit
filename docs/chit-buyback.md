@@ -183,7 +183,9 @@ burned so far as one number, the share of the minted billion, the balance
 waiting, the next buy as a countdown, the last buy, today's share of the
 fees by the team's rule, the log of every funding and every buy with its
 explorer link, the mechanism in four lines, and the immutable parameters.
-Lowercase, and nothing on it is typed in.
+Lowercase, in Outfit, on the brand's ink and coral; the hero is the mark
+from the Higgsfield banner cut free of its words (`landing/public/bot/burn-mark.png`)
+with embers drawn over it. Nothing on it is typed in.
 
 The numbers come from `api/burn.js`, one JSON read server-side from the
 contract and its events (the chain's public RPC rate-limits bursts and has
