@@ -5,6 +5,11 @@ burns it, in a contract nobody can drain and everybody can read. Not a
 promise about price, not a product feature; a fact of the token, if the
 group wants it. Nothing here is deployed until the GC says so.
 
+**Decided by the GC, 2026-09-16: the default parameters below, as proposed.**
+`spendBps` 100 (1% of the balance a call), `minSpend` 0.002 ETH, `maxSpend`
+0.1 ETH, `interval` 3600 s, `maxSlipBps` 500 (5% under the pool's quote).
+Immutable once deployed; a different number is a new contract.
+
 ## The idea, as proposed
 
 1. The team seeds the contract with 1 ETH.
@@ -28,8 +33,8 @@ anyone can call it, and a keeper makes sure someone does.
 
 Each call:
 
-- waits at least `interval` since the last one (proposed: one hour);
-- spends `spendBps` of the balance (proposed: 1%), never less than
+- waits at least `interval` since the last one (decided: one hour);
+- spends `spendBps` of the balance (decided: 1%), never less than
   `minSpend` (0.002 ETH; the whole balance when less is left, so the last
   wei is spent and not left as dust) and never more than `maxSpend`
   (0.1 ETH, so no single buy moves the pool much);
