@@ -24,6 +24,7 @@ jobs:
             scripts/announce-pool.mjs
             scripts/announce-token.mjs
             scripts/announce-buyback.mjs
+            landing/public/bot/buyback.png
             deployments/fleet-46630.json
           sparse-checkout-cone-mode: false
 
