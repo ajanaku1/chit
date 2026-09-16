@@ -102,7 +102,7 @@ const signed = async (service: CampaignService, action: string, body: Record<str
 const key = (suffix: string) => `fleet-${suffix.padEnd(16, "0")}`;
 
 /** A router with an Active, 5-wallet campaign, ready for a fleet buy. */
-const activeCampaign = async (options: { now?: () => Date } = {}) => {
+const activeCampaign = async (options: { now?: () => Date; venueTokens?: Address[] } = {}) => {
   const service = new CampaignService(serviceConfig);
   const chain = new FakeChain();
   const market = new FakeMarket();
@@ -114,6 +114,7 @@ const activeCampaign = async (options: { now?: () => Date } = {}) => {
     submitter: chain,
     market,
     ...(options.now ? { now: options.now } : {}),
+    ...(options.venueTokens ? { venueTokens: options.venueTokens } : {}),
   };
   const router = new CampaignRouter(deps);
 
@@ -232,6 +233,16 @@ test("holdings reports each fleet wallet's ETH and the tokens the browser asks a
   const holdings = (res.body as { holdings: { wallet: string; tokens: Record<string, string> }[] }).holdings;
   assert.equal(holdings.length, accounts.length);
   assert.ok(TOKEN.toLowerCase() in holdings[0]!.tokens);
+});
+
+test("holdings with no token list is the portfolio: the venue's tokens, each with its symbol", async () => {
+  const { router, service, campaign, accounts } = await activeCampaign({ venueTokens: [TOKEN] });
+  const res = await router.handle(await signed(service, "holdings", { campaign }));
+  assert.equal(res.status, 200);
+  const body = res.body as { holdings: { wallet: string; tokens: Record<string, string> }[]; symbols: Record<string, string> };
+  assert.equal(body.holdings.length, accounts.length);
+  assert.ok(TOKEN.toLowerCase() in body.holdings[0]!.tokens, "the venue token is there without the browser asking");
+  assert.equal(body.symbols[TOKEN.toLowerCase()], "VEN");
 });
 
 test("an order is refused while the wallet's exit is pending", async () => {
