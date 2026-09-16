@@ -10,10 +10,14 @@
  * the address it says so and exits 0, without the secrets it prints.
  *
  *   BUYBACK_ADDRESS   the contract
- *   BUYBACK_SHARE     what the team sends in, as text for the post ("10% of
- *                     fees, plus one point every 100k of mcap"); the contract
- *                     cannot know it, the team does, and it is posted as a
- *                     promise, not a reading
+ *   BUYBACK_SHARE     the team's rule for what goes in, as text; default
+ *                     "10% of the fleet fees, plus one point for every 100k
+ *                     of mcap". The post also works the rule out for the day
+ *                     from the live market cap (DexScreener), so "today:
+ *                     13% at 300k" is a reading of the rule, while the ETH
+ *                     that actually arrives is the contract's own count
+ *   BUYBACK_SHARE_BASE  the rule's starting share in percent, default 10
+ *   BUYBACK_SHARE_STEP_USD  one point more per this much market cap, default 100000
  *   BUYBACK_BANNER    the picture on top: a local file (default
  *                     landing/public/bot/buyback.png, checked out by the
  *                     workflow) or an https URL; missing means a text post
@@ -30,7 +34,10 @@ const chat = process.env.TELEGRAM_CHAT_ID;
 const BANNER = process.env.BUYBACK_BANNER ?? "landing/public/bot/buyback.png";
 const RPC = process.env.ROBINHOOD_MAINNET_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
 const BUYBACK = (process.env.BUYBACK_ADDRESS ?? "").toLowerCase();
-const SHARE = process.env.BUYBACK_SHARE ?? "";
+const SHARE = process.env.BUYBACK_SHARE ?? "10% of the fleet fees, plus one point for every 100k of mcap";
+const SHARE_BASE = Number(process.env.BUYBACK_SHARE_BASE ?? 10);
+const SHARE_STEP_USD = Number(process.env.BUYBACK_SHARE_STEP_USD ?? 100_000);
+const PAIR = process.env.CHIT_PAIR_ID ?? "0x84a4f18cfab0b389a63c4d8a56d08f021a6fd5efb0b0b3617cfbbd6706f09f41";
 const CHIT = (process.env.CHIT_TOKEN_ADDRESS ?? "0xd523a627030509021cc39b6d7c8543417d3e50d8").toLowerCase();
 const MINTED = 1_000_000_000n * 10n ** 18n;
 // The mainnet explorer: explorer.mainnet.chain.robinhood.com only redirects here, dropping the path.
@@ -89,6 +96,15 @@ for (const log of logs) {
   else { dayBuys += 1; daySpent += w[0]; dayBurned += w[2]; }
 }
 
+// The rule, worked out for today from the live market cap; absent when the market cannot be read.
+let today = null;
+try {
+  const r = await fetch(`https://api.dexscreener.com/latest/dex/pairs/robinhood/${PAIR}`, { headers: { "user-agent": "chit-buyback-stats/1" } });
+  const mcap = Number((((await r.json()).pairs ?? [])[0] ?? {}).marketCap);
+  if (Number.isFinite(mcap) && mcap > 0) today = { mcap, share: SHARE_BASE + Math.floor(mcap / SHARE_STEP_USD) };
+} catch { /* the contract's numbers stand on their own */ }
+const usd = (n) => "$" + Math.round(n).toLocaleString("en-US");
+
 const lines = [
   "🔥 <b>CHIT buyback and burn</b>, today",
   "",
@@ -97,7 +113,7 @@ const lines = [
   `in the contract now: ${eth(balance)} ETH · next buy ${eth(nextSpend)} ETH${nextSpend > 0n ? (now >= Number(dueAt) ? ", due now" : `, due in ${Math.ceil((Number(dueAt) - now) / 60)} min`) : ""}`,
   `supply after burns: ${chit(supply)}`,
   "",
-  `how it works: ETH goes in, a contract with no owner and no withdraw buys CHIT on the pool and burns it. anyone can call it, once an hour, 1% of what it holds a time (floor 0.002, cap 0.1), and it refuses a fill more than 5% under the pool's own quote.${SHARE ? ` the team sends in ${SHARE}.` : ""}`,
+  `how it works: ETH goes in, a contract with no owner and no withdraw buys CHIT on the pool and burns it. anyone can call it, once an hour, 1% of what it holds a time (floor 0.002, cap 0.1), and it refuses a fill more than 5% under the pool's own quote. the team sends in ${SHARE}.${today ? ` today that is <b>${today.share}%</b>, at ${usd(today.mcap)} mcap.` : ""}`,
   `<a href="${EXPLORER}/address/${BUYBACK}">the contract</a> · <i>every figure read from the chain just now; the totals are the contract's own counters</i>`,
 ];
 const text = lines.join("\n");
