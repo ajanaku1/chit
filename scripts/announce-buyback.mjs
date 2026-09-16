@@ -27,7 +27,8 @@ const BUYBACK = (process.env.BUYBACK_ADDRESS ?? "").toLowerCase();
 const SHARE = process.env.BUYBACK_SHARE ?? "";
 const CHIT = (process.env.CHIT_TOKEN_ADDRESS ?? "0xd523a627030509021cc39b6d7c8543417d3e50d8").toLowerCase();
 const MINTED = 1_000_000_000n * 10n ** 18n;
-const EXPLORER = process.env.ROBINHOOD_EXPLORER ?? "https://explorer.mainnet.chain.robinhood.com";
+// The mainnet explorer: explorer.mainnet.chain.robinhood.com only redirects here, dropping the path.
+const EXPLORER = process.env.ROBINHOOD_EXPLORER ?? "https://robinhoodchain.blockscout.com";
 
 if (!BUYBACK) { console.log("BUYBACK_ADDRESS is not set: no buyback to report"); process.exit(0); }
 

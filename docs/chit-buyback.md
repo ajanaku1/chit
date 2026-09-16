@@ -139,6 +139,16 @@ cheapest first:
    the contract can trust; no oracle has been verified there yet. Not
    promised.
 
+## Deployed
+
+On 2026-09-16 at `0xe5a7dbd4fd12edfb5b2c1e584b5d1ea9131f8b64` on 4663
+(`deployments/buyback-4663.json`), with the parameters above, seeded with
+1 ETH. The first `buyAndBurn` spent 0.01 ETH, was quoted 178,865.5 CHIT
+and burned 175,288.2: 2.00% under, the hook's fee, a clean fill. The
+keeper's call cost 273k gas, 0.0000148 ETH. The explorer is
+`robinhoodchain.blockscout.com` (the `explorer.mainnet.chain.robinhood.com`
+name only redirects to its root).
+
 ## Deploying it
 
 1. `.env`: `BUYBACK_DEPLOYER_KEY` (any key with a little mainnet ETH) and,
