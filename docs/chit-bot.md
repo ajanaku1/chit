@@ -139,6 +139,11 @@ recovery of what a fleet wallet holds after a close.
    Telegram is holding).
 3. In BotFather, `/setprivacy` Disable, so the bot sees `/pool` in the group.
 4. Send the bot `/start` in private.
+5. The daily invitation (`.github/workflows/announce-bot.yml`, 15:00 UTC):
+   one thing the bot does, a button that opens it in private, beta and
+   testnet said plainly, ideas and bugs asked for. Needs the repository
+   variable `BOT_USERNAME`; `DATABASE_URL` as a secret adds the wallet
+   count. `scripts/announce-bot.mjs` prints it without the secrets.
 
 Testnet only: the runtime refuses to start on any other chain, because the
 playground holds keys and the mainnet bot must not. A missing or malformed

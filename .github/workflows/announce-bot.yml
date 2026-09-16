@@ -1,0 +1,37 @@
+name: Invite the group to try the bot
+
+# Once a day, in the afternoon: one thing the bot does, a button that opens
+# it in private, and the standing lines (beta, testnet, ideas wanted). See
+# scripts/announce-bot.mjs. Same two secrets as the other posts plus the
+# repository variable BOT_USERNAME; without it the job prints and passes.
+
+on:
+  schedule:
+    - cron: '0 15 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            scripts/announce-bot.mjs
+          sparse-checkout-cone-mode: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Post the invitation
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BOT_USERNAME: ${{ vars.BOT_USERNAME }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scripts/announce-bot.mjs
