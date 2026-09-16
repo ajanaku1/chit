@@ -97,11 +97,22 @@ Run it with `npm run test:fork:buyback`.
 
 ## The daily loop
 
-- **The keeper** (`.github/workflows/buyback-keeper.yml`, hourly) calls
-  `buyAndBurn` when it is due and there is something to spend, from a
-  throwaway key with dust ETH (`BUYBACK_KEEPER_KEY`; a call is about 250k
-  gas at 0.01 gwei). Anyone else can call it too; the keeper is just the
-  guarantee.
+- **The keeper** calls `buyAndBurn` when it is due and there is something
+  to spend, from a throwaway key with dust ETH (`BUYBACK_KEEPER_KEY`; a
+  call is about 250k gas at 0.01 gwei). Anyone else can call it too; the
+  keeper is just the guarantee. It has two clocks:
+  - `api/buyback/keeper.js` on the host, gated like the sweep
+    (`Authorization: Bearer CRON_SECRET`), pinged every five minutes by any
+    free pinger (cron-job.org, UptimeRobot). The contract's own `dueAt` is
+    the trigger: a ping that is not due reads, answers `idle` and spends
+    nothing; a due one sends the call and answers with the hash. One send at
+    a time per instance. Needs `BUYBACK_KEEPER_KEY` in the host's
+    environment; without it the route is read-only and says `no_keeper_key`.
+  - `.github/workflows/buyback-keeper.yml`, hourly, the backup. GitHub's
+    scheduler skips slots under load (16 September: three buys in nine
+    hours), which is why the pinger is the primary. Missed hours are gone
+    for good, the contract allows one buy per interval, so the clock has to
+    be there when the hour comes.
 - **The post** (`scripts/announce-buyback.mjs`, the third step of the
   daily `announce-pool.yml`, needs the repository variable
   `BUYBACK_ADDRESS`) reads the last 24 hours of `Funded` and
@@ -160,7 +171,10 @@ name only redirects to its root).
    the live pool id and reads a price, and writes
    `deployments/buyback-4663.json`.
 3. Repository variable `BUYBACK_ADDRESS` (and `BUYBACK_SHARE` for the
-   post's wording), secret `BUYBACK_KEEPER_KEY`.
+   post's wording), secret `BUYBACK_KEEPER_KEY`. The same key into the
+   host's environment, then a pinger at
+   `GET https://chit.tools/api/buyback/keeper` every five minutes with the
+   sweep's Bearer secret.
 4. Verify the source on the explorer from the record's constructor
    arguments, so anyone can read that there is no withdraw.
 5. Send the seed by plain transfer. The keeper does the rest, and the next
