@@ -22,7 +22,7 @@ describe("Fleet on-chain buy service", () => {
 
     const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
-    const counter = await viem.deployContract("ChitCounter", []);
+    const counter = await viem.deployContract("FleetTestCounter", []);
     const a1 = await viem.deployContract("FleetAccount", [owner!.account.address, operator!.account.address, policy.address, CAMPAIGN]);
     const a2 = await viem.deployContract("FleetAccount", [owner!.account.address, operator!.account.address, policy.address, CAMPAIGN]);
 

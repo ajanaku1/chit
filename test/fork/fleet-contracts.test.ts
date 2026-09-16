@@ -43,7 +43,8 @@ describe("Fleet contracts — production hardening", () => {
       await factory.write.createFleet([CAMPAIGN, policy.address, inits]);
 
       // Fund the account with a token and some ETH, simulating a completed buy.
-      const token = await viem.deployContract("ChitToken", [predicted, parseEther("1000")]);
+      const token = await viem.deployContract("FleetVenueToken", [parseEther("1000")]);
+      await token.write.transfer([predicted, parseEther("1000")]);
       await operator.sendTransaction({ to: predicted, value: parseEther("1") });
 
       const account = await viem.getContractAt("FleetAccount", predicted);

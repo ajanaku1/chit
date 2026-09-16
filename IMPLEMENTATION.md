@@ -1647,9 +1647,11 @@ address, deploy with the deployer as owner so `setPool` can run, then offer
 ownership to the admin, who accepts with one transaction per contract.
 
 Tests: 190 unit, 41 Solidity (26 → 41), the pool fork suite green with the
-observer's new gap assertion. Not mine and left for the author: `1291cd6`
-(retire the hackathon layer) removed `ChitCounter`/`ChitToken`, which five
-Stage 1 fork tests still deploy, so `fleet-foundation` is red on this branch.
+observer's new gap assertion. `1291cd6` (retire the hackathon layer) had
+removed `ChitCounter`/`ChitToken`, which five Stage 1 fork tests still
+deployed; they were test fixtures, not product, so the counter is back as
+`contracts/fleet/FleetTestCounter.sol` and the token test uses
+`FleetVenueToken`. `fleet-foundation` is green again.
 
 Still to do with the founder present (plan, phase 5): the second redeploy on
 46630 with `FLEET_ADMIN_ADDRESS` and `DATABASE_URL`; the cron cadence once the

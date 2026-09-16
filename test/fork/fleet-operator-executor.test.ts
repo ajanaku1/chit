@@ -24,7 +24,7 @@ describe("Fleet operator-executes sponsored buy", () => {
 
     const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
-    const counter = await viem.deployContract("ChitCounter", []);
+    const counter = await viem.deployContract("FleetTestCounter", []);
     const account = await viem.deployContract("FleetAccount", [
       owner!.account.address,
       operator!.account.address,
@@ -91,7 +91,7 @@ describe("Fleet operator-executes sponsored buy", () => {
 
     const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
-    const counter = await viem.deployContract("ChitCounter", []);
+    const counter = await viem.deployContract("FleetTestCounter", []);
     const account = await viem.deployContract("FleetAccount", [
       owner!.account.address, operator!.account.address, policy.address, CAMPAIGN,
     ]);
