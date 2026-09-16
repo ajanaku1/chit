@@ -1,9 +1,10 @@
-// Plain JS on purpose: see api/fleet/campaign.js. Vercel's hourly cron lands
-// here and runs scripts/buyback-keeper.mjs, the same file the GitHub Actions
-// schedule runs, so there is one keeper and two clocks. GitHub's cron skips
-// slots on a quiet repository; Vercel's does not. buyAndBurn is anyone's to
-// call and the contract meters itself, so two clocks cannot double-spend:
-// the second finds it not due and exits.
+// Plain JS on purpose: see api/fleet/campaign.js. A cron lands here and runs
+// scripts/buyback-keeper.mjs, the same file the GitHub Actions schedule runs,
+// so there is one keeper and several clocks: GitHub hourly (it skips slots on
+// a quiet repository), Vercel once a day (the Hobby plan allows no more), and
+// any outside pinger sent the bearer. buyAndBurn is anyone's to call and the
+// contract meters itself, so extra clocks cannot double-spend: a second caller
+// finds it not due and exits.
 //
 // CRON_SECRET gates it as it gates the sweep. BUYBACK_ADDRESS and
 // BUYBACK_KEEPER_KEY come from the environment; without the key the script

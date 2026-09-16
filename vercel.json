@@ -25,7 +25,7 @@
     },
     {
       "path": "/api/buyback/keep",
-      "schedule": "5 * * * *"
+      "schedule": "5 12 * * *"
     }
   ],
   "redirects": [
