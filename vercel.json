@@ -8,6 +8,10 @@
     "api/bot.js": {
       "maxDuration": 60,
       "includeFiles": "landing/public/bot/**"
+    },
+    "api/buyback/keep.js": {
+      "maxDuration": 180,
+      "includeFiles": "scripts/buyback-keeper.mjs"
     }
   },
   "crons": [
@@ -18,6 +22,10 @@
     {
       "path": "/api/fleet/sweep",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/buyback/keep",
+      "schedule": "5 * * * *"
     }
   ],
   "redirects": [
