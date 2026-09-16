@@ -107,6 +107,9 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
   .primary:hover, .wallet-btn:hover { background: var(--soft-paper); }
   .ghost:hover, .back:hover { border-color: rgba(245, 239, 229, 0.38); }
 }
+@keyframes banner-in { from { opacity: 0; transform: translate(-50%, 0.6rem); } to { opacity: 1; transform: translate(-50%, 0); } }
+@media (prefers-reduced-motion: reduce) { .status-banner[data-shown="true"] { animation: none; } }
+
 @media (prefers-reduced-motion: no-preference) {
   .primary, .ghost, .back, .wallet-btn { transition: background-color var(--dur-ui) var(--ease-out), border-color var(--dur-ui) var(--ease-out), transform 120ms var(--ease-out); }
   .primary:active, .ghost:active, .back:active { transform: translateY(1px) scale(0.98); }
@@ -147,7 +150,9 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .summary dd button { min-height: 2.25rem; padding-block: 0.35rem; font-size: 0.82rem; }
 
 /* ---- Banners and warnings ---- */
-.status-banner { margin-block: 0 1rem; padding: 0.8rem 1rem; border: 1px solid rgba(245, 239, 229, 0.12); border-radius: var(--radius-inner); background: var(--glass-fill); color: var(--soft-paper); font-size: 0.9rem; }
+/* Fixed to the viewport: an action low on the page reports where the trader is looking, not at the top. */
+.status-banner { position: fixed; left: 50%; bottom: 1.25rem; z-index: 40; width: min(92vw, 44rem); transform: translateX(-50%); padding: 0.85rem 1.1rem; border: 1px solid rgba(245, 239, 229, 0.16); border-radius: var(--radius-inner); background: rgba(13, 12, 11, 0.92); color: var(--soft-paper); font-size: 0.9rem; line-height: 1.45; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); backdrop-filter: blur(16px); }
+.status-banner[data-shown="true"] { animation: banner-in 0.4s var(--ease-out) both; }
 .status-banner[data-tone="error"] { border-color: transparent; background: var(--coral-deep); color: var(--paper); }
 .status-banner[data-tone="ok"] { border-color: var(--coral); color: var(--paper); }
 .warnbox { padding: 0.9rem 1.1rem; border-radius: var(--radius-inner); background: var(--coral-deep); color: var(--paper); }

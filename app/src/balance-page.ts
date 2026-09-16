@@ -24,17 +24,7 @@ import {
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { renderLed } from "./fleet/led.js";
 import { countTo } from "./fleet/motion.js";
-import {
-  ensureRobinhoodTestnet,
-  getConnectedWallet,
-  initHeaderWallet,
-  initShell,
-  parseEth,
-  waitForReceipt,
-  walletEth,
-  walletProvider,
-  type Eip1193,
-} from "./fleet/page-shared.js";
+import { banner, ensureRobinhoodTestnet, getConnectedWallet, initHeaderWallet, initShell, parseEth, type Eip1193, waitForReceipt, walletEth, walletProvider } from "./fleet/page-shared.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 
 initHeaderWallet();
@@ -44,13 +34,6 @@ const el = (id: string): HTMLElement => {
   const node = document.getElementById(id);
   if (!node) throw new Error(`missing element: ${id}`);
   return node;
-};
-
-const banner = (message: string, tone: "pending" | "error" | "ok"): void => {
-  const node = el("status-banner");
-  node.textContent = message;
-  node.dataset["tone"] = tone;
-  node.hidden = false;
 };
 
 const POOL_ABI = [

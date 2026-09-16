@@ -23,6 +23,26 @@ export type FleetSnapshot = {
 };
 
 /** "0.001" ETH → "1000000000000000" wei. Rejects anything that isn't a plain decimal. */
+/**
+ * The page's one status line. Fixed to the viewport, so it is read where the
+ * action happened rather than back at the top of the page; "ok" fades after a
+ * while, an error or a pending state stays until the next message replaces it.
+ */
+let bannerTimer: ReturnType<typeof setTimeout> | undefined;
+export const banner = (message: string, tone: "pending" | "error" | "ok"): void => {
+  const node = document.getElementById("status-banner");
+  if (!node) return;
+  clearTimeout(bannerTimer);
+  node.textContent = message;
+  node.dataset["tone"] = tone;
+  node.hidden = false;
+  node.dataset["shown"] = "";
+  // Re-trigger the entrance for a message that replaces another.
+  void node.offsetWidth;
+  node.dataset["shown"] = "true";
+  if (tone === "ok") bannerTimer = setTimeout(() => { node.hidden = true; delete node.dataset["shown"]; }, 7000);
+};
+
 export const parseEth = (value: string): string => {
   const trimmed = value.trim();
   if (!ETH_DECIMAL.test(trimmed)) throw new SetupError("invalid_eth_amount");
