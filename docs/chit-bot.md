@@ -175,7 +175,10 @@ recovery of what a fleet wallet holds after a close.
    one thing the bot does, a button that opens it in private, beta and
    testnet said plainly, ideas and bugs asked for. Needs the repository
    variable `BOT_USERNAME`; `DATABASE_URL` as a secret adds the wallet
-   count. `scripts/announce-bot.mjs` prints it without the secrets.
+   count. `scripts/announce-bot.mjs` prints it without the secrets. It
+   posts nothing while `GET /api/bot` on the site is not 200, which is the
+   host saying the runtime built with every variable it needs; a button to
+   a bot that does not answer is worse than no post.
 
 The home, buy, refer and fleet cards carry a banner (`landing/public/bot/`,
 served at `/bot/*.png`; `BOT_BANNER_BASE` moves them, an empty value turns
