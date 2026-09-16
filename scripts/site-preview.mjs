@@ -16,7 +16,7 @@ import { pathToFileURL } from "node:url";
 
 const root = path.resolve("landing/public");
 const port = Number(process.env.PORT ?? 4173);
-const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".ttf": "font/ttf", ".woff2": "font/woff2" };
+const MIME = { ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".png": "image/png", ".jpg": "image/jpeg", ".svg": "image/svg+xml", ".ico": "image/x-icon", ".ttf": "font/ttf", ".woff2": "font/woff2", ".mp4": "video/mp4", ".webm": "video/webm" };
 /** The functions a visitor's browser reads without a body or a secret. */
 const FUNCTIONS = { "/api/burn": "../api/burn.js", "/api/progress": "../api/progress.js" };
 

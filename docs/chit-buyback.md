@@ -184,8 +184,10 @@ waiting, the next buy as a countdown, the last buy, today's share of the
 fees by the team's rule, the log of every funding and every buy with its
 explorer link, the mechanism in four lines, and the immutable parameters.
 Lowercase, in Outfit, on the brand's ink and coral; the hero is the mark
-from the Higgsfield banner cut free of its words (`landing/public/bot/burn-mark.png`)
-with embers drawn over it. Nothing on it is typed in.
+from the Higgsfield banner, breathing: a Kling loop made from it
+(`landing/public/bot/burn-hero.mp4`, a webm beside it, its first frame as
+`burn-hero.jpg` for the still), fetched only where motion is wanted and data is
+not scarce, with embers drawn over it. Nothing on it is typed in.
 
 The numbers come from `api/burn.js`, one JSON read server-side from the
 contract and its events (the chain's public RPC rate-limits bursts and has
