@@ -44,6 +44,8 @@ const DEPLOYED_46630 = {
   policy: "0x653285b2024343a31f8cbf349e86a621d5ae1c9d",
   /** Uniswap v4 PoolManager on 46630 (deployments/fleet-46630.json, venue.poolManager). */
   poolManager: "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+  /** The venue's test coin (deployments/fleet-46630.json, venue.token): the default portfolio when no allowlist is set. */
+  venueToken: "0x13283ab8e1f2bc4297e9ec6480c80c59674af554",
   /** The block that mined campaignEscrowTx 0xb554…cffd; the fleet list scans events from here. */
   escrowBlock: 120343548n,
 } as const;
@@ -340,6 +342,8 @@ export const getFleetRouter = (): CampaignRouter => {
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
     ...(allowedTokens ? { allowedTokens } : {}),
+    // The portfolio shows what the venue trades: the allowlist when there is one, else the venue's coin.
+    venueTokens: allowedTokens ?? [DEPLOYED_46630.venueToken],
     ...(maxSlippageBps !== undefined ? { maxSlippageBps } : {}),
     // Without the pool, balance and withdrawal answer 503 the same way.
     ...(pool ? { pool } : {}),

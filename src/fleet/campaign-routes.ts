@@ -53,6 +53,11 @@ export type RouterDeps = {
   /** Read-only market facts for the trading panel; absent means tokenQuote/order/holdings/list answer 503. */
   market?: MarketPort;
   /**
+   * The tokens the venue trades: the default portfolio, so a trader sees what
+   * their fleet holds without the browser remembering which orders it placed.
+   */
+  venueTokens?: readonly Address[];
+  /**
    * Slice claims and the operator lock, shared across instances when the
    * store is (Neon on chit.tools). Absent means this instance's memory, which
    * is the right default for a single process and for unit tests.
@@ -770,10 +775,18 @@ export class CampaignRouter {
   /** Each of this fleet's enrolled accounts' ETH and the tokens the browser asks about. */
   async #holdings(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = await this.#campaign(wallet, body);
-    const tokens = (Array.isArray(body["tokens"]) ? (body["tokens"] as string[]) : [])
+    const asked = (Array.isArray(body["tokens"]) ? (body["tokens"] as string[]) : [])
       .filter((t) => /^0x[0-9a-fA-F]{40}$/.test(t)) as Address[];
+    // The venue's tokens are always in the portfolio; the browser's list adds to them.
+    const tokens = [...new Map([...(this.#deps.venueTokens ?? []), ...asked].map((t) => [t.toLowerCase(), t as Address])).values()];
     const accounts = await this.#accountsOf(record);
-    return { status: 200, body: { holdings: await this.#market().holdings(accounts, tokens) } };
+    const market = this.#market();
+    const [holdings, quotes] = await Promise.all([
+      market.holdings(accounts, tokens),
+      Promise.all(tokens.map((t) => market.tokenQuote(t, "0").catch(() => undefined))),
+    ]);
+    const symbols = Object.fromEntries(tokens.map((t, i) => [t.toLowerCase(), quotes[i]?.symbol ?? "?"]));
+    return { status: 200, body: { holdings, symbols } };
   }
 
   /**
@@ -1145,17 +1158,23 @@ const errorResult = (error: unknown): RouterResult => {
   }
   let code: string | undefined;
   let status: number | undefined;
+  // The reason travels with the code: "policy_rejected" alone sent a trader
+  // who pasted the wrong token to the logs, which do not record it either.
+  let reason: string | undefined;
   if (error instanceof ServiceError || error instanceof CampaignStateError || error instanceof BudgetError) {
     code = error.code;
+    reason = (error as { reason?: string }).reason;
   } else if (error instanceof PolicyRejection) {
     code = "policy_rejected";
     status = POLICY_REJECTED_STATUS;
+    reason = error.reason;
   } else if (error instanceof FleetValidationError) {
     code = "policy_rejected";
+    reason = (error as { reason?: string }).reason ?? error.message;
   } else if (error instanceof EligibilityError) {
     code = error.code === "ineligible" ? "ineligible" : "policy_rejected";
   }
   status ??= code === undefined ? undefined : STATUS[code];
   if (code === undefined || status === undefined) throw error;
-  return { status, body: { code, retryable: code === "challenge_invalid" } };
+  return { status, body: { code, retryable: code === "challenge_invalid", ...(reason ? { reason } : {}) } };
 };

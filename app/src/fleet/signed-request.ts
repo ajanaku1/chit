@@ -30,11 +30,14 @@ export class RequestFailed extends Error {
   readonly status: number;
   readonly code: string;
 
-  constructor(status: number, code: string) {
-    super(`${status} ${code}`);
+  readonly reason: string | undefined;
+
+  constructor(status: number, code: string, reason?: string) {
+    super(reason ? `${status} ${code}: ${reason}` : `${status} ${code}`);
     this.name = "RequestFailed";
     this.status = status;
     this.code = code;
+    this.reason = reason;
   }
 }
 
@@ -78,7 +81,7 @@ export const signedFleetApi = async (
   };
   const result = await fleetApi(action, { action, auth, body });
   if (result.status < 200 || result.status >= 300) {
-    throw new RequestFailed(result.status, String(result.body["code"] ?? `status_${result.status}`));
+    throw new RequestFailed(result.status, String(result.body["code"] ?? `status_${result.status}`), typeof result.body["reason"] === "string" ? result.body["reason"] : undefined);
   }
   return result.body;
 };
