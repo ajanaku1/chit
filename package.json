@@ -50,6 +50,7 @@
     "@iexec-nox/nox-protocol-contracts": "^0.2.4",
     "@neondatabase/serverless": "^1.1.0",
     "@openzeppelin/contracts": "^5.6.1",
+    "@resvg/resvg-js": "^2.6.2",
     "viem": "^2.46.3"
   },
   "devDependencies": {

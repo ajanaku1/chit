@@ -7,7 +7,8 @@
  * a handful of fetches. Messages are HTML; every user-supplied string goes
  * through `esc` before it is placed in one. A banner is an https URL
  * (Telegram fetches it) or a local file path (uploaded as multipart), so the
- * same cards work from the host and from one machine.
+ * same cards work from the host and from one machine; a picture drawn on
+ * the spot (a share card) is uploaded from its bytes.
  */
 
 import { readFile } from "node:fs/promises";
@@ -20,7 +21,7 @@ export type Outgoing =
   | { kind: "send"; chatId: string; text: string; keyboard?: Keyboard; /** Opens the reply field with a hint: how a custom amount or an address is asked for. */ ask?: string }
   | { kind: "edit"; chatId: string; messageId: number; text: string; keyboard?: Keyboard }
   /** A banner card: the photo on top, the text as its caption (at most 1024 characters), the buttons under it. */
-  | { kind: "photo"; chatId: string; photo: string; text: string; keyboard?: Keyboard }
+  | { kind: "photo"; chatId: string; photo: string | Uint8Array; text: string; keyboard?: Keyboard }
   /** The same, in place of an earlier banner card: the photo and the caption change together. */
   | { kind: "editPhoto"; chatId: string; messageId: number; photo: string; text: string; keyboard?: Keyboard }
   | { kind: "answer"; callbackId: string; text?: string };
@@ -36,7 +37,7 @@ export const CALLBACK_DATA_MAX_BYTES = 64;
 export const PLACEHOLDER_MAX_CHARS = 64;
 export const CAPTION_MAX_CHARS = 1024;
 
-const isUrl = (photo: string): boolean => /^https?:\/\//.test(photo);
+const isUrl = (photo: string | Uint8Array): photo is string => typeof photo === "string" && /^https?:\/\//.test(photo);
 
 export const createTelegram = (token: string): Telegram => {
   const done = async (method: string, r: Response): Promise<void> => {
@@ -52,12 +53,12 @@ export const createTelegram = (token: string): Telegram => {
     });
     await done(method, r);
   };
-  /** The same call with a file from disk: every field as a form part, the file under `fileField`. */
-  const upload = async (method: string, fields: Record<string, unknown>, fileField: string, filePath: string): Promise<void> => {
+  /** The same call with a file, from disk or already in hand: every field as a form part, the file under `fileField`. */
+  const upload = async (method: string, fields: Record<string, unknown>, fileField: string, file: string | Uint8Array): Promise<void> => {
     const form = new FormData();
     for (const [k, v] of Object.entries(fields)) form.set(k, typeof v === "string" ? v : JSON.stringify(v));
-    const bytes = await readFile(filePath);
-    form.set(fileField, new Blob([bytes], { type: "image/png" }), path.basename(filePath));
+    const bytes = typeof file === "string" ? await readFile(file) : file;
+    form.set(fileField, new Blob([bytes], { type: "image/png" }), typeof file === "string" ? path.basename(file) : "card.png");
     const r = await fetch(`https://api.telegram.org/bot${token}/${method}`, { method: "POST", body: form });
     await done(method, r);
   };

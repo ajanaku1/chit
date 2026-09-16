@@ -27,6 +27,11 @@
  *                                it for one machine only.
  *   BOT_BRIDGE_OFF               1 hides the Bridge card (Relay routes into
  *                                Robinhood Chain and straight into CHIT)
+ *   BOT_SHARE_OFF                1 hides the 📸 button (a position drawn as
+ *                                a picture with the referral link on it)
+ *   BOT_ASSET_DIR                where the share card's plate and fonts are
+ *                                (default landing/public/bot, shipped with
+ *                                the function)
  *   BOT_BANNER_BASE              where the cards' banners are: a URL
  *                                (default <FLEET_ORIGIN>/bot, the site
  *                                serves landing/public/bot) or a local folder
@@ -44,6 +49,7 @@ import { isHex, parseEther } from "viem";
 
 import { isAddress, type Address } from "./types.js";
 import { createRelayBridge } from "./bot-bridge.js";
+import { createShareRenderer } from "./bot-share.js";
 import { createBotChain } from "./bot-chain.js";
 import { createFetchFleetApi } from "./bot-fleet.js";
 import { ChitBot } from "./bot-handlers.js";
@@ -131,6 +137,8 @@ const build = (): ChitBot => {
     ...(process.env.BOT_FLEET_OFF === "1" ? {} : { fleetApi: createFetchFleetApi(site) }),
     // The Bridge card asks Relay for live routes; BOT_BRIDGE_OFF=1 hides it.
     ...(process.env.BOT_BRIDGE_OFF === "1" ? {} : { bridge: createRelayBridge() }),
+    // Share cards are drawn from landing/public/bot (the plate and the fonts); BOT_SHARE_OFF=1 hides the 📸 button.
+    ...(process.env.BOT_SHARE_OFF === "1" ? {} : { share: createShareRenderer(process.env.BOT_ASSET_DIR || undefined) }),
     keySecret: keySecret!,
     botUsername: username!,
     ...(faucetWei !== undefined ? { faucetWei } : {}),

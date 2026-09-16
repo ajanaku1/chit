@@ -111,6 +111,30 @@ const contract = (name: string, make: () => Promise<{ store: BotWalletStore; don
     } finally { await done(); }
   });
 
+  test(`${name}: trades are kept per wallet and token, once per tx hash, oldest first`, async () => {
+    const { store, done } = await make();
+    try {
+      const token = "0x00000000000000000000000000000000000000ce" as Address;
+      const other = "0x0000000000000000000000000000000000000fee" as Address;
+      const trade = (n: number, side: "buy" | "sell", at: string, tgId = "1", t: Address = token) => ({ tgId, token: t, side, ethWei: parseEther("0.002").toString(), tokenUnits: "1980000000000000000", txHash: `0x${n.toString(16).padStart(64, "0")}` as `0x${string}`, at });
+      await store.recordTrade(trade(2, "sell", "2026-09-16T11:00:00.000Z"));
+      await store.recordTrade(trade(1, "buy", "2026-09-16T10:00:00.000Z"));
+      await store.recordTrade(trade(1, "buy", "2026-09-16T10:00:00.000Z"));
+      await store.recordTrade(trade(3, "buy", "2026-09-16T10:30:00.000Z", "2"));
+      await store.recordTrade(trade(4, "buy", "2026-09-16T10:30:00.000Z", "1", other));
+      const mine = await store.tradesOf("1", token);
+      assert.deepEqual(mine.map((t) => t.side), ["buy", "sell"], "oldest first, the duplicate hash dropped");
+      assert.equal(mine[0]!.ethWei, parseEther("0.002").toString());
+      assert.equal(mine[0]!.tokenUnits, "1980000000000000000");
+      assert.equal(mine[0]!.at, "2026-09-16T10:00:00.000Z");
+      assert.equal(mine[0]!.token.toLowerCase(), token);
+      assert.equal((await store.tradesOf("1", other)).length, 1);
+      assert.equal((await store.tradesOf("2", token)).length, 1);
+      assert.equal((await store.tradesOf("3", token)).length, 0);
+      assert.equal((await store.tradesOf("1", token.toUpperCase().replace("0X", "0x") as Address)).length, 2, "the token is matched whatever its case");
+    } finally { await done(); }
+  });
+
   test(`${name}: referral codes look wallets up and count referrals`, async () => {
     const { store, done } = await make();
     try {
@@ -140,7 +164,7 @@ if (url) {
   const sql = neon(url);
   const port: BotSql = { query: (q, params) => sql.query(q, params) as Promise<readonly Record<string, unknown>[]> };
   const wipe = async (): Promise<void> => {
-    for (const t of ["bot_wallets", "bot_faucet_days", "bot_updates", "bot_locks", "bot_meta"]) await port.query(`DELETE FROM ${t}`).catch(() => undefined);
+    for (const t of ["bot_wallets", "bot_faucet_days", "bot_updates", "bot_locks", "bot_meta", "bot_trades"]) await port.query(`DELETE FROM ${t}`).catch(() => undefined);
   };
   contract("neon", async () => { await wipe(); return { store: new NeonBotWalletStore(port), done: wipe }; });
 } else {

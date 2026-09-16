@@ -35,6 +35,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import type { BotBridge } from "./bot-bridge.js";
 import type { BotChain, Landed, NewPool, TokenInfo } from "./bot-chain.js";
 import { FleetDriver, FleetError, fleetPhase, type FleetApi } from "./bot-fleet.js";
+import type { ShareRenderer } from "./bot-share.js";
 import { CAPTION_MAX_CHARS, esc, type Keyboard, type Outgoing, type Telegram } from "./bot-telegram.js";
 import {
   CANARY_KEY, DEFAULT_SETTINGS, RefCodeTaken, SealError, checkCanary, fleetAad, fleetKeyAad, open, openKey, refCodeOf, seal, sealCanary, sealKey, walletAad, withDefaults,
@@ -52,6 +53,8 @@ export type BotDeps = {
   fleetApi?: FleetApi;
   /** The way in from other chains (Relay); absent means no Bridge card. */
   bridge?: BotBridge;
+  /** Draws a position as a picture with the referral link on it; absent means no 📸 button. */
+  share?: ShareRenderer;
   /** Seals the playground keys at rest and keys the referral codes. */
   keySecret: string;
   /** The bot's @username, for links. */
@@ -364,6 +367,7 @@ export class ChitBot {
       case "buy": await ack(); return this.#buyMenu(chatId, tgId, a as Address | "", messageId);
       case "sell": await ack(); return this.#sellMenu(chatId, tgId, a as Address | "", messageId);
       case "positions": await ack(); return this.#positions(chatId, tgId, messageId);
+      case "share": await ack("drawing…"); return this.#share(chatId, tgId, a as Address);
       case "new": await ack(); return this.#newPools(chatId, tgId, messageId);
       case "bridge": await ack(); return this.#bridge(chatId, messageId);
       case "token": await ack(); return a ? this.#tokenCard(chatId, tgId, a as Address, messageId) : this.#ask(chatId, "token", PROMPT.token());
@@ -644,6 +648,7 @@ export class ChitBot {
       if (!landed.ok) return this.#say(chatId, `the buy reverted (<code>${landed.hash}</code>): the price moved past your ${pct(s.buySlippageBps)} guard, or the pool is thin. nothing was spent but gas.`, kb([btn("try again", `token:${token}`)], back()));
       const got = (await this.#d.chain.tokenBalance(token, wallet.address)) - before;
       await this.#remember(wallet, token);
+      await this.#d.store.recordTrade({ tgId, token, side: "buy", ethWei: amount.toString(), tokenUnits: got.toString(), txHash: landed.hash, at: this.#now().toISOString() });
       await this.#say(chatId, `✅ bought <code>${fmt(got, info.decimals, 4)} ${esc(info.symbol)}</code> for <code>${eth(amount)} ETH</code>\ntx <code>${landed.hash}</code>`, kb([btn(`${info.symbol} card`, `token:${token}`), btn("📊 Positions", "positions")], back()));
     });
   }
@@ -688,6 +693,8 @@ export class ChitBot {
       if (landed.pending) return this.#stillLanding(chatId, landed, token);
       if (!landed.ok) return this.#say(chatId, `the sale reverted (<code>${landed.hash}</code>). nothing was sold.`, kb([btn("try again", `token:${token}`)], back()));
       const ethAfter = await this.#d.chain.ethBalance(wallet.address);
+      // What the sale left in the wallet after gas: a touch under the fill, so a card's number never flatters.
+      await this.#d.store.recordTrade({ tgId, token, side: "sell", ethWei: (ethAfter > ethBefore ? ethAfter - ethBefore : 0n).toString(), tokenUnits: amount.toString(), txHash: landed.hash, at: this.#now().toISOString() });
       await this.#say(chatId, `✅ sold <code>${fmt(amount, info.decimals, 4)} ${esc(info.symbol)}</code>; wallet <code>${eth(ethBefore)}</code> → <code>${eth(ethAfter)} ETH</code> after gas\ntx <code>${landed.hash}</code>`, kb([btn(`${info.symbol} card`, `token:${token}`), btn("📊 Positions", "positions")], back()));
     });
   }
@@ -703,11 +710,41 @@ export class ChitBot {
     for (const h of held) {
       const worth = await this.#d.chain.quoteSell(h.info.address, h.balance);
       lines.push(`${esc(h.info.symbol)}: <code>${fmt(h.balance, h.info.decimals, 4)}</code>` + (worth ? ` ≈ <code>${eth(worth)} ETH</code> if sold now` : ""));
-      rows.push([btn(`${h.info.symbol}`, `token:${h.info.address}`), btn("Sell 50%", `s:${h.info.address}:50`), btn("Sell 100%", `s:${h.info.address}:100`)]);
+      rows.push([btn(`${h.info.symbol}`, `token:${h.info.address}`), btn("Sell 50%", `s:${h.info.address}:50`), btn("Sell 100%", `s:${h.info.address}:100`), ...(this.#d.share ? [btn("📸", `share:${h.info.address}`)] : [])]);
     }
     if (!held.length) lines.push("no tokens yet.");
-    lines.push("", "<i>\"if sold now\" is the pool's fill for the whole position, fee and impact included.</i>");
+    lines.push("", "<i>\"if sold now\" is the pool's fill for the whole position, fee and impact included.</i>" + (this.#d.share && held.length ? " <i>📸 draws a position as a picture, your referral link on it.</i>" : ""));
     await this.#out(chatId, messageId, lines.join("\n"), kb(...rows, [btn("💰 Buy", "buy:"), btn("↻ Refresh", "positions")], back()));
+  }
+
+  /**
+   * A position as a picture: what it cost (the buys this bot made, less what
+   * its sales returned), what it would fetch now, and the referral link. A
+   * position the bot never bought has no cost to draw, so there is no card;
+   * the numbers on a card are always the bot's own records.
+   */
+  async #share(chatId: string, tgId: string, token: Address): Promise<void> {
+    const wallet = await this.#d.store.get(tgId);
+    if (!wallet) return this.#start(chatId, tgId);
+    const draw = this.#d.share;
+    if (!draw) return this.#positions(chatId, tgId);
+    if (!isAddress(token)) return this.#say(chatId, "that is not a token address.", kb(back("positions")));
+    const [info, held, trades] = await Promise.all([this.#d.chain.tokenInfo(token), this.#d.chain.tokenBalance(token, wallet.address), this.#d.store.tradesOf(tgId, token)]);
+    if (held === 0n) return this.#say(chatId, `you hold no ${esc(info.symbol)} right now; a card needs a position.`, kb(back("positions")));
+    if (!trades.some((t) => t.side === "buy")) return this.#say(chatId, `no ${esc(info.symbol)} was bought through this bot, so there is no cost to put on a card. buy some here and the card is one tap.`, kb([btn(`buy ${info.symbol}`, `buy:${token}`)], back("positions")));
+    const paid = trades.reduce((sum, t) => sum + (t.side === "buy" ? BigInt(t.ethWei) : -BigInt(t.ethWei)), 0n);
+    const worth = (await this.#d.chain.quoteSell(token, held)) ?? 0n;
+    const link = `t.me/${this.#d.botUsername}?start=r-${wallet.refCode}`;
+    const png = await draw({
+      symbol: info.symbol, costEth: Number(formatUnits(paid, 18)), valueEth: Number(formatUnits(worth, 18)), held: fmt(held, info.decimals, 2),
+      chainLabel: "robinhood chain", testnet: this.#d.chain.chainId !== 4663, refLink: link,
+    });
+    const pnl = paid > 0n ? `${worth >= paid ? "+" : ""}${((Number(formatUnits(worth - paid, 18)) / Number(formatUnits(paid, 18))) * 100).toFixed(1)}%` : "free ride";
+    await this.#d.telegram.deliver({
+      kind: "photo", chatId, photo: png,
+      text: `<b>$${esc(info.symbol)}</b> · ${esc(pnl)}\nin <code>${eth(paid > 0n ? paid : 0n)} ETH</code> · now <code>${eth(worth)} ETH</code> · read from the pool just now\nforward it anywhere; your link is on it: <code>${esc(link)}</code>`,
+      keyboard: kb([btn("📊 Positions", "positions"), btn(`${info.symbol} card`, `token:${token}`)], back()),
+    });
   }
 
   /**

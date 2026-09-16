@@ -7,7 +7,8 @@ import type { BotChain, TokenInfo } from "../../src/fleet/bot-chain.js";
 import { BRIDGE_ORIGINS, createRelayBridge, type BotBridge } from "../../src/fleet/bot-bridge.js";
 import { fleetPhase, type FleetApi } from "../../src/fleet/bot-fleet.js";
 import { ChitBot, type Update } from "../../src/fleet/bot-handlers.js";
-import { RecordingTelegram, type Keyboard } from "../../src/fleet/bot-telegram.js";
+import { CARD_HEIGHT, CARD_WIDTH, createShareRenderer, shareCardSvg, type ShareCard, type ShareRenderer } from "../../src/fleet/bot-share.js";
+import { RecordingTelegram, type Keyboard, type Outgoing } from "../../src/fleet/bot-telegram.js";
 import { MemoryBotWalletStore, RefCodeTaken, SealError, checkCanary, open, openKey, refCodeOf, seal, sealCanary, sealKey, walletAad, type BotWallet, type BotWalletStore } from "../../src/fleet/bot-wallets.js";
 import { payloadHash } from "../../src/fleet/campaign-service.js";
 import type { Address, Hex } from "../../src/fleet/types.js";
@@ -53,11 +54,13 @@ const fakeChain = () => {
   const hash = (): Hex => `0x${(++n).toString(16).padStart(64, "0")}`;
   let failNext = false;
   let pendNext = false;
-  const chain: BotChain & { calls: string[]; failNextTrade: () => void; pendNextTrade: () => void } = {
+  const chain: BotChain & { calls: string[]; failNextTrade: () => void; pendNextTrade: () => void; credit: (t: Address, a: Address, units: bigint) => void } = {
     chainId: 46630, defaultToken: FLEET, router: "0x0000000000000000000000000000000000000001" as Address, pool: POOL, hasFaucet: true,
     calls,
     failNextTrade: () => { failNext = true; },
     pendNextTrade: () => { pendNext = true; },
+    /** Tokens that arrived some other way than a buy here: an airdrop, a transfer in. */
+    credit: (t, a, units) => setT(t, a, getT(t, a) + units),
     ethBalance: async (a) => getE(a),
     tokenBalance: async (t, a) => getT(t, a),
     tokenInfo: async (t) => infos[t.toLowerCase()] ?? { address: t, symbol: "?", decimals: 18, hasPool: false, perEth: 0n, poolEth: 0n, hooked: false, fee: 3000 },
@@ -120,11 +123,11 @@ const tap = (data: string, from = 7, updateId?: number, callbackId = "cb"): Upda
 });
 
 let clock = new Date("2026-09-16T10:00:00Z");
-const setup = (shared?: { store?: BotWalletStore; chain?: ReturnType<typeof fakeChain> }) => {
+const setup = (shared?: { store?: BotWalletStore; chain?: ReturnType<typeof fakeChain>; share?: ShareRenderer }) => {
   const store = shared?.store ?? new MemoryBotWalletStore();
   const chain = shared?.chain ?? fakeChain();
   const telegram = new RecordingTelegram();
-  const bot = new ChitBot({ store, chain, telegram, keySecret: SECRET, botUsername: "chit_playground_bot", now: () => clock });
+  const bot = new ChitBot({ store, chain, telegram, keySecret: SECRET, botUsername: "chit_playground_bot", now: () => clock, ...(shared?.share ? { share: shared.share } : {}) });
   /** The last message's keyboard, flattened to callback data. */
   const buttons = (): string[] => {
     const last = [...telegram.sent].reverse().find((o) => o.kind !== "answer") as { keyboard?: Keyboard } | undefined;
@@ -324,6 +327,79 @@ test("positions list holdings with what they would fetch; withdraw goes through 
   assert.match(telegram.last(), /leave a little for gas/);
   await bot.handle(dm("0.001", 7, amountPrompt));
   assert.equal(chain.calls.at(-1), `send ${parseEther("0.001")} to ${to}`);
+});
+
+test("a position bought here shares as a picture with its cost, its fill and the referral link; nothing bought here, no card", async () => {
+  const cards: ShareCard[] = [];
+  const share: ShareRenderer = async (card) => { cards.push(card); return new Uint8Array([0x89, 0x50, 0x4e, 0x47]); };
+  const { store, chain, telegram, bot, buttons } = setup({ share });
+  await bot.handle(dm("/start"));
+  await bot.handle(tap("positions"));
+  assert.ok(!buttons().some((b) => b.startsWith("share:")), "no 📸 without a position");
+  await bot.handle(tap(`b:${FLEET}:${wei("0.002")}`));
+  const trades = await store.tradesOf("7", FLEET);
+  assert.equal(trades.length, 1);
+  assert.equal(trades[0]!.side, "buy");
+  assert.equal(trades[0]!.ethWei, wei("0.002"));
+  assert.equal(trades[0]!.tokenUnits, parseEther("1.98").toString());
+  await bot.handle(tap("positions"));
+  assert.ok(buttons().includes(`share:${FLEET}`), "📸 on a held position");
+
+  await bot.handle(tap(`share:${FLEET}`));
+  const photo = telegram.sent.at(-1) as Extract<Outgoing, { kind: "photo" }>;
+  assert.equal(photo.kind, "photo");
+  assert.ok(photo.photo instanceof Uint8Array, "the card is uploaded from its bytes");
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0]!.symbol, "FLEET");
+  assert.equal(cards[0]!.costEth, 0.002);
+  assert.equal(cards[0]!.valueEth, 0.00198, "the fill for the whole position");
+  assert.equal(cards[0]!.held, "1.98");
+  assert.equal(cards[0]!.testnet, true);
+  const w = (await store.get("7"))!;
+  assert.equal(cards[0]!.refLink, `t.me/chit_playground_bot?start=r-${w.refCode}`);
+  assert.match(photo.text, /<b>\$FLEET<\/b> · -1\.0%/);
+  assert.match(photo.text, new RegExp(`start=r-${w.refCode}`));
+  const svg = shareCardSvg(cards[0]!);
+  assert.match(svg, /-1\.0%/);
+  assert.match(svg, /in 0\.002 ETH · now 0\.00198 ETH · 1\.98 FLEET/);
+  assert.match(svg, /TESTNET/);
+  assert.match(svg, /nothing real/);
+
+  // A sale is recorded too, and the cost on the next card is net of what came back.
+  await bot.handle(tap(`s:${FLEET}:50`));
+  const after = await store.tradesOf("7", FLEET);
+  assert.equal(after.length, 2);
+  assert.equal(after[1]!.side, "sell");
+  assert.ok(BigInt(after[1]!.ethWei) > 0n && BigInt(after[1]!.ethWei) < parseEther("0.001"), "what the sale left after gas");
+  await bot.handle(tap(`share:${FLEET}`));
+  assert.ok(cards[1]!.costEth < 0.002 && cards[1]!.costEth > 0.001);
+
+  // The same tx hash twice is one trade.
+  await store.recordTrade({ ...after[0]! });
+  assert.equal((await store.tradesOf("7", FLEET)).length, 2);
+
+  // A position that was not bought here has no cost to draw.
+  await bot.handle(dm("/start", 8));
+  const other = (await store.get("8"))!;
+  chain.credit(PEPE, other.address, 5_000_000n);
+  await bot.handle(tap(`share:${PEPE}`, 8));
+  assert.match(telegram.last(), /no PEPE was bought through this bot, so there is no cost/);
+  assert.deepEqual(buttons()[0], `buy:${PEPE}`);
+  await bot.handle(tap(`share:${FLEET}`, 8));
+  assert.match(telegram.last(), /you hold no FLEET/);
+  assert.equal(cards.length, 2, "no card was drawn for either");
+});
+
+test("the real renderer draws the card as a PNG of the plate's size, in the shipped fonts", async () => {
+  const render = createShareRenderer();
+  const png = await render({ symbol: "CHIT", costEth: 0.4, valueEth: 1.1368, held: "2.1M", chainLabel: "robinhood chain", testnet: false, refLink: "t.me/usechit_bot?start=r-d0eb632d" });
+  assert.deepEqual([...png.slice(0, 8)], [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], "a PNG");
+  const view = new DataView(png.buffer, png.byteOffset, png.byteLength);
+  assert.equal(view.getUint32(16), CARD_WIDTH);
+  assert.equal(view.getUint32(20), CARD_HEIGHT);
+  assert.ok(png.byteLength > 100_000, "the plate is in it");
+  const missing = createShareRenderer("landing/public/nowhere");
+  await assert.rejects(missing({ symbol: "X", costEth: 1, valueEth: 1, held: "1", chainLabel: "c", testnet: true, refLink: "l" }), /ENOENT/, "a missing plate or font is an error, never a fallback face");
 });
 
 test("referral links count, cannot point at yourself, survive a code collision, and promise nothing", async () => {

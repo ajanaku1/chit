@@ -91,6 +91,23 @@ export type WalletPatch = {
   fleet?: string | null;
 };
 
+/**
+ * One trade the bot made for a wallet, kept so a position knows what it
+ * cost: the share card's number comes from these, never from a guess. The
+ * tx hash is the key, so a redelivered update never records a trade twice.
+ */
+export type BotTrade = {
+  tgId: string;
+  token: Address;
+  side: "buy" | "sell";
+  /** ETH paid (a buy) or received after gas (a sale), in wei as a string. */
+  ethWei: string;
+  /** Token units bought or sold, as a string. */
+  tokenUnits: string;
+  txHash: Hex;
+  at: string;
+};
+
 /** The referral code a new row wanted is already somebody's. */
 export class RefCodeTaken extends Error {
   constructor() {
@@ -122,6 +139,10 @@ export interface BotWalletStore {
   byRefCode(code: string): Promise<BotWallet | undefined>;
   referralsOf(refCode: string): Promise<number>;
   count(): Promise<number>;
+  /** Appends a trade; the same tx hash a second time is ignored. */
+  recordTrade(trade: BotTrade): Promise<void>;
+  /** This wallet's trades in `token`, oldest first. */
+  tradesOf(tgId: string, token: Address): Promise<BotTrade[]>;
 }
 
 // ---------- sealing ----------
@@ -212,6 +233,7 @@ export class MemoryBotWalletStore implements BotWalletStore {
   readonly #updates = new Set<number>();
   readonly #locks = new Map<string, number>();
   readonly #meta = new Map<string, string>();
+  readonly #trades: BotTrade[] = [];
 
   async get(tgId: string): Promise<BotWallet | undefined> {
     const w = this.#wallets.get(tgId);
@@ -289,6 +311,16 @@ export class MemoryBotWalletStore implements BotWalletStore {
   async count(): Promise<number> {
     return this.#wallets.size;
   }
+  async recordTrade(trade: BotTrade): Promise<void> {
+    if (this.#trades.some((t) => t.txHash.toLowerCase() === trade.txHash.toLowerCase())) return;
+    this.#trades.push({ ...trade });
+  }
+  async tradesOf(tgId: string, token: Address): Promise<BotTrade[]> {
+    return this.#trades
+      .filter((t) => t.tgId === tgId && t.token.toLowerCase() === token.toLowerCase())
+      .sort((a, b) => a.at.localeCompare(b.at) || a.txHash.localeCompare(b.txHash))
+      .map((t) => ({ ...t }));
+  }
 }
 
 // ---------- Neon ----------
@@ -320,6 +352,16 @@ const SCHEMA: readonly string[] = [
   `CREATE TABLE IF NOT EXISTS bot_updates (update_id BIGINT PRIMARY KEY, seen_at TIMESTAMPTZ NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS bot_locks (key TEXT PRIMARY KEY, until TIMESTAMPTZ NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS bot_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS bot_trades (
+    tx_hash TEXT PRIMARY KEY,
+    tg_id TEXT NOT NULL,
+    token TEXT NOT NULL,
+    side TEXT NOT NULL,
+    eth_wei NUMERIC(40, 0) NOT NULL,
+    token_units NUMERIC(60, 0) NOT NULL,
+    at TIMESTAMPTZ NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS bot_trades_wallet_token ON bot_trades (tg_id, token, at)`,
 ];
 
 const json = <T>(v: unknown, fallback: T): T => {
@@ -481,5 +523,21 @@ export class NeonBotWalletStore implements BotWalletStore {
     await this.#init();
     const rows = await this.#sql.query("SELECT COUNT(*) AS n FROM bot_wallets");
     return Number(rows[0]?.["n"] ?? 0);
+  }
+  async recordTrade(trade: BotTrade): Promise<void> {
+    await this.#init();
+    await this.#sql.query(
+      "INSERT INTO bot_trades (tx_hash, tg_id, token, side, eth_wei, token_units, at) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (tx_hash) DO NOTHING",
+      [trade.txHash.toLowerCase(), trade.tgId, trade.token.toLowerCase(), trade.side, trade.ethWei, trade.tokenUnits, trade.at],
+    );
+  }
+  async tradesOf(tgId: string, token: Address): Promise<BotTrade[]> {
+    await this.#init();
+    const rows = await this.#sql.query("SELECT * FROM bot_trades WHERE tg_id = $1 AND token = $2 ORDER BY at, tx_hash", [tgId, token.toLowerCase()]);
+    return rows.map((r) => ({
+      tgId: String(r["tg_id"]), token: String(r["token"]) as Address, side: r["side"] === "sell" ? "sell" : "buy",
+      ethWei: String(r["eth_wei"]), tokenUnits: String(r["token_units"]), txHash: String(r["tx_hash"]) as Hex,
+      at: r["at"] instanceof Date ? r["at"].toISOString() : String(r["at"]),
+    }));
   }
 }

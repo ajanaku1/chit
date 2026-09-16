@@ -1614,3 +1614,22 @@ approvals are sent only when short, and the copy holds to FR-015 and to
 time (its HTTP driver takes exactly one), and the store's contract runs on
 the memory store, on the Neon store over PGlite, and on Neon when a scratch
 database is named. Thirty-four bot tests plus the fork test.
+
+## Chit Bot: share cards, and the bot remembers its trades (2026-09-16, advisor, branch feat/chit-bot)
+
+A 📸 button on Positions draws the position as a picture: the symbol, the
+change as one big number, what was paid, what the pool would fill right
+now, and the poster's referral link, so the card that gets posted brings
+the next person into the bot. To know what a position cost, the store now
+keeps every trade the bot makes (`bot_trades`, keyed by tx hash so a
+redelivered update never records one twice; the memory store the same);
+a sale is recorded as what it left in the wallet after gas, so a card's
+number errs against the poster. Tokens that arrived any other way have no
+cost the bot knows and get no card. The card is SVG on the chit brand over
+a plate of the mark blown into shards (`landing/public/bot/share-bg.png`),
+set in IBM Plex from `landing/public/bot/fonts`, rasterised with resvg on
+the spot and uploaded from its bytes; `vercel.json` ships the assets with
+the function, and a missing plate or font is an error, never a card in a
+fallback face. Tests: the flow from a buy to a card and back through a
+sale, the refusals, the store contract on memory and PGlite, and a real
+render checked for its PNG header and the plate's size.

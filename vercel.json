@@ -5,10 +5,19 @@
   "outputDirectory": "public",
   "framework": null,
   "functions": {
-    "api/bot.js": { "maxDuration": 60 }
+    "api/bot.js": {
+      "maxDuration": 60,
+      "includeFiles": "landing/public/bot/**"
+    }
   },
   "crons": [
-    { "path": "/api/fleet/sweep", "schedule": "0 3 * * *" },
-    { "path": "/api/fleet/sweep", "schedule": "0 15 * * *" }
+    {
+      "path": "/api/fleet/sweep",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/fleet/sweep",
+      "schedule": "0 15 * * *"
+    }
   ]
 }

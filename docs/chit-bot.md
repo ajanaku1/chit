@@ -68,6 +68,19 @@ balance: 0.02 ETH
   the card says so on the testnet playground. `BOT_BRIDGE_OFF=1` hides it.
 - **Deep links**: `t.me/<bot>?start=t-<contract>` opens that token's card,
   for a partner's "trade in chit bot" button or a group's pinned message.
+- **Share** (📸 on Positions): the position as a picture, the kind people
+  post when a trade went their way: the symbol, the change as one big
+  number, what was paid and what the pool would fill right now, and the
+  poster's referral link. The cost is the bot's own record of its buys in
+  that token, less what its sales returned (a sale is recorded as what it
+  left in the wallet after gas, so a card never flatters); the value is
+  the fill for the whole position, fee and impact included. Tokens that
+  arrived any other way have no cost the bot knows, so there is no card
+  for them, only an offer to buy. The card says which chain and says
+  testnet on the playground. Drawn on the spot from
+  `landing/public/bot/share-bg.png` (the chit mark blown into shards) in
+  IBM Plex from `landing/public/bot/fonts`; `BOT_SHARE_OFF=1` hides the
+  button, `BOT_ASSET_DIR` moves the assets.
 - **Refer**: your link, `t.me/<bot>?start=r-<code>`, and how many came
   through it. Rewards: none yet, said plainly; the roadmap's referral pays
   from the fee when the fee goes live.
@@ -151,7 +164,8 @@ recovery of what a fleet wallet holds after a close.
    the most the faucet pays in a UTC day), `DATABASE_URL` (Neon; required,
    the wallets, locks and update ids live there), and the fleet's
    `FLEET_TOKEN_ALLOWLIST` and `FLEET_POOL_ADDRESS` if set. `vercel.json`
-   gives `api/bot.js` sixty seconds. Redeploy.
+   gives `api/bot.js` sixty seconds and ships `landing/public/bot/**` with
+   it (the share card's plate and fonts). Redeploy.
 2. Once: `TELEGRAM_BOT_TOKEN=… TELEGRAM_WEBHOOK_SECRET=… node scripts/bot-set-webhook.mjs`.
    It sets the webhook and the command menu (`--drop` also discards updates
    Telegram is holding).
