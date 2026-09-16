@@ -23,6 +23,7 @@ jobs:
           sparse-checkout: |
             scripts/announce-pool.mjs
             scripts/announce-token.mjs
+            scripts/announce-buyback.mjs
             deployments/fleet-46630.json
           sparse-checkout-cone-mode: false
 
@@ -44,3 +45,15 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node scripts/announce-token.mjs
+
+      # The buyback's day: what came in, what was bought and burned, the
+      # running totals, all from the contract. Needs the repository variable
+      # BUYBACK_ADDRESS; without it the step says so and passes.
+      - name: Read the buyback and post
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          BUYBACK_ADDRESS: ${{ vars.BUYBACK_ADDRESS }}
+          BUYBACK_SHARE: ${{ vars.BUYBACK_SHARE }}
+        run: node scripts/announce-buyback.mjs

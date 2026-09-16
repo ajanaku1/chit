@@ -17,13 +17,14 @@ import { network } from "hardhat";
  */
 
 const RPC_URL = process.env.ROBINHOOD_TESTNET_RPC_URL ?? "https://rpc.testnet.chain.robinhood.com";
+const MAINNET_RPC_URL = process.env.ROBINHOOD_MAINNET_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
 
 /** Far enough behind the tip that the node has surely finalised the state; a few seconds of chain. */
 const MARGIN_BLOCKS = 64;
 
 /** Reads the tip with a plain fetch: the fork does not exist yet, so there is no client to ask. */
-const latestBlock = async (): Promise<number> => {
-  const response = await fetch(RPC_URL, {
+const latestBlock = async (rpcUrl = RPC_URL): Promise<number> => {
+  const response = await fetch(rpcUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] }),
@@ -42,6 +43,17 @@ export const resolveForkBlock = async (): Promise<number> => {
     return block;
   }
   return (await latestBlock()) - MARGIN_BLOCKS;
+};
+
+/** Connects a fork of Robinhood Chain mainnet (4663), a margin behind its tip; ROBINHOOD_MAINNET_FORK_BLOCK replays one. */
+export const connectRobinhoodMainnetFork = async () => {
+  const pinned = process.env.ROBINHOOD_MAINNET_FORK_BLOCK;
+  const blockNumber = pinned ? Number(pinned) : (await latestBlock(MAINNET_RPC_URL)) - MARGIN_BLOCKS;
+  console.log(`robinhood mainnet fork at block ${blockNumber} (ROBINHOOD_MAINNET_FORK_BLOCK=${blockNumber} replays it)`);
+  return network.connect({
+    network: "robinhoodMainnetFork",
+    override: { forking: { url: MAINNET_RPC_URL, blockNumber } },
+  });
 };
 
 /** Connects the 46630 fork at a servable block and says which, so a failure can be replayed. */

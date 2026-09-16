@@ -1691,3 +1691,20 @@ plan is confirmed; FR-012, SC-005, plan/research/data-model and the README
 sentence, written only after the redeploy passes; tasks T041–T046 so the
 progress sheet moves on their gates; the landing's Draw Cap sheet to
 `fundAndExecute`; and dropping `fundPrincipal`/`commit`/`rollback` after T040.
+
+## CHIT buyback and burn, a contract and not a wallet (2026-09-16, advisor, branch feat/chit-buyback)
+
+Tokenomics only, proposed to the group and not deployed: `ChitBuyback.sol`
+takes ETH by plain transfer, and anyone can call `buyAndBurn`, which
+spends 1% of the balance (floor 0.002, cap 0.1 ETH) no more than hourly,
+quotes the buy from the pool's own state on chain, refuses a fill more than
+5% under it, buys through the Universal Router and calls `burn()` on the
+token. No owner, no withdraw, no parameter that changes. On a fork of
+mainnet against the live CHIT pool: 0.01 ETH bought 177,001.70 CHIT, the
+hook took exactly 2.00%, the supply fell by the burn; the floor, the cap,
+the interval and the guard each proved. A keeper workflow calls it hourly,
+the daily post reads the day's events and the contract's counters, a deploy
+script checks the pool id and a price before recording. The team's rule for
+what goes in (10% of fees, one point more per 100k of mcap) stays the
+team's, posted as a promise; a fee splitter can automate the deposit later.
+`docs/chit-buyback.md`.
