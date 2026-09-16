@@ -38,6 +38,7 @@ import {
   parseEth,
   toEth,
 } from "./fleet/page-shared.js";
+import { forgetSignedReads, readSigned } from "./fleet/signed-read.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 import { readStatus } from "./fleet/status-read.js";
 
@@ -115,8 +116,8 @@ class TradePage {
     }
     this.#store = createOrderStore(localStorage, wallet);
     try {
-      const body = (await signedFleetApi(wallet, "list", {})) as { fleets?: Fleet[] };
-      this.#fleets = body.fleets ?? [];
+      const body = (await readSigned(wallet, "list", {})) as { fleets?: Fleet[] };
+      this.#fleets = await Promise.all((body.fleets ?? []).map((fleet) => this.#live(fleet)));
     } catch {
       this.#fleets = [];
     }
@@ -133,6 +134,16 @@ class TradePage {
     if (initial) await this.#selectFleet(initial);
     else this.#render();
     this.#schedule();
+  }
+
+  /** The list may be a cached answer; state and what's left come from the unsigned status read. */
+  async #live(fleet: Fleet): Promise<Fleet> {
+    try {
+      const status = await readStatus(fleet.campaign);
+      return { ...fleet, state: status.state, remaining: status.draw?.remaining ?? fleet.remaining };
+    } catch {
+      return fleet;
+    }
   }
 
   async #selectFleet(campaign: string): Promise<void> {
@@ -155,7 +166,7 @@ class TradePage {
     }
     if (tokens.size === 0) return;
     try {
-      const body = (await signedFleetApi(wallet, "holdings", {
+      const body = (await readSigned(wallet, "holdings", {
         campaign: fleet.campaign,
         tokens: [...tokens.keys()],
       })) as { holdings?: Holding[] };
@@ -380,6 +391,8 @@ class TradePage {
           await this.#reconcile(current.order.id);
         }
       }
+      // Even a lost reply may have spent the draw and bought tokens.
+      forgetSignedReads(wallet);
     }
     this.#render();
     this.#schedule();

@@ -464,7 +464,10 @@ function watchAccounts(eth: Eip1193 | undefined): void {
     if (eth !== walletProvider()) return;
     const list = accounts as string[];
     if (list[0]) {
-      setConnected(list[0].toLowerCase() as Hex);
+      // As in restoreWallet: re-announcing an unchanged account makes every page re-read.
+      const address = list[0].toLowerCase() as Hex;
+      if (address === getConnectedWallet()) connected = address;
+      else setConnected(address);
       return;
     }
     // Some wallets emit an empty list while a page is still loading. Only a

@@ -23,6 +23,7 @@ import {
 import { DRAW_CAP, drawShare, fundingProgress, fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
 import { connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initShell, parseEth, saveFleetSnapshot, toEth, walletProvider } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
+import { forgetSignedReads } from "./fleet/signed-read.js";
 import { prefersReducedMotion } from "./fleet/motion.js";
 import { readStatus } from "./fleet/status-read.js";
 import { signedFleetApi } from "./fleet/signed-request.js";
@@ -396,6 +397,9 @@ class FleetWizard {
         accounts: this.#accounts.map((account) => account.ownerAddress),
       });
       this.#go("done");
+    } finally {
+      // A launch that failed part way may still have created the fleet.
+      if (this.#wallet) forgetSignedReads(this.#wallet);
     }
   }
 
