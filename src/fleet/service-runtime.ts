@@ -33,17 +33,19 @@ const DEFAULT_RPC = "https://rpc.testnet.chain.robinhood.com";
 const BALANCE_OF_SELECTOR = "0x70a08231";
 
 /**
- * Deployed Stage 1 contracts on 46630, as recorded in deployments/fleet-46630.json
- * (deployed 2026-08-31). Override with FLEET_*_ADDRESS only after a redeploy.
+ * Deployed contracts on 46630, as recorded in deployments/fleet-46630.json
+ * (the hardened set, deployed 2026-09-16: atomic buy, batch queueing, hashed
+ * queue ids, hot operator and cold admin). Override with FLEET_*_ADDRESS only
+ * after a redeploy.
  */
 const DEPLOYED_46630 = {
-  escrow: "0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325",
-  factory: "0x5c0e2ec619c11b66e0e0efb7931bccfa6b784ea6",
-  policy: "0x57c7436bbbb40b08adef5c84f0aeaee0c4f3e011",
+  escrow: "0x4c3374f29f51b316da909a91f01db6f26d10d012",
+  factory: "0xf1ebd7494fd5cf74b1dd0623e2ab6a07afaefa5e",
+  policy: "0x653285b2024343a31f8cbf349e86a621d5ae1c9d",
   /** Uniswap v4 PoolManager on 46630 (deployments/fleet-46630.json, venue.poolManager). */
   poolManager: "0x8366a39cc670b4001a1121b8f6a443a643e40951",
-  /** The block that mined campaignEscrowTx 0xf464…708d; the fleet list scans events from here. */
-  escrowBlock: 110732061n,
+  /** The block that mined campaignEscrowTx 0xb554…cffd; the fleet list scans events from here. */
+  escrowBlock: 120343548n,
 } as const;
 
 /**
