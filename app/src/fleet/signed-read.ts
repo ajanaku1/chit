@@ -18,6 +18,8 @@ type Entry = { savedAt: number; body: Body };
 export type SignedReadOptions = {
   force?: boolean;
   now?: Date;
+  /** For answers that go stale faster than a balance, such as a price quote. */
+  maxAgeMs?: number;
   storage?: Store;
   sign?: typeof signedFleetApi;
 };
@@ -41,11 +43,11 @@ export const readSigned = async (
   wallet: Hex,
   action: string,
   body: Body,
-  { force = false, now = new Date(), storage = sessionStorage, sign = signedFleetApi }: SignedReadOptions = {},
+  { force = false, now = new Date(), maxAgeMs, storage = sessionStorage, sign = signedFleetApi }: SignedReadOptions = {},
 ): Promise<Body> => {
   const slot = `${action}:${payloadHash(body)}`;
   const cached = load(storage, wallet)[slot];
-  if (!force && cached && isFresh(cached.savedAt, now)) return cached.body;
+  if (!force && cached && isFresh(cached.savedAt, now, maxAgeMs)) return cached.body;
 
   const flight = `${keyOf(wallet)}:${slot}`;
   const pending = inFlight.get(flight);

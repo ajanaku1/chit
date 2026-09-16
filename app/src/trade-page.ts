@@ -163,15 +163,9 @@ class TradePage {
     const wallet = this.#wallet;
     const fleet = this.#fleet;
     if (!wallet || !fleet) return;
-    const tokens = new Map<string, string>();
-    for (const record of this.#store?.list() ?? []) {
-      if (record.order.campaign === fleet.campaign) tokens.set(record.order.token.toLowerCase(), record.symbol);
-    }
+    const tokens = this.#orderTokens(fleet);
     try {
-      const body = (await readSigned(wallet, "holdings", {
-        campaign: fleet.campaign,
-        tokens: [...tokens.keys()],
-      })) as { holdings?: Holding[]; symbols?: Record<string, string> };
+      const body = (await this.#readHoldings(wallet, fleet)) as { holdings?: Holding[]; symbols?: Record<string, string> };
       const totals = new Map<string, bigint>();
       for (const holding of body.holdings ?? []) {
         for (const [token, amount] of Object.entries(holding.tokens)) {
@@ -197,6 +191,20 @@ class TradePage {
     }
   }
 
+  /** Every token an order in this browser has touched for the fleet, with its symbol. */
+  #orderTokens(fleet: Fleet): Map<string, string> {
+    const tokens = new Map<string, string>();
+    for (const record of this.#store?.list() ?? []) {
+      if (record.order.campaign === fleet.campaign) tokens.set(record.order.token.toLowerCase(), record.symbol);
+    }
+    return tokens;
+  }
+
+  /** One body for every holdings read, so placing an order reuses the one the page already made. */
+  #readHoldings(wallet: Hex, fleet: Fleet): Promise<Record<string, unknown>> {
+    return readSigned(wallet, "holdings", { campaign: fleet.campaign, tokens: [...this.#orderTokens(fleet).keys()] });
+  }
+
   /** Quotes the pasted token against the fleet's current total, on blur or 400ms after typing stops. */
   async #quoteToken(): Promise<void> {
     const wallet = this.#wallet;
@@ -217,7 +225,8 @@ class TradePage {
       // The quote still resolves against a zero total; the plan preview catches an empty amount.
     }
     try {
-      const quote = (await signedFleetApi(wallet, "tokenQuote", { campaign: fleet.campaign, token, totalWei })) as Quote;
+      // Typing then leaving the field asks twice for the same quote; a recent answer serves both.
+      const quote = (await readSigned(wallet, "tokenQuote", { campaign: fleet.campaign, token, totalWei }, { maxAgeMs: 60_000 })) as Quote;
       this.#quote = quote;
       line.textContent = quote.hasPool
         ? `${quote.symbol} · pool found · about ${toEth(quote.estimatedOut)} ${quote.symbol} for the total (estimate)`
@@ -284,9 +293,7 @@ class TradePage {
       return;
     }
     try {
-      const holdingsBody = (await signedFleetApi(wallet, "holdings", { campaign: fleet.campaign, tokens: [] })) as {
-        holdings?: Holding[];
-      };
+      const holdingsBody = (await this.#readHoldings(wallet, fleet)) as { holdings?: Holding[] };
       const wallets = (holdingsBody.holdings ?? []).map((holding) => holding.wallet);
       const accounts = wallets.length || fleet.accounts;
       const perWallet = accounts > 0 ? toEth((BigInt(totalWei) / BigInt(accounts)).toString()) : toEth(totalWei);
