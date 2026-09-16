@@ -252,6 +252,28 @@ test("no page signs for a balance directly; they share one cached read", async (
 });
 
 /**
+ * The Trade page reads the trader's fleets and holdings every time it opens.
+ * Signed afresh, that is a wallet prompt on every visit to the tab.
+ */
+test("the Trade page's load reads come from the shared cached signed read", async () => {
+  const text = await source("trade-page.ts");
+  for (const action of ["list", "holdings"]) {
+    assert.match(text, new RegExp(`readSigned\\(wallet, "${action}"`), `the Trade page does not read "${action}" through the cache`);
+  }
+  const onWallet = /async #onWallet\(\)[\s\S]*?\n  \}/.exec(text);
+  const holdings = /async #holdings\(\)[\s\S]*?\n  \}/.exec(text);
+  assert.ok(onWallet && holdings, "no load path to inspect");
+  for (const body of [onWallet[0], holdings[0]]) {
+    assert.doesNotMatch(body, /signedFleetApi\(/, "the Trade page signs on load, so every visit prompts");
+  }
+  const poll = /async #pollOnce\(\)[\s\S]*?\n  \}/.exec(text);
+  assert.ok(poll && /forgetSignedReads\(wallet\)/.test(poll[0]), "a trade leaves the cached fleets and holdings stale");
+  for (const page of ["fleet-page.ts", "fleet-dashboard.ts"]) {
+    assert.match(await source(page), /forgetSignedReads\(/, `${page} changes a fleet but leaves the cached list stale`);
+  }
+});
+
+/**
  * A fleet created but never activated exists only in the memory of the service
  * instance that made it. Once that instance is gone the campaign cannot be
  * read, and a dashboard that keeps a stale snapshot signs for it on every load
