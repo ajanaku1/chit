@@ -1180,5 +1180,6 @@ const errorResult = (error: unknown): RouterResult => {
   }
   status ??= code === undefined ? undefined : STATUS[code];
   if (code === undefined || status === undefined) throw error;
+  if (status >= 400 && code !== "challenge_invalid") console.warn(`fleet route refused: ${code}${reason ? ` (${reason})` : ""}`);
   return { status, body: { code, retryable: code === "challenge_invalid", ...(reason ? { reason } : {}) } };
 };

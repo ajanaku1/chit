@@ -375,7 +375,7 @@ class TradePage {
         store.update(current.order.id, (record) => applyResults(record, executed));
       } catch (error) {
         if (error instanceof RequestFailed && error.status >= 400 && error.status < 500) {
-          const reason = error.code;
+          const reason = error.reason ? `${error.code}: ${error.reason}` : error.code;
           store.update(current.order.id, (record) =>
             applyResults(record, [...dueNow].map((index) => ({ index, status: "rejected", reason }))),
           );
