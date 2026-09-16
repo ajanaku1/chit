@@ -243,8 +243,8 @@ test("a buy on the real venue carries a minimum output from the spot quote, and 
 
   const ok = await router.handle(await buy(service, campaign), key());
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
-  const expected = encodeV4EthBuy({ token: VENUE, amountIn: 1n, minOut: 975_000n, deadline: BigInt(Math.floor(now.getTime() / 1000) + 3600) });
-  assert.equal(captured[0]?.callData, expected, "amountOutMinimum = estimate less 2.5%, never zero");
+  const expected = encodeV4EthBuy({ token: VENUE, amountIn: 1n, minOut: 972_075n, deadline: BigInt(Math.floor(now.getTime() / 1000) + 3600) });
+  assert.equal(captured[0]?.callData, expected, "amountOutMinimum = estimate less the pool's 0.3% fee, less 2.5%, never zero");
 
   hasPool = false;
   const refused = await router.handle(await buy(service, campaign), key());

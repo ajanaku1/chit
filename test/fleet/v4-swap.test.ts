@@ -3,8 +3,13 @@ import { describe, it } from "node:test";
 import { decodeAbiParameters, decodeFunctionData, parseAbi, type Address } from "viem";
 
 import {
-  NATIVE_ETH, UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, VENUE_POOL,
-  encodeBuyCall, encodeV4EthBuy,
+  encodeBuyCall,
+  encodeV4EthBuy,
+  minOutFor,
+  NATIVE_ETH,
+  UNIVERSAL_ROUTER_EXECUTE,
+  UNIVERSAL_ROUTER_EXECUTE_SELECTOR,
+  VENUE_POOL,
 } from "../../src/fleet/v4-swap.js";
 
 const TOKEN = "0x00000000000000000000000000000000000f1ee7" as Address;
@@ -49,4 +54,13 @@ describe("Uniswap v4 buy calldata", () => {
     const { args } = decodeFunctionData({ abi: EXECUTE, data });
     assert.equal(args[2], 1_700_003_600n);
   });
+});
+
+it("the output floor takes the pool's fee off the spot estimate before the slippage allowance", () => {
+  // The spot estimate is fee-free; the venue charges 0.3% on every swap. A
+  // floor that ignored the fee spent 0.3 of the 2% allowance before the price
+  // moved at all, and on a thin pool every buy came back V4TooLittleReceived.
+  const estimate = 1_000_000_000_000_000_000n;
+  assert.equal(minOutFor(estimate, 200), 977_060_000_000_000_000n, "(1 - 0.003) * (1 - 0.02)");
+  assert.equal(minOutFor(estimate, 0), 997_000_000_000_000_000n, "zero slippage still allows the fee");
 });
