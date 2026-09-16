@@ -144,7 +144,10 @@ class TradePage {
     this.#render();
   }
 
-  /** Sums holdings across the fleet's wallets for every token an order has ever touched. */
+  /**
+   * Sums holdings across the fleet's wallets: the venue's tokens always (the
+   * service adds them), plus any token an order in this browser has touched.
+   */
   async #holdings(): Promise<void> {
     const wallet = this.#wallet;
     const fleet = this.#fleet;
@@ -153,19 +156,20 @@ class TradePage {
     for (const record of this.#store?.list() ?? []) {
       if (record.order.campaign === fleet.campaign) tokens.set(record.order.token.toLowerCase(), record.symbol);
     }
-    if (tokens.size === 0) return;
     try {
       const body = (await signedFleetApi(wallet, "holdings", {
         campaign: fleet.campaign,
         tokens: [...tokens.keys()],
-      })) as { holdings?: Holding[] };
+      })) as { holdings?: Holding[]; symbols?: Record<string, string> };
       const totals = new Map<string, bigint>();
       for (const holding of body.holdings ?? []) {
         for (const [token, amount] of Object.entries(holding.tokens)) {
           const key = token.toLowerCase();
           totals.set(key, (totals.get(key) ?? 0n) + BigInt(amount));
+          if (!tokens.has(key)) tokens.set(key, body.symbols?.[key] ?? key.slice(0, 8));
         }
       }
+      if (tokens.size === 0) return;
       const dl = el("holdings");
       dl.replaceChildren();
       for (const [token, symbol] of tokens) {
