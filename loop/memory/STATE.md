@@ -144,3 +144,27 @@ path did not exist in this repository, which uses `IMPLEMENTATION.md` as its
 running log and the four build-contract files at the root. The path was created
 rather than the proposal being filed somewhere else, because the law names it
 specifically. Logged in `IMPLEMENTATION.md` under the same date.
+
+---
+
+## 2026-09-16 — Chit Bot merged; dependencies that arrived with it
+
+`feat/chit-bot` (13 commits, 238 tests green) and `fix/buyback-explorer-link`
+were merged into `main` on request and pushed to `private`. The bot branch
+brings two dependencies that were not proposed here first, because they came
+in on the collaborator's branch rather than being added in this tree:
+
+- `@resvg/resvg-js` (runtime) — renders the share card PNG in `src/fleet/bot-share.ts`.
+- `@electric-sql/pglite` (dev) — the poll runner's on-disk store (`BOT_PGLITE_DIR`).
+
+Filed here for the record; removing either means removing the feature it serves.
+
+Still open before the bot is live on chit.tools: the five `BOT_*`/`TELEGRAM_*`
+production env vars (none set yet; `DATABASE_URL` is), then
+`scripts/bot-set-webhook.mjs` once, then `/setprivacy` disable in BotFather.
+
+Buyback keeper: `buyback-keeper.yml` is on an hourly cron (`7 * * * *`), but
+GitHub ran no scheduled instance between the 10:04 dispatch and 14:54 UTC, then
+ran buy 2. That is GitHub's scheduler skipping slots on a fresh workflow, not
+the script. A Vercel cron hitting a keeper route would be the reliable fix; it
+needs `BUYBACK_KEEPER_KEY` in the Vercel environment, so it is proposed, not done.
