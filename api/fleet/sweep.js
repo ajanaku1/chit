@@ -6,7 +6,14 @@
 import { handleFleetRequest } from "../../dist/src/fleet/service-runtime.js";
 import { sweepTriggerAllowed } from "../../dist/src/fleet/sweep-trigger.js";
 
+// The same gate on both verbs: a POST with {"action":"sweep"} is the
+// scheduled sweep too, and an open one would let anyone queue the batch in
+// the window right after a trader's buy, which is the correlation the
+// schedule exists to prevent.
 export function POST(request) {
+  if (!sweepTriggerAllowed(request, process.env.CRON_SECRET)) {
+    return Response.json({ code: "unauthorized", retryable: false, reason: "cron_secret" }, { status: 401 });
+  }
   return handleFleetRequest(request, ["sweep"]);
 }
 
