@@ -1829,3 +1829,15 @@ something also returns the fleet's holdings, so the tile updates without the
 signed re-read that had been added to every poll. An order used to cost a
 prompt to place it, one for every poll that sent slices, and one more per
 poll for holdings; it now costs the one that places it.
+
+## The landing's app buttons go to the app (2026-09-16, landing)
+
+Launch app and Open the app opened the build-progress sheet, and the landing
+said the app was in private testing and ran locally only. The loop runs end
+to end on chit.tools now (deposit, fleet of five, launch, a sponsored order in
+five slices), so both buttons are links to `/app/fleet.html`, the wizard, and
+the hero says testnet and test ETH instead. The progress sheet stays at
+`#progress`, unlinked. Two predicates in `landing/test/landing.test.mjs`
+changed deliberately with the requirement: the landing must now link into the
+wizard (and only the wizard; Control Room and Balance are reached from inside
+the app), and must not call the app private.

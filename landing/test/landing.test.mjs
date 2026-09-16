@@ -122,23 +122,28 @@ test("keeps unsupported product claims off the landing", async () => {
   }
 });
 
-test("does not link into the app, which is not public", async () => {
+test("links into the app, and says the app is testnet", async () => {
   const html = await source("index.html");
 
-  // The Fleet app runs locally while it is in private testing. A link here
-  // would publish the Control Room and Balance pages to anyone who lands.
-  assert.doesNotMatch(html, /href="\/app/);
+  // The end-to-end flow works on testnet (2026-09-16), so the app buttons go
+  // to the app itself: the wizard, on this host, in the same tab.
+  assert.match(html, /<a class="btn-nav" href="\/app\/fleet\.html">Launch app<\/a>/);
+  assert.match(html, /<a class="btn btn--solid" href="\/app\/fleet\.html">Open the app<\/a>/);
+  assert.doesNotMatch(html, /aria-controls="progress"/, "a button still opens the progress sheet");
+  assert.doesNotMatch(html, /private testing|runs locally/i, "the landing still calls the app private");
+  assert.match(html, /<p class="hero__pending"[^>]*>[^<]*testnet[^<]*<\/p>/i, "the hero does not say the app is testnet");
 
   // Links that do leave the page must leave it safely.
   for (const link of html.match(/<a [^>]*href="https?:[^>]*>/g) ?? []) {
     assert.match(link, /target="_blank"/, `${link} opens in place`);
     assert.match(link, /rel="noopener noreferrer"/, `${link} lacks rel=noopener noreferrer`);
   }
-  assert.doesNotMatch(html, /href="[^"]*(fleet|balance|dashboard)[^"]*\.html"/i);
+  // The app's entry is the wizard; the Control Room and Balance pages are
+  // reached from inside the app, with a wallet, not from the landing.
+  assert.doesNotMatch(html, /href="[^"]*(balance|dashboard)[^"]*\.html"/i);
 
-  // And the calls to action are inert until it is public.
-  // Every call to action is inert. The only live controls are the contract
-  // copy and the in-page morph cue, neither of which leaves the landing.
+  // Buttons other than the contract copy and the morph cue stay inert: what
+  // leaves the landing is a link, so it works without script.
   for (const button of html.match(/<button[^>]*>/g) ?? []) {
     if (/id="copy-contract-address"|class="morph-cue"/.test(button)) continue;
     assert.match(button, /\bdisabled\b/, `${button} is still clickable`);
@@ -250,8 +255,8 @@ test("every link on the landing reaches a page or an element that exists", async
       await assert.doesNotReject(access(new URL(`../..${target}`, import.meta.url)), `${target} does not exist`);
     }
   }
-  // The CTAs are inert on purpose while the app is in private testing; the
-  // check above still holds every real link to a page or element that exists.
+  // The app buttons are real links now; the check above holds them to a page
+  // that exists, like every other link.
 });
 
 /**
@@ -287,16 +292,14 @@ test("every Learn More opens a limit sheet whose contract citations are real", a
 });
 
 /**
- * Launch app and Open the app open the progress sheet; Read the boundary opens
- * the boundary sheet. Both stay on the landing. The progress sheet carries no
- * hand-typed number: every figure is rendered from progress.json, which
+ * Read the boundary opens the boundary sheet and stays on the landing. The
+ * progress sheet is still reachable at #progress and carries no hand-typed
+ * number: every figure is rendered from progress.json, which
  * scripts/progress.mjs recomputes from the task lists (PROGRESS.md).
  */
-test("the app buttons open the progress sheet, the boundary button its sheet, and no number is typed", async () => {
+test("the boundary button opens its sheet, and the progress sheet types no number", async () => {
   const [html, js] = await Promise.all([source("index.html"), source("main.js")]);
 
-  assert.match(html, /<a class="btn-nav" href="#progress" aria-controls="progress"[^>]*>Launch app<\/a>/);
-  assert.match(html, /<a class="btn btn--solid" href="#progress" aria-controls="progress"[^>]*>Open the app<\/a>/);
   assert.match(html, /<a class="btn btn--ghost" href="#boundary" aria-controls="boundary"[^>]*>Read the boundary<\/a>/);
   assert.match(html, /<div class="modal" id="progress" role="dialog" aria-modal="true" aria-labelledby="progress-title"/);
   assert.match(html, /<div class="modal" id="boundary" role="dialog" aria-modal="true" aria-labelledby="boundary-title"/);

@@ -73,7 +73,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
           <li><a href="burn/">Burn</a></li></ul>
       </nav>
     </div>
-    <a class="btn-nav" href="#progress" aria-controls="progress" aria-expanded="false">Launch app</a>
+    <a class="btn-nav" href="/app/fleet.html">Launch app</a>
     <div class="contract-row">
       <span class="contract-row__label">CA</span>
       <code id="contract-address">0xD523A627030509021cC39B6d7C8543417D3E50D8</code>
@@ -98,10 +98,10 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
             </h1>
             <p class="hero__sub" data-reveal style="--rv-delay:833ms; --rv-dur:617ms">Your main wallet never funds your fleet. The chain shows a deposit into Chit and fleets funded by Chit, and no transaction links the two. Trades stay public, and so do amounts and timing; only the funding relationship is withheld, and Chit can still see it.</p>
             <div class="hero__actions" data-reveal style="--rv-delay:833ms; --rv-dur:600ms">
-              <a class="btn btn--solid" href="#progress" aria-controls="progress" aria-expanded="false">Open the app</a>
+              <a class="btn btn--solid" href="/app/fleet.html">Open the app</a>
               <a class="btn btn--ghost" href="#boundary" aria-controls="boundary" aria-expanded="false">Read the boundary</a>
             </div>
-            <p class="hero__pending" data-reveal style="--rv-delay:900ms; --rv-dur:600ms">The app is in private testing and runs locally only.</p>
+            <p class="hero__pending" data-reveal style="--rv-delay:900ms; --rv-dur:600ms">Live on Robinhood Chain testnet. Test ETH only, no real funds.</p>
           </div>
         </div>
         <div class="trusted" data-reveal style="--rv-delay:850ms; --rv-dur:600ms">
@@ -444,7 +444,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
 
   <!-- ══ SHEETS OVER EITHER SCREEN. Same glass as the limit sheets. ══ -->
 
-  <!-- Launch app / Open the app: how far along the build is. Every number
+  <!-- Build progress, at #progress: how far along the build is. Every number
        here is rendered from progress.json, which the repo recomputes on each
        push to main from its task lists. The rule is PROGRESS.md. -->
   <div class="modal" id="progress" role="dialog" aria-modal="true" aria-labelledby="progress-title" tabindex="-1">
@@ -452,7 +452,7 @@ window.__entranceFailsafe = setTimeout(() => document.documentElement.classList.
       <header class="limit__head">
         <div class="limit__lead">
           <p class="limit__eyebrow"><span class="limit__index">Where the build stands</span>From the repo</p>
-          <h3 class="limit__title" id="progress-title">The app is in private testing. Here is exactly how far along it is.</h3>
+          <h3 class="limit__title" id="progress-title">Here is exactly how far along the build is.</h3>
         </div>
         <p class="limit__figure"><span class="dot-number" data-dots="0" data-progress="percent" aria-label="0"></span><span class="limit__unit">%<small data-progress="tasks">of specced tasks done</small></span></p>
       </header>
