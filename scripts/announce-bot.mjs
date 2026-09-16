@@ -77,6 +77,9 @@ const reply_markup = {
 };
 
 if (!token || !chat) { console.log("would send:\n" + text + "\n" + JSON.stringify(reply_markup)); process.exit(0); }
+// A button to a bot that does not answer is worse than no post: the host says whether the runtime built (GET /api/bot is 200 only then).
+const live = await fetch(`${site.replace(/\/+$/, "")}/api/bot`).then((r) => r.ok).catch(() => false);
+if (!live) { console.log("the bot is not live on the host yet (GET /api/bot did not answer 200); no invitation posted"); process.exit(0); }
 const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
   method: "POST", headers: { "content-type": "application/json" },
   body: JSON.stringify({ chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true, reply_markup }),
