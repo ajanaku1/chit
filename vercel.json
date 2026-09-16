@@ -9,9 +9,8 @@
       "maxDuration": 60,
       "includeFiles": "landing/public/bot/**"
     },
-    "api/buyback/keep.js": {
-      "maxDuration": 180,
-      "includeFiles": "scripts/buyback-keeper.mjs"
+    "api/buyback/keeper.js": {
+      "maxDuration": 180
     }
   },
   "crons": [
@@ -24,7 +23,7 @@
       "schedule": "0 15 * * *"
     },
     {
-      "path": "/api/buyback/keep",
+      "path": "/api/buyback/keeper",
       "schedule": "5 12 * * *"
     }
   ],
