@@ -32,7 +32,7 @@
 import { formatUnits, isAddress, parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
-import type { BotChain, Landed, TokenInfo } from "./bot-chain.js";
+import type { BotChain, Landed, NewPool, TokenInfo } from "./bot-chain.js";
 import { FleetDriver, FleetError, fleetPhase, type FleetApi } from "./bot-fleet.js";
 import { CAPTION_MAX_CHARS, esc, type Keyboard, type Outgoing, type Telegram } from "./bot-telegram.js";
 import {
@@ -102,6 +102,9 @@ const FLEET_SIZE = 5;
 const DEPOSIT_SIZES = ["0.01", "0.05"] as const;
 const DRAW_CHOICES = ["0.005", "0.01", "0.02"] as const;
 const FLEET_BUY_CHOICES = ["0.0005", "0.001"] as const;
+/** The new-pools tab looks back this far: about a day of the chain at four blocks a second. */
+const NEW_POOLS_BLOCKS = 350_000;
+const NEW_POOLS_SHOWN = 8;
 
 const short = (a: string): string => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const fmt = (units: bigint, decimals = 18, places = 5): string => {
@@ -358,6 +361,7 @@ export class ChitBot {
       case "buy": await ack(); return this.#buyMenu(chatId, tgId, a as Address | "", messageId);
       case "sell": await ack(); return this.#sellMenu(chatId, tgId, a as Address | "", messageId);
       case "positions": await ack(); return this.#positions(chatId, tgId, messageId);
+      case "new": await ack(); return this.#newPools(chatId, tgId, messageId);
       case "token": await ack(); return a ? this.#tokenCard(chatId, tgId, a as Address, messageId) : this.#ask(chatId, "token", PROMPT.token());
       case "fleet": await ack(); return this.#fleet(chatId, tgId, messageId);
       case "fl": await ack(a === "status" || a === "bal" || a === "new" ? undefined : "working…"); return this.#fleetAction(chatId, tgId, a, b, q.id);
@@ -481,15 +485,18 @@ export class ChitBot {
       }
       if (!wallet) throw new Error("could not find a free referral code");
     }
+    // A deep link from a partner's page or a group button: t.me/<bot>?start=t-<contract>, straight to that token's card.
+    const linked = startParam?.startsWith("t-") ? startParam.slice(2) : undefined;
     if (fresh) {
       const topped = await this.#tryFaucet(wallet);
       await this.#say(chatId,
         `gm${firstName ? ` ${esc(firstName)}` : ""}. made you a wallet on <b>Robinhood Chain testnet</b>. test ETH, test tokens, nothing real, and we hold this key so you can try things in one tap. on mainnet, which is next and not live, the key will stay with you; that is the whole point of Chit.\n\n` +
         this.#faucetLine(topped) +
         (wallet.referredBy ? "\n\nyou came through a referral link; that is on your card." : ""));
-    } else {
+    } else if (!linked) {
       await this.#say(chatId, `welcome back${firstName ? ` ${esc(firstName)}` : ""}.`);
     }
+    if (linked && isAddress(linked)) return this.#tokenCard(chatId, tgId, linked);
     await this.#home(chatId, tgId);
   }
 
@@ -523,8 +530,9 @@ export class ChitBot {
   #homeKeyboard(): Keyboard {
     return kb(
       [btn("💰 Buy", "buy:"), btn("💸 Sell", "sell:")],
-      [btn("📊 Positions", "positions"), btn("🚀 Fleet", "fleet")],
-      [btn("🔑 Sessions", "sessions"), btn("🤝 Refer", "refer")],
+      [btn("📊 Positions", "positions"), btn("🆕 New", "new")],
+      [btn("🚀 Fleet", "fleet"), btn("🔑 Sessions", "sessions")],
+      [btn("🤝 Refer", "refer")],
       [btn("⚙️ Settings", "settings"), btn("🏦 Withdraw", "withdraw")],
       [...(this.#d.chain.hasFaucet ? [btn("🚰 Faucet", "faucet")] : []), btn("❓ Help", "help"), btn("↻ Refresh", "home")],
     );
@@ -694,6 +702,30 @@ export class ChitBot {
     if (!held.length) lines.push("no tokens yet.");
     lines.push("", "<i>\"if sold now\" is the pool's fill for the whole position, fee and impact included.</i>");
     await this.#out(chatId, messageId, lines.join("\n"), kb(...rows, [btn("💰 Buy", "buy:"), btn("↻ Refresh", "positions")], back()));
+  }
+
+  /** The venue's newest ETH pools: what just launched, and whether a tap here can buy it. */
+  async #newPools(chatId: string, tgId: string, messageId?: number): Promise<void> {
+    const wallet = await this.#d.store.get(tgId);
+    if (!wallet) return this.#start(chatId, tgId);
+    const pools = await this.#d.chain.newPools(NEW_POOLS_BLOCKS);
+    const shown = pools.slice(0, NEW_POOLS_SHOWN);
+    const infos = await Promise.all(shown.map((p) => this.#d.chain.tokenInfo(p.token).catch((): TokenInfo => ({ address: p.token, symbol: "?", decimals: 18, hasPool: false, perEth: 0n, poolEth: 0n }))));
+    const head = pools[0]?.block ?? 0n;
+    const lines = [`<b>new on the venue</b> · ${pools.length} ETH pool${pools.length === 1 ? "" : "s"} opened in about a day`];
+    const rows: Keyboard = [];
+    shown.forEach((p, i) => {
+      const info = infos[i]!;
+      const age = head > p.block ? `${Number(head - p.block)} blocks ago` : "just now";
+      const line = p.tradeable
+        ? `<b>${esc(info.symbol)}</b> · pool <code>${eth(info.poolEth, 4)} ETH</code> · ${age}`
+        : `<b>${esc(info.symbol)}</b> · ${age} · <i>on a pool this bot cannot trade yet (fee ${p.fee / 10_000}%${p.hooks !== "0x0000000000000000000000000000000000000000" ? ", hooked" : ""})</i>`;
+      lines.push(line);
+      if (p.tradeable) rows.push([btn(`${info.symbol} · buy`, `token:${p.token}`)]);
+    });
+    if (!pools.length) lines.push("nothing opened lately.");
+    lines.push("", "<i>read from the pool manager's own events just now. \"cannot trade yet\": the venue key is uniswap v4, 0.3%, no hook; other pools come with the next venues.</i>");
+    await this.#out(chatId, messageId, lines.join("\n"), kb(...rows, [btn("↻ Refresh", "new"), btn("← Back", "home")]));
   }
 
   /** Half or all-but-gas of the balance, read now, to the address the button carries. */

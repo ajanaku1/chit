@@ -13,7 +13,7 @@
  * the live venue.
  */
 
-import { createPublicClient, createWalletClient, defineChain, encodeFunctionData, http, maxUint256, parseAbi, WaitForTransactionReceiptTimeoutError, type PublicClient, type Transport, type WalletClient } from "viem";
+import { createPublicClient, createWalletClient, defineChain, encodeFunctionData, http, maxUint256, parseAbi, parseAbiItem, WaitForTransactionReceiptTimeoutError, type PublicClient, type Transport, type WalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { decodeSlot0, liquiditySlot, poolIdFor, quoteExactIn, slot0Slot } from "./market.js";
@@ -64,7 +64,15 @@ export type BotChain = {
   faucetBalance(): Promise<bigint>;
   /** What the pool holds, for /pool in the group. */
   poolNumbers(): Promise<{ address: Address; heldWei: bigint; totalDeposited: bigint; campaigns: bigint; paused: boolean } | null>;
+  /**
+   * ETH pools opened on the venue recently, newest first: the token, when,
+   * and whether this bot can trade it (the venue's own key, no hook). Read
+   * from the pool manager's Initialize events over the last `blocks`.
+   */
+  newPools(blocks: number): Promise<NewPool[]>;
 };
+
+export type NewPool = { token: Address; block: bigint; tradeable: boolean; fee: number; hooks: Address };
 
 const ERC20_ABI = parseAbi([
   "function balanceOf(address) view returns (uint256)",
@@ -75,6 +83,10 @@ const ERC20_ABI = parseAbi([
 const PERMIT2_ABI = parseAbi(["function allowance(address user, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)"]);
 const ERC20_APPROVE_ABI = parseAbi(["function approve(address spender, uint256 amount) returns (bool)"]);
 const POOL_MANAGER_ABI = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)"]);
+const INITIALIZE = parseAbiItem("event Initialize(bytes32 indexed id, address indexed currency0, address indexed currency1, uint24 fee, int24 tickSpacing, address hooks, uint160 sqrtPriceX96, int24 tick)");
+const NATIVE: Address = "0x0000000000000000000000000000000000000000";
+/** One RPC log query covers at most this many blocks; a day on the chain is a few of these. */
+const LOG_SPAN = 100_000n;
 const POOL_ABI = parseAbi(["function deposit() payable", "function totalDeposited() view returns (uint256)", "function campaignCount() view returns (uint256)", "function paused() view returns (bool)"]);
 
 export type BotChainConfig = {
@@ -103,6 +115,8 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
   const walletFor = (key: Hex): WalletClient => createWalletClient({ account: privateKeyToAccount(key), chain, transport });
   const meta = new Map<string, { symbol: string; decimals: number }>();
   let faucetQueue: Promise<void> = Promise.resolve();
+  /** The new-pools scan is the same for every user; one result serves a minute. */
+  let poolsCache: { at: number; blocks: number; pools: NewPool[] } | undefined;
 
   const land = async (send: () => Promise<Hex>): Promise<Landed> => {
     const hash = await send();
@@ -232,6 +246,28 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
     async faucetBalance() {
       if (!config.faucetKey) return 0n;
       return publicClient.getBalance({ address: privateKeyToAccount(config.faucetKey).address });
+    },
+    async newPools(blocks) {
+      if (poolsCache && poolsCache.blocks === blocks && Date.now() - poolsCache.at < 60_000) return poolsCache.pools;
+      const head = await publicClient.getBlockNumber();
+      const from = head > BigInt(blocks) ? head - BigInt(blocks) : 0n;
+      const found = new Map<string, NewPool>();
+      for (let to = head; to > from; to -= LOG_SPAN) {
+        const start = to - LOG_SPAN + 1n > from ? to - LOG_SPAN + 1n : from;
+        const logs = await publicClient.getLogs({ address: config.poolManager, event: INITIALIZE, args: { currency0: NATIVE }, fromBlock: start, toBlock: to });
+        for (const l of logs) {
+          const token = l.args.currency1 as Address;
+          const key = token.toLowerCase();
+          if (found.has(key)) continue;
+          const fee = Number(l.args.fee);
+          const hooks = l.args.hooks as Address;
+          const tradeable = fee === VENUE_POOL.fee && Number(l.args.tickSpacing) === VENUE_POOL.tickSpacing && hooks.toLowerCase() === VENUE_POOL.hooks;
+          found.set(key, { token, block: l.blockNumber, tradeable, fee, hooks });
+        }
+      }
+      const pools = [...found.values()].sort((a, b) => (a.block > b.block ? -1 : a.block < b.block ? 1 : 0));
+      poolsCache = { at: Date.now(), blocks, pools };
+      return pools;
     },
     async poolNumbers() {
       if (!config.pool) return null;

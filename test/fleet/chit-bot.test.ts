@@ -99,6 +99,11 @@ const fakeChain = () => {
     },
     faucetBalance: async () => getE(FAUCET),
     poolNumbers: async () => ({ address: POOL, heldWei: parseEther("0.1465"), totalDeposited: parseEther("0.15"), campaigns: 3n, paused: false }),
+    newPools: async () => [
+      { token: PEPE, block: 1_000_050n, tradeable: true, fee: 3000, hooks: "0x0000000000000000000000000000000000000000" as Address },
+      { token: NOPOOL, block: 1_000_020n, tradeable: false, fee: 0, hooks: "0x2779651feE12F6fB5A187578De6b63709f85d0Cc" as Address },
+      { token: FLEET, block: 999_000n, tradeable: true, fee: 3000, hooks: "0x0000000000000000000000000000000000000000" as Address },
+    ],
   };
   return chain;
 };
@@ -160,7 +165,7 @@ test("Start makes a wallet, funds it, shows the card with the buttons; a second 
   assert.match(card, new RegExp(wallet.address));
   assert.match(card, /0.02 ETH/);
   assert.match(card, /testnet playground: this key is ours/, "the card says who holds the key");
-  assert.deepEqual(buttons(), ["buy:", "sell:", "positions", "fleet", "sessions", "refer", "settings", "withdraw", "faucet", "help", "home"]);
+  assert.deepEqual(buttons(), ["buy:", "sell:", "positions", "new", "fleet", "sessions", "refer", "settings", "withdraw", "faucet", "help", "home"]);
   assert.equal(openKey(wallet.sealedKey, SECRET, walletAad("7")).length, 66);
   assert.equal(wallet.refCode, refCodeOf("7", SECRET));
   assert.ok(wallet.faucetAt, "the faucet stamp was claimed");
@@ -686,4 +691,21 @@ test("banner cards: a photo with the text as caption, swapped in place for anoth
   // A card with no banner configured stays text.
   await bot.handle(tap("fleet"));
   assert.equal(telegram.sent.at(-1)!.kind, "edit");
+});
+
+test("the new tab lists what just opened on the venue, buy buttons only where this bot can trade; a t- deep link opens a token card", async () => {
+  const { bot, telegram, buttons } = setup();
+  await bot.handle(dm("/start"));
+  await bot.handle(tap("new"));
+  assert.match(telegram.last(), /<b>new on the venue<\/b> · 3 ETH pools opened/);
+  assert.match(telegram.last(), /<b>PEPE<\/b> · pool <code>5 ETH<\/code> · just now/);
+  assert.match(telegram.last(), /<b>NOPE<\/b> · 30 blocks ago · <i>on a pool this bot cannot trade yet \(fee 0%, hooked\)<\/i>/);
+  assert.deepEqual(buttons().filter((b) => b.startsWith("token:")), [`token:${PEPE}`, `token:${FLEET}`], "no buy button on the hooked pool");
+
+  // A partner's button: t.me/<bot>?start=t-<contract>, straight to the card, wallet made on the way for a newcomer.
+  await bot.handle(dm(`/start t-${PEPE}`, 42));
+  assert.match(telegram.texts().at(-2)!, /made you a wallet/);
+  assert.match(telegram.last(), /<b>PEPE<\/b> · <code>0x/);
+  await bot.handle(dm(`/start t-${PEPE}`, 42));
+  assert.match(telegram.last(), /<b>PEPE<\/b> · <code>0x/, "a returning user lands on the card too, no welcome line in between");
 });
