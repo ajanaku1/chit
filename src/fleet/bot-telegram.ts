@@ -45,10 +45,20 @@ export const createTelegram = (token: string): Telegram => {
   };
 };
 
-/** A recorder for tests: every outgoing message, in order. */
+/** Telegram's limits on what a keyboard and a reply field may carry; the real API refuses the whole message past them. */
+export const CALLBACK_DATA_MAX_BYTES = 64;
+export const PLACEHOLDER_MAX_CHARS = 64;
+
+/** A recorder for tests: every outgoing message, in order, refusing what Telegram would refuse. */
 export class RecordingTelegram implements Telegram {
   readonly sent: Outgoing[] = [];
   async deliver(out: Outgoing): Promise<void> {
+    if (out.kind !== "answer" && out.keyboard) {
+      for (const b of out.keyboard.flat()) {
+        if ("callback_data" in b && Buffer.byteLength(b.callback_data, "utf8") > CALLBACK_DATA_MAX_BYTES) throw new Error(`callback_data over ${CALLBACK_DATA_MAX_BYTES} bytes: ${b.callback_data}`);
+      }
+    }
+    if (out.kind === "send" && out.ask && out.ask.length > PLACEHOLDER_MAX_CHARS) throw new Error(`placeholder over ${PLACEHOLDER_MAX_CHARS} characters: ${out.ask}`);
     this.sent.push(out);
   }
   texts(): string[] {

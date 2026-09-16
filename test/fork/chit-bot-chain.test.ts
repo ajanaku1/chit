@@ -72,7 +72,17 @@ describe("Chit Bot chain adapter (46630 fork)", () => {
     const sold = await forked.sell(userKey, token.address, half, minOutFor(sellQuote!, 300));
     assert.equal(sold.ok, true, "the sale landed (approvals then the router)");
     assert.equal(await forked.tokenBalance(token.address, user), held - half);
-    assert.ok((await forked.ethBalance(user)) > ethBefore - parseEther("0.0005"), "ETH came back, minus gas for three transactions");
+    const ethAfter = await forked.ethBalance(user);
+    assert.ok(ethAfter > ethBefore, `ETH came back: ${ethAfter} after ${ethBefore}`);
+    // The fork prices gas well above the live chain's 0.01 gwei, so the gas allowance is read, not assumed: three transactions, 300k gas in all.
+    const gasAllowance = 300_000n * (await publicClient.getGasPrice());
+    assert.ok(ethAfter - ethBefore >= minOutFor(sellQuote!, 300) - gasAllowance, `at least the guarded amount less gas: got ${ethAfter - ethBefore}, guarded ${minOutFor(sellQuote!, 300)}, gas allowance ${gasAllowance}`);
+
+    // A second sale needs no approvals: only the swap itself is sent.
+    const quarter = (held - half) / 2n;
+    const again = await forked.sell(userKey, token.address, quarter, minOutFor((await forked.quoteSell(token.address, quarter))!, 300));
+    assert.equal(again.ok, true);
+    assert.equal(await forked.tokenBalance(token.address, user), held - half - quarter);
 
     const sent = await forked.send(userKey, faucetWallet!.account.address, parseEther("0.005"));
     assert.equal(sent.ok, true);

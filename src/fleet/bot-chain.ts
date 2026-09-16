@@ -13,14 +13,18 @@
  * the live venue.
  */
 
-import { createPublicClient, createWalletClient, defineChain, encodeFunctionData, http, parseAbi, type PublicClient, type Transport, type WalletClient } from "viem";
+import { createPublicClient, createWalletClient, defineChain, encodeFunctionData, http, maxUint256, parseAbi, WaitForTransactionReceiptTimeoutError, type PublicClient, type Transport, type WalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { decodeSlot0, liquiditySlot, poolIdFor, quoteExactIn, slot0Slot } from "./market.js";
 import type { Address, Hex } from "./types.js";
 import { PERMIT2, VENUE_POOL, encodeV4EthBuy, encodeV4TokenSell, minOutFor, sellApprovals } from "./v4-swap.js";
 
-export type Landed = { hash: Hex; ok: boolean };
+/** `pending`: sent, but no receipt within the wait; the hash is real and the caller must not send again. */
+export type Landed = { hash: Hex; ok: boolean; pending?: boolean };
+
+/** Receipts are waited for this long before the reply says "still landing"; a Vercel function has sixty seconds in all. */
+export const RECEIPT_WAIT_MS = 40_000;
 
 export type TokenInfo = {
   address: Address;
@@ -39,6 +43,10 @@ export type BotChain = {
   /** The venue token: what a fresh wallet sees first. */
   defaultToken: Address;
   router: Address;
+  /** The fleet pool, when this deployment has one; null means no deposit button. */
+  pool: Address | null;
+  /** Whether a faucet key is configured. */
+  hasFaucet: boolean;
   ethBalance(address: Address): Promise<bigint>;
   tokenBalance(token: Address, address: Address): Promise<bigint>;
   tokenInfo(token: Address): Promise<TokenInfo>;
@@ -65,6 +73,7 @@ const ERC20_ABI = parseAbi([
   "function decimals() view returns (uint8)",
 ]);
 const PERMIT2_ABI = parseAbi(["function allowance(address user, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)"]);
+const ERC20_APPROVE_ABI = parseAbi(["function approve(address spender, uint256 amount) returns (bool)"]);
 const POOL_MANAGER_ABI = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)"]);
 const POOL_ABI = parseAbi(["function deposit() payable", "function totalDeposited() view returns (uint256)", "function campaignCount() view returns (uint256)", "function paused() view returns (bool)"]);
 
@@ -93,11 +102,27 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
   const publicClient = createPublicClient({ chain, transport }) as unknown as PublicClient;
   const walletFor = (key: Hex): WalletClient => createWalletClient({ account: privateKeyToAccount(key), chain, transport });
   const meta = new Map<string, { symbol: string; decimals: number }>();
+  let faucetQueue: Promise<void> = Promise.resolve();
 
   const land = async (send: () => Promise<Hex>): Promise<Landed> => {
     const hash = await send();
-    const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
-    return { hash, ok: receipt.status === "success" };
+    try {
+      const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_WAIT_MS });
+      return { hash, ok: receipt.status === "success" };
+    } catch (error) {
+      // The hash is not lost with the wait: the caller reports it and refuses to send again.
+      if (error instanceof WaitForTransactionReceiptTimeoutError) return { hash, ok: false, pending: true };
+      throw error;
+    }
+  };
+  /**
+   * A swap deadline from the wall clock, not the last block: an idle Orbit
+   * chain's latest block can be minutes old, and the sequencer stamps new
+   * blocks with the time of day.
+   */
+  const deadline = async (): Promise<bigint> => {
+    const block = await publicClient.getBlock();
+    return BigInt(Math.max(Number(block.timestamp), Math.floor(Date.now() / 1000))) + 600n;
   };
   const poolState = async (token: Address): Promise<{ sqrtPriceX96: bigint; liquidity: bigint }> => {
     const id = poolIdFor(token);
@@ -107,17 +132,20 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
     ]);
     return { sqrtPriceX96: decodeSlot0(slot0).sqrtPriceX96, liquidity: BigInt(liq) & ((1n << 128n) - 1n) };
   };
+  /** Symbol and decimals, remembered once read; a read that fails is not remembered, so a blip does not become "?" for the instance's life. */
   const metaOf = async (token: Address): Promise<{ symbol: string; decimals: number }> => {
     const key = token.toLowerCase();
-    let m = meta.get(key);
-    if (!m) {
-      const [symbol, decimals] = await Promise.all([
-        publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "symbol" }).catch(() => "?"),
-        publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "decimals" }).catch(() => 18),
-      ]);
-      m = { symbol: String(symbol).slice(0, 12), decimals: Number(decimals) };
-      meta.set(key, m);
-    }
+    const cached = meta.get(key);
+    if (cached) return cached;
+    const [symbol, decimals] = await Promise.allSettled([
+      publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "symbol" }),
+      publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "decimals" }),
+    ]);
+    const m = {
+      symbol: symbol.status === "fulfilled" ? String(symbol.value).slice(0, 12) : "?",
+      decimals: decimals.status === "fulfilled" ? Number(decimals.value) : 18,
+    };
+    if (symbol.status === "fulfilled" && decimals.status === "fulfilled") meta.set(key, m);
     return m;
   };
 
@@ -125,6 +153,8 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
     chainId: config.chainId,
     defaultToken: config.defaultToken,
     router: config.router,
+    pool: config.pool ?? null,
+    hasFaucet: Boolean(config.faucetKey),
     ethBalance: (address) => publicClient.getBalance({ address }),
     tokenBalance: (token, address) => publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "balanceOf", args: [address] }).catch(() => 0n),
     async tokenInfo(token) {
@@ -148,32 +178,36 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
     },
     async buy(key, token, ethIn, minOut) {
       const wallet = walletFor(key);
-      const block = await publicClient.getBlock();
+      const until = await deadline();
       return land(() => wallet.sendTransaction({
         account: wallet.account!, chain, to: config.router, value: ethIn,
-        data: encodeV4EthBuy({ token, amountIn: ethIn, minOut, deadline: block.timestamp + 600n }), gas: 600_000n,
+        data: encodeV4EthBuy({ token, amountIn: ethIn, minOut, deadline: until }), gas: 600_000n,
       }));
     },
     async sell(key, token, tokensIn, minOut) {
       const wallet = walletFor(key);
       const owner = wallet.account!.address;
-      const block = await publicClient.getBlock();
-      // Approvals once per token: the token to Permit2, Permit2 to the router, both for more than this sale.
+      const until = await deadline();
+      // Approvals once per token, each only when short: the token to Permit2
+      // (uint256 max, which uint96-allowance tokens read as infinite), Permit2
+      // to the router (uint160 max, a year).
       const [erc20Allowance, permit] = await Promise.all([
         publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "allowance", args: [owner, PERMIT2] }),
         publicClient.readContract({ address: PERMIT2, abi: PERMIT2_ABI, functionName: "allowance", args: [owner, token, config.router] }),
       ]);
-      const permitOk = permit[0] >= tokensIn && Number(permit[1]) > Number(block.timestamp) + 600;
-      if (erc20Allowance < tokensIn || !permitOk) {
-        const max = 2n ** 160n - 1n;
-        for (const approval of sellApprovals(token, config.router, max, Number(block.timestamp) + 365 * 86_400)) {
-          const r = await land(() => wallet.sendTransaction({ account: wallet.account!, chain, to: approval.to, data: approval.data }));
-          if (!r.ok) return r;
-        }
+      const permitOk = permit[0] >= tokensIn && BigInt(permit[1]) > until;
+      const [, approvePermit] = sellApprovals(token, config.router, 2n ** 160n - 1n, Number(until) + 365 * 86_400);
+      const needed = [
+        ...(erc20Allowance < tokensIn ? [{ to: token, data: encodeFunctionData({ abi: ERC20_APPROVE_ABI, functionName: "approve", args: [PERMIT2, maxUint256] }) }] : []),
+        ...(permitOk ? [] : [approvePermit!]),
+      ];
+      for (const approval of needed) {
+        const r = await land(() => wallet.sendTransaction({ account: wallet.account!, chain, to: approval.to, data: approval.data }));
+        if (!r.ok) return r;
       }
       return land(() => wallet.sendTransaction({
         account: wallet.account!, chain, to: config.router,
-        data: encodeV4TokenSell({ token, amountIn: tokensIn, minOut, deadline: block.timestamp + 600n }), gas: 600_000n,
+        data: encodeV4TokenSell({ token, amountIn: tokensIn, minOut, deadline: until }), gas: 600_000n,
       }));
     },
     async send(key, to, wei) {
@@ -189,7 +223,11 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
     async faucet(to, wei) {
       if (!config.faucetKey) throw new Error("no faucet key");
       const wallet = walletFor(config.faucetKey);
-      return land(() => wallet.sendTransaction({ account: wallet.account!, chain, to, value: wei }));
+      // One faucet send at a time on this instance, so two top-ups here never
+      // race on the faucet key's nonce; across instances the handler's lock does it.
+      const next = faucetQueue.then(() => land(() => wallet.sendTransaction({ account: wallet.account!, chain, to, value: wei })));
+      faucetQueue = next.then(() => undefined, () => undefined);
+      return next;
     },
     async faucetBalance() {
       if (!config.faucetKey) return 0n;

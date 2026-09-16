@@ -61,6 +61,11 @@ const FEE_DENOMINATOR = 1_000_000n;
  * included: v3/v4's swap step for a single range. The spot estimate above
  * says what a tiny trade would get; this says what this trade gets, which is
  * what a slippage guard has to be set against on a thin pool.
+ *
+ * One position is the assumption: the venue's pools are seeded full-range
+ * (FleetPoolSeeder). On a pool with concentrated positions the fill can
+ * cross a tick and differ from this; the trade's own minimum output is the
+ * guard then, and the quote is what the card shows.
  */
 export const quoteExactIn = (
   amountIn: bigint,

@@ -1590,3 +1590,27 @@ key; the test's fake service recovers every signature to the wallet and
 refuses a tampered one. Eleven conversation tests, one fork test of the
 adapter against the live router. `BOT_FLEET_OFF=1` hides the card until the
 service is wired to the pool.
+
+## Chit Bot audited and hardened before its first deployment (2026-09-16, advisor, branch feat/chit-bot)
+
+Ten-lens audit of the bot (`docs/audit/2026-09-16-chit-bot.md`), every
+finding fixed on the same branch. The webhook now requires its secret and
+the runtime refuses to start without it, so a forged update can no longer
+drive any wallet by Telegram id. Keys are sealed under a scrypt-derived key
+with AES-GCM associated data binding each blob to its Telegram id and
+purpose; the fleet record is sealed whole; the blob names its sealing key
+and a canary row stops a rotated secret before it makes unopenable wallets.
+The store never writes a whole row from a stale object: settings, tokens
+and the fleet are patched by column, the faucet stamp is claimed atomically
+with a daily budget across everyone, Telegram update ids are claimed once,
+and one lock per wallet serialises money across every function instance.
+Every button fits Telegram's 64 bytes (amounts travel as wei), every reply
+prompt names its token or address, the card's buttons never carry the
+confirmed verb, fleet phases follow the service's state names, create and
+activate are one tap, idempotency keys come from the tap, a receipt that
+does not arrive is reported with its hash, the swap deadline is wall-clock,
+approvals are sent only when short, and the copy holds to FR-015 and to
+"mainnet is next, not live". The Neon schema is applied one statement at a
+time (its HTTP driver takes exactly one), and the store's contract runs on
+the memory store, on the Neon store over PGlite, and on Neon when a scratch
+database is named. Thirty-four bot tests plus the fork test.
