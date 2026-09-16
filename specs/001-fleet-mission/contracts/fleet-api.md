@@ -8,6 +8,10 @@ For every signed request, the route handler MUST reject unless outer request `ac
 
 `quote` and `challenge` are unsigned; every other action includes `{ primaryWallet, nonce, issuedAt, expiresAt, action, payloadHash, signature }`. Challenge bytes are versioned ASCII fields in this order: `fleet-mission-v1|origin|chainId|primaryWallet|nonce|issuedAt|expiresAt|action|payloadHash`; origin/address are normalized, signature is EIP-191 `personal_sign`, and payload hash is keccak of recursively key-sorted JSON UTF-8. The server returns configured max TTL in challenge response; nonce is single-use. Reuse, expiry, wrong domain, or changed payload returns `401 challenge_invalid`. `Idempotency-Key` is `fleet-[A-Za-z0-9_-]{16,128}`, required for create/confirmRecovery/fund/activate/buy/pause/resume/revoke/close, scoped to wallet/action/campaign and retained for campaign lifetime; same payload returns original result, changed payload returns `409 idempotency_conflict`. It is header-only and never appears in JSON request unions.
 
+### Order token (trade polls)
+
+A signed `order` is the trader's authorization for every slice it plans. When the service holds a nonce secret, the `order` response carries `orderToken`: `<issuedAtMs>.<hex HMAC-SHA256 over fleet-order-v1|origin|orderId|owner|issuedAtMs>`. A `trade` request MAY carry `orderToken` at the top level in place of `auth`; no other action accepts it. The token authorizes only the order whose `id` and `owner` it was issued for, and only for 90 minutes (the longest order window plus one hour) from issue. The route still recomputes the order id from its fields, requires the order's owner to own the campaign, runs only slices that are due and still pending, and claims each slice once, so a replayed poll buys nothing twice. A missing, forged, foreign, or expired token returns `401 challenge_invalid` before any slice is claimed; the browser then signs the poll as above. Without a nonce secret no token is issued and every poll is signed.
+
 ## Route matrix
 
 | Route and method | Action | Request | Success | Errors |
