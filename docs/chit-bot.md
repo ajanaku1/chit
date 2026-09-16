@@ -145,6 +145,11 @@ recovery of what a fleet wallet holds after a close.
    variable `BOT_USERNAME`; `DATABASE_URL` as a secret adds the wallet
    count. `scripts/announce-bot.mjs` prints it without the secrets.
 
+Before the host: `node --env-file=.env scripts/bot-poll.mjs` runs the same
+runtime from one machine by long polling (`BOT_MEMORY_STORE=1` allowed, any
+16+ character webhook secret), for trying it and for screenshots; it
+removes the webhook when it starts, so never against the live bot.
+
 Testnet only: the runtime refuses to start on any other chain, because the
 playground holds keys and the mainnet bot must not. A missing or malformed
 variable is a refusal with its reason in the log (and a 200 to Telegram, so
