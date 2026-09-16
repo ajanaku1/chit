@@ -44,9 +44,9 @@ const fakeChain = () => {
   const getT = (t: string, a: string) => tokens.get(key(t, a)) ?? 0n;
   const setT = (t: string, a: string, v: bigint) => tokens.set(key(t, a), v);
   const infos: Record<string, TokenInfo> = {
-    [FLEET.toLowerCase()]: { address: FLEET, symbol: "FLEET", decimals: 18, hasPool: true, perEth: parseEther("1000"), poolEth: parseEther("0.02") },
-    [PEPE.toLowerCase()]: { address: PEPE, symbol: "PEPE", decimals: 6, hasPool: true, perEth: 1_000_000_000_000n, poolEth: parseEther("5") },
-    [NOPOOL.toLowerCase()]: { address: NOPOOL, symbol: "NOPE", decimals: 18, hasPool: false, perEth: 0n, poolEth: 0n },
+    [FLEET.toLowerCase()]: { address: FLEET, symbol: "FLEET", decimals: 18, hasPool: true, perEth: parseEther("1000"), poolEth: parseEther("0.02"), hooked: false, fee: 3000 },
+    [PEPE.toLowerCase()]: { address: PEPE, symbol: "PEPE", decimals: 6, hasPool: true, perEth: 1_000_000_000_000n, poolEth: parseEther("5"), hooked: true, fee: 0 },
+    [NOPOOL.toLowerCase()]: { address: NOPOOL, symbol: "NOPE", decimals: 18, hasPool: false, perEth: 0n, poolEth: 0n, hooked: false, fee: 3000 },
   };
   const rate = (t: string) => (infos[t.toLowerCase()]?.perEth ?? 0n);
   let n = 0;
@@ -60,7 +60,7 @@ const fakeChain = () => {
     pendNextTrade: () => { pendNext = true; },
     ethBalance: async (a) => getE(a),
     tokenBalance: async (t, a) => getT(t, a),
-    tokenInfo: async (t) => infos[t.toLowerCase()] ?? { address: t, symbol: "?", decimals: 18, hasPool: false, perEth: 0n, poolEth: 0n },
+    tokenInfo: async (t) => infos[t.toLowerCase()] ?? { address: t, symbol: "?", decimals: 18, hasPool: false, perEth: 0n, poolEth: 0n, hooked: false, fee: 3000 },
     quoteBuy: async (t, w) => (rate(t) ? (w * rate(t)) / 10n ** 18n : null),
     quoteSell: async (t, units) => (rate(t) ? (units * 10n ** 18n) / rate(t) : null),
     async buy(k, t, ethIn, minOut) {
@@ -101,7 +101,7 @@ const fakeChain = () => {
     faucetBalance: async () => getE(FAUCET),
     poolNumbers: async () => ({ address: POOL, heldWei: parseEther("0.1465"), totalDeposited: parseEther("0.15"), campaigns: 3n, paused: false }),
     newPools: async () => [
-      { token: PEPE, block: 1_000_050n, tradeable: true, fee: 3000, hooks: "0x0000000000000000000000000000000000000000" as Address },
+      { token: PEPE, block: 1_000_050n, tradeable: true, fee: 0, hooks: "0x2779651feE12F6fB5A187578De6b63709f85d0Cc" as Address },
       { token: NOPOOL, block: 1_000_020n, tradeable: false, fee: 0, hooks: "0x2779651feE12F6fB5A187578De6b63709f85d0Cc" as Address },
       { token: FLEET, block: 999_000n, tradeable: true, fee: 3000, hooks: "0x0000000000000000000000000000000000000000" as Address },
     ],
@@ -699,9 +699,11 @@ test("the new tab lists what just opened on the venue, buy buttons only where th
   await bot.handle(dm("/start"));
   await bot.handle(tap("new"));
   assert.match(telegram.last(), /<b>new on the venue<\/b> · 3 ETH pools opened/);
-  assert.match(telegram.last(), /<b>PEPE<\/b> · pool <code>5 ETH<\/code> · just now/);
-  assert.match(telegram.last(), /<b>NOPE<\/b> · 30 blocks ago · <i>on a pool this bot cannot trade yet \(fee 0%, hooked\)<\/i>/);
-  assert.deepEqual(buttons().filter((b) => b.startsWith("token:")), [`token:${PEPE}`, `token:${FLEET}`], "no buy button on the hooked pool");
+  assert.match(telegram.last(), /<b>PEPE<\/b> · pool <code>5 ETH<\/code> · just now · hooked/);
+  assert.match(telegram.last(), /<b>NOPE<\/b> · 30 blocks ago · <i>no liquidity yet<\/i>/);
+  assert.deepEqual(buttons().filter((b) => b.startsWith("token:")), [`token:${PEPE}`, `token:${FLEET}`], "a buy button on every pool with liquidity, hooked included; none without");
+  await bot.handle(tap(`token:${PEPE}`));
+  assert.match(telegram.last(), /hooked pool \(a launchpad's\): the hook's own fee is not in the quote/);
 
   // A partner's button: t.me/<bot>?start=t-<contract>, straight to the card, wallet made on the way for a newcomer.
   await bot.handle(dm(`/start t-${PEPE}`, 42));

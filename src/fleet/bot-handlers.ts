@@ -591,7 +591,9 @@ export class ChitBot {
       `price: <code>${fmt(info.perEth, info.decimals, 2)} ${esc(info.symbol)}</code> per ETH · pool: <code>${eth(info.poolEth, 4)} ETH</code>`,
       `you hold: <code>${fmt(balance, info.decimals, 4)} ${esc(info.symbol)}</code> · wallet: <code>${eth(ethBal)} ETH</code>`,
       "",
-      `<i>quotes from the pool with fee and impact; buys guarded at ${pct(s.buySlippageBps)}, sells at ${pct(s.sellSlippageBps)}${s.confirmTrades ? "; every trade asks first" : ""}. the reply carries the hash.</i>`,
+      info.hooked
+        ? `<i>hooked pool (a launchpad's): the hook's own fee is not in the quote, your guard is the limit. buys guarded at ${pct(s.buySlippageBps)}, sells at ${pct(s.sellSlippageBps)}${s.confirmTrades ? "; every trade asks first" : ""}. the reply carries the hash.</i>`
+        : `<i>quotes from the pool with fee and impact; buys guarded at ${pct(s.buySlippageBps)}, sells at ${pct(s.sellSlippageBps)}${s.confirmTrades ? "; every trade asks first" : ""}. the reply carries the hash.</i>`,
     ].join("\n");
     // The buttons always carry the plain verb: confirm trades and sell protection are applied by the handler, never skipped by a button.
     await this.#out(chatId, messageId, text, kb(
@@ -741,21 +743,22 @@ export class ChitBot {
     if (!wallet) return this.#start(chatId, tgId);
     const pools = await this.#d.chain.newPools(NEW_POOLS_BLOCKS);
     const shown = pools.slice(0, NEW_POOLS_SHOWN);
-    const infos = await Promise.all(shown.map((p) => this.#d.chain.tokenInfo(p.token).catch((): TokenInfo => ({ address: p.token, symbol: "?", decimals: 18, hasPool: false, perEth: 0n, poolEth: 0n }))));
+    const infos = await Promise.all(shown.map((p) => this.#d.chain.tokenInfo(p.token).catch((): TokenInfo => ({ address: p.token, symbol: "?", decimals: 18, hasPool: false, perEth: 0n, poolEth: 0n, hooked: false, fee: 0 }))));
     const head = pools[0]?.block ?? 0n;
     const lines = [`<b>new on the venue</b> · ${pools.length} ETH pool${pools.length === 1 ? "" : "s"} opened in about a day`];
     const rows: Keyboard = [];
     shown.forEach((p, i) => {
       const info = infos[i]!;
       const age = head > p.block ? `${Number(head - p.block)} blocks ago` : "just now";
-      const line = p.tradeable
-        ? `<b>${esc(info.symbol)}</b> · pool <code>${eth(info.poolEth, 4)} ETH</code> · ${age}`
-        : `<b>${esc(info.symbol)}</b> · ${age} · <i>on a pool this bot cannot trade yet (fee ${p.fee / 10_000}%${p.hooks !== "0x0000000000000000000000000000000000000000" ? ", hooked" : ""})</i>`;
+      const hooked = p.hooks !== "0x0000000000000000000000000000000000000000";
+      const line = info.hasPool
+        ? `<b>${esc(info.symbol)}</b> · pool <code>${eth(info.poolEth, 4)} ETH</code> · ${age}${hooked ? " · hooked" : ""}`
+        : `<b>${esc(info.symbol)}</b> · ${age} · <i>no liquidity yet</i>`;
       lines.push(line);
-      if (p.tradeable) rows.push([btn(`${info.symbol} · buy`, `token:${p.token}`)]);
+      if (info.hasPool) rows.push([btn(`${info.symbol} · buy`, `token:${p.token}`)]);
     });
     if (!pools.length) lines.push("nothing opened lately.");
-    lines.push("", "<i>read from the pool manager's own events just now. \"cannot trade yet\": the venue key is uniswap v4, 0.3%, no hook; other pools come with the next venues.</i>");
+    lines.push("", "<i>read from the pool manager's own events just now. \"hooked\": a launchpad's pool; the hook takes its own fee, your guard is the limit.</i>");
     await this.#out(chatId, messageId, lines.join("\n"), kb(...rows, [btn("↻ Refresh", "new"), btn("← Back", "home")]));
   }
 

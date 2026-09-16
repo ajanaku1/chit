@@ -50,18 +50,20 @@ const EXECUTE_ABI = [{
   outputs: [],
 }] as const;
 
-export type V4Buy = { token: Address; amountIn: bigint; minOut?: bigint; deadline: bigint };
+export type PoolKey = { currency0: Address; currency1: Address; fee: number; tickSpacing: number; hooks: Address };
+/** `poolKey` names the pool when it is not the venue's own (a launchpad's hooked pool, another fee tier); the venue's key is the default. */
+export type V4Buy = { token: Address; amountIn: bigint; minOut?: bigint; deadline: bigint; poolKey?: PoolKey };
 
 /** ETH is always currency0 (address zero sorts first), so a buy is zeroForOne. */
-export const venuePoolKey = (token: Address) => ({
+export const venuePoolKey = (token: Address): PoolKey => ({
   currency0: NATIVE_ETH, currency1: token, fee: VENUE_POOL.fee, tickSpacing: VENUE_POOL.tickSpacing, hooks: VENUE_POOL.hooks,
 });
 
-export const encodeV4EthBuy = ({ token, amountIn, minOut = 0n, deadline }: V4Buy): Hex => {
+export const encodeV4EthBuy = ({ token, amountIn, minOut = 0n, deadline, poolKey }: V4Buy): Hex => {
   const actions: Hex = `0x${ACTION_SWAP_EXACT_IN_SINGLE}${ACTION_SETTLE_ALL}${ACTION_TAKE_ALL}`;
   const params: Hex[] = [
     encodeAbiParameters([EXACT_IN_SINGLE], [{
-      poolKey: venuePoolKey(token), zeroForOne: true, amountIn, amountOutMinimum: minOut, hookData: "0x",
+      poolKey: poolKey ?? venuePoolKey(token), zeroForOne: true, amountIn, amountOutMinimum: minOut, hookData: "0x",
     }]),
     encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [NATIVE_ETH, amountIn]),
     encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [token, minOut]),
@@ -70,7 +72,7 @@ export const encodeV4EthBuy = ({ token, amountIn, minOut = 0n, deadline }: V4Buy
   return encodeFunctionData({ abi: EXECUTE_ABI, functionName: "execute", args: [COMMAND_V4_SWAP, [input], deadline] });
 };
 
-export type V4Sell = { token: Address; amountIn: bigint; minOut?: bigint; deadline: bigint };
+export type V4Sell = { token: Address; amountIn: bigint; minOut?: bigint; deadline: bigint; poolKey?: PoolKey };
 
 /** Permit2 on Robinhood Chain, verified live (specs/001-fleet-mission/research.md). The router pulls ERC-20 input through it. */
 export const PERMIT2: Address = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
@@ -84,11 +86,11 @@ const PERMIT2_APPROVE_ABI = [{ type: "function", name: "approve", stateMutabilit
  * approved Permit2 on the token and the router on Permit2 first; those two
  * calls are `sellApprovals`. TAKE_ALL sends the ETH to the caller.
  */
-export const encodeV4TokenSell = ({ token, amountIn, minOut = 0n, deadline }: V4Sell): Hex => {
+export const encodeV4TokenSell = ({ token, amountIn, minOut = 0n, deadline, poolKey }: V4Sell): Hex => {
   const actions: Hex = `0x${ACTION_SWAP_EXACT_IN_SINGLE}${ACTION_SETTLE_ALL}${ACTION_TAKE_ALL}`;
   const params: Hex[] = [
     encodeAbiParameters([EXACT_IN_SINGLE], [{
-      poolKey: venuePoolKey(token), zeroForOne: false, amountIn, amountOutMinimum: minOut, hookData: "0x",
+      poolKey: poolKey ?? venuePoolKey(token), zeroForOne: false, amountIn, amountOutMinimum: minOut, hookData: "0x",
     }]),
     encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [token, amountIn]),
     encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [NATIVE_ETH, minOut]),

@@ -16,7 +16,8 @@
 import { createPublicClient, createWalletClient, defineChain, encodeFunctionData, http, maxUint256, parseAbi, parseAbiItem, WaitForTransactionReceiptTimeoutError, type PublicClient, type Transport, type WalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { decodeSlot0, liquiditySlot, poolIdFor, quoteExactIn, slot0Slot } from "./market.js";
+import { quoteExactIn } from "./market.js";
+import { createPoolRegistry, type DiscoveredPool } from "./pool-registry.js";
 import type { Address, Hex } from "./types.js";
 import { PERMIT2, VENUE_POOL, encodeV4EthBuy, encodeV4TokenSell, minOutFor, sellApprovals } from "./v4-swap.js";
 
@@ -36,6 +37,10 @@ export type TokenInfo = {
   perEth: bigint;
   /** ETH the pool holds on its ETH side at the current price, roughly. */
   poolEth: bigint;
+  /** The pool has a hook (a launchpad's, usually): the hook's own fee is not in the quote; the user's slippage guard is the limit. */
+  hooked: boolean;
+  /** The pool's fee tier in hundredths of a basis point (3000 = 0.3%); a hooked pool often says 0 and charges through the hook. */
+  fee: number;
 };
 
 export type BotChain = {
@@ -114,6 +119,7 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
   const publicClient = createPublicClient({ chain, transport }) as unknown as PublicClient;
   const walletFor = (key: Hex): WalletClient => createWalletClient({ account: privateKeyToAccount(key), chain, transport });
   const meta = new Map<string, { symbol: string; decimals: number }>();
+  const registry = createPoolRegistry(publicClient, config.poolManager);
   let faucetQueue: Promise<void> = Promise.resolve();
   /** The new-pools scan is the same for every user; one result serves a minute. */
   let poolsCache: { at: number; blocks: number; pools: NewPool[] } | undefined;
@@ -138,13 +144,12 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
     const block = await publicClient.getBlock();
     return BigInt(Math.max(Number(block.timestamp), Math.floor(Date.now() / 1000))) + 600n;
   };
-  const poolState = async (token: Address): Promise<{ sqrtPriceX96: bigint; liquidity: bigint }> => {
-    const id = poolIdFor(token);
-    const [slot0, liq] = await Promise.all([
-      publicClient.readContract({ address: config.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slot0Slot(id)] }),
-      publicClient.readContract({ address: config.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [liquiditySlot(id)] }),
-    ]);
-    return { sqrtPriceX96: decodeSlot0(slot0).sqrtPriceX96, liquidity: BigInt(liq) & ((1n << 128n) - 1n) };
+  /** The token's pool as the registry found it (venue key first, then the chain's own record), read fresh each time. */
+  const poolOf = async (token: Address): Promise<(DiscoveredPool & { sqrtPriceX96: bigint; liquidity: bigint }) | null> => {
+    const found = await registry.find(token);
+    if (!found) return null;
+    const live = await registry.state(found.key);
+    return { ...found, ...live };
   };
   /** Symbol and decimals, remembered once read; a read that fails is not remembered, so a blip does not become "?" for the instance's life. */
   const metaOf = async (token: Address): Promise<{ symbol: string; decimals: number }> => {
@@ -172,36 +177,38 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
     ethBalance: (address) => publicClient.getBalance({ address }),
     tokenBalance: (token, address) => publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "balanceOf", args: [address] }).catch(() => 0n),
     async tokenInfo(token) {
-      const [m, state] = await Promise.all([metaOf(token), poolState(token)]);
-      const hasPool = state.sqrtPriceX96 > 0n && state.liquidity > 0n;
+      const [m, pool] = await Promise.all([metaOf(token), poolOf(token)]);
+      const hasPool = Boolean(pool && pool.sqrtPriceX96 > 0n && pool.liquidity > 0n);
       return {
         address: token, symbol: m.symbol, decimals: m.decimals, hasPool,
         // price² = sqrtP² / Q96²: tokens per wei; times 1e18 for tokens per ETH.
-        perEth: hasPool ? (state.sqrtPriceX96 * state.sqrtPriceX96 * (10n ** 18n)) / (Q96 * Q96) : 0n,
+        perEth: hasPool ? (pool!.sqrtPriceX96 * pool!.sqrtPriceX96 * (10n ** 18n)) / (Q96 * Q96) : 0n,
         // A full-range position's ETH side is L / sqrtP.
-        poolEth: hasPool ? (state.liquidity * Q96) / state.sqrtPriceX96 : 0n,
+        poolEth: hasPool ? (pool!.liquidity * Q96) / pool!.sqrtPriceX96 : 0n,
+        hooked: hasPool ? pool!.hooked : false,
+        fee: hasPool ? pool!.key.fee : VENUE_POOL.fee,
       };
     },
     async quoteBuy(token, ethIn) {
-      const { sqrtPriceX96, liquidity } = await poolState(token);
-      return sqrtPriceX96 === 0n || liquidity === 0n ? null : quoteExactIn(ethIn, sqrtPriceX96, liquidity, true, VENUE_POOL.fee);
+      const pool = await poolOf(token);
+      return !pool || pool.sqrtPriceX96 === 0n || pool.liquidity === 0n ? null : quoteExactIn(ethIn, pool.sqrtPriceX96, pool.liquidity, true, pool.key.fee);
     },
     async quoteSell(token, tokensIn) {
-      const { sqrtPriceX96, liquidity } = await poolState(token);
-      return sqrtPriceX96 === 0n || liquidity === 0n ? null : quoteExactIn(tokensIn, sqrtPriceX96, liquidity, false, VENUE_POOL.fee);
+      const pool = await poolOf(token);
+      return !pool || pool.sqrtPriceX96 === 0n || pool.liquidity === 0n ? null : quoteExactIn(tokensIn, pool.sqrtPriceX96, pool.liquidity, false, pool.key.fee);
     },
     async buy(key, token, ethIn, minOut) {
       const wallet = walletFor(key);
-      const until = await deadline();
+      const [until, pool] = await Promise.all([deadline(), registry.find(token)]);
       return land(() => wallet.sendTransaction({
         account: wallet.account!, chain, to: config.router, value: ethIn,
-        data: encodeV4EthBuy({ token, amountIn: ethIn, minOut, deadline: until }), gas: 600_000n,
+        data: encodeV4EthBuy({ token, amountIn: ethIn, minOut, deadline: until, ...(pool ? { poolKey: pool.key } : {}) }), gas: 600_000n,
       }));
     },
     async sell(key, token, tokensIn, minOut) {
       const wallet = walletFor(key);
       const owner = wallet.account!.address;
-      const until = await deadline();
+      const [until, pool] = await Promise.all([deadline(), registry.find(token)]);
       // Approvals once per token, each only when short: the token to Permit2
       // (uint256 max, which uint96-allowance tokens read as infinite), Permit2
       // to the router (uint160 max, a year).
@@ -221,7 +228,7 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
       }
       return land(() => wallet.sendTransaction({
         account: wallet.account!, chain, to: config.router,
-        data: encodeV4TokenSell({ token, amountIn: tokensIn, minOut, deadline: until }), gas: 600_000n,
+        data: encodeV4TokenSell({ token, amountIn: tokensIn, minOut, deadline: until, ...(pool ? { poolKey: pool.key } : {}) }), gas: 600_000n,
       }));
     },
     async send(key, to, wei) {
@@ -261,8 +268,8 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
           if (found.has(key)) continue;
           const fee = Number(l.args.fee);
           const hooks = l.args.hooks as Address;
-          const tradeable = fee === VENUE_POOL.fee && Number(l.args.tickSpacing) === VENUE_POOL.tickSpacing && hooks.toLowerCase() === VENUE_POOL.hooks;
-          found.set(key, { token, block: l.blockNumber, tradeable, fee, hooks });
+          // Any ETH pool on the manager is tradeable through the registry's key; a hook may still refuse, which is a revert and a message.
+          found.set(key, { token, block: l.blockNumber, tradeable: true, fee, hooks });
         }
       }
       const pools = [...found.values()].sort((a, b) => (a.block > b.block ? -1 : a.block < b.block ? 1 : 0));

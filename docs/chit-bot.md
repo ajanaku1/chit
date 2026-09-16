@@ -26,7 +26,12 @@ balance: 0.02 ETH
 
 - **Paste any token's contract address** and its card appears: price per
   ETH, the pool's ETH, what you hold, and your buy and sell buttons. Any
-  token with an ETH pool on the venue; one without says so.
+  token with an ETH pool on uniswap v4 on the chain, a launchpad's hooked
+  pool included: the pool's key is found from the chain (`pool-registry.ts`:
+  the common keys read from storage first, then the Initialize events, the
+  deepest pool wins). A hooked pool says so on the card, since the hook's
+  own fee is not in the quote and the slippage guard is the limit. A token
+  with no pool says so.
 - **Buy**: your three presets, or a custom amount through the reply field.
   Quoted from the pool with fee and price impact (the exact-in math, matched
   to the wei on a fork), a slippage guard from your settings, then the real

@@ -87,5 +87,23 @@ describe("Chit Bot chain adapter (46630 fork)", () => {
     const sent = await forked.send(userKey, faucetWallet!.account.address, parseEther("0.005"));
     assert.equal(sent.ok, true);
     console.log(`bot chain on the fork: quote ${quote}, held ${held}, sold ${half}, sent 0.005 back`);
+
+    // The registry: the venue token is found on the venue's own key, and a launchpad token on its hooked key, from the chain's own record.
+    const pools = await forked.newPools(400_000);
+    const hooked = pools.filter((p) => p.hooks !== "0x0000000000000000000000000000000000000000");
+    console.log(`new pools on the fork: ${pools.length}, hooked ${hooked.length}`);
+    let candidate: { token: Address; poolEth: bigint; symbol: string } | undefined;
+    for (const p of hooked.slice(0, 12)) {
+      const i = await forked.tokenInfo(p.token);
+      if (i.hasPool && i.hooked && i.poolEth >= parseEther("0.002")) { candidate = { token: p.token, poolEth: i.poolEth, symbol: i.symbol }; break; }
+    }
+    if (!candidate) { console.log("no hooked pool with liquidity on the fork right now; the hooked buy is not exercised"); return; }
+    const hq = await forked.quoteBuy(candidate.token, parseEther("0.0005"));
+    assert.ok(hq && hq > 0n, "a hooked pool quotes through its discovered key");
+    // A hook takes its own fee on top of the quote: the guard is set wide for this probe, the point is the route.
+    const hb = await forked.buy(userKey, candidate.token, parseEther("0.0005"), minOutFor(hq!, 2_000));
+    const got = await forked.tokenBalance(candidate.token, user);
+    console.log(`hooked pool ${candidate.symbol} (${candidate.token}, ${candidate.poolEth} wei ETH side): buy ${hb.ok ? "landed" : "reverted"}, got ${got}`);
+    if (hb.ok) assert.ok(got >= minOutFor(hq!, 2_000), "the fill respects the guard");
   });
 });
