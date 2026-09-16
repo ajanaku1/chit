@@ -48,6 +48,16 @@ export default defineConfig({
         // number that rots. ROBINHOOD_FORK_BLOCK replays a specific run.
       },
     },
+    // Fork of Robinhood Chain mainnet, for what only exists there: the CHIT
+    // pool the buyback buys from. Pinned at connect time like the testnet fork.
+    robinhoodMainnetFork: {
+      type: "edr-simulated",
+      chainType: "l1",
+      chainId: 4663,
+      forking: {
+        url: process.env.ROBINHOOD_MAINNET_RPC_URL || "https://rpc.mainnet.chain.robinhood.com",
+      },
+    },
     // Fork of Ethereum Sepolia. chainId stays 11155111 so Nox's hardcoded
     // address resolution picks the real NoxCompute (0x24Ef...77bF), and so the
     // plugin skips its Docker-based local stack entirely.
