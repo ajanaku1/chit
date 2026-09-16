@@ -1796,3 +1796,36 @@ the function, and a missing plate or font is an error, never a card in a
 fallback face. Tests: the flow from a buy to a card and back through a
 sale, the refusals, the store contract on memory and PGlite, and a real
 render checked for its PNG header and the plate's size.
+
+## Fewer wallet prompts, and trades that run on the order's signature (2026-09-16, branches fix/fewer-wallet-prompts, feat/order-token)
+
+Testing Chit end to end turned up prompts nobody needed. After a deposit,
+exit request or claim, the Balance page re-signed for the balance every three
+seconds until it moved, and went on asking after the trader refused; it now
+watches the pool's public `depositorOf` record, which costs nothing, and signs
+once when it moves. A withdrawal returns the whole balance, so showing it is
+not a second signature. A token quote is kept for a minute, so typing then
+leaving the field no longer asks twice, and placing an order reuses the
+page's holdings read instead of signing for the wallet list. Every prompt
+that remains puts a line on the page first saying what it is for, and that
+signing is free and sends nothing.
+
+Setup lost everything held in memory (fleet keys, backup, a half-made
+campaign) when its "Add ETH on the Balance page" link replaced the page. The
+wizard's Balance links now open a new tab, the launch step can re-check the
+balance on request, an empty balance is named on the Size step before
+anything is created, and each step says how many signatures it will ask for.
+
+The change asked for in the Trade page entry above is now made. A signed
+`order` returns an order token, an HMAC under the nonce secret over the
+order id, its owner and the issue time; a `trade` poll may carry it instead
+of a signature, for 90 minutes. This is not the session cookie refused
+earlier: the token speaks for one order the trader signed, whose id is a
+hash over every field, and the route still recomputes that id, checks the
+owner, runs only due and pending slices, and claims each once. Only a
+`401 challenge_invalid`, which is raised before any slice is claimed, sends
+the page back to signing; a lost reply is never re-sent. A trade that bought
+something also returns the fleet's holdings, so the tile updates without the
+signed re-read that had been added to every poll. An order used to cost a
+prompt to place it, one for every poll that sent slices, and one more per
+poll for holdings; it now costs the one that places it.

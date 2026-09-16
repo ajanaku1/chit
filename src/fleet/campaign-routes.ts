@@ -208,8 +208,16 @@ export class CampaignRouter {
     if (action === "status") return this.#status(body);
 
     const auth = request["auth"] as AuthEnvelope | undefined;
-    if (!auth) throw new ServiceError("challenge_invalid", "auth_missing");
-    const wallet = await this.#deps.service.verify(String(action), { auth, body });
+    const orderToken = request["orderToken"];
+    let wallet: string;
+    if (!auth && action === "trade" && typeof orderToken === "string") {
+      // A poll of an order the trader already signed: its token stands in for a fresh signature.
+      const order = asRecord(body["order"]);
+      wallet = this.#deps.service.verifyOrderToken(orderToken, { id: String(order["id"] ?? ""), owner: String(order["owner"] ?? "") });
+    } else {
+      if (!auth) throw new ServiceError("challenge_invalid", "auth_missing");
+      wallet = await this.#deps.service.verify(String(action), { auth, body });
+    }
     assertNoSecrets(body);
 
     if (action === "read") return this.#read(wallet, body);
@@ -659,7 +667,8 @@ export class CampaignRouter {
   async #order(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const record = await this.#campaign(wallet, body);
     const { order, slices } = await this.#validatedOrder(record, wallet as Address, fromWireOrder(body));
-    return { status: 200, body: { order: toWireOrder(order), slices } };
+    const orderToken = this.#deps.service.issueOrderToken(order);
+    return { status: 200, body: { order: toWireOrder(order), slices, ...(orderToken ? { orderToken } : {}) } };
   }
 
   /**
@@ -752,7 +761,15 @@ export class CampaignRouter {
       .filter((s) => pending.has(s.index) && !executed.some((e) => e["index"] === s.index))
       .map((s) => Date.parse(s.dueAt))
       .filter((t) => t > now.getTime());
-    return { status: 200, body: { executed, nextDueAt: later.length ? new Date(Math.min(...later)).toISOString() : null, draw: record.draw } };
+    // What the fleet now holds rides along, so the page need not sign again to
+    // show it. Best effort: the slices already ran, and a failed read must not
+    // turn their reply into an error the page would take for a refusal.
+    const bought = executed.some((e) => e["status"] === "sponsored");
+    const portfolio = bought ? await this.#portfolio(record, [order.token]).catch(() => undefined) : undefined;
+    return {
+      status: 200,
+      body: { executed, nextDueAt: later.length ? new Date(Math.min(...later)).toISOString() : null, draw: record.draw, ...portfolio },
+    };
   }
 
   /** The fleets this wallet registered on the escrow, in the state the chain gives them now. */
@@ -785,6 +802,10 @@ export class CampaignRouter {
     const record = await this.#campaign(wallet, body);
     const asked = (Array.isArray(body["tokens"]) ? (body["tokens"] as string[]) : [])
       .filter((t) => /^0x[0-9a-fA-F]{40}$/.test(t)) as Address[];
+    return { status: 200, body: await this.#portfolio(record, asked) };
+  }
+
+  async #portfolio(record: CampaignRecord, asked: readonly Address[]): Promise<{ holdings: unknown; symbols: Record<string, string> }> {
     // The venue's tokens are always in the portfolio; the browser's list adds to them.
     const tokens = [...new Map([...(this.#deps.venueTokens ?? []), ...asked].map((t) => [t.toLowerCase(), t as Address])).values()];
     const accounts = await this.#accountsOf(record);
@@ -794,7 +815,7 @@ export class CampaignRouter {
       Promise.all(tokens.map((t) => market.tokenQuote(t, "0").catch(() => undefined))),
     ]);
     const symbols = Object.fromEntries(tokens.map((t, i) => [t.toLowerCase(), quotes[i]?.symbol ?? "?"]));
-    return { status: 200, body: { holdings, symbols } };
+    return { holdings, symbols };
   }
 
   /**

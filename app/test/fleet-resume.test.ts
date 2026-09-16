@@ -38,8 +38,12 @@ test("the dashboard without a snapshot asks the service for the wallet's fleets"
   assert.match(dashboard, /chit-wallet-changed/, "a wallet connected after load is not followed");
 });
 
-test("holdings are re-read after slices fill, not only when a fleet is picked", async () => {
+test("holdings update after slices fill, not only when a fleet is picked", async () => {
   const trade = await source("trade-page.ts");
-  const poll = trade.slice(trade.indexOf("forgetSignedReads(wallet)"), trade.indexOf("forgetSignedReads(wallet)") + 200);
-  assert.match(poll, /this\.#holdings\(\)/, "the cache is forgotten after a fill but nobody reads it again, so the tile keeps the pre-order figure");
+  const poll = /async #pollOnce\([\s\S]*?\n  \}/.exec(trade);
+  assert.ok(poll, "no #pollOnce");
+  // The trade reply carries the fleet's holdings; re-reading them would be a signature per poll.
+  assert.match(poll[0], /this\.#renderHoldings\(res as HoldingsReply\)/, "the tile keeps the pre-order figure after a fill");
+  assert.doesNotMatch(poll[0], /this\.#holdings\(\)/, "every poll signs again just to show the holdings");
+  assert.match(poll[0], /forgetSignedReads\(wallet\)/, "the next load shows the pre-order holdings from the cache");
 });

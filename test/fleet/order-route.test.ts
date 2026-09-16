@@ -3,7 +3,7 @@ import test from "node:test";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { CampaignRouter, type RouterDeps } from "../../src/fleet/campaign-routes.js";
-import { CampaignService, challengeBytes, payloadHash } from "../../src/fleet/campaign-service.js";
+import { CampaignService, challengeBytes, ORDER_TOKEN_TTL_MS, payloadHash } from "../../src/fleet/campaign-service.js";
 import { campaignKey } from "../../src/fleet/chain-service.js";
 import type { FeeConfig } from "../../src/fleet/eligibility.js";
 import type { MarketPort } from "../../src/fleet/market.js";
@@ -102,8 +102,11 @@ const signed = async (service: CampaignService, action: string, body: Record<str
 const key = (suffix: string) => `fleet-${suffix.padEnd(16, "0")}`;
 
 /** A router with an Active, 5-wallet campaign, ready for a fleet buy. */
-const activeCampaign = async (options: { now?: () => Date; venueTokens?: Address[] } = {}) => {
-  const service = new CampaignService(serviceConfig);
+const activeCampaign = async (options: { now?: () => Date; venueTokens?: Address[]; nonceSecret?: string } = {}) => {
+  const service = new CampaignService(serviceConfig, {
+    ...(options.now ? { now: options.now } : {}),
+    ...(options.nonceSecret ? { nonceSecret: options.nonceSecret } : {}),
+  });
   const chain = new FakeChain();
   const market = new FakeMarket();
   const accounts = Array.from({ length: 5 }, (_, i) => owner(i + 1));
@@ -264,4 +267,103 @@ test("an order is refused while the wallet's exit is pending", async () => {
   const placed = await router.handle(await signed(service, "order", { campaign, token: TOKEN, totalWei: "1000000000000000", wallets: accounts, entropy: SEED, createdAt: "2026-09-15T12:00:00.000Z" }));
   assert.equal(placed.status, 400, JSON.stringify(placed.body));
   assert.equal((placed.body as Record<string, unknown>)["code"], "exit_pending");
+});
+
+/**
+ * The order is the trader's signature for every slice in it. Asking the wallet
+ * again on each poll was a prompt per slice; the order token stands in for it,
+ * and only for that order, that owner, and a bounded time.
+ */
+const SECRET = "test-order-secret";
+
+const placedWithToken = async (now: { value: Date }) => {
+  const setup = await activeCampaign({ now: () => now.value, nonceSecret: SECRET, venueTokens: [TOKEN] });
+  const { router, service, campaign, accounts } = setup;
+  const placed = await router.handle(await signed(service, "order", {
+    campaign, token: TOKEN, totalWei: "1000000000000000", wallets: accounts, entropy: SEED, createdAt: now.value.toISOString(),
+  }));
+  assert.equal(placed.status, 200, JSON.stringify(placed.body));
+  const body = placed.body as { order: Record<string, unknown>; slices: { dueAt: string }[]; orderToken?: string };
+  const lastDue = Math.max(...body.slices.map((s) => Date.parse(s.dueAt)));
+  return { ...setup, order: body.order, orderToken: body.orderToken, lastDue };
+};
+
+const poll = (orderToken: string, body: Record<string, unknown>) => ({ action: "trade", orderToken, body });
+
+test("a placed order comes with a token that runs its due slices without another signature", async () => {
+  const now = { value: new Date("2026-09-15T12:00:00.000Z") };
+  const { router, campaign, order, orderToken, lastDue, chain } = await placedWithToken(now);
+  assert.match(orderToken ?? "", /^\d+\.[0-9a-f]{64}$/);
+
+  now.value = new Date(lastDue + 1);
+  const ran = await router.handle(poll(orderToken!, { campaign, order, pending: [0, 1, 2, 3, 4] }), key("tok1"));
+  assert.equal(ran.status, 200, JSON.stringify(ran.body));
+  const result = ran.body as { executed: { status: string }[]; holdings?: unknown[]; symbols?: Record<string, string> };
+  assert.equal(result.executed.filter((e) => e.status === "sponsored").length, 5);
+  assert.equal(chain.submissions.length, 5);
+  assert.equal(result.holdings?.length, 5, "the fleet's holdings come back with the trade, so showing them needs no signature");
+  assert.equal(result.symbols?.[TOKEN.toLowerCase()], "VEN");
+
+  const replay = await router.handle(poll(orderToken!, { campaign, order, pending: [0, 1, 2, 3, 4] }), key("tok2"));
+  assert.equal((replay.body as { executed: unknown[] }).executed.length, 0, "a replayed poll buys nothing twice");
+  assert.equal(chain.submissions.length, 5);
+});
+
+test("an order token speaks only for its own order and owner", async () => {
+  const now = { value: new Date("2026-09-15T12:00:00.000Z") };
+  const { router, campaign, order, orderToken, lastDue, chain } = await placedWithToken(now);
+  now.value = new Date(lastDue + 1);
+
+  const otherOwner = await router.handle(poll(orderToken!, { campaign, order: { ...order, owner: owner(0xee) }, pending: [0] }), key("tok3"));
+  assert.equal(otherOwner.status, 401);
+  assert.equal((otherOwner.body as Record<string, unknown>)["code"], "challenge_invalid");
+
+  const otherOrder = await router.handle(poll(orderToken!, { campaign, order: { ...order, id: `0x${"cd".repeat(32)}` }, pending: [0] }), key("tok4"));
+  assert.equal(otherOrder.status, 401);
+
+  // Same id and owner, different fields: the token matches, the recomputed id does not.
+  const reshaped = await router.handle(poll(orderToken!, { campaign, order: { ...order, totalWei: "1200000000000000" }, pending: [0] }), key("tok5"));
+  assert.equal(reshaped.status, 400);
+  assert.equal((reshaped.body as Record<string, unknown>)["code"], "order_tampered");
+
+  const forged = await router.handle(poll(`${orderToken!.split(".")[0]}.${"0".repeat(64)}`, { campaign, order, pending: [0] }), key("tok6"));
+  assert.equal(forged.status, 401);
+  assert.equal(chain.submissions.length, 0, "nothing ran on a token that did not match");
+});
+
+test("an order token expires, after which a poll must be signed again", async () => {
+  const now = { value: new Date("2026-09-15T12:00:00.000Z") };
+  const { router, service, campaign, order, orderToken, chain } = await placedWithToken(now);
+  now.value = new Date(now.value.getTime() + ORDER_TOKEN_TTL_MS);
+  const late = await router.handle(poll(orderToken!, { campaign, order, pending: [0, 1, 2, 3, 4] }), key("tok7"));
+  assert.equal(late.status, 401);
+  assert.equal(chain.submissions.length, 0);
+
+  const signedPoll = await router.handle(await signed(service, "trade", { campaign, order, pending: [0, 1, 2, 3, 4] }), key("tok8"));
+  assert.equal(signedPoll.status, 200, JSON.stringify(signedPoll.body));
+  assert.equal(chain.submissions.length, 5);
+});
+
+test("without a secret no token is issued, and an unsigned poll is refused", async () => {
+  const now = new Date("2026-09-15T12:00:00.000Z");
+  const { router, service, campaign, accounts, chain } = await activeCampaign({ now: () => now });
+  const placed = await router.handle(await signed(service, "order", {
+    campaign, token: TOKEN, totalWei: "1000000000000000", wallets: accounts, entropy: SEED, createdAt: now.toISOString(),
+  }));
+  const body = placed.body as { order: Record<string, unknown>; orderToken?: string };
+  assert.equal(body.orderToken, undefined);
+  const unsigned = await router.handle(poll("1.abc", { campaign, order: body.order, pending: [0] }), key("tok9"));
+  assert.equal(unsigned.status, 401);
+  const bare = await router.handle({ action: "trade", body: { campaign, order: body.order, pending: [0] } }, key("tok10"));
+  assert.equal(bare.status, 401);
+  assert.equal(chain.submissions.length, 0);
+});
+
+test("only a trade poll may use an order token", async () => {
+  const now = { value: new Date("2026-09-15T12:00:00.000Z") };
+  const { router, campaign, orderToken } = await placedWithToken(now);
+  for (const action of ["holdings", "pause", "withdraw", "order"]) {
+    const res = await router.handle({ action, orderToken, body: { campaign } }, key(`tok-${action}`));
+    assert.equal(res.status, 401, `${action} accepted an order token`);
+  }
 });

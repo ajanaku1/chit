@@ -12,10 +12,14 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { keccak256, recoverMessageAddress, stringToBytes } from "viem";
 
+import { MAX_WINDOW_MS } from "./order-plan.js";
 import { createMemoryStore, type StorePort } from "./store.js";
 import type { Address, ApiErrorCode, AuthEnvelope, Hex } from "./types.js";
 
 export const CHALLENGE_VERSION = "fleet-mission-v1";
+const ORDER_TOKEN_VERSION = "fleet-order-v1";
+/** An order runs on its own token for the longest window plus an hour for a late tab; after that, polls sign again. */
+export const ORDER_TOKEN_TTL_MS = MAX_WINDOW_MS + 60 * 60_000;
 
 const IDEMPOTENCY_KEY = /^fleet-[A-Za-z0-9_-]{16,128}$/;
 
@@ -263,6 +267,42 @@ export class CampaignService {
       expiresAt: Date.parse(auth.expiresAt), consumed: true,
     });
     return auth.primaryWallet.toLowerCase();
+  }
+
+  /**
+   * Authorizes the slices of an order the trader just signed, so polling it
+   * does not ask the wallet again. The token binds the order id, a hash over
+   * every order field, and its owner. Without a secret no token is issued and
+   * every poll signs as before.
+   */
+  issueOrderToken(order: { id: string; owner: string }): string | undefined {
+    if (!this.#nonceSecret) return undefined;
+    const issuedAt = String(this.#now().getTime());
+    return `${issuedAt}.${this.#orderMac(order, issuedAt)}`;
+  }
+
+  /**
+   * The owner an order token speaks for. A token only authorizes the order it
+   * was issued for; the trade route still recomputes that order's id from its
+   * fields and claims each slice once, so a replayed poll buys nothing twice.
+   */
+  verifyOrderToken(token: string, order: { id: string; owner: string }): string {
+    if (!this.#nonceSecret) throw new ServiceError("challenge_invalid", "order_token_unsupported");
+    const [issuedAt = "", mac = ""] = token.split(".");
+    const expected = this.#orderMac(order, issuedAt);
+    if (!/^\d+$/.test(issuedAt) || mac.length !== expected.length || !timingSafeEqual(Buffer.from(mac, "utf8"), Buffer.from(expected, "utf8"))) {
+      throw new ServiceError("challenge_invalid", "order_token_invalid");
+    }
+    if (Number(issuedAt) + ORDER_TOKEN_TTL_MS <= this.#now().getTime()) {
+      throw new ServiceError("challenge_invalid", "order_token_expired");
+    }
+    return order.owner.toLowerCase();
+  }
+
+  #orderMac(order: { id: string; owner: string }, issuedAt: string): string {
+    return createHmac("sha256", this.#nonceSecret ?? "")
+      .update([ORDER_TOKEN_VERSION, this.#config.origin, order.id.toLowerCase(), order.owner.toLowerCase(), issuedAt].join("|"))
+      .digest("hex");
   }
 
   #verifyIssuedNonce(auth: AuthEnvelope): void {

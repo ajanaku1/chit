@@ -39,7 +39,7 @@ import {
   toEth,
 } from "./fleet/page-shared.js";
 import { forgetSignedReads, readSigned } from "./fleet/signed-read.js";
-import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
+import { orderTrade, RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 import { readStatus } from "./fleet/status-read.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -51,6 +51,7 @@ const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
 type Fleet = { campaign: string; state: string; remaining: string; accounts: number };
 type Quote = { symbol: string; hasPool: boolean; estimatedOut: string; windowMs: number; capWei: string };
 type Holding = { wallet: string; eth: string; tokens: Record<string, string> };
+type HoldingsReply = { holdings?: Holding[]; symbols?: Record<string, string> };
 type PlannedSlice = { index: number; wallet: string; amountWei: string; dueAt: string };
 
 const randomEntropy = (): Hex => {
@@ -85,7 +86,11 @@ class TradePage {
       void this.#selectFleet((event.target as HTMLSelectElement).value);
     });
     const token = el<HTMLInputElement>("o-token");
-    token.addEventListener("blur", () => void this.#quoteToken());
+    token.addEventListener("blur", () => {
+      // Leaving the field quotes now; the typing timer would only ask a second time.
+      window.clearTimeout(this.#quoteTimer);
+      void this.#quoteToken();
+    });
     token.addEventListener("input", () => {
       if (this.#quoteTimer !== undefined) window.clearTimeout(this.#quoteTimer);
       this.#quoteTimer = window.setTimeout(() => void this.#quoteToken(), 400);
@@ -163,31 +168,36 @@ class TradePage {
     const wallet = this.#wallet;
     const fleet = this.#fleet;
     if (!wallet || !fleet) return;
-    const tokens = this.#orderTokens(fleet);
     try {
-      const body = (await this.#readHoldings(wallet, fleet)) as { holdings?: Holding[]; symbols?: Record<string, string> };
-      const totals = new Map<string, bigint>();
-      for (const holding of body.holdings ?? []) {
-        for (const [token, amount] of Object.entries(holding.tokens)) {
-          const key = token.toLowerCase();
-          totals.set(key, (totals.get(key) ?? 0n) + BigInt(amount));
-          if (!tokens.has(key)) tokens.set(key, body.symbols?.[key] ?? key.slice(0, 8));
-        }
-      }
-      if (tokens.size === 0) return;
-      const dl = el("holdings");
-      dl.replaceChildren();
-      for (const [token, symbol] of tokens) {
-        const row = document.createElement("div");
-        const dt = document.createElement("dt");
-        dt.textContent = symbol;
-        const dd = document.createElement("dd");
-        dd.textContent = `${toEth((totals.get(token) ?? 0n).toString())} ${symbol}`;
-        row.append(dt, dd);
-        dl.append(row);
-      }
+      this.#renderHoldings((await this.#readHoldings(wallet, fleet)) as HoldingsReply);
     } catch {
       // A failed read leaves the last known holdings on screen rather than an error banner.
+    }
+  }
+
+  #renderHoldings(body: HoldingsReply): void {
+    const fleet = this.#fleet;
+    if (!fleet) return;
+    const tokens = this.#orderTokens(fleet);
+    const totals = new Map<string, bigint>();
+    for (const holding of body.holdings ?? []) {
+      for (const [token, amount] of Object.entries(holding.tokens)) {
+        const key = token.toLowerCase();
+        totals.set(key, (totals.get(key) ?? 0n) + BigInt(amount));
+        if (!tokens.has(key)) tokens.set(key, body.symbols?.[key] ?? key.slice(0, 8));
+      }
+    }
+    if (tokens.size === 0) return;
+    const dl = el("holdings");
+    dl.replaceChildren();
+    for (const [token, symbol] of tokens) {
+      const row = document.createElement("div");
+      const dt = document.createElement("dt");
+      dt.textContent = symbol;
+      const dd = document.createElement("dd");
+      dd.textContent = `${toEth((totals.get(token) ?? 0n).toString())} ${symbol}`;
+      row.append(dt, dd);
+      dl.append(row);
     }
   }
 
@@ -319,7 +329,8 @@ class TradePage {
         state: "pending",
         attempts: 0,
       }));
-      store.add({ order, symbol: quote.symbol, slices, cancelled: false, placedAt: createdAt });
+      const orderToken = typeof body["orderToken"] === "string" ? body["orderToken"] : undefined;
+      store.add({ order, symbol: quote.symbol, slices, cancelled: false, placedAt: createdAt, ...(orderToken ? { orderToken } : {}) });
       el<HTMLInputElement>("o-token").value = "";
       this.#quote = undefined;
       el("o-quote").textContent = "";
@@ -384,13 +395,15 @@ class TradePage {
         ...(remainingAtSend !== undefined ? { remainingAtSend } : {}),
       }));
       try {
-        const res = await signedFleetApi(wallet, "trade", {
+        const res = await orderTrade(wallet, current.orderToken, {
           campaign: current.order.campaign,
           order: current.order,
           pending: pendingIndices(current).filter((index) => dueNow.has(index)),
         });
         const executed = (res["executed"] as ExecutedSlice[] | undefined) ?? [];
         store.update(current.order.id, (record) => applyResults(record, executed));
+        // A trade that bought something returns what the fleet now holds, so the tile updates without a signature.
+        if (res["holdings"] && current.order.campaign === this.#fleet?.campaign) this.#renderHoldings(res as HoldingsReply);
       } catch (error) {
         if (error instanceof RequestFailed && error.status >= 400 && error.status < 500) {
           const reason = error.reason ? `${error.code}: ${error.reason}` : error.code;
@@ -402,10 +415,8 @@ class TradePage {
           await this.#reconcile(current.order.id);
         }
       }
-      // Even a lost reply may have spent the draw and bought tokens; the
-      // holdings tile shows them once they are read again.
+      // Even a lost reply may have spent the draw and bought tokens, so the next read is live.
       forgetSignedReads(wallet);
-      void this.#holdings();
     }
     this.#render();
     this.#schedule();
