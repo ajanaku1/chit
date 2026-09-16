@@ -22,6 +22,11 @@ export const readBalance = async (wallet: Hex, options: ReadOptions = {}): Promi
     if (cached && isFresh(cached.savedAt, now)) return cached;
   }
   const body = (await signedFleetApi(wallet, "balance", {})) as unknown as BalanceState;
+  return rememberBalance(wallet, body, now);
+};
+
+/** Keeps a balance the service returned, whether read on its own or alongside an action. */
+export const rememberBalance = (wallet: Hex, body: BalanceState, now = new Date()): CachedBalance => {
   saveCachedBalance(sessionStorage, wallet, body, now);
   window.dispatchEvent(new CustomEvent("chit-balance-read", { detail: { wallet } }));
   return { ...body, savedAt: now.getTime() };

@@ -21,10 +21,10 @@ import {
   withdrawIssue,
   type BalanceState,
 } from "./fleet/balance.js";
-import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
+import { invalidateBalance, readBalance, rememberBalance } from "./fleet/balance-read.js";
 import { renderLed } from "./fleet/led.js";
 import { countTo } from "./fleet/motion.js";
-import { banner, ensureRobinhoodTestnet, getConnectedWallet, initHeaderWallet, initShell, parseEth, type Eip1193, waitForReceipt, walletEth, walletProvider } from "./fleet/page-shared.js";
+import { banner, ensureRobinhoodTestnet, getConnectedWallet, initHeaderWallet, initShell, parseEth, type Eip1193, waitForReceipt, walletEth, walletProvider, withWalletPrompt } from "./fleet/page-shared.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 
 initHeaderWallet();
@@ -40,6 +40,14 @@ const POOL_ABI = [
   { type: "function", name: "deposit", stateMutability: "payable", inputs: [], outputs: [] },
   { type: "function", name: "requestExit", stateMutability: "nonpayable", inputs: [], outputs: [] },
   { type: "function", name: "executeExit", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  {
+    type: "function", name: "depositorOf", stateMutability: "view",
+    inputs: [{ name: "depositor", type: "address" }],
+    outputs: [
+      { name: "deposited", type: "uint256" }, { name: "spent", type: "uint256" },
+      { name: "exitRequestedAt", type: "uint64" }, { name: "exitAmount", type: "uint256" },
+    ],
+  },
 ] as const;
 
 let wallet: Hex | undefined;
@@ -55,22 +63,33 @@ const ethereum = (): Eip1193 => {
   return eth;
 };
 
-const sendToPool = async (data: Hex, value?: bigint): Promise<Hex> => {
+const sendToPool = async (what: string, data: Hex, value?: bigint): Promise<Hex> => {
   if (!wallet) throw new Error("Connect your wallet first.");
   if (!poolAddress) throw new Error("The pool is not configured yet.");
   const eth = ethereum();
   // The pool exists only on 46630. A wallet moved to another network since it
   // connected would send this there, to an address with no pool behind it.
   if (!(await ensureRobinhoodTestnet(eth))) throw new Error("Switch your wallet to Robinhood testnet first.");
-  return (await eth.request({
-    method: "eth_sendTransaction",
-    params: [{
-      from: wallet,
-      to: poolAddress,
-      data,
-      ...(value === undefined ? {} : { value: `0x${value.toString(16)}` }),
-    }],
-  })) as Hex;
+  const tx = {
+    from: wallet,
+    to: poolAddress,
+    data,
+    ...(value === undefined ? {} : { value: `0x${value.toString(16)}` }),
+  };
+  return (await withWalletPrompt(`Check your wallet: confirm the ${what.toLowerCase()}.`, () =>
+    eth.request({ method: "eth_sendTransaction", params: [tx] }),
+  )) as Hex;
+};
+
+/** The pool's public record of this wallet, read straight from the chain: it signs nothing. */
+const chainRecord = async (): Promise<string | undefined> => {
+  if (!wallet || !poolAddress) return undefined;
+  try {
+    const data = encodeFunctionData({ abi: POOL_ABI, functionName: "depositorOf", args: [wallet] });
+    return String(await ethereum().request({ method: "eth_call", params: [{ to: poolAddress, data }, "latest"] }));
+  } catch {
+    return undefined;
+  }
 };
 
 let shownAvailable: string | undefined;
@@ -174,27 +193,33 @@ const load = async (force: boolean): Promise<void> => {
 
 const refresh = (): Promise<void> => load(false);
 
-/** Re-reads until the balance moves, so a confirmed deposit is never invisible. */
-const settle = async (was: string, what: string): Promise<void> => {
+const figures = (view: BalanceState | undefined): string =>
+  JSON.stringify(view && [view.deposited, view.spent, view.available, view.exit]);
+
+/**
+ * After a confirmed pool transaction, waits for the chain's public record to
+ * move, then signs for the balance once. Waiting on signed reads instead put a
+ * wallet prompt in front of the trader every few seconds, even after a refusal.
+ */
+const settle = async (what: string, before: string | undefined): Promise<void> => {
   for (let attempt = 0; attempt < 20; attempt += 1) {
-    await new Promise((resolve) => globalThis.setTimeout(resolve, 3_000));
-    try {
-      await forceRefresh();
-      if (state && state.deposited !== was) {
-        banner(`${what} confirmed.`, "ok");
-        return;
-      }
-    } catch {
-      // Keep waiting; the chain is the slow part, not the service.
-    }
+    await new Promise((resolve) => globalThis.setTimeout(resolve, attempt === 0 ? 1_000 : 3_000));
+    const now = await chainRecord();
+    if (before === undefined || now === undefined || now !== before) break;
   }
-  banner(`${what} sent. It has not confirmed yet; reload in a moment.`, "pending");
+  const shown = figures(state);
+  try {
+    await load(true);
+    banner(figures(state) === shown ? `${what} confirmed. The new figures show after a refresh.` : `${what} confirmed.`, "ok");
+  } catch (error) {
+    banner(describe(error), "error");
+  }
 };
 
 /** Sends to the pool and reports only what the chain confirms. */
 const transact = async (what: string, data: Hex, value?: bigint): Promise<boolean> => {
   try {
-    const hash = await sendToPool(data, value);
+    const hash = await sendToPool(what, data, value);
     banner(`${what} sent (${hash.slice(0, 10)}…). Waiting for the chain.`, "pending");
     const outcome = receiptOutcome(await waitForReceipt(hash));
     banner(`${what}: ${outcome.message}`, outcome.ok ? "ok" : "error");
@@ -205,11 +230,11 @@ const transact = async (what: string, data: Hex, value?: bigint): Promise<boolea
   }
 };
 
-const deposit = async (size: string): Promise<void> => {
-  const was = state?.deposited ?? "0";
+/** A deposit, exit request or claim: sent from the wallet, then shown once the chain has it. */
+const poolAction = async (what: string, data: Hex, value?: bigint): Promise<void> => {
+  const before = await chainRecord();
   if (wallet) invalidateBalance(wallet);
-  const ok = await transact("Deposit", encodeFunctionData({ abi: POOL_ABI, functionName: "deposit" }), BigInt(size));
-  if (ok) await settle(was, "Deposit");
+  if (await transact(what, data, value)) await settle(what, before);
 };
 
 const withdraw = async (event: Event): Promise<void> => {
@@ -227,9 +252,10 @@ const withdraw = async (event: Event): Promise<void> => {
 
   try {
     const result = await signedFleetApi(wallet, "withdraw", { amount, destination });
-    invalidateBalance(wallet);
+    state = rememberBalance(wallet, result["balance"] as BalanceState);
+    poolAddress = (state.poolAddress as Hex | undefined) ?? poolAddress;
+    render(state);
     banner(`Paid. Transaction ${String(result["payoutTx"]).slice(0, 10)}…`, "ok");
-    await refresh();
   } catch (error) {
     banner(describe(error), "error");
   }
@@ -288,7 +314,7 @@ const forceRefresh = async (): Promise<void> => {
 window.addEventListener("chit-wallet-changed", () => void onWalletChanged());
 el("balance-refresh").addEventListener("click", () => void forceRefresh());
 el("deposit-submit").addEventListener("click", () => {
-  if (selectedSize) void deposit(selectedSize);
+  if (selectedSize) void poolAction("Deposit", encodeFunctionData({ abi: POOL_ABI, functionName: "deposit" }), BigInt(selectedSize));
 });
 
 el("withdraw-form").addEventListener("submit", (event) => void withdraw(event));
@@ -297,14 +323,10 @@ el("exit-request").addEventListener("click", () => {
     banner("Nothing to exit: you have not deposited anything.", "pending");
     return;
   }
-  void transact("Exit request", encodeFunctionData({ abi: POOL_ABI, functionName: "requestExit" })).then((ok) => {
-    if (ok) void refresh();
-  });
+  void poolAction("Exit request", encodeFunctionData({ abi: POOL_ABI, functionName: "requestExit" }));
 });
 el("exit-execute").addEventListener("click", () => {
-  void transact("Claim", encodeFunctionData({ abi: POOL_ABI, functionName: "executeExit" })).then((ok) => {
-    if (ok) void refresh();
-  });
+  void poolAction("Claim", encodeFunctionData({ abi: POOL_ABI, functionName: "executeExit" }));
 });
 if (getConnectedWallet()) void onWalletChanged();
 else banner("Connect your wallet to see your balance.", "pending");

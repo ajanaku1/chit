@@ -21,7 +21,20 @@ import {
   type SetupQuote,
 } from "./fleet/campaign-setup.js";
 import { DRAW_CAP, drawShare, fundingProgress, fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
-import { banner, connectWallet, fleetApi, getConnectedWallet, initHeaderWallet, initShell, parseEth, saveFleetSnapshot, toEth, walletProvider } from "./fleet/page-shared.js";
+import {
+  banner,
+  connectWallet,
+  fleetApi,
+  getConnectedWallet,
+  initHeaderWallet,
+  initShell,
+  parseEth,
+  saveFleetSnapshot,
+  SIGN_IS_FREE,
+  toEth,
+  walletProvider,
+  withWalletPrompt,
+} from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
 import { forgetSignedReads } from "./fleet/signed-read.js";
 import { prefersReducedMotion } from "./fleet/motion.js";
@@ -62,6 +75,7 @@ class FleetWizard {
       else if (!address) this.#wallet = undefined;
     });
     el("a-draw").addEventListener("input", () => this.#renderLaunch());
+    el("recheck-balance").addEventListener("click", () => void this.#recheckBalance());
     el("size-form").addEventListener("submit", (event) => {
       event.preventDefault();
       void this.#configure();
@@ -126,19 +140,21 @@ class FleetWizard {
     window.scrollTo({ top: 0 });
   }
 
-  #signMessage = async (message: string): Promise<Hex> => {
-    const eth = walletProvider();
-    if (!eth || !this.#wallet) throw new Error("wallet_unavailable");
-    return (await eth.request({ method: "personal_sign", params: [message, this.#wallet] })) as Hex;
-  };
-
-  #vaultContext(): VaultContext {
-    if (!this.#wallet) throw new Error("wallet_unavailable");
+  /** The backup's key comes from a wallet signature; `purpose` tells the trader which of the two this is. */
+  #vaultContext(purpose: string): VaultContext {
+    const wallet = this.#wallet;
+    if (!wallet) throw new Error("wallet_unavailable");
     return {
       origin: window.location.origin,
       primaryChainId: FLEET_CHAIN_ID,
-      primaryWallet: this.#wallet,
-      signMessage: this.#signMessage,
+      primaryWallet: wallet,
+      signMessage: async (message) => {
+        const eth = walletProvider();
+        if (!eth) throw new Error("wallet_unavailable");
+        return (await withWalletPrompt(`Check your wallet: sign to ${purpose}. ${SIGN_IS_FREE}`, () =>
+          eth.request({ method: "personal_sign", params: [message, wallet] }),
+        )) as Hex;
+      },
     };
   }
 
@@ -146,8 +162,9 @@ class FleetWizard {
     return {
       fetchQuote: async (wallet) => this.#fetchQuote(wallet),
       generateAccounts: async (count) => this.#generateAccounts(count),
-      createVault: (accounts) => createRecoveryVault(this.#vaultContext(), accounts),
-      confirmVault: (envelopeJson, commitment) => confirmRecovery(this.#vaultContext(), envelopeJson, commitment),
+      createVault: (accounts) => createRecoveryVault(this.#vaultContext("lock your backup file"), accounts),
+      confirmVault: (envelopeJson, commitment) =>
+        confirmRecovery(this.#vaultContext("open your backup and prove it works"), envelopeJson, commitment),
       submit: async (action, body) => {
         if (!this.#wallet) throw new Error("not_connected");
         const result = await signedFleetApi(this.#wallet, action, body);
@@ -163,7 +180,7 @@ class FleetWizard {
   /** The most recent service response, so the launch step can read its draw. */
   #lastResult: Record<string, unknown> = {};
 
-  /** The trader's spendable Chit balance, read when the wallet connects. */
+  /** The trader's spendable Chit balance: the last one read, zero until one is. */
   #availableBalance = "0";
 
   /**
@@ -173,19 +190,35 @@ class FleetWizard {
   async #adopt(address: Hex, advance = true): Promise<void> {
     this.#wallet = address;
     this.#setup ??= new CampaignSetup(this.#deps());
-    this.#availableBalance = await this.#fetchBalance(address);
-    this.#renderLaunch();
-
-    const walletLine = el("wallet-line");
-    walletLine.textContent =
-      `Connected: ${address.slice(0, 6)}…${address.slice(-4)} · Robinhood testnet` +
-      ` · balance ${toEth(this.#availableBalance)} ETH`;
-    walletLine.hidden = false;
+    this.#showBalance(await this.#fetchBalance(address));
+    el("wallet-line").hidden = false;
 
     await this.#setup.connect(address);
     // Only move the trader on if they are waiting on this step; adopting a
     // wallet from the header must not yank them out of a later one.
     if (advance && (this.#step === "connect" || this.#step === "welcome")) this.#go("size");
+  }
+
+  /** Shows a balance just read; a failed read leaves the last known figure in place. */
+  #showBalance(available: string | undefined): void {
+    const wallet = this.#wallet;
+    if (!wallet) return;
+    if (available !== undefined) this.#availableBalance = available;
+    this.#renderLaunch();
+    el("wallet-line").textContent =
+      `Connected: ${wallet.slice(0, 6)}…${wallet.slice(-4)} · Robinhood testnet` +
+      (available === undefined ? "" : ` · balance ${toEth(available)} ETH`);
+    // Said before anything is created: learning it at launch meant leaving the
+    // page, and the setup with it.
+    el("balance-first").hidden = available === undefined || BigInt(available) > 0n;
+  }
+
+  /** The trader says they added ETH in the other tab: one signed read, on request. */
+  async #recheckBalance(): Promise<void> {
+    if (!this.#wallet) return;
+    const available = await this.#fetchBalance(this.#wallet, true);
+    this.#showBalance(available);
+    if (available === undefined) banner("Couldn't read your balance. Try again in a moment.", "error");
   }
 
   /** Keeps the launch button and its note telling the same story. */
@@ -421,12 +454,12 @@ class FleetWizard {
     }, delay);
   }
 
-  /** The spendable balance, or zero while the pool is not configured yet. */
-  async #fetchBalance(wallet: Hex): Promise<string> {
+  /** The spendable balance, or undefined when it could not be read (refused, or no pool yet). */
+  async #fetchBalance(wallet: Hex, force = false): Promise<string | undefined> {
     try {
-      return String((await readBalance(wallet)).available ?? "0");
+      return String((await readBalance(wallet, { force })).available ?? "0");
     } catch {
-      return "0";
+      return undefined;
     }
   }
 

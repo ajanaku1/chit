@@ -9,7 +9,7 @@
 
 import { keccak256, stringToBytes, type Hex } from "viem";
 
-import { fleetApi, walletProvider, type Eip1193 } from "./page-shared.js";
+import { fleetApi, SIGN_IS_FREE, walletProvider, withWalletPrompt, type Eip1193 } from "./page-shared.js";
 
 /** Recursively key-sorted JSON with no whitespace; mirrors the service exactly. */
 export const canonicalJson = (value: unknown): string => {
@@ -41,6 +41,28 @@ export class RequestFailed extends Error {
   }
 }
 
+/** What each signature is for, in the words the trader sees while the wallet asks. */
+const PURPOSE: Record<string, string> = {
+  balance: "show your Chit balance",
+  list: "show your fleets",
+  holdings: "show what your fleet holds",
+  tokenQuote: "quote this token",
+  order: "place this order",
+  trade: "run the next part of your order",
+  withdraw: "withdraw from your Chit balance",
+  create: "register your fleet",
+  confirmRecovery: "tell Chit your backup is safe",
+  activate: "launch your fleet",
+  topUp: "top up this fleet",
+  pause: "pause this fleet",
+  resume: "resume this fleet",
+  revoke: "stop this fleet",
+  close: "close this fleet",
+};
+
+export const promptFor = (action: string): string =>
+  `Check your wallet: sign to ${PURPOSE[action] ?? "continue"}. ${SIGN_IS_FREE}`;
+
 const ethereum = (): Eip1193 => {
   const eth = walletProvider();
   if (!eth) throw new RequestFailed(0, "wallet_unavailable");
@@ -65,10 +87,10 @@ export const signedFleetApi = async (
     throw new RequestFailed(challenge.status, String(challenge.body["code"] ?? "challenge_failed"));
   }
 
-  const signature = (await ethereum().request({
-    method: "personal_sign",
-    params: [String(challenge.body["challenge"]), wallet],
-  })) as Hex;
+  const eth = ethereum();
+  const signature = (await withWalletPrompt(promptFor(action), () =>
+    eth.request({ method: "personal_sign", params: [String(challenge.body["challenge"]), wallet] }),
+  )) as Hex;
 
   const auth = {
     primaryWallet: wallet,

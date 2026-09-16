@@ -54,6 +54,18 @@ test("an old answer, a forced read, another wallet, or another body each sign ag
   assert.equal(calls.length, 6);
 });
 
+test("a read that goes stale sooner, like a quote, keeps its own shorter window", async () => {
+  const storage = memoryStorage();
+  const { calls, sign } = counter();
+  const now = new Date("2026-09-16T12:00:00Z");
+  const quote = { campaign: "c1", token: "0x01", totalWei: "1" };
+  await readSigned(WALLET, "tokenQuote", quote, { storage, sign, now, maxAgeMs: 60_000 });
+  await readSigned(WALLET, "tokenQuote", quote, { storage, sign, now: new Date(now.getTime() + 30_000), maxAgeMs: 60_000 });
+  assert.equal(calls.length, 1, "a quote asked again within the minute signs again");
+  await readSigned(WALLET, "tokenQuote", quote, { storage, sign, now: new Date(now.getTime() + 61_000), maxAgeMs: 60_000 });
+  assert.equal(calls.length, 2, "a quote older than a minute is still served");
+});
+
 test("forgetting a wallet's reads makes the next one live, and leaves other wallets cached", async () => {
   const storage = memoryStorage();
   const { calls, sign } = counter();

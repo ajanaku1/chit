@@ -125,6 +125,8 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 /* ---- Fields and pickers ---- */
 .field, .bigfield { display: grid; gap: 0.4rem; margin-block: 1rem; }
+/* A secondary action inside a wizard field sizes to its label, so it never reads as the step's main button. */
+.wstep .field > .ghost { justify-self: start; }
 .field label, .bigfield label { color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
 .field input, .bigfield input, .bigfield select { width: 100%; padding: 0.75rem 0.95rem; border: 1px solid rgba(245, 239, 229, 0.12); border-radius: 12px; background: rgba(0, 0, 0, 0.35); color: var(--paper); font: inherit; font-family: var(--font-mono); font-size: 0.95rem; }
 .bigfield input, .bigfield select { font-size: 1.25rem; }

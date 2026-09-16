@@ -348,7 +348,8 @@ export class CampaignRouter {
       const samePayee = destination.toLowerCase() === wallet.toLowerCase();
       return {
         status: 200,
-        body: { ...receipt, available: after.available, ...(samePayee ? { warning: "destination_is_primary" } : {}) },
+        // The whole balance rides along, so the page need not sign again to show it.
+        body: { ...receipt, available: after.available, balance: after, ...(samePayee ? { warning: "destination_is_primary" } : {}) },
       };
     });
   }

@@ -43,6 +43,35 @@ export const banner = (message: string, tone: "pending" | "error" | "ok"): void 
   if (tone === "ok") bannerTimer = setTimeout(() => { node.hidden = true; delete node.dataset["shown"]; }, 7000);
 };
 
+export const SIGN_IS_FREE = "Signing is free and sends no transaction.";
+
+const openPrompts: string[] = [];
+
+/**
+ * Says what the wallet is about to ask before it asks, and takes the note down
+ * once it answers. A prompt nobody explained reads as the app asking for the
+ * same thing again.
+ */
+export const withWalletPrompt = async <T>(message: string, ask: () => Promise<T>): Promise<T> => {
+  openPrompts.push(message);
+  banner(message, "pending");
+  try {
+    return await ask();
+  } finally {
+    openPrompts.splice(openPrompts.indexOf(message), 1);
+    const node = document.getElementById("status-banner");
+    // Only our own note is taken down; a message the page set since then stays.
+    if (node && !node.hidden && node.textContent === message) {
+      const waiting = openPrompts.at(-1);
+      if (waiting) banner(waiting, "pending");
+      else {
+        node.hidden = true;
+        delete node.dataset["shown"];
+      }
+    }
+  }
+};
+
 export const parseEth = (value: string): string => {
   const trimmed = value.trim();
   if (!ETH_DECIMAL.test(trimmed)) throw new SetupError("invalid_eth_amount");

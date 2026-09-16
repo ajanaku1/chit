@@ -59,6 +59,11 @@
             <li><strong>Chit funds the fleet, not you.</strong> Your ETH goes into a shared pool that carries no fleet marker, and the fleet is funded from the pool, so no transaction joins the two.</li>
           </ul>
           <button id="start" type="button" class="primary big">Get started</button>
+          <p class="fineprint">
+            Before you start: launching needs ETH in your Chit balance
+            (<a href="./balance.html" target="_blank" rel="noopener">add it in a new tab</a>). Setup asks your wallet for a
+            few free signatures and sends no transactions from it.
+          </p>
           <p class="fineprint">Testnet demonstration. <a href="./fleet-privacy.html">Exactly what's private →</a></p>
         </section>
 
@@ -76,6 +81,11 @@
         <section class="wstep" data-wstep="size" hidden aria-labelledby="size-h">
           <p class="kicker">Step 2 of 4</p>
           <h2 id="size-h">Size your fleet</h2>
+          <p id="balance-first" class="warnbox" role="status" hidden>
+            Your Chit balance is 0 ETH, and a fleet spends from it.
+            <a href="./balance.html" target="_blank" rel="noopener">Add ETH in a new tab</a>, then carry on here: this setup
+            stays where it is.
+          </p>
           <form id="size-form" novalidate>
             <div class="bigfield">
               <label for="f-wallets">How many wallets?</label>
@@ -146,11 +156,13 @@
           </p>
           <div class="backup-card">
             <button id="generate-vault" type="button" class="primary big">Create fleet &amp; download backup</button>
+            <p class="fineprint">Your wallet asks for two free signatures: one locks the backup, one registers the fleet.</p>
             <p id="vault-line" class="mono-line" hidden></p>
             <p class="warnbox" id="vault-warn" hidden>
               Keep this file safe. If you lose it and this browser's data, nobody can recover the fleet — not even Chit.
             </p>
             <button id="confirm-vault" type="button" class="ghost big" disabled>Sign to prove it opens</button>
+            <p class="fineprint">Two more: one opens the backup to prove it works, one tells Chit it is safe.</p>
             <p id="confirm-line" class="mono-line" hidden></p>
           </div>
           <div class="wnav">
@@ -170,9 +182,14 @@
             <input id="a-draw" name="draw" type="text" inputmode="decimal" value="0.02" />
             <div class="meter" id="draw-meter" role="meter" aria-label="This draw against the 0.2 ETH cap" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"><span class="meter__fill" id="draw-fill"></span></div>
             <p id="draw-note" class="fineprint" role="status" aria-live="polite"></p>
-            <p class="fineprint">Your fleet spends from your Chit balance. <a href="./balance.html">Add ETH on the Balance page →</a></p>
+            <p class="fineprint">
+              Your fleet spends from your Chit balance.
+              <a href="./balance.html" target="_blank" rel="noopener">Add ETH in a new tab →</a> Your setup here stays put.
+            </p>
+            <button id="recheck-balance" type="button" class="ghost">I've added ETH: check my balance</button>
           </div>
           <button id="launch-fleet" type="button" class="primary big">Launch fleet</button>
+          <p class="fineprint">One more free signature switches it on.</p>
           <div class="wnav">
             <button type="button" class="back" data-back>Back</button>
           </div>

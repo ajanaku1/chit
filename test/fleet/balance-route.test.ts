@@ -103,10 +103,11 @@ test("a withdrawal within the balance is paid and reports the payout and the rec
   const body = { amount: parseEther("0.03").toString(), destination: fresh };
   const result = await router.handle(await signed(service, "withdraw", body), key("withdraw1"));
   assert.equal(result.status, 200, JSON.stringify(result.body));
-  const paid = result.body as { payoutTx: string; chargeId: string; warning?: string };
+  const paid = result.body as { payoutTx: string; chargeId: string; warning?: string; available: string; balance: { available: string } };
   assert.match(paid.payoutTx, /^0xa+$/);
   assert.equal(paid.chargeId, "owed-1");
   assert.equal(paid.warning, undefined);
+  assert.equal(paid.balance.available, paid.available, "the whole balance comes back, so showing it needs no second signature");
   assert.deepEqual(calls, [{ amount: parseEther("0.03").toString(), destination: fresh }]);
 });
 
