@@ -1513,6 +1513,38 @@ added in its own commit. And `trade-page.ts` landed as one 500-line commit, over
 compile. The render check now covers the Trade page at every viewport, and connected
 with a running and a finished order seeded.
 
+## Gas sponsorship spike, on a fork (2026-09-15, advisor)
+
+The proposal in `proposals/gas-sponsorship-2026-09-15/` asked for a one-day spike
+before anything else. It ran the same day on a fork of 46630 and touched nothing
+deployed: a throwaway SimpleAccount v0.7 (the canonical factory is live on the
+chain) that had never existed and held no ETH made a sponsored call through
+`FleetPaymaster`, settled against a fresh `FleetCampaignEscrow` budget, with the
+operator bundling `handleOps` itself; then a second call from the same account;
+then a forged sponsorship, refused by the EntryPoint before the account existed
+or the budget moved. `src/fleet/sponsored-op.ts` builds the op, both from
+`test/fork/sponsor-spike.test.ts` and from `scripts/sponsor-spike-live.ts`, which
+lands the same steps on the live testnet and records them under `sponsorship` in
+`deployments/fleet-46630.json` (dry-run against a local fork node; the live run
+needs the operator key). `FleetSponsorProbe` is the test target, a call that
+moves no value. No route, no page, no contract that is deployed changed.
+
+Three things the spike settled that the proposal could only assume: the sender
+type (smart account, deployed by its own first sponsored operation); that the
+deployed fleet escrow cannot serve, since it predates the settler role; and what
+the budget really pays, which is the cost the EntryPoint reports to `postOp`,
+95% to 98.5% of the operator's outlay, the rest being `postOp`'s own gas and the
+unused-gas penalty that a fee must clear. Measured gas: 402k on the bundler
+transaction for the operation that deploys the account, 198k after. The
+proposal's earning estimate was rewritten from these numbers.
+
+Two fork quirks, for whoever runs it next: EDR refuses an `eth_call` on a fresh
+fork until one block is mined ("no known hardfork for execution on historical
+block"), so the test deploys before it reads and a local `hardhat node` fork needs
+one `evm_mine` first; and the bundler transaction has to be priced like the
+operation, or the refund at the operation's price does not match what the bundler
+paid at the node's default.
+
 ## The hackathon layer is retired (2026-09-15)
 
 The repo carried two products. The first, a confidential ERC-4337 paymaster on iExec Nox for Sepolia, was the hackathon entry; the second, Chit Fleet on Robinhood Chain, is the one that is live. The first still owned the front door: `/app/` served "New sponsorship round", the hackathon's page, while the real app sat at `/app/fleet.html`. Today the hackathon is gone from this tree: its six pages and their tests, `spikes/`, the seven `Chit*.sol` contracts, the twenty-two service modules and their tests, the four API routes, five live scripts, nine Sepolia deployment records, the Nox plugin and Sepolia fork in `hardhat.config.ts`, and the six `verify.sh` phases that checked them against Sepolia. `/app` now lands on the fleet wizard, locally and on Vercel. Nothing under `src/fleet`, `api/fleet`, `contracts/fleet`, `test/fleet` or `test/fork/fleet-*` imported any of it; the Fleet suites are unchanged and green. The public hackathon repo, `ajanaku1/chit`, keeps the code and its history.
