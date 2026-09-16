@@ -301,7 +301,10 @@ export const handleFleetRequest = async (
     const body: unknown = await request.json();
     const action = (body as { action?: unknown }).action;
     if (allowedActions && !allowedActions.includes(String(action))) {
-      return Response.json({ code: "state_invalid", retryable: false }, { status: 409 });
+      // Named and logged: a bare state_invalid here once hid a browser sending
+      // "trade" to the campaign function for a whole afternoon.
+      console.warn(`fleet route refused: ${String(action)} is not served by this function`);
+      return Response.json({ code: "state_invalid", retryable: false, reason: `unknown_action:${String(action)}` }, { status: 409 });
     }
     const idempotencyKey = request.headers.get("idempotency-key") ?? undefined;
     const result = await active.handle(body, idempotencyKey);

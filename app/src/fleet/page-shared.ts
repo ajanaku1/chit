@@ -70,7 +70,9 @@ export const fleetApi = async (
       ? "balance"
       : action === "buy"
         ? "buy"
-        : "campaign";
+        : action === "trade"
+          ? "trade"
+          : "campaign";
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (!["quote", "challenge", "read", "balance", "status", "tokenQuote", "order", "list", "holdings"].includes(action)) {
     headers["idempotency-key"] = `fleet-${action}${Date.now()}`.padEnd(22, "0").slice(0, 40);
