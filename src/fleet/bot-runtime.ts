@@ -73,6 +73,9 @@ const warnOnce = (what: string, message: string): void => {
 class ConfigFault extends Error {}
 const refuse = (why: string): never => { throw new ConfigFault(why); };
 
+/** What one machine may hand the runtime instead of the environment: a store of its own (the poll runner's file-backed one). */
+export type BotOverrides = { store?: BotWalletStore };
+
 const storeFromEnv = (): BotWalletStore => {
   const url = process.env.DATABASE_URL;
   if (url) {
@@ -95,7 +98,7 @@ const ethFromEnv = (name: string): bigint | undefined => {
 let bot: ChitBot | undefined;
 let fault: string | undefined;
 
-const build = (): ChitBot => {
+const build = (overrides: BotOverrides = {}): ChitBot => {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const keySecret = process.env.BOT_KEY_SECRET;
   const username = process.env.BOT_USERNAME;
@@ -130,7 +133,7 @@ const build = (): ChitBot => {
     ? Object.fromEntries((["home", "buy", "refer", "fleet"] as const).map((k) => [k, `${bannerBase.replace(/[\\/]+$/, "")}/${k}.png`]))
     : undefined;
   return new ChitBot({
-    store: storeFromEnv(),
+    store: overrides.store ?? storeFromEnv(),
     chain,
     telegram: createTelegram(token!),
     // The fleet from the chat drives the hosted service on the same host; BOT_FLEET_OFF=1 hides the buttons until it is wired.
@@ -148,10 +151,10 @@ const build = (): ChitBot => {
   });
 };
 
-export const getBot = (): ChitBot | undefined => {
+export const getBot = (overrides?: BotOverrides): ChitBot | undefined => {
   if (bot || fault) return bot;
   try {
-    bot = build();
+    bot = build(overrides);
   } catch (error) {
     // A malformed variable is a refusal like a missing one, never a 500 Telegram retries forever.
     fault = error instanceof Error ? error.message.split("\n")[0] : String(error);

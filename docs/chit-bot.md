@@ -184,9 +184,13 @@ banner card to another swaps the picture in place. A card that has no
 banner, or whose text would not fit a caption, is plain text as before.
 
 Before the host: `node --env-file=.env scripts/bot-poll.mjs` runs the same
-runtime from one machine by long polling (`BOT_MEMORY_STORE=1` allowed, any
-16+ character webhook secret), for trying it and for screenshots; it
-removes the webhook when it starts, so never against the live bot.
+runtime from one machine by long polling (any 16+ character webhook
+secret), for trying it and for screenshots; it removes the webhook when it
+starts, so never against the live bot. Its store: `BOT_PGLITE_DIR=<folder>`
+keeps the Neon store's tables in a Postgres on disk (PGlite), so the
+wallets survive a restart of the process and a redeploy of the code;
+`BOT_MEMORY_STORE=1` keeps them in memory, gone when it stops. Neither
+replaces Neon on the host: one machine, one process.
 
 Testnet only: the runtime refuses to start on any other chain, because the
 playground holds keys and the mainnet bot must not. A missing or malformed

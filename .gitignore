@@ -33,3 +33,5 @@ video/
 app/evidence/*
 !app/evidence/*-1440.png
 !app/evidence/*-390.png
+# The poll runner's on-disk store (BOT_PGLITE_DIR)
+.bot-data/

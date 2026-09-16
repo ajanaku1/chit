@@ -7,19 +7,29 @@
  *   npm run build && node --env-file=.env scripts/bot-poll.mjs
  *
  * Needs what the hosted bot needs (docs/chit-bot.md), with two allowances
- * for one machine: BOT_MEMORY_STORE=1 instead of DATABASE_URL (wallets
- * live in this process and are gone when it stops), and any 16+ character
- * TELEGRAM_WEBHOOK_SECRET (polling pulls from Telegram, nothing arrives
- * unasked). Telegram allows either a webhook or polling, not both: this
- * removes the webhook when it starts, so do not run it against a bot that
- * is live on the host. Stop with ctrl-c.
+ * for one machine: a store of its own instead of DATABASE_URL, and any
+ * 16+ character TELEGRAM_WEBHOOK_SECRET (polling pulls from Telegram,
+ * nothing arrives unasked). The store: BOT_PGLITE_DIR=<folder> keeps the
+ * same tables as Neon in a Postgres on disk (PGlite), so wallets survive a
+ * restart of this process; BOT_MEMORY_STORE=1 keeps them in memory and
+ * they are gone when it stops. Telegram allows either a webhook or
+ * polling, not both: this removes the webhook when it starts, so do not
+ * run it against a bot that is live on the host. Stop with ctrl-c.
  */
 
 import { getBot, botFaultForTests } from "../dist/src/fleet/bot-runtime.js";
+import { NeonBotWalletStore } from "../dist/src/fleet/bot-wallets.js";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 if (!token) { console.error("TELEGRAM_BOT_TOKEN is not set"); process.exit(1); }
-const bot = getBot();
+const pgliteDir = process.env.BOT_PGLITE_DIR;
+const store = pgliteDir && !process.env.DATABASE_URL ? await (async () => {
+  // The Neon store over a Postgres in a folder: the same SQL, the same tables, one machine.
+  const { PGlite } = await import("@electric-sql/pglite");
+  const db = new PGlite(pgliteDir);
+  return new NeonBotWalletStore({ query: async (q, params) => (await db.query(q, params)).rows });
+})() : undefined;
+const bot = getBot(store ? { store } : undefined);
 if (!bot) { console.error(`the bot refused to start: ${botFaultForTests()}`); process.exit(1); }
 
 const api = async (method, payload = {}) => {
@@ -40,7 +50,7 @@ await api("setMyCommands", { commands: [
   { command: "pool", description: "the pool's numbers, also in the group" },
   { command: "help", description: "how it works" },
 ] });
-console.log(`polling as @${me.username} (${process.env.BOT_MEMORY_STORE === "1" ? "memory store, wallets vanish with this process" : "database store"}); ctrl-c stops it`);
+console.log(`polling as @${me.username} (${store ? `pglite store in ${pgliteDir}, wallets survive a restart` : process.env.BOT_MEMORY_STORE === "1" ? "memory store, wallets vanish with this process" : "database store"}); ctrl-c stops it`);
 
 let offset = 0;
 let stopping = false;
