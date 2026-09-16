@@ -176,7 +176,7 @@ test("each action the app sends is allowed by the route it goes to", async () =>
   const sources = await Promise.all(ROUTED_PAGES.map((page) => source(page)));
   const sent = new Set<string>(["challenge"]);
   for (const text of sources) {
-    for (const match of text.matchAll(/signedFleetApi\([^,]+,\s*"([a-zA-Z]+)"/g)) sent.add(match[1]!);
+    for (const match of text.matchAll(/(?:signedFleetApi|readSigned)\([^,]+,\s*"([a-zA-Z]+)"/g)) sent.add(match[1]!);
     for (const match of text.matchAll(/next\[action\]|data-action="([a-zA-Z]+)"/g)) {
       if (match[1]) sent.add(match[1]);
     }
@@ -261,6 +261,36 @@ test("no page signs for a balance directly; they share one cached read", async (
     if (/readBalance\(/.test(text)) continue;
     assert.fail(`${page} never reads the balance at all`);
   }
+});
+
+/**
+ * The Trade page reads the trader's fleets and holdings every time it opens.
+ * Signed afresh, that is a wallet prompt on every visit to the tab.
+ */
+test("the Trade page's load reads come from the shared cached signed read", async () => {
+  const text = await source("trade-page.ts");
+  for (const action of ["list", "holdings"]) {
+    assert.match(text, new RegExp(`readSigned\\(wallet, "${action}"`), `the Trade page does not read "${action}" through the cache`);
+  }
+  const onWallet = /async #onWallet\(\)[\s\S]*?\n  \}/.exec(text);
+  const holdings = /async #holdings\(\)[\s\S]*?\n  \}/.exec(text);
+  assert.ok(onWallet && holdings, "no load path to inspect");
+  for (const body of [onWallet[0], holdings[0]]) {
+    assert.doesNotMatch(body, /signedFleetApi\(/, "the Trade page signs on load, so every visit prompts");
+  }
+  const poll = /async #pollOnce\(\)[\s\S]*?\n  \}/.exec(text);
+  assert.ok(poll && /forgetSignedReads\(wallet\)/.test(poll[0]), "a trade leaves the cached fleets and holdings stale");
+  for (const page of ["fleet-page.ts", "fleet-dashboard.ts"]) {
+    assert.match(await source(page), /forgetSignedReads\(/, `${page} changes a fleet but leaves the cached list stale`);
+  }
+});
+
+/** The Control Room reads each wallet's holdings on every load and every funding poll. */
+test("the Control Room's holdings come from the shared cached signed read", async () => {
+  const portfolio = /async #portfolio\([\s\S]*?\n  \}/.exec(await source("fleet-dashboard.ts"));
+  assert.ok(portfolio, "no holdings read to inspect");
+  assert.match(portfolio[0], /readSigned\(wallet, "holdings"/, "the Control Room does not read holdings through the cache");
+  assert.doesNotMatch(portfolio[0], /signedFleetApi\(/, "the Control Room signs on every load and every poll");
 });
 
 /**

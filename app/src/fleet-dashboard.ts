@@ -8,6 +8,7 @@
 import { buildControlRoomView, confirmationFor, isLiveState, type CampaignState, type ControlAction } from "./fleet/control-room.js";
 import { banner, clearFleetSnapshot, confirmDialog, getConnectedWallet, initHeaderWallet, initShell, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
 import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
+import { forgetSignedReads, readSigned } from "./fleet/signed-read.js";
 import { StatusUnavailable, readStatus } from "./fleet/status-read.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 import type { DrawView } from "./fleet/control-room.js";
@@ -140,7 +141,7 @@ class FleetDashboard {
    */
   async #portfolio(wallet: `0x${string}`): Promise<void> {
     try {
-      const body = (await signedFleetApi(wallet, "holdings", { campaign: this.#snapshot.campaign })) as {
+      const body = (await readSigned(wallet, "holdings", { campaign: this.#snapshot.campaign })) as {
         holdings?: { wallet: string; eth: string; tokens: Record<string, string> }[];
         symbols?: Record<string, string>;
       };
@@ -206,6 +207,7 @@ class FleetDashboard {
       if (!wallet) throw new Error("not_connected");
       const body = await signedFleetApi(wallet, action, { campaign: this.#snapshot.campaign });
       invalidateBalance(wallet);
+      forgetSignedReads(wallet);
       const next: Record<ControlAction, string> = { pause: "Paused", resume: "Active", revoke: "Revoked", close: "Closed", topUp: "Active" };
       this.#snapshot = { ...this.#snapshot, state: next[action] };
       saveFleetSnapshot(this.#snapshot);
@@ -224,6 +226,7 @@ class FleetDashboard {
       const amount = parseEth((el<HTMLInputElement>("topup-amount")).value);
       await signedFleetApi(wallet, "topUp", { campaign: this.#snapshot.campaign, amount });
       invalidateBalance(wallet);
+      forgetSignedReads(wallet);
       banner("Topped up from your balance.", "ok");
       void this.#refresh();
     } catch (error) {
