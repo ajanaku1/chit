@@ -737,6 +737,7 @@ export class CampaignRouter {
           ? await this.#buyOnChain(record, session, chain, [slice.wallet], order.token, slice.amountWei, now)
           : await this.#buyInMemory(record, session, submitter!, [slice.wallet], order.token, slice.amountWei, now);
       const result = results[0] ?? { status: "rejected", reason: "no_result" };
+      if (result["status"] !== "sponsored") console.warn(`trade: slice ${slice.index} of ${order.id} ${String(result["status"])}: ${String(result["reason"] ?? "")}`);
       if (result["status"] !== "sponsored") await this.#store.releaseSlice(`${order.id}|${slice.index}`);
       executed.push({ index: slice.index, wallet: slice.wallet, amountWei: slice.amountWei, ...result });
     }
@@ -815,7 +816,8 @@ export class CampaignRouter {
     const refused: Record<string, unknown>[] = [];
     const buys: PooledBuy[] = [];
     for (const account of requested) {
-      if (this.#permitted(record, session, account, value, now)) {
+      const refusal = this.#refusal(record, session, account, value, now);
+      if (refusal === undefined) {
         buys.push({
           account,
           value,
@@ -823,7 +825,7 @@ export class CampaignRouter {
           maxCost: record.policy.perAccountGas,
         });
       } else {
-        refused.push({ account, status: "rejected", draw: record.draw });
+        refused.push({ account, status: "rejected", reason: refusal, draw: record.draw });
       }
     }
     if (buys.length === 0) return refused;
@@ -863,10 +865,11 @@ export class CampaignRouter {
     const refused: Record<string, unknown>[] = [];
     const permitted: ChainBuy[] = [];
     for (const account of requested) {
-      if (this.#permitted(record, session, account, value, now)) {
+      const refusal = this.#refusal(record, session, account, value, now);
+      if (refusal === undefined) {
         permitted.push(this.#chainBuy(record, account, token, value, now, minOut));
       } else {
-        refused.push({ account, status: "rejected", budget: this.#budget(record) });
+        refused.push({ account, status: "rejected", reason: refusal, budget: this.#budget(record) });
       }
     }
     if (permitted.length === 0) return refused;
@@ -876,7 +879,8 @@ export class CampaignRouter {
   }
 
   /** True when the session policy admits a buy for this account; false on a policy refusal. */
-  #permitted(record: CampaignRecord, session: SessionKey, account: Address, value: Uint, now: Date): boolean {
+  /** Why the policy refuses this account for this buy, or undefined when it permits it. */
+  #refusal(record: CampaignRecord, session: SessionKey, account: Address, value: Uint, now: Date): string | undefined {
     try {
       authorize({
         session,
@@ -887,9 +891,9 @@ export class CampaignRouter {
         },
         state: record.state, spentGas: this.#budget(record).spent, now,
       });
-      return true;
+      return undefined;
     } catch (error) {
-      if (error instanceof PolicyRejection) return false;
+      if (error instanceof PolicyRejection) return error.reason;
       throw error;
     }
   }

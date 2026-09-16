@@ -477,7 +477,8 @@ class TradePage {
     for (const slice of record.slices) {
       const row = document.createElement("li");
       const label = document.createElement("span");
-      label.textContent = `${toEth(slice.amountWei)} ETH · ${slice.state}`;
+      // The reason rides along: "failed" alone says nothing a trader can act on.
+      label.textContent = `${toEth(slice.amountWei)} ETH · ${slice.state}${slice.reason && slice.state !== "sponsored" ? ` · ${slice.reason}` : ""}`;
       row.append(label);
       if (slice.txHash) row.append(this.#hashRow(slice.txHash));
       slices.append(row);

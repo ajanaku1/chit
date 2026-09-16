@@ -441,6 +441,9 @@ export const createPoolService = (
       const limit = await gasLimitFor(gasCeiling);
       hash = await pool.fundAndExecute(campaign, buy.account, principal, gasCeiling, target, buy.callData, limit.gas);
     } catch (error) {
+      // Logged as well as returned: a refused buy the browser shows as "failed"
+      // should be findable in the function logs, first line only, no secrets.
+      console.warn(`buy refused for ${buy.account}: ${messageOf(error)}`);
       return { account: buy.account, status: "rejected", reason: reasonOf(error) };
     }
     const after = (await pool.drawOf(campaign))?.spent ?? before;
