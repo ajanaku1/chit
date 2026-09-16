@@ -14,7 +14,7 @@ const CHIT = (process.env.CHIT_TOKEN_ADDRESS ?? "0xd523a627030509021cc39b6d7c854
 /** deployments/buyback-4663.json: the block the contract was deployed in, and when; nothing of it exists before. */
 const FROM_BLOCK = Number(process.env.BUYBACK_FROM_BLOCK ?? 64413263);
 const DEPLOYED_AT = Date.parse(process.env.BUYBACK_DEPLOYED_AT ?? "2026-09-16T09:48:35Z") / 1000;
-/** The team's rule for what it sends in: ten percent of the fleet fees plus one point per 100k of market cap. A promise, not a contract reading. */
+/** The team's rule for what it sends in: ten percent of the fleet fees plus one point per 100k of market cap, counting the 100k the coin is in (under $100k is 11%, $200k+ is 13%). A promise, not a contract reading. */
 const SHARE_BASE = Number(process.env.SHARE_BASE ?? 10);
 const SHARE_STEP_USD = Number(process.env.SHARE_STEP_USD ?? 100_000);
 const MINTED = 1_000_000_000n * 10n ** 18n;
@@ -112,7 +112,7 @@ export async function GET() {
     if (!lastGood) return new Response(JSON.stringify({ error: "the chain's rpc did not answer; try again in a minute" }), { status: 503, headers: { "content-type": "application/json", "cache-control": "no-store" } });
     return new Response(JSON.stringify({ ...lastGood, stale: true, staleReason: chain.error }), { status: 200, headers: { "content-type": "application/json", "cache-control": "public, s-maxage=30" } });
   }
-  const share = { base: SHARE_BASE, stepUsd: SHARE_STEP_USD, ...(cap ? { mcapUsd: cap.usd, pct: SHARE_BASE + Math.floor(cap.usd / SHARE_STEP_USD), priceUsd: cap.priceUsd, source: cap.source } : {}) };
+  const share = { base: SHARE_BASE, stepUsd: SHARE_STEP_USD, ...(cap ? { mcapUsd: cap.usd, pct: SHARE_BASE + Math.floor(cap.usd / SHARE_STEP_USD) + 1, priceUsd: cap.priceUsd, source: cap.source } : {}) };
   lastGood = { ...chain, share, servedAt: Math.floor(Date.now() / 1000) };
   return new Response(JSON.stringify(lastGood), {
     status: 200,

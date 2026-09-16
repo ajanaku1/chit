@@ -233,7 +233,7 @@
       </div>
       <div>
         <p class="lede">the team sends that share of the fees into the contract every day. the mcap is read when the day's deposit is posted, so the share follows the coin: <b>the bigger chit gets, the bigger the bite that gets burned.</b></p>
-        <p class="fine">the share is the team's rule and the daily post shows what actually arrived; the contract itself only knows eth in and chit out. market cap here is dexscreener's, named as such.</p>
+        <p class="fine">every 100k counts from the first, so under $100k the share is already 11%. the share is the team's rule and the daily post shows what actually arrived; the contract itself only knows eth in and chit out. market cap here is dexscreener's, named as such.</p>
       </div>
     </div>
     <div class="meter" id="meter" aria-label="share by market cap"></div>
@@ -354,10 +354,11 @@
     } else {
       $("share-pct").textContent = "—"; $("share-note").textContent = "mcap not available right now"; $("today").innerHTML = "today <b>—</b> (mcap not available)";
     }
-    const cur = d.share.pct ?? d.share.base;
-    const startStep = Math.max(0, (cur - d.share.base) - 2);
+    // bands: the first 100k already counts, so band 1 (under $100k) is base + 1
+    const cur = d.share.pct ?? d.share.base + 1;
+    const startBand = Math.max(1, (cur - d.share.base) - 2);
     $("meter").innerHTML = Array.from({ length: 6 }, (_, i) => {
-      const k = startStep + i, pct = d.share.base + k, from = k * d.share.stepUsd;
+      const band = startBand + i, pct = d.share.base + band, from = (band - 1) * d.share.stepUsd;
       const cls = pct === cur ? "on" : pct < cur ? "past" : "";
       return `<div class="step ${cls}"><div class="p num">${pct}%</div><div class="m">${from === 0 ? "under $" + (d.share.stepUsd / 1000) + "k" : "$" + (from / 1000) + "k+"}</div></div>`;
     }).join("");
