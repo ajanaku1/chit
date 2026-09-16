@@ -181,7 +181,7 @@ export class CampaignRouter {
     try {
       return await this.#dispatch(asRecord(request), idempotencyKey);
     } catch (error) {
-      return errorResult(error);
+      return errorResult(error, String(asRecord(request)["action"] ?? "?"));
     }
   }
 
@@ -402,7 +402,9 @@ export class CampaignRouter {
     if (!id) throw new FleetValidationError("invalid_campaign");
     const pool = this.#pool();
     const chain = this.#deps.chain;
-    const key = campaignKey(id);
+    // An id `list` handed out is the chain key itself; hashing it again looks
+    // up a campaign that does not exist. The same rule #restore follows.
+    const key = isChainKey(id) ? (id.toLowerCase() as Hex) : campaignKey(id);
 
     await this.#sweepOpportunistically();
     const [draw, session] = await Promise.all([pool.drawOf(key), chain?.sessionOf(key)]);
@@ -479,7 +481,7 @@ export class CampaignRouter {
     if (!id) return undefined;
     // An id `list` handed out is the chain key itself; hashing it again would
     // look up a campaign that does not exist.
-    if (/^0x[0-9a-fA-F]{64}$/.test(id)) return this.#restoreByKey(id.toLowerCase() as Hex, wallet);
+    if (isChainKey(id)) return this.#restoreByKey(id.toLowerCase() as Hex, wallet);
     return this.#restoreFromKey(id, campaignKey(id), wallet);
   }
 
@@ -1155,8 +1157,11 @@ const restoredRecord = (id: string, owner: string, found: OnChainCampaign, now: 
   };
 };
 
+/** A 32-byte hex id is a chain key `list` handed out, not a friendly id to hash. */
+const isChainKey = (id: string): boolean => /^0x[0-9a-fA-F]{64}$/.test(id);
+
 /** Maps every thrown domain error onto the fleet-api.md status table. */
-const errorResult = (error: unknown): RouterResult => {
+const errorResult = (error: unknown, action = "?"): RouterResult => {
   if (error instanceof TradeValidationError) {
     return { status: 400, body: { code: error.reason, retryable: false } };
   }
@@ -1180,6 +1185,6 @@ const errorResult = (error: unknown): RouterResult => {
   }
   status ??= code === undefined ? undefined : STATUS[code];
   if (code === undefined || status === undefined) throw error;
-  if (status >= 400 && code !== "challenge_invalid") console.warn(`fleet route refused: ${code}${reason ? ` (${reason})` : ""}`);
+  if (status >= 400 && code !== "challenge_invalid") console.warn(`fleet route refused: ${action} ${code}${reason ? ` (${reason})` : ""}`);
   return { status, body: { code, retryable: code === "challenge_invalid", ...(reason ? { reason } : {}) } };
 };
