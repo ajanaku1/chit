@@ -395,8 +395,10 @@ class TradePage {
           await this.#reconcile(current.order.id);
         }
       }
-      // Even a lost reply may have spent the draw and bought tokens.
+      // Even a lost reply may have spent the draw and bought tokens; the
+      // holdings tile shows them once they are read again.
       forgetSignedReads(wallet);
+      void this.#holdings();
     }
     this.#render();
     this.#schedule();

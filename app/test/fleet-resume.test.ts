@@ -37,3 +37,9 @@ test("the dashboard without a snapshot asks the service for the wallet's fleets"
   assert.match(dashboard, /readSigned\(\s*wallet,\s*"list"/, "the dashboard only ever reads sessionStorage");
   assert.match(dashboard, /chit-wallet-changed/, "a wallet connected after load is not followed");
 });
+
+test("holdings are re-read after slices fill, not only when a fleet is picked", async () => {
+  const trade = await source("trade-page.ts");
+  const poll = trade.slice(trade.indexOf("forgetSignedReads(wallet)"), trade.indexOf("forgetSignedReads(wallet)") + 200);
+  assert.match(poll, /this\.#holdings\(\)/, "the cache is forgotten after a fill but nobody reads it again, so the tile keeps the pre-order figure");
+});
