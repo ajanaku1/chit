@@ -140,6 +140,37 @@ test("the header button surfaces a failed connect instead of discarding it", asy
 });
 
 /**
+ * A connected trader reaches for the header button to see or copy their
+ * address. Disconnecting on that click drops the wallet they meant to use.
+ */
+test("clicking the connected header button opens a menu instead of disconnecting", async () => {
+  const header = /export const initHeaderWallet[\s\S]*?\n\};/.exec(await source("fleet/page-shared.ts"));
+  assert.ok(header, "no initHeaderWallet to inspect");
+  const click = /button\.addEventListener\("click", \(\) => \{[\s\S]*?\n {2}\}\);/.exec(header[0]);
+  assert.ok(click, "no header click handler to inspect");
+  assert.doesNotMatch(click[0], /disconnectWallet\(/, "a click on the connected button still disconnects straight away");
+  assert.match(header[0], /"Copy address"/, "the wallet menu offers no way to copy the address");
+  assert.match(header[0], /clipboard\.writeText\(address\)/, "copying does not copy the connected address");
+  assert.match(
+    header[0],
+    /disconnect\.addEventListener\("click"[\s\S]{0,120}disconnectWallet\(\)/,
+    "disconnecting is not its own choice in the menu",
+  );
+});
+
+test("the disconnected header button says Connect wallet", async () => {
+  for (const html of ["balance.html", "fleet.html", "trade.html", "fleet-dashboard.html", "fleet-privacy.html"]) {
+    const text = await readFile(join(appRoot, html), "utf8");
+    assert.match(text, /id="hdr-wallet"[^>]*>Connect wallet</, `${html} labels the wallet button something else`);
+  }
+  assert.match(
+    await source("fleet/page-shared.ts"),
+    /button\.textContent = "Connect wallet"/,
+    "after a disconnect the button goes back to a different label",
+  );
+});
+
+/**
  * Every action the pages can send must be allowed by the route they send it to.
  * A mismatch answers 409 with no clue which side is wrong, and only shows up
  * when a trader clicks the one button nobody tried.
