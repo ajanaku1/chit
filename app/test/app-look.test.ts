@@ -426,7 +426,8 @@ test("the Trade page marks slices sent before it asks, never re-sends an unconfi
   const script = await read("src/trade-page.ts");
   const poll = /async #pollOnce\([\s\S]*?\n  \}/.exec(script);
   assert.ok(poll, "no #pollOnce");
-  assert.ok(poll[0].indexOf("markSent(") < poll[0].indexOf('signedFleetApi(wallet, "trade"'), "the request leaves before the slices are marked sent");
+  const send = poll[0].indexOf("orderTrade(wallet, current.orderToken");
+  assert.ok(send > 0 && poll[0].indexOf("markSent(") < send, "the request leaves before the slices are marked sent");
   assert.match(poll[0], /markUnconfirmed\(/, "a lost reply leaves slices pending, so they would be re-sent");
   assert.match(script, /pending: pendingIndices\(/, "the service must receive only what the browser still holds");
   const place = /async #place\([\s\S]*?\n  \}/.exec(script);

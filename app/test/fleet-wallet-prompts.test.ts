@@ -100,6 +100,11 @@ test("a withdrawal shows the balance the service returned instead of signing for
 test("the Trade page asks once per quote and never signs to look up wallets it already read", async () => {
   const text = await source("trade-page.ts");
   assert.match(text, /readSigned\(wallet, "tokenQuote", [^)]*\{ maxAgeMs: 60_000 \}\)/, "a quote asked twice signs twice");
+  assert.match(
+    text,
+    /addEventListener\("blur", \(\) => \{[^}]*clearTimeout\(this\.#quoteTimer\)[^}]*#quoteToken\(\)/,
+    "leaving the token field quotes, then the typing timer quotes again for a different total",
+  );
   assert.doesNotMatch(text, /signedFleetApi\(wallet, "(holdings|tokenQuote|list)"/, "a read on the Trade page signs every time");
   const place = /async #place\([\s\S]*?\n  \}/.exec(text);
   assert.ok(place && /this\.#readHoldings\(wallet, fleet\)/.test(place[0]), "placing an order does not reuse the page's holdings read");
