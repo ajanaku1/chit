@@ -145,6 +145,11 @@ class FleetDashboard {
         holdings?: { wallet: string; eth: string; tokens: Record<string, string> }[];
         symbols?: Record<string, string>;
       };
+      if (this.#snapshot.accounts.length === 0 && body.holdings?.length) {
+        this.#snapshot = { ...this.#snapshot, accounts: body.holdings.map((holding) => holding.wallet) };
+        saveFleetSnapshot(this.#snapshot);
+        this.#renderAccounts();
+      }
       for (const holding of body.holdings ?? []) {
         const item = document.querySelector<HTMLElement>(`#fleet-accounts li[data-wallet="${holding.wallet.toLowerCase()}"] .account-list__holdings`);
         if (!item) continue;
@@ -169,6 +174,10 @@ class FleetDashboard {
       this.#draw = body.draw as DrawView | undefined;
       const state = body.state;
       this.#snapshot = { ...this.#snapshot, state };
+      if (this.#draw && this.#snapshot.budget.funded === "0") {
+        this.#snapshot.budget = { funded: this.#draw.amount, reserved: "0", spent: this.#draw.spent, unused: this.#draw.remaining };
+        saveFleetSnapshot(this.#snapshot);
+      }
       const balance = await readBalance(wallet);
       this.#available = String(balance.available ?? "0");
       this.#poolPaused = Boolean(balance.pool?.paused);
@@ -246,7 +255,44 @@ class FleetDashboard {
   }
 }
 
+/**
+ * A fleet outlives the tab that made it. Without the wizard's snapshot the
+ * wallet's list says which fleets exist, as it does on the Trade page: the
+ * live one first, else the newest. Budget and accounts arrive with the
+ * first status and holdings reads.
+ */
+const resumeFromService = async (): Promise<boolean> => {
+  const wallet = getConnectedWallet();
+  if (!wallet) return false;
+  let fleets: { campaign: string; state: string }[] = [];
+  try {
+    const body = (await readSigned(wallet, "list", {})) as { fleets?: { campaign: string; state: string }[] };
+    fleets = body.fleets ?? [];
+  } catch {
+    return false;
+  }
+  const fleet = fleets.find((candidate) => isLiveState(candidate.state)) ?? fleets[0];
+  if (!fleet) return false;
+  const snapshot: FleetSnapshot = {
+    campaign: fleet.campaign,
+    state: fleet.state,
+    budget: { funded: "0", reserved: "0", spent: "0", unused: "0" },
+    accounts: [],
+  };
+  saveFleetSnapshot(snapshot);
+  new FleetDashboard(snapshot).start();
+  return true;
+};
+
 initHeaderWallet();
 initShell();
 const snapshot = loadFleetSnapshot();
 if (snapshot) new FleetDashboard(snapshot).start();
+else {
+  const tryResume = async (): Promise<void> => {
+    if (await resumeFromService()) window.removeEventListener("chit-wallet-changed", onWallet);
+  };
+  const onWallet = (): void => void tryResume();
+  window.addEventListener("chit-wallet-changed", onWallet);
+  void tryResume();
+}

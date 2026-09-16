@@ -328,13 +328,15 @@ class FleetWizard {
       line.textContent = "Backup downloaded.";
       line.hidden = false;
       el("vault-warn").hidden = false;
-      (el("confirm-vault") as HTMLButtonElement).disabled = false;
     } catch (error) {
       banner(`Couldn't create the backup: ${(error as Error).message}`, "error");
       return;
     }
+    // The confirmation posts to the campaign, so it can only be offered once
+    // the service has one; a confirm that raced create() never reached it.
     try {
       await this.#setup.create();
+      (el("confirm-vault") as HTMLButtonElement).disabled = false;
     } catch (error) {
       this.#pendingOrError("create", error);
     }
@@ -380,16 +382,11 @@ class FleetWizard {
       });
       this.#go("done");
     } catch (error) {
+      // Not done: the page stays on launch with the reason, and the button
+      // comes back for another try. "Your fleet is ready" is for a fleet the
+      // service has.
       this.#pendingOrError("launch", error);
-      // The client-side journey is complete either way; let the user reach the
-      // dashboard, which shows the same honest pending state.
-      saveFleetSnapshot({
-        campaign: this.#campaign ?? "preview",
-        state: "Pending service",
-        budget: { funded: "0", reserved: "0", spent: "0", unused: "0" },
-        accounts: this.#accounts.map((account) => account.ownerAddress),
-      });
-      this.#go("done");
+      this.#renderLaunch();
     } finally {
       // A launch that failed part way may still have created the fleet.
       if (this.#wallet) forgetSignedReads(this.#wallet);
