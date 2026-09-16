@@ -101,7 +101,7 @@ let today = null;
 try {
   const r = await fetch(`https://api.dexscreener.com/latest/dex/pairs/robinhood/${PAIR}`, { headers: { "user-agent": "chit-buyback-stats/1" } });
   const mcap = Number((((await r.json()).pairs ?? [])[0] ?? {}).marketCap);
-  if (Number.isFinite(mcap) && mcap > 0) today = { mcap, share: SHARE_BASE + Math.floor(mcap / SHARE_STEP_USD) };
+  if (Number.isFinite(mcap) && mcap > 0) today = { mcap, share: SHARE_BASE + Math.floor(mcap / SHARE_STEP_USD) + 1 }; // the 100k the coin is in counts: under 100k is 11%, 200k+ is 13%
 } catch { /* the contract's numbers stand on their own */ }
 const usd = (n) => "$" + Math.round(n).toLocaleString("en-US");
 
