@@ -108,6 +108,13 @@ Run it with `npm run test:fork:buyback`.
     nothing; a due one sends the call and answers with the hash. One send at
     a time per instance. Needs `BUYBACK_KEEPER_KEY` in the host's
     environment; without it the route is read-only and says `no_keeper_key`.
+    **Every buy it lands is posted to the group** as one line (buy number,
+    ETH in, CHIT burned, running totals, tx and burn page links), the
+    figures read from the `BoughtAndBurned` event in the receipt. Needs
+    `TELEGRAM_BOT_TOKEN` and `BUYBACK_CHAT_ID` (or the daily post's
+    `TELEGRAM_CHAT_ID`) on the host; the GitHub script posts the same line
+    from its secrets, so the group hears each buy once, from whichever clock
+    landed it.
   - `.github/workflows/buyback-keeper.yml`, hourly, the backup. GitHub's
     scheduler skips slots under load (16 September: three buys in nine
     hours), which is why the pinger is the primary. Missed hours are gone
