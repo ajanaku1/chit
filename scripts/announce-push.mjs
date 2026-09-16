@@ -153,19 +153,46 @@ const event = eventPath ? JSON.parse(await readFile(eventPath, "utf8")) : null;
 
 /* Run by hand from the Actions tab, there is no push to report; say hello
    instead, so the wiring can be checked the moment the secrets are set. */
-if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch") {
+let handRange = null;
+if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch" && process.env.ANNOUNCE_BEFORE && process.env.ANNOUNCE_AFTER) {
+  /* A range announced by hand: for a push the bot missed. */
+  const range = { ref: "refs/heads/main", before: git("rev-parse", process.env.ANNOUNCE_BEFORE).trim(), after: git("rev-parse", process.env.ANNOUNCE_AFTER).trim(), pusher: { name: process.env.GITHUB_ACTOR ?? "the dev" }, commits: [] };
+  handRange = range;
+} else if (process.env.GITHUB_EVENT_NAME === "workflow_dispatch") {
   await send(`🔌 <b>${esc(REPO_NAME)}</b> announcer connected. from now on every push to <code>main</code> lands here: what shipped, the dev's notes, new contracts on chain.`);
   console.log("said hello");
   process.exit(0);
 }
 
-if (!event || !Array.isArray(event.commits)) { console.log("no push event to announce"); process.exit(0); }
+const pushEvent = handRange ?? event;
+if (!pushEvent || !Array.isArray(pushEvent.commits)) { console.log("no push event to announce"); process.exit(0); }
 
-const commits = event.commits.filter((c) => c && typeof c.id === "string" && c.distinct !== false);
+/* What is new to main is what git says is new to main: `before..after`. The
+   payload's own list is capped at twenty and flags a commit as not distinct
+   when it already sits on any other branch, so a branch and main pushed
+   together read as "nothing new". The payload is the fallback for a push
+   whose `before` is unknown here (a new branch, or a force). */
+function commitsFromGit(before, after) {
+  if (!before || !after || /^0+$/.test(before)) return null;
+  try {
+    const out = git("log", "--no-merges", "--format=%H%x1f%s%x1f%an", `${before}..${after}`);
+    if (!out.trim()) return [];
+    const repoUrl = `https://github.com/${process.env.GITHUB_REPOSITORY ?? ""}`;
+    return out.trim().split("\n").map((line) => {
+      const [id, message, name] = line.split("\x1f");
+      return { id, message, author: { name }, url: `${repoUrl}/commit/${id}` };
+    });
+  } catch {
+    return null;
+  }
+}
+
+const fromGit = commitsFromGit(pushEvent.before, pushEvent.after);
+const commits = fromGit ?? pushEvent.commits.filter((c) => c && typeof c.id === "string" && c.distinct !== false);
 if (commits.length === 0) { console.log("push carried no new commits; nothing to say"); process.exit(0); }
 
-const before = event.before, after = event.after;
-const messages = [pushMessage(event, commits)];
+const before = pushEvent.before, after = pushEvent.after;
+const messages = [pushMessage(pushEvent, commits)];
 if (before && after && !/^0+$/.test(before)) {
   for (const e of diaryEntries(before, after)) messages.push(diaryMessage(e));
   const chain = chainEntries(before, after);
