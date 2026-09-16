@@ -653,3 +653,37 @@ test("a fleet created but not activated offers activate and start over; an ended
   assert.match(telegram.texts().join("\n"), /forgotten/);
   assert.equal((await store.get("7"))!.fleet, undefined);
 });
+
+test("banner cards: a photo with the text as caption, swapped in place for another banner card, and a text card after it comes fresh", async () => {
+  const store = new MemoryBotWalletStore();
+  const chain = fakeChain();
+  const telegram = new RecordingTelegram();
+  const banners = { home: "https://chit.tools/bot/home.png", refer: "/tmp/refer.png", buy: "https://chit.tools/bot/buy.png" };
+  const bot = new ChitBot({ store, chain, telegram, keySecret: SECRET, botUsername: "b", banners, now: () => clock });
+  await bot.handle(dm("/start"));
+  const home = telegram.sent.at(-1)!;
+  assert.equal(home.kind, "photo");
+  assert.equal((home as { photo: string }).photo, banners.home);
+  assert.match((home as { text: string }).text, /Robinhood Chain testnet/);
+
+  // A button under the banner card: the next banner card replaces photo and caption in place, a URL or a file path alike.
+  const underBanner = (data: string): Update => ({ callback_query: { id: "cb", data, from: { id: 7 }, message: { message_id: 99, chat: { id: 7, type: "private" }, photo: [{}] } } });
+  await bot.handle(underBanner("refer"));
+  const refer = telegram.sent.at(-1)!;
+  assert.equal(refer.kind, "editPhoto");
+  assert.equal((refer as { photo: string; messageId: number }).photo, banners.refer);
+  assert.equal((refer as { messageId: number }).messageId, 99);
+  await bot.handle(underBanner("buy:"));
+  assert.equal(telegram.sent.at(-1)!.kind, "editPhoto");
+
+  // A plain card cannot replace a photo: it comes as a new message.
+  await bot.handle(underBanner("settings"));
+  assert.equal(telegram.sent.at(-1)!.kind, "send");
+  assert.match(telegram.last(), /<b>settings<\/b>/);
+  // And a banner card cannot replace a plain one: from a text message it comes as a new photo.
+  await bot.handle(tap("home"));
+  assert.equal(telegram.sent.at(-1)!.kind, "photo");
+  // A card with no banner configured stays text.
+  await bot.handle(tap("fleet"));
+  assert.equal(telegram.sent.at(-1)!.kind, "edit");
+});

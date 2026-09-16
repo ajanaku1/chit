@@ -145,6 +145,12 @@ recovery of what a fleet wallet holds after a close.
    variable `BOT_USERNAME`; `DATABASE_URL` as a secret adds the wallet
    count. `scripts/announce-bot.mjs` prints it without the secrets.
 
+The home, buy, refer and fleet cards carry a banner (`landing/public/bot/`,
+served at `/bot/*.png`; `BOT_BANNER_BASE` moves them, an empty value turns
+them off): the photo on top, the card as its caption, and a tap from one
+banner card to another swaps the picture in place. A card that has no
+banner, or whose text would not fit a caption, is plain text as before.
+
 Before the host: `node --env-file=.env scripts/bot-poll.mjs` runs the same
 runtime from one machine by long polling (`BOT_MEMORY_STORE=1` allowed, any
 16+ character webhook secret), for trying it and for screenshots; it

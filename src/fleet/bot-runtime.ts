@@ -25,6 +25,11 @@
  *                                instance would hand a user a different
  *                                wallet on each; BOT_MEMORY_STORE=1 allows
  *                                it for one machine only.
+ *   BOT_BANNER_BASE              where the cards' banners are: a URL
+ *                                (default <FLEET_ORIGIN>/bot, the site
+ *                                serves landing/public/bot) or a local folder
+ *                                for one machine; home.png, buy.png,
+ *                                refer.png, fleet.png. Empty string: no banners
  *   FLEET_CHAIN_ID, FLEET_RPC_URL, FLEET_POOL_ADDRESS, FLEET_TOKEN_ALLOWLIST
  *                                as for the service; the first allowlisted
  *                                token is the one the bot trades
@@ -111,6 +116,10 @@ const build = (): ChitBot => {
   });
   if (!faucetKey) warnOnce("faucet", "BOT_FAUCET_PRIVATE_KEY is not set: new wallets get no test ETH");
   const site = process.env.FLEET_ORIGIN || "https://chit.tools";
+  const bannerBase = process.env.BOT_BANNER_BASE ?? `${site.replace(/\/+$/, "")}/bot`;
+  const banners = bannerBase
+    ? Object.fromEntries((["home", "buy", "refer", "fleet"] as const).map((k) => [k, `${bannerBase.replace(/[\\/]+$/, "")}/${k}.png`]))
+    : undefined;
   return new ChitBot({
     store: storeFromEnv(),
     chain,
@@ -121,6 +130,7 @@ const build = (): ChitBot => {
     botUsername: username!,
     ...(faucetWei !== undefined ? { faucetWei } : {}),
     ...(faucetDailyWei !== undefined ? { faucetDailyWei } : {}),
+    ...(banners ? { banners } : {}),
     siteUrl: site,
   });
 };

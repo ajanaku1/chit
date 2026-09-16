@@ -34,7 +34,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 import type { BotChain, Landed, TokenInfo } from "./bot-chain.js";
 import { FleetDriver, FleetError, fleetPhase, type FleetApi } from "./bot-fleet.js";
-import { esc, type Keyboard, type Outgoing, type Telegram } from "./bot-telegram.js";
+import { CAPTION_MAX_CHARS, esc, type Keyboard, type Outgoing, type Telegram } from "./bot-telegram.js";
 import {
   CANARY_KEY, DEFAULT_SETTINGS, RefCodeTaken, SealError, checkCanary, fleetAad, fleetKeyAad, open, openKey, refCodeOf, seal, sealCanary, sealKey, walletAad, withDefaults,
   type BotSettings, type BotWallet, type BotWalletStore, type FleetRecordLike,
@@ -61,8 +61,12 @@ export type BotDeps = {
   faucetDailyWei?: bigint;
   /** Where the app lives. */
   siteUrl?: string;
+  /** Banner images for the cards that have one: https URLs or local paths; a card without one is plain text. */
+  banners?: Partial<Record<BannerKey, string>>;
   now?: () => Date;
 };
+
+export type BannerKey = "home" | "refer" | "fleet" | "buy";
 
 export type Update = {
   /** Telegram's update id; the same id delivered twice is acted on once. */
@@ -78,7 +82,8 @@ export type Update = {
     id: string;
     data?: string;
     from: { id: number; username?: string; first_name?: string };
-    message?: { message_id: number; chat: { id: number; type: string } };
+    /** `photo` is set when the button sat under a banner card: such a message can take another banner, never plain text. */
+    message?: { message_id: number; chat: { id: number; type: string }; photo?: unknown };
   };
 };
 
@@ -177,6 +182,8 @@ export class ChitBot {
   readonly #site: string;
   readonly #now: () => Date;
   #sealCheck: Promise<string | undefined> | undefined;
+  /** Messages known to be banner cards, `chatId:messageId`, learned from each callback before it is handled. */
+  readonly #bannerMessages = new Set<string>();
 
   constructor(deps: BotDeps) {
     this.#d = deps;
@@ -252,10 +259,21 @@ export class ChitBot {
   async #ask(chatId: string, key: PromptKey, text: string): Promise<void> {
     await this.#d.telegram.deliver({ kind: "send", chatId, text, ask: PLACEHOLDER[key] });
   }
-  async #out(chatId: string, messageId: number | undefined, text: string, keyboard?: Keyboard): Promise<void> {
-    const out: Outgoing = messageId
-      ? { kind: "edit", chatId, messageId, text, ...(keyboard ? { keyboard } : {}) }
-      : { kind: "send", chatId, text, ...(keyboard ? { keyboard } : {}) };
+  /**
+   * A card, in place when it can be: text over text, banner over banner. A
+   * text message cannot become a photo nor a photo a text, so those cross
+   * the line as a fresh message; a caption that would not fit goes as text.
+   */
+  async #out(chatId: string, messageId: number | undefined, text: string, keyboard?: Keyboard, banner?: BannerKey): Promise<void> {
+    const photo = banner ? this.#d.banners?.[banner] : undefined;
+    const overBanner = messageId !== undefined && this.#bannerMessages.has(`${chatId}:${messageId}`);
+    const kbd = keyboard ? { keyboard } : {};
+    let out: Outgoing;
+    if (photo && text.length <= CAPTION_MAX_CHARS) {
+      out = messageId && overBanner ? { kind: "editPhoto", chatId, messageId, photo, text, ...kbd } : { kind: "photo", chatId, photo, text, ...kbd };
+    } else {
+      out = messageId && !overBanner ? { kind: "edit", chatId, messageId, text, ...kbd } : { kind: "send", chatId, text, ...kbd };
+    }
     await this.#d.telegram.deliver(out);
   }
 
@@ -330,6 +348,7 @@ export class ChitBot {
     const messageId = q.message?.message_id;
     const tgId = String(q.from.id);
     const data = q.data ?? "";
+    if (q.message?.photo && messageId !== undefined) this.#bannerMessages.add(`${chatId}:${messageId}`);
     const ack = (text?: string): Promise<void> => this.#d.telegram.deliver({ kind: "answer", callbackId: q.id, ...(text ? { text } : {}) });
     if (q.message?.chat.type !== "private") { await ack("open the bot in private"); return; }
 
@@ -514,7 +533,7 @@ export class ChitBot {
   async #home(chatId: string, tgId: string, messageId?: number): Promise<void> {
     const wallet = await this.#d.store.get(tgId);
     if (!wallet) return this.#start(chatId, tgId);
-    await this.#out(chatId, messageId, await this.#card(wallet), this.#homeKeyboard());
+    await this.#out(chatId, messageId, await this.#card(wallet), this.#homeKeyboard(), "home");
   }
 
   // ---------- tokens ----------
@@ -581,7 +600,7 @@ export class ChitBot {
     const tokens = this.#tokensOf(wallet);
     const infos = await Promise.all(tokens.map((t) => this.#d.chain.tokenInfo(t)));
     const rows = infos.filter((i) => i.hasPool).map((i) => [btn(`${i.symbol}`, `token:${i.address}`)]);
-    await this.#out(chatId, messageId, `<b>buy</b>\npick a token, or paste any token's contract address.`, kb(...rows, [btn("paste a contract address", "token:")], back()));
+    await this.#out(chatId, messageId, `<b>buy</b>\npick a token, or paste any token's contract address.`, kb(...rows, [btn("paste a contract address", "token:")], back()), "buy");
   }
 
   #faucetOffer(): Keyboard[number] {
@@ -816,7 +835,7 @@ export class ChitBot {
       "",
       `rewards: none yet, and we say so. the roadmap's referral pays when the fee goes live, from the fee, and only for referrals the chain can see (a fleet that actually deposits). until then this counts, nothing more.`,
       wallet.referredBy ? `you came through <code>${esc(wallet.referredBy)}</code>.` : "",
-    ].filter(Boolean).join("\n"), kb(back()));
+    ].filter(Boolean).join("\n"), kb(back()), "refer");
   }
 
   // ---------- the fleet: Chit's own product, from the chat ----------
@@ -842,7 +861,7 @@ export class ChitBot {
     if (!wallet) return this.#start(chatId, tgId);
     const intro = ChitBot.FLEET_INTRO;
     if (!this.#d.fleetApi) {
-      return this.#out(chatId, messageId, [...intro, "", `from this chat it is not wired yet. today it lives in the app: <a href="${esc(this.#site)}/app/balance.html">Balance</a> → <a href="${esc(this.#site)}/app/fleet.html">Set up</a> → <a href="${esc(this.#site)}/app/trade.html">Trade</a> → <a href="${esc(this.#site)}/app/fleet-dashboard.html">Control Room</a>.`].join("\n"), kb(back()));
+      return this.#out(chatId, messageId, [...intro, "", `from this chat it is not wired yet. today it lives in the app: <a href="${esc(this.#site)}/app/balance.html">Balance</a> → <a href="${esc(this.#site)}/app/fleet.html">Set up</a> → <a href="${esc(this.#site)}/app/trade.html">Trade</a> → <a href="${esc(this.#site)}/app/fleet-dashboard.html">Control Room</a>.`].join("\n"), kb(back()), "fleet");
     }
     const record = this.#fleetOf(wallet);
     const phase = fleetPhase(record);
@@ -879,7 +898,7 @@ export class ChitBot {
         break;
     }
     rows.push([btn("pool balance", "fl:bal"), btn("← Back", "home")]);
-    await this.#out(chatId, messageId, lines.join("\n"), kb(...rows.filter((r) => r.length)));
+    await this.#out(chatId, messageId, lines.join("\n"), kb(...rows.filter((r) => r.length)), "fleet");
   }
 
   /** The draws that fit: at least what five wallets need for gas, at most the pool balance the service reports. */
