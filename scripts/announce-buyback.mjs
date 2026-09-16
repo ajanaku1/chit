@@ -14,14 +14,20 @@
  *                     fees, plus one point every 100k of mcap"); the contract
  *                     cannot know it, the team does, and it is posted as a
  *                     promise, not a reading
+ *   BUYBACK_BANNER    the picture on top: a local file (default
+ *                     landing/public/bot/buyback.png, checked out by the
+ *                     workflow) or an https URL; missing means a text post
  *
  * Plain node, no install. Selectors and topics were computed once with
  * viem's toFunctionSelector / toEventSelector from the ABI in
  * contracts/chit/ChitBuyback.sol.
  */
 
+import { readFile } from "node:fs/promises";
+
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chat = process.env.TELEGRAM_CHAT_ID;
+const BANNER = process.env.BUYBACK_BANNER ?? "landing/public/bot/buyback.png";
 const RPC = process.env.ROBINHOOD_MAINNET_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
 const BUYBACK = (process.env.BUYBACK_ADDRESS ?? "").toLowerCase();
 const SHARE = process.env.BUYBACK_SHARE ?? "";
@@ -38,8 +44,10 @@ const TOPIC = {
   burned: "0xc70d0935d3f7a32b837a0281c2344f8c8cd5f254c9fd80e26e291e197c9ede0f",
 };
 
-async function rpc(method, params) {
+/** One JSON-RPC call; the public RPC rate-limits bursts, so a 429 waits and tries again. */
+async function rpc(method, params, attempt = 0) {
   const r = await fetch(RPC, { method: "POST", headers: { "content-type": "application/json", "user-agent": "chit-buyback-stats/1" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
+  if (r.status === 429 && attempt < 4) { await new Promise((ok) => setTimeout(ok, 1500 * 2 ** attempt)); return rpc(method, params, attempt + 1); }
   if (!r.ok) throw new Error(`rpc ${r.status}`);
   const j = await r.json();
   if (j.error) throw new Error(`rpc ${j.error.message}`);
@@ -95,9 +103,22 @@ const lines = [
 const text = lines.join("\n");
 
 if (!token || !chat) { console.log("would send:\n" + text); process.exit(0); }
-const r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-  method: "POST", headers: { "content-type": "application/json" },
-  body: JSON.stringify({ chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true }),
-});
+
+/** The banner on top when there is one and the text fits a caption (1024 characters); a plain message otherwise. */
+const banner = text.length <= 1024 ? await (async () => {
+  if (/^https?:\/\//.test(BANNER)) return { url: BANNER };
+  try { return { bytes: await readFile(BANNER) }; } catch { return undefined; }
+})() : undefined;
+let r;
+if (banner && "url" in banner) {
+  r = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chat, photo: banner.url, caption: text, parse_mode: "HTML" }) });
+} else if (banner) {
+  const form = new FormData();
+  form.set("chat_id", chat); form.set("caption", text); form.set("parse_mode", "HTML");
+  form.set("photo", new Blob([banner.bytes], { type: "image/png" }), "buyback.png");
+  r = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, { method: "POST", body: form });
+} else {
+  r = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true }) });
+}
 if (!r.ok) { console.error(`telegram answered ${r.status}: ${(await r.text()).slice(0, 200)}`); process.exit(1); }
-console.log("posted buyback stats");
+console.log(`posted buyback stats${banner ? " with the banner" : ""}`);
