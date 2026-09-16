@@ -23,6 +23,7 @@
     "fleet-pool-deploy:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/fleet-pool-deploy-live.js",
     "fleet-venue:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/fleet-venue-live.js",
     "sponsor-spike:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/sponsor-spike-live.js",
+    "bot:poll": "npm run build && node --env-file=.env scripts/bot-poll.mjs",
     "buyback-deploy:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/buyback-deploy-live.js",
     "test:fork:buyback": "npm run build && node --test --test-reporter spec dist/test/fork/chit-buyback.test.js",
     "test:fleet:deploy": "npm run build && node --test dist/test/fork/fleet-deploy.test.js"
@@ -33,9 +34,11 @@
     "@iexec-nox/nox-protocol-contracts": "^0.2.4",
     "@neondatabase/serverless": "^1.1.0",
     "@openzeppelin/contracts": "^5.6.1",
+    "@resvg/resvg-js": "^2.6.2",
     "viem": "^2.46.3"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@iexec-nox/nox-hardhat-plugin": "^0.1.0-beta.2",
     "@nomicfoundation/hardhat-toolbox-viem": "^5.0.3",
     "@tsconfig/node22": "^22.0.2",

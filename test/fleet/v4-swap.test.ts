@@ -56,11 +56,13 @@ describe("Uniswap v4 buy calldata", () => {
   });
 });
 
-it("the output floor takes the pool's fee off the spot estimate before the slippage allowance", () => {
-  // The spot estimate is fee-free; the venue charges 0.3% on every swap. A
-  // floor that ignored the fee spent 0.3 of the 2% allowance before the price
-  // moved at all, and on a thin pool every buy came back V4TooLittleReceived.
-  const estimate = 1_000_000_000_000_000_000n;
-  assert.equal(minOutFor(estimate, 200), 977_060_000_000_000_000n, "(1 - 0.003) * (1 - 0.02)");
-  assert.equal(minOutFor(estimate, 0), 997_000_000_000_000_000n, "zero slippage still allows the fee");
+it("the output floor is the quote less the slippage allowance; the fee and the impact are already in the quote", () => {
+  // The venue charges 0.3% on every swap and a buy moves a thin pool. Both are
+  // in quoteExactIn (see market.test.ts), so a floor that took the fee off
+  // again would spend it twice; and a floor set against a fee-free spot
+  // estimate spent 0.3 of the 2% allowance before the price moved at all,
+  // which is how every buy came back V4TooLittleReceived.
+  const quote = 1_000_000_000_000_000_000n;
+  assert.equal(minOutFor(quote, 200), 980_000_000_000_000_000n, "(1 - 0.02)");
+  assert.equal(minOutFor(quote, 0), quote, "zero slippage is the quote itself");
 });

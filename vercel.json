@@ -4,6 +4,12 @@
   "buildCommand": "npm run build && node scripts/assemble-site.mjs",
   "outputDirectory": "public",
   "framework": null,
+  "functions": {
+    "api/bot.js": {
+      "maxDuration": 60,
+      "includeFiles": "landing/public/bot/**"
+    }
+  },
   "crons": [
     {
       "path": "/api/fleet/sweep",

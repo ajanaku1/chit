@@ -1708,3 +1708,91 @@ script checks the pool id and a price before recording. The team's rule for
 what goes in (10% of fees, one point more per 100k of mcap) stays the
 team's, posted as a promise; a fee splitter can automate the deposit later.
 `docs/chit-buyback.md`.
+## Chit Bot, the testnet playground (2026-09-16, advisor, branch feat/chit-bot)
+
+The Telegram trading bot, the card every degen knows, on a chain that has
+no such bot. Playground mode, testnet: /start makes the user a wallet and
+funds it from a faucet; Buy and Sell go through the real Uniswap v4 router
+with a quote from the pool and a 3% guard; Positions, Withdraw, Faucet
+(once a day), /pool in the group. The bot holds the playground key and says
+so on the card; it can because the key holds test ETH and nothing else. Keys
+are sealed at rest under a host secret in a store shared across instances
+(memory or Neon). On mainnet the runtime refuses to start: there the bot
+holds nothing, and the same buttons drive a session on the user's own
+account through session keys. `docs/chit-bot.md` says all of it, including
+the line against Trojan: speed without the key.
+
+Handlers are pure over three ports and have seven conversation tests
+against fakes; the chain adapter has a fork test against the live router
+(faucet, quote, buy, sell, send). On the way, two things the fleet needed
+anyway: the sell side of the v4 encoder with the Permit2 approvals
+(`encodeV4TokenSell`, `sellApprovals`, a fork round trip), and an exact-in
+quote with fee and price impact (`quoteExactIn`, from the pool's
+liquidity) that `market.tokenQuote` now returns instead of the spot
+estimate. The spot estimate tripped the slippage guard on the testnet venue,
+where one buy is a tenth of the liquidity; on the fork the exact quote
+matched the fill to the wei. The service's pooled buys inherit the fix.
+
+## Chit Bot, buttons all the way, and the fleet from the chat (2026-09-16, advisor, branch feat/chit-bot)
+
+The playground grew into the bot people expect: a card with buttons, a
+reply field that opens when a number or an address is needed, and a token
+card for any contract address pasted into the chat. Any token with an ETH
+pool on the venue trades; settings hold the user's amounts, shares and
+slippage, a confirmation step and sell protection; positions show what each
+holding would fetch now; withdraw walks through a prompt and preset shares;
+referral links count and promise nothing. The card still says whose key it
+is and why that is fine on testnet.
+
+The Fleet card drives Chit's own product from the chat: deposit into the
+pool from the wallet, create a fleet of five with sealed keys (the service
+sees addresses and salts), activate with a draw, buy from every wallet,
+pause, resume, close, pool balance. `bot-fleet.ts` is the driver over the
+hosted service's routes with the challenge flow signed by the playground
+key; the test's fake service recovers every signature to the wallet and
+refuses a tampered one. Eleven conversation tests, one fork test of the
+adapter against the live router. `BOT_FLEET_OFF=1` hides the card until the
+service is wired to the pool.
+
+## Chit Bot audited and hardened before its first deployment (2026-09-16, advisor, branch feat/chit-bot)
+
+Ten-lens audit of the bot (`docs/audit/2026-09-16-chit-bot.md`), every
+finding fixed on the same branch. The webhook now requires its secret and
+the runtime refuses to start without it, so a forged update can no longer
+drive any wallet by Telegram id. Keys are sealed under a scrypt-derived key
+with AES-GCM associated data binding each blob to its Telegram id and
+purpose; the fleet record is sealed whole; the blob names its sealing key
+and a canary row stops a rotated secret before it makes unopenable wallets.
+The store never writes a whole row from a stale object: settings, tokens
+and the fleet are patched by column, the faucet stamp is claimed atomically
+with a daily budget across everyone, Telegram update ids are claimed once,
+and one lock per wallet serialises money across every function instance.
+Every button fits Telegram's 64 bytes (amounts travel as wei), every reply
+prompt names its token or address, the card's buttons never carry the
+confirmed verb, fleet phases follow the service's state names, create and
+activate are one tap, idempotency keys come from the tap, a receipt that
+does not arrive is reported with its hash, the swap deadline is wall-clock,
+approvals are sent only when short, and the copy holds to FR-015 and to
+"mainnet is next, not live". The Neon schema is applied one statement at a
+time (its HTTP driver takes exactly one), and the store's contract runs on
+the memory store, on the Neon store over PGlite, and on Neon when a scratch
+database is named. Thirty-four bot tests plus the fork test.
+
+## Chit Bot: share cards, and the bot remembers its trades (2026-09-16, advisor, branch feat/chit-bot)
+
+A 📸 button on Positions draws the position as a picture: the symbol, the
+change as one big number, what was paid, what the pool would fill right
+now, and the poster's referral link, so the card that gets posted brings
+the next person into the bot. To know what a position cost, the store now
+keeps every trade the bot makes (`bot_trades`, keyed by tx hash so a
+redelivered update never records one twice; the memory store the same);
+a sale is recorded as what it left in the wallet after gas, so a card's
+number errs against the poster. Tokens that arrived any other way have no
+cost the bot knows and get no card. The card is SVG on the chit brand over
+a plate of the mark blown into shards (`landing/public/bot/share-bg.png`),
+set in IBM Plex from `landing/public/bot/fonts`, rasterised with resvg on
+the spot and uploaded from its bytes; `vercel.json` ships the assets with
+the function, and a missing plate or font is an error, never a card in a
+fallback face. Tests: the flow from a buy to a card and back through a
+sale, the refusals, the store contract on memory and PGlite, and a real
+render checked for its PNG header and the plate's size.

@@ -42,18 +42,39 @@ test("an empty slot0 means no pool, and an estimate follows the square of the pr
   assert.equal(estimateOut(10n ** 15n, 0n), 0n);
 });
 
+test("an exact-in quote includes the fee and the price impact, and shrinks toward spot as the trade shrinks", async () => {
+  const { quoteExactIn, liquiditySlot } = await import("../../src/fleet/market.js");
+  const { parseEther } = await import("viem");
+  // A pool priced at 1000 tokens per ETH with 0.02 ETH of full-range liquidity, as the fork tests seed it.
+  const isqrt = (n: bigint): bigint => { let x = n, y = (n + 1n) / 2n; while (y < x) { x = y; y = (x + n / x) / 2n; } return x; };
+  const sqrtP = isqrt(1000n * 2n ** 192n);
+  const liquidity = isqrt(parseEther("0.02") * parseEther("20"));
+  const spot = estimateOut(parseEther("0.001"), sqrtP);
+  const fill = quoteExactIn(parseEther("0.001"), sqrtP, liquidity, true, 3000);
+  assert.ok(fill < spot, "the fill is below spot: fee plus impact");
+  assert.ok(fill > (spot * 90n) / 100n, "a 5% trade on the pool costs under 10%");
+  const tiny = quoteExactIn(parseEther("0.000001"), sqrtP, liquidity, true, 3000);
+  const tinySpot = estimateOut(parseEther("0.000001"), sqrtP);
+  assert.ok(tiny > (tinySpot * 996n) / 1000n && tiny < tinySpot, "a tiny trade pays only the 0.3% fee");
+  // The other way round, at the same pool state: tokens in, ETH out, paying fee and impact a second time.
+  const back = quoteExactIn(fill, sqrtP, liquidity, false, 3000);
+  assert.ok(back < parseEther("0.001") && back > parseEther("0.0008"), `a round trip at one state loses fee and impact twice: ${back}`);
+  assert.equal(quoteExactIn(1n, sqrtP, 0n, true, 3000), 0n, "no liquidity, no fill");
+  assert.notEqual(liquiditySlot(`0x${"11".repeat(32)}`), slot0Slot(`0x${"11".repeat(32)}`));
+});
+
 test("a quote with liquidity follows the pool's curve: more in, less out per wei, and never above the spot estimate", () => {
   // The venue pool on 46630 as read on 2026-09-16: ~0.006 ETH of depth. A
   // 0.0002 ETH buy moves it about 3%; the spot estimate ignores that and
   // every buy came back V4TooLittleReceived. The quote must include it.
   const L = 158113883008418966n;
   const sqrtP = 2088889848049424137305055772769n;
-  const small = quoteExactIn(2n * 10n ** 14n, sqrtP, L);
+  const small = quoteExactIn(2n * 10n ** 14n, sqrtP, L, true, 0);
   const spot = estimateOut(2n * 10n ** 14n, sqrtP);
   assert.ok(small < spot, "impact makes the real output lower than spot");
   const impact = Number(spot - small) / Number(spot);
   assert.ok(impact > 0.03 && impact < 0.035, `about 3.2% impact on this pool, got ${(impact * 100).toFixed(2)}%`);
-  const big = quoteExactIn(10n ** 15n, sqrtP, L);
+  const big = quoteExactIn(10n ** 15n, sqrtP, L, true, 0);
   assert.ok(big < 5n * small, "five times the input buys less than five times the output");
-  assert.equal(quoteExactIn(2n * 10n ** 14n, sqrtP, 0n), spot, "without a liquidity reading the spot estimate stands");
+  assert.equal(quoteExactIn(2n * 10n ** 14n, sqrtP, 0n, true, 0), 0n, "without a liquidity reading there is no fill here; the venue quote falls back to the spot estimate");
 });
