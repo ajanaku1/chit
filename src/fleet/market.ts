@@ -47,8 +47,26 @@ export const decodeSlot0 = (word: Hex): { sqrtPriceX96: bigint; tick: number } =
   return { sqrtPriceX96, tick };
 };
 
-/** ETH is currency0, so amountOut ≈ amountIn · (sqrtP / 2^96)². */
+/** ETH is currency0, so amountOut ≈ amountIn · (sqrtP / 2^96)²: the spot price, before any impact. */
 export const estimateOut = (amountIn: bigint, sqrtPriceX96: bigint): bigint => (amountIn * sqrtPriceX96 * sqrtPriceX96) >> 192n;
+
+/** The pool's liquidity word sits three slots after slot0 in the StateLibrary layout. */
+export const liquiditySlot = (poolId: Hex): Hex => toHex(BigInt(slot0Slot(poolId)) + 3n, { size: 32 });
+
+/**
+ * What an exact-in buy of ETH really returns from one full-range position,
+ * before the fee: sqrtP' = L·sqrtP / (L + in·sqrtP/2^96), out = L·(sqrtP − sqrtP')/2^96.
+ * With no liquidity reading it falls back to the spot estimate. On a thin
+ * pool the difference is the whole story: a spot estimate promised more than
+ * the pool could give, and the router refused every buy.
+ */
+export const quoteExactIn = (amountIn: bigint, sqrtPriceX96: bigint, liquidity: bigint): bigint => {
+  if (liquidity === 0n || sqrtPriceX96 === 0n) return estimateOut(amountIn, sqrtPriceX96);
+  const Q96 = 1n << 96n;
+  const denominator = liquidity + (amountIn * sqrtPriceX96) / Q96;
+  const sqrtNext = (liquidity * sqrtPriceX96) / denominator;
+  return (liquidity * (sqrtPriceX96 - sqrtNext)) / Q96;
+};
 
 const POOL_MANAGER_ABI = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)"]);
 const ERC20_ABI = parseAbi([
@@ -63,19 +81,22 @@ export const createMarket = (
   addresses: { poolManager: Address; escrow: Address; escrowFromBlock: bigint },
 ): MarketPort => ({
   async tokenQuote(token, amountInWei) {
-    const [symbol, decimals, word] = await Promise.all([
+    const poolId = poolIdFor(token);
+    const [symbol, decimals, word, liquidityWord] = await Promise.all([
       client.readContract({ address: token, abi: ERC20_ABI, functionName: "symbol" }).catch(() => "?"),
       client.readContract({ address: token, abi: ERC20_ABI, functionName: "decimals" }).catch(() => 18),
-      client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slot0Slot(poolIdFor(token))] }),
+      client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slot0Slot(poolId)] }),
+      client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [liquiditySlot(poolId)] }).catch(() => "0x0" as Hex),
     ]);
     const { sqrtPriceX96 } = decodeSlot0(word);
+    const liquidity = BigInt(liquidityWord) & ((1n << 128n) - 1n);
     return {
       token,
       symbol,
       decimals: Number(decimals),
       hasPool: sqrtPriceX96 > 0n,
       sqrtPriceX96: sqrtPriceX96.toString(),
-      estimatedOut: estimateOut(BigInt(amountInWei), sqrtPriceX96).toString(),
+      estimatedOut: quoteExactIn(BigInt(amountInWei), sqrtPriceX96, liquidity).toString(),
     };
   },
   async holdings(wallets, tokens) {

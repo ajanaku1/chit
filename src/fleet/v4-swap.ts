@@ -91,6 +91,15 @@ export const encodeBuyCall = (signature: string, token: Address, value: bigint, 
 /** Ten thousand basis points; the slippage the operator tolerates is expressed in them. */
 export const BPS = 10_000n;
 
-/** The least output a buy may accept: the spot estimate less the tolerated slippage. */
-export const minOutFor = (estimatedOut: bigint, maxSlippageBps: number): bigint =>
-  (estimatedOut * (BPS - BigInt(maxSlippageBps))) / BPS;
+/** Uniswap fee units: a fee of 3000 is 0.3%. */
+const FEE_UNIT = 1_000_000n;
+
+/**
+ * The least output a buy may accept: the spot estimate, less the pool's own
+ * fee (which the estimate does not include and which is not slippage), less
+ * the tolerated slippage on top.
+ */
+export const minOutFor = (estimatedOut: bigint, maxSlippageBps: number): bigint => {
+  const afterFee = (estimatedOut * (FEE_UNIT - BigInt(VENUE_POOL.fee))) / FEE_UNIT;
+  return (afterFee * (BPS - BigInt(maxSlippageBps))) / BPS;
+};
