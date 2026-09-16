@@ -504,26 +504,65 @@ function watchAccounts(eth: Eip1193 | undefined): void {
 }
 
 /**
- * Wires the header Connect/Disconnect control and keeps it in sync with wallet
- * events. This is a soft in-app disconnect: EIP-1193 has no revoke, so it forgets
- * the address for this session.
+ * Wires the header wallet control and keeps it in sync with wallet events.
+ * Disconnected, a click connects. Connected, a click opens a menu to copy the
+ * address or disconnect, so reaching for the address never drops the wallet.
+ * Disconnect is soft: EIP-1193 has no revoke, so it forgets the address for
+ * this session.
  */
 export const initHeaderWallet = (): void => {
   const button = document.getElementById("hdr-wallet") as HTMLButtonElement | null;
   if (!button) return;
   connected = readStoredWallet();
 
+  const menu = document.createElement("div");
+  menu.id = "hdr-wallet-menu";
+  menu.className = "wallet-menu";
+  menu.hidden = true;
+  const fullAddress = document.createElement("p");
+  fullAddress.className = "wallet-menu__address";
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.textContent = "Copy address";
+  const disconnect = document.createElement("button");
+  disconnect.type = "button";
+  disconnect.textContent = "Disconnect";
+  const copyStatus = document.createElement("span");
+  copyStatus.className = "sr-only";
+  copyStatus.setAttribute("role", "status");
+  copyStatus.setAttribute("aria-live", "polite");
+  menu.append(fullAddress, copy, disconnect, copyStatus);
+  button.after(menu);
+
+  const openMenu = (): void => {
+    menu.hidden = false;
+    button.setAttribute("aria-expanded", "true");
+    copy.focus();
+  };
+  const closeMenu = (returnFocus: boolean): void => {
+    if (menu.hidden) return;
+    menu.hidden = true;
+    button.setAttribute("aria-expanded", "false");
+    if (returnFocus) button.focus();
+  };
+
   const render = (): void => {
     const address = getConnectedWallet();
     if (address) {
       button.textContent = shortWallet(address);
       button.dataset["state"] = "connected";
-      button.setAttribute("aria-label", `${shortWallet(address)} — click to disconnect`);
-      button.title = "Disconnect wallet";
+      button.setAttribute("aria-label", `Wallet ${shortWallet(address)}`);
+      button.setAttribute("aria-controls", menu.id);
+      button.setAttribute("aria-expanded", String(!menu.hidden));
+      button.title = "Copy address or disconnect";
+      fullAddress.textContent = address;
     } else {
-      button.textContent = "Connect";
+      closeMenu(false);
+      button.textContent = "Connect wallet";
       button.dataset["state"] = "disconnected";
       button.setAttribute("aria-label", "Connect wallet");
+      button.removeAttribute("aria-controls");
+      button.removeAttribute("aria-expanded");
       button.title = "Connect wallet";
     }
   };
@@ -539,16 +578,60 @@ export const initHeaderWallet = (): void => {
   };
 
   button.addEventListener("click", () => {
-    if (getConnectedWallet()) disconnectWallet();
-    else
-      void connectWallet().catch((error: unknown) => {
-        window.dispatchEvent(
-          new CustomEvent("chit-wallet-error", {
-            detail: { reason: "rejected", message: (error as Error)?.message },
-          }),
-        );
+    if (getConnectedWallet()) {
+      if (menu.hidden) openMenu();
+      else closeMenu(false);
+      return;
+    }
+    void connectWallet().catch((error: unknown) => {
+      window.dispatchEvent(
+        new CustomEvent("chit-wallet-error", {
+          detail: { reason: "rejected", message: (error as Error)?.message },
+        }),
+      );
+    });
+  });
+
+  let copyReset: number | undefined;
+  copy.addEventListener("click", () => {
+    const address = getConnectedWallet();
+    if (!address) return;
+    // A page served without a secure context has no clipboard; that is a failed copy, not a crash.
+    void Promise.resolve()
+      .then(() => navigator.clipboard.writeText(address))
+      .then(() => {
+        copy.textContent = "Copied";
+        copyStatus.textContent = "Wallet address copied.";
+      })
+      .catch(() => {
+        copy.textContent = "Copy failed";
+        copyStatus.textContent = "Copy failed. Try again.";
+      })
+      .finally(() => {
+        window.clearTimeout(copyReset);
+        copyReset = window.setTimeout(() => {
+          copy.textContent = "Copy address";
+        }, 1600);
       });
   });
+  disconnect.addEventListener("click", () => {
+    closeMenu(false);
+    disconnectWallet();
+    button.focus();
+  });
+
+  document.addEventListener("click", (event) => {
+    const target = event.target as Node;
+    if (!menu.contains(target) && !button.contains(target)) closeMenu(false);
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && !menu.hidden) closeMenu(true);
+  });
+  menu.addEventListener("focusout", (event) => {
+    const next = event.relatedTarget as Node | null;
+    if (next && !menu.contains(next) && next !== button) closeMenu(false);
+  });
+
   window.addEventListener("chit-wallet-changed", render);
   window.addEventListener("chit-wallet-error", ((event: Event) => {
     const detail = (event as CustomEvent<{ reason: string; message?: string }>).detail;

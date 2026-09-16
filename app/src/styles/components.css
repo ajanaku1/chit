@@ -32,6 +32,7 @@ a { color: inherit; }
 .wizard, .dash, .privacy-page { display: flex; flex-direction: column; gap: 1.4rem; }
 
 .masthead {
+  position: relative;
   display: grid; grid-template-columns: auto 1fr auto;
   grid-template-areas: "brand nav action" "contract contract contract";
   align-items: center; gap: 0.75rem 1.5rem; padding-block: 1.25rem 1rem;
@@ -44,6 +45,10 @@ a { color: inherit; }
 .wallet-btn { grid-area: action; padding: 0.55rem 1rem; border: 0; border-radius: var(--radius-control); background: var(--paper); color: var(--ink); font: inherit; font-size: 0.9rem; white-space: nowrap; cursor: pointer; }
 .wallet-btn[data-state="connected"] { border: 1px solid var(--glass-line); background: transparent; color: var(--paper); font-family: var(--font-mono); }
 .wallet-btn[data-state="error"] { background: var(--coral-deep); color: var(--paper); }
+/* Out of flow, but placed by the grid: it hangs from the bottom edge of the wallet button's cell. */
+.wallet-menu { position: absolute; z-index: 30; grid-area: action; top: 100%; right: 0; display: grid; gap: 0.15rem; width: max-content; max-width: min(24rem, calc(100vw - 2rem)); margin-top: 0.5rem; padding: 0.4rem; border: 1px solid rgba(222, 214, 202, 0.14); border-radius: var(--radius-inner); background: rgba(13, 12, 11, 0.88); backdrop-filter: blur(28px); color: var(--paper); }
+.wallet-menu__address { margin: 0; padding: 0.5rem 0.75rem 0.6rem; border-bottom: 1px solid rgba(245, 239, 229, 0.08); color: var(--soft-paper); font-family: var(--font-mono); font-size: 0.78rem; overflow-wrap: anywhere; }
+.wallet-menu button { min-height: 2.75rem; padding: 0.5rem 0.75rem; border: 0; border-radius: var(--radius-control); background: transparent; color: var(--paper); font: inherit; font-size: 0.9rem; text-align: left; cursor: pointer; }
 .burger { display: none; }
 
 @media (max-width: 720px) {
@@ -53,6 +58,8 @@ a { color: inherit; }
   .nav { display: none; flex-direction: column; gap: 0; }
   .nav[data-open="true"] { display: flex; }
   .nav a { padding-block: 0.8rem; border-bottom: 1px solid rgba(245, 239, 229, 0.08); }
+  /* Too little room right of the brand on a phone: the menu takes the full width under the top row. */
+  .wallet-menu { grid-area: 1 / 1 / 2 / -1; left: 0; width: auto; max-width: none; }
 }
 
 /* ---- Contract row, status pill, footer ---- */
@@ -105,6 +112,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 @media (hover: hover) and (pointer: fine) {
   .primary:hover, .wallet-btn:hover { background: var(--soft-paper); }
+  .wallet-btn[data-state="connected"]:hover, .wallet-menu button:hover { background: rgba(245, 239, 229, 0.08); }
   .ghost:hover, .back:hover { border-color: rgba(245, 239, 229, 0.38); }
 }
 @keyframes banner-in { from { opacity: 0; transform: translate(-50%, 0.6rem); } to { opacity: 1; transform: translate(-50%, 0); } }
@@ -206,6 +214,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
   .meter__fill { transition: transform 600ms var(--ease-out); }
   .pill[data-live="true"] .pill__dot, .state-chip[data-live="true"]::before { animation: live-pulse 2.4s var(--ease-in-out) infinite; }
   .wallet-chooser[open], .confirm-dialog[open] { animation: rise 280ms var(--ease-out); }
+  .wallet-menu:not([hidden]) { animation: rise 200ms var(--ease-out); }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
