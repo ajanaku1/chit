@@ -65,13 +65,31 @@ const main = async (): Promise<void> => {
     bytecode: Hex;
   };
 
-  // Deployed with the deployer as admin so this script can finish the wiring;
-  // the admin role is offered to the cold key at the end.
-  const hash = await wallet.deployContract({ abi: abi as never, bytecode, args: [account.address, account.address] as never });
-  const receipt = await publicClient.waitForTransactionReceipt({ hash });
-  if (receipt.status !== "success" || !receipt.contractAddress) throw new Error(`FleetPool deploy failed: ${hash}`);
-  const address = receipt.contractAddress as Address;
-  console.log(`FleetPool ${address} (${hash})`);
+  // `--resume <pool>` finishes the wiring for a pool whose deploy landed but
+  // whose follow-ups did not (a dropped connection mid-run); nothing is
+  // deployed twice. Otherwise the pool is deployed with the deployer as admin
+  // so this script can finish the wiring; the admin role is offered to the
+  // cold key at the end.
+  const resumeAt = process.argv.indexOf("--resume");
+  const resume = resumeAt >= 0 ? process.argv[resumeAt + 1] : undefined;
+  let address: Address;
+  let hash: Hex;
+  if (resume) {
+    if (!isAddress(resume)) throw new Error("--resume needs the pool address");
+    const code = await publicClient.getCode({ address: resume });
+    if (!code || code === "0x") throw new Error(`no code at ${resume}`);
+    const owner = await publicClient.readContract({ address: resume, abi: abi as never, functionName: "owner" } as never) as Address;
+    if (owner.toLowerCase() !== account.address.toLowerCase()) throw new Error(`the deployer does not own ${resume} (owner ${owner}); nothing to resume`);
+    address = resume;
+    hash = ((process.env.FLEET_POOL_DEPLOY_TX as Hex | undefined) ?? `0x${"0".repeat(64)}`) as Hex;
+    console.log(`resuming FleetPool ${address}`);
+  } else {
+    hash = await wallet.deployContract({ abi: abi as never, bytecode, args: [account.address, account.address] as never });
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== "success" || !receipt.contractAddress) throw new Error(`FleetPool deploy failed: ${hash}`);
+    address = receipt.contractAddress as Address;
+    console.log(`FleetPool ${address} (${hash})`);
+  }
 
   // The pool funds and executes a buy in one transaction, and a fleet account
   // admits it only through its policy. Name it there, or every pooled buy
