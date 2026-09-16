@@ -34,7 +34,7 @@ export class PlanError extends Error {
 }
 
 const MIN_WINDOW_MS = 5 * 60_000;
-const MAX_WINDOW_MS = 30 * 60_000;
+export const MAX_WINDOW_MS = 30 * 60_000;
 /** Each slice may sit this far from the average, as a share in basis points. */
 const SPREAD_BPS = 3500n;
 

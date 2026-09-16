@@ -41,6 +41,8 @@ export type OrderRecord = {
   placedAt: string;
   /** The fleet's remaining draw when slices were last sent; a lost reply is reconciled against its change. */
   remainingAtSend?: string;
+  /** Issued with the signed order; it lets polls run this order's due slices, and nothing else, without a new signature. */
+  orderToken?: string;
 };
 
 export type OrderStore = {

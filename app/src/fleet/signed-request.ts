@@ -101,9 +101,32 @@ export const signedFleetApi = async (
     payloadHash: hash,
     signature,
   };
-  const result = await fleetApi(action, { action, auth, body });
+  return answered(await fleetApi(action, { action, auth, body }));
+};
+
+const answered = (result: { status: number; body: Record<string, unknown> }): Record<string, unknown> => {
   if (result.status < 200 || result.status >= 300) {
     throw new RequestFailed(result.status, String(result.body["code"] ?? `status_${result.status}`), typeof result.body["reason"] === "string" ? result.body["reason"] : undefined);
   }
   return result.body;
+};
+
+/**
+ * Polls an order the trader already signed. The token the service issued with
+ * the order stands in for a fresh signature, so the wallet is not asked again.
+ * Refused (expired, or the service no longer knows it), the poll signs.
+ */
+export const orderTrade = async (
+  wallet: Hex,
+  orderToken: string | undefined,
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> => {
+  if (!orderToken) return signedFleetApi(wallet, "trade", body);
+  try {
+    return answered(await fleetApi("trade", { action: "trade", orderToken, body }));
+  } catch (error) {
+    // Refused before anything ran: authentication is checked before any slice is claimed.
+    if (error instanceof RequestFailed && error.code === "challenge_invalid") return signedFleetApi(wallet, "trade", body);
+    throw error;
+  }
 };
