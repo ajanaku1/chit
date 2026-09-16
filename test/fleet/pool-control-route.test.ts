@@ -3,6 +3,7 @@ import test from "node:test";
 import { parseEther, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
+import { campaignKey } from "../../src/fleet/chain-service.js";
 import { CampaignRouter, type RouterDeps } from "../../src/fleet/campaign-routes.js";
 import { CampaignService, challengeBytes, payloadHash } from "../../src/fleet/campaign-service.js";
 import type { FleetChain } from "../../src/fleet/chain-service.js";
@@ -80,7 +81,7 @@ const makeRouter = () => {
     control: async () => `0x${"c".repeat(64)}`,
   };
   const deps: RouterDeps = { service, pool, chain };
-  return { router: new CampaignRouter(deps), service, closed };
+  return { router: new CampaignRouter(deps), service, closed, deps };
 };
 
 const signed = async (service: CampaignService, action: string, body: Record<string, unknown>) => {
@@ -131,6 +132,21 @@ test("close reports what went back to the balance, not a payment", async () => {
   assert.equal(body.returnedEth, undefined, "no ETH is returned; it never left");
   assert.equal(body.state, "Closed");
   assert.equal(closed.length, 1);
+});
+
+test("a campaign closed on the chain by another instance reads Closed here, not the remembered Active", async () => {
+  const { router, service, deps } = makeRouter();
+  const campaign = await activeCampaign(router, service);
+  const before = await router.handle(await signed(service, "read", { campaign }), key());
+  assert.equal((before.body as { state: string }).state, "Active");
+  // Another instance closes the draw: this one only sees the chain change.
+  await deps.pool!.closeDraw(campaignKey(campaign));
+
+  const read = await router.handle(await signed(service, "read", { campaign }), key());
+  assert.equal((read.body as { state: string }).state, "Closed", "read follows the chain, not the cache");
+  const list = await router.handle(await signed(service, "list", {}), key());
+  const fleets = (list.body as { fleets?: { state: string }[] }).fleets ?? [];
+  for (const fleet of fleets) assert.equal(fleet.state, "Closed", "list follows the chain too");
 });
 
 test("a closed campaign sponsors nothing more", async () => {
