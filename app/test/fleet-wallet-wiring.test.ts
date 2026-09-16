@@ -15,6 +15,8 @@ import test from "node:test";
 
 const appRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const PAGES = ["balance-page.ts", "fleet-page.ts", "fleet-dashboard.ts"];
+/** Every page that sends actions, including the trade page, which has its own wallet flow. */
+const ROUTED_PAGES = [...PAGES, "trade-page.ts"];
 
 const source = (name: string): Promise<string> => readFile(join(appRoot, "src", name), "utf8");
 
@@ -145,23 +147,33 @@ test("the header button surfaces a failed connect instead of discarding it", asy
 
 const repoRoot = dirname(appRoot);
 
-const routeFor = (action: string): string => {
-  if (["pause", "resume", "revoke", "close"].includes(action)) return "control";
-  if (["balance", "withdraw"].includes(action)) return "balance";
-  if (action === "buy") return "buy";
+/**
+ * Read from the app, not restated: a mapping copied here agreed with a wrong
+ * app for a whole afternoon while "trade" went to the campaign function.
+ */
+const routeFor = async (action: string): Promise<string> => {
+  const shared = await source("fleet/page-shared.ts");
+  const start = shared.indexOf("const route = ");
+  const mapping = shared.slice(start, shared.indexOf(";", start));
+  for (const [, list, route] of mapping.matchAll(/\[([^\]]+)\]\.includes\(action\)\s*\?\s*"([a-z]+)"/g)) {
+    if ([...list!.matchAll(/"([a-z]+)"/gi)].some((m) => m[1] === action)) return route!;
+  }
+  for (const [, single, route] of mapping.matchAll(/action === "([a-z]+)"\s*\?\s*"([a-z]+)"/gi)) {
+    if (single === action) return route!;
+  }
   return "campaign";
 };
 
 test("each action the app sends is allowed by the route it goes to", async () => {
   const allowed = new Map<string, string[]>();
-  for (const route of ["campaign", "balance", "buy", "control"]) {
+  for (const route of ["campaign", "balance", "buy", "control", "trade"]) {
     const text = await readFile(join(repoRoot, "api/fleet", `${route}.js`), "utf8");
     const list = /handleFleetRequest\(request,\s*\[([^\]]*)\]/.exec(text);
     assert.ok(list, `${route}.js does not declare its allowed actions`);
     allowed.set(route, [...list![1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!));
   }
 
-  const sources = await Promise.all(PAGES.map((page) => source(page)));
+  const sources = await Promise.all(ROUTED_PAGES.map((page) => source(page)));
   const sent = new Set<string>(["challenge"]);
   for (const text of sources) {
     for (const match of text.matchAll(/signedFleetApi\([^,]+,\s*"([a-zA-Z]+)"/g)) sent.add(match[1]!);
@@ -172,7 +184,7 @@ test("each action the app sends is allowed by the route it goes to", async () =>
   for (const action of ["pause", "resume", "revoke", "close", "topUp"]) sent.add(action);
 
   for (const action of sent) {
-    const route = routeFor(action);
+    const route = await routeFor(action);
     assert.ok(
       allowed.get(route)!.includes(action),
       `the app sends "${action}" to /api/fleet/${route}, which allows only ${allowed.get(route)!.join(", ")}`,
