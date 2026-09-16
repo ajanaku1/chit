@@ -32,6 +32,7 @@
 import { formatUnits, isAddress, parseEther } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
+import type { BotBridge } from "./bot-bridge.js";
 import type { BotChain, Landed, NewPool, TokenInfo } from "./bot-chain.js";
 import { FleetDriver, FleetError, fleetPhase, type FleetApi } from "./bot-fleet.js";
 import { CAPTION_MAX_CHARS, esc, type Keyboard, type Outgoing, type Telegram } from "./bot-telegram.js";
@@ -49,6 +50,8 @@ export type BotDeps = {
   telegram: Telegram;
   /** The hosted fleet service; absent means the Fleet card only explains. */
   fleetApi?: FleetApi;
+  /** The way in from other chains (Relay); absent means no Bridge card. */
+  bridge?: BotBridge;
   /** Seals the playground keys at rest and keys the referral codes. */
   keySecret: string;
   /** The bot's @username, for links. */
@@ -362,6 +365,7 @@ export class ChitBot {
       case "sell": await ack(); return this.#sellMenu(chatId, tgId, a as Address | "", messageId);
       case "positions": await ack(); return this.#positions(chatId, tgId, messageId);
       case "new": await ack(); return this.#newPools(chatId, tgId, messageId);
+      case "bridge": await ack(); return this.#bridge(chatId, messageId);
       case "token": await ack(); return a ? this.#tokenCard(chatId, tgId, a as Address, messageId) : this.#ask(chatId, "token", PROMPT.token());
       case "fleet": await ack(); return this.#fleet(chatId, tgId, messageId);
       case "fl": await ack(a === "status" || a === "bal" || a === "new" ? undefined : "working…"); return this.#fleetAction(chatId, tgId, a, b, q.id);
@@ -532,7 +536,7 @@ export class ChitBot {
       [btn("💰 Buy", "buy:"), btn("💸 Sell", "sell:")],
       [btn("📊 Positions", "positions"), btn("🆕 New", "new")],
       [btn("🚀 Fleet", "fleet"), btn("🔑 Sessions", "sessions")],
-      [btn("🤝 Refer", "refer")],
+      [btn("🤝 Refer", "refer"), ...(this.#d.bridge ? [btn("🌉 Bridge", "bridge")] : [])],
       [btn("⚙️ Settings", "settings"), btn("🏦 Withdraw", "withdraw")],
       [...(this.#d.chain.hasFaucet ? [btn("🚰 Faucet", "faucet")] : []), btn("❓ Help", "help"), btn("↻ Refresh", "home")],
     );
@@ -702,6 +706,33 @@ export class ChitBot {
     if (!held.length) lines.push("no tokens yet.");
     lines.push("", "<i>\"if sold now\" is the pool's fill for the whole position, fee and impact included.</i>");
     await this.#out(chatId, messageId, lines.join("\n"), kb(...rows, [btn("💰 Buy", "buy:"), btn("↻ Refresh", "positions")], back()));
+  }
+
+  /**
+   * The way in from another chain, and the way to CHIT from anywhere: the
+   * routes Relay quotes at this moment, each a link into Relay's app with
+   * the fields filled in. A route that does not quote is not shown.
+   */
+  async #bridge(chatId: string, messageId?: number): Promise<void> {
+    const bridge = this.#d.bridge;
+    if (!bridge) return this.#home(chatId, "", messageId);
+    const routes = await bridge.routes();
+    const live = routes.filter((r) => r.eth || r.chit);
+    const lines = [
+      `<b>bridge</b> · from another chain into Robinhood Chain, one transaction through Relay`,
+      `bring ETH here, or land straight in <b>$CHIT</b>. the transaction is yours, from your own wallet, in Relay's app; this bot never touches it.`,
+      "",
+    ];
+    for (const r of live) lines.push(`· <b>${esc(r.origin.name)}</b> (${esc(r.origin.native)}): ${r.eth ? "ETH ✓" : "ETH ✖"} · ${r.chit ? "CHIT ✓" : "CHIT ✖"}`);
+    const missing = routes.filter((r) => !r.eth && !r.chit).map((r) => r.origin.name);
+    if (missing.length) lines.push("", `<i>no route right now from ${esc(missing.join(", "))}; Relay opens them one by one and this card follows.</i>`);
+    if (!live.length) lines.push("Relay quotes no route into Robinhood Chain at this moment; try again in a while.");
+    lines.push("", `<i>mainnet, real money. this playground is testnet; the bridge is for the real thing. quotes checked just now.</i>`);
+    const rows: Keyboard = live.map((r) => [
+      ...(r.eth ? [{ text: `ETH from ${r.origin.name}`, url: r.ethUrl }] : []),
+      ...(r.chit ? [{ text: `CHIT from ${r.origin.name}`, url: r.chitUrl }] : []),
+    ]);
+    await this.#out(chatId, messageId, lines.join("\n"), kb(...rows, [btn("↻ Refresh", "bridge"), btn("← Back", "home")]));
   }
 
   /** The venue's newest ETH pools: what just launched, and whether a tap here can buy it. */

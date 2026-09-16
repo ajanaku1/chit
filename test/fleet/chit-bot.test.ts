@@ -4,6 +4,7 @@ import { parseEther, recoverMessageAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import type { BotChain, TokenInfo } from "../../src/fleet/bot-chain.js";
+import { BRIDGE_ORIGINS, createRelayBridge, type BotBridge } from "../../src/fleet/bot-bridge.js";
 import { fleetPhase, type FleetApi } from "../../src/fleet/bot-fleet.js";
 import { ChitBot, type Update } from "../../src/fleet/bot-handlers.js";
 import { RecordingTelegram, type Keyboard } from "../../src/fleet/bot-telegram.js";
@@ -708,4 +709,38 @@ test("the new tab lists what just opened on the venue, buy buttons only where th
   assert.match(telegram.last(), /<b>PEPE<\/b> · <code>0x/);
   await bot.handle(dm(`/start t-${PEPE}`, 42));
   assert.match(telegram.last(), /<b>PEPE<\/b> · <code>0x/, "a returning user lands on the card too, no welcome line in between");
+});
+
+test("the bridge card shows only the routes Relay quotes right now, as links into Relay's app, and says it is mainnet", async () => {
+  // Relay, faked: base quotes both, arbitrum only ETH, arc nothing (its first day), the rest refuse.
+  const calls: string[] = [];
+  const fakeFetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { originChainId: number; destinationCurrency: string };
+    calls.push(`${body.originChainId}:${body.destinationCurrency.slice(0, 6)}`);
+    const chit = body.destinationCurrency !== "0x0000000000000000000000000000000000000000";
+    const ok = body.originChainId === 8453 || (body.originChainId === 42161 && !chit);
+    return new Response(JSON.stringify(ok ? { steps: [] } : { errorCode: "NO_SWAP_ROUTES_FOUND" }), { status: 200 });
+  }) as unknown as typeof fetch;
+  const bridge: BotBridge = createRelayBridge(fakeFetch, 60_000);
+  const store = new MemoryBotWalletStore();
+  const telegram = new RecordingTelegram();
+  const bot = new ChitBot({ store, chain: fakeChain(), telegram, bridge, keySecret: SECRET, botUsername: "b", now: () => clock });
+  await bot.handle(dm("/start"));
+  const last = telegram.sent.at(-1) as { keyboard?: Keyboard };
+  assert.ok(last.keyboard!.flat().some((b) => "callback_data" in b && b.callback_data === "bridge"), "the home card offers the bridge");
+  await bot.handle(tap("bridge"));
+  assert.equal(calls.length, BRIDGE_ORIGINS.length * 2, "one ETH and one CHIT quote per origin");
+  assert.match(telegram.last(), /<b>base<\/b> \(ETH\): ETH ✓ · CHIT ✓/);
+  assert.match(telegram.last(), /<b>arbitrum<\/b> \(ETH\): ETH ✓ · CHIT ✖/);
+  assert.match(telegram.last(), /no route right now from ethereum, optimism, bnb chain, polygon, solana, arc/);
+  assert.match(telegram.last(), /mainnet, real money\. this playground is testnet/);
+  const urls = ((telegram.sent.at(-1) as { keyboard?: Keyboard }).keyboard ?? []).flat().filter((b) => "url" in b).map((b) => (b as { url: string }).url);
+  assert.deepEqual(urls, [
+    "https://relay.link/bridge/robinhood?fromChainId=8453&fromCurrency=0x0000000000000000000000000000000000000000&toCurrency=0x0000000000000000000000000000000000000000",
+    "https://relay.link/bridge/robinhood?fromChainId=8453&fromCurrency=0x0000000000000000000000000000000000000000&toCurrency=0xd523a627030509021cc39b6d7c8543417d3e50d8",
+    "https://relay.link/bridge/robinhood?fromChainId=42161&fromCurrency=0x0000000000000000000000000000000000000000&toCurrency=0x0000000000000000000000000000000000000000",
+  ]);
+  // A second look inside the cache window asks Relay nothing.
+  await bot.handle(tap("bridge"));
+  assert.equal(calls.length, BRIDGE_ORIGINS.length * 2);
 });

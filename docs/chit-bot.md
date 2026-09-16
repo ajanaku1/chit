@@ -17,8 +17,9 @@ balance: 0.02 ETH
 4.95 FLEET · 1980 PEPE
 
 [ 💰 Buy ]      [ 💸 Sell ]
-[ 📊 Positions ] [ 🚀 Fleet ]
-[ 🔑 Sessions ]  [ 🤝 Refer ]
+[ 📊 Positions ] [ 🆕 New ]
+[ 🚀 Fleet ]     [ 🔑 Sessions ]
+[ 🤝 Refer ]     [ 🌉 Bridge ]
 [ ⚙️ Settings ]  [ 🏦 Withdraw ]
 [ 🚰 Faucet ] [ ❓ Help ] [ ↻ Refresh ]
 ```
@@ -50,6 +51,18 @@ balance: 0.02 ETH
 - **Settings**: buy amounts, sell shares, buy and sell slippage, confirm
   trades (every trade asks first), sell protection. No priority fees, no MEV
   toggles, no turbo: the chain has a sequencer and none of that exists here.
+- **New**: the venue's newest ETH pools, read from the pool manager's own
+  events over about a day, with a buy button where this bot can trade the
+  pool and a plain "cannot trade yet" where the pool has a hook or another
+  fee tier.
+- **Bridge**: the way in from another chain through Relay, and the way to
+  CHIT from anywhere: ethereum, base, arbitrum, optimism, bnb, polygon,
+  solana, arc. The card asks Relay which routes quote at that moment and
+  shows only those, each a link into Relay's app with the fields filled
+  in; the transaction is the user's, from their own wallet. Mainnet, and
+  the card says so on the testnet playground. `BOT_BRIDGE_OFF=1` hides it.
+- **Deep links**: `t.me/<bot>?start=t-<contract>` opens that token's card,
+  for a partner's "trade in chit bot" button or a group's pinned message.
 - **Refer**: your link, `t.me/<bot>?start=r-<code>`, and how many came
   through it. Rewards: none yet, said plainly; the roadmap's referral pays
   from the fee when the fee goes live.
