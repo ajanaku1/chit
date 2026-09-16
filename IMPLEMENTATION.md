@@ -1626,9 +1626,11 @@ batch, not nonce distance, because nonce distance is not a promise we can keep
 at low volume. Exit safety in numbers: owed spend waits at most one sweep
 interval to be queued, then at most `POST_WINDOW` (12 h) to post; at two sweeps
 a day that sums to `EXIT_DELAY` with zero margin. The plan sets the cron to every
-four hours; `vercel.json` is *not* changed here because the Vercel plan's cron
-allowance could not be read (CLI fetch failing); that check is the first step
-before touching it.
+four hours. The Vercel plan is Hobby, whose crons run at most daily, so the
+cadence lives in `.github/workflows/sweep.yml` (every four hours, plan
+independent) with the two daily Vercel crons kept as a fallback. Because the
+scheduled sweep now picks the batch's moment, `GET /api/fleet/sweep` honours
+`CRON_SECRET` when set (`src/fleet/sweep-trigger.ts`); unset, it is open as before.
 
 **The hash.** Queue ids were `_queued.length`, so the k-th posting was the k-th
 queueing was the k-th buy. Ids are now `keccak256(entry, prevrandao, position)`,

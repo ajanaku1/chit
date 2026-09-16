@@ -1,0 +1,38 @@
+name: Sweep the pool
+
+# Starts the scheduled sweep on chit.tools every four hours. This is the sweep
+# that queues owed charges in one batch, posts what is due and funds fleets
+# whose wait is over; its cadence bounds how long a charge can wait before it
+# is queued (see PROGRESS.md's neighbour, IMPLEMENTATION.md "Operator
+# hardening"). It lives here because Vercel's Hobby plan runs a cron at most
+# once a day; the two daily crons in vercel.json stay as a fallback.
+#
+# One repository secret, optional: FLEET_CRON_SECRET, the same value as
+# CRON_SECRET on Vercel. With it set on both sides, only this workflow and
+# Vercel's own crons can start a sweep. Without it the endpoint is open.
+
+on:
+  schedule:
+    - cron: '17 */4 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Start the sweep
+        env:
+          FLEET_CRON_SECRET: ${{ secrets.FLEET_CRON_SECRET }}
+        run: |
+          if [ -n "$FLEET_CRON_SECRET" ]; then
+            curl -fsS --max-time 240 -H "Authorization: Bearer $FLEET_CRON_SECRET" https://chit.tools/api/fleet/sweep
+          else
+            curl -fsS --max-time 240 https://chit.tools/api/fleet/sweep
+          fi
