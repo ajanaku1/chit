@@ -389,6 +389,10 @@ export class CampaignRouter {
       record.state = transition(record.state, "activate");
     }
     if (record.state === "Active" && draw.state === "Pending") record.state = "Activating";
+    // Closed on the chain is closed here, whichever instance did it: a record
+    // this instance remembers as Active must not keep saying so once the draw
+    // is gone.
+    if (draw.state === "Closed" && record.state !== "Closed") record.state = "Closed";
   }
 
   /**
