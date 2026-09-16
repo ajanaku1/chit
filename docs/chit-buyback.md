@@ -171,7 +171,29 @@ name only redirects to its root).
 - A small tip to whoever calls `buyAndBurn` (say 0.5% of the amount) so
   the keeper is not needed at all; left out because it is ETH leaving the
   burn.
-- A burn page on chit.tools reading the same events, with the totals and
-  every transaction.
+- ~~A burn page on chit.tools reading the same events, with the totals and
+  every transaction.~~ Built: see below.
 - Milestone posts when `totalBurned` crosses round numbers, from the same
   script.
+
+## The burn page (chit.tools/burn)
+
+`landing/public/burn/index.html` is the public face of the contract: CHIT
+burned so far as one number, the share of the minted billion, the balance
+waiting, the next buy as a countdown, the last buy, today's share of the
+fees by the team's rule, the log of every funding and every buy with its
+explorer link, the mechanism in four lines, and the immutable parameters.
+Lowercase, and nothing on it is typed in.
+
+The numbers come from `api/burn.js`, one JSON read server-side from the
+contract and its events (the chain's public RPC rate-limits bursts and has
+no CORS, so a visitor's browser never talks to it), cached at the edge for
+two minutes; the instance keeps its last good reading and serves it marked
+stale when the RPC does not answer. The market cap for the share is
+DexScreener's and is named as such; the share itself is the team's rule
+(`SHARE_BASE` 10, `SHARE_STEP_USD` 100000), never a contract reading.
+Event times: the latest eight carry the block's own timestamp, older ones
+are placed by the chain's cadence since the deploy and wear a ≈.
+
+Before the host: `node scripts/site-preview.mjs` serves the landing and
+mounts `/api/burn` at http://localhost:4173/burn/ with the live numbers.
