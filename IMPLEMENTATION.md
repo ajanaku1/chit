@@ -1867,3 +1867,18 @@ fresh token, added outside the stored idempotent result, so the polls after
 it need no signature. A signature the trader refuses is reported as not sent,
 never as a lost reply, so its slices are not reconciled as failed.
 
+## The wallet menu says which wallet, which network, and how much (2026-09-17)
+
+The connected header button opened a bare list: the address, Copy, Disconnect.
+It now opens what a trader checks before doing anything. The wallet carries a
+mark drawn from its address in the app's LED dots (paper tones only; coral
+stays for what is live), on the button and at the head of the menu, beside the
+wallet app it came through (its EIP-6963 name and icon) and the full address.
+Below that, the network: live when the wallet is on Robinhood Chain testnet,
+otherwise a warning with Switch network. Then the wallet's ETH, read only once
+the network is right so another chain's balance is never shown as testnet
+ETH, and the Chit balance from a recent read or else a link to Balance.
+Switch wallet appears only with more than one wallet installed. Nothing in
+the menu signs. On the narrowest phones the header's gaps tighten and the
+chevron goes, so brand, wallet and menu button still fit on one row.
+
