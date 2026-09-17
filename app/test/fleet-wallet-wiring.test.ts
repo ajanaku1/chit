@@ -158,6 +158,41 @@ test("clicking the connected header button opens a menu instead of disconnecting
   );
 });
 
+/**
+ * The menu is where a trader checks which wallet, which network and how much,
+ * before doing anything. Opening it must not open the wallet.
+ */
+test("the wallet menu shows the wallet app, the network and the balances, and signs nothing", async () => {
+  const header = /export const initHeaderWallet[\s\S]*?\n\};/.exec(await source("fleet/page-shared.ts"));
+  assert.ok(header, "no initHeaderWallet to inspect");
+  const menu = header[0];
+  assert.doesNotMatch(menu, /signedFleetApi|readBalance\(|personal_sign|readSigned/, "opening the wallet menu signs");
+  assert.match(menu, /connectedWalletApp\(\)/, "the menu does not say which wallet app is connected");
+  assert.match(menu, /chainIdOf\(eth\)/, "the menu does not check the wallet's network");
+  assert.match(menu, /ensureRobinhoodTestnet\(eth\)/, "a wallet on the wrong network cannot be switched from the menu");
+  assert.match(menu, /walletEth\(address\)/, "the wallet's own ETH is not shown");
+  assert.match(menu, /isFresh\(cached\.savedAt/, "the Chit balance is shown without checking the read is recent");
+  assert.match(menu, /switchWallet\.hidden = installed\.size < 2/, "Switch wallet shows with only one wallet installed");
+  assert.match(menu, /walletMark\(address\)/, "the wallet has no mark to recognise it by");
+});
+
+test("a wallet's mark is its own, mirrored, and never coral", async () => {
+  const { markCells } = await import("../src/fleet/wallet-menu.js");
+  const a = markCells("0xa5a79626ad43f44567b00c29268394b03fe94265");
+  assert.deepEqual(a, markCells("0xA5A79626AD43F44567B00C29268394B03FE94265"), "the same wallet draws two marks");
+  assert.notDeepEqual(a, markCells("0x1234567890abcdef1234567890abcdef12345678"), "two wallets share a mark");
+  assert.equal(a.length, 5);
+  for (const row of a) {
+    assert.equal(row.length, 5);
+    assert.deepEqual(row, [...row].reverse(), "the mark is not mirrored");
+    for (const cell of row) assert.ok(["off", "dim", "lit"].includes(cell));
+  }
+  const css = await readFile(join(appRoot, "src/styles/components.css"), "utf8");
+  for (const rule of css.match(/\.wallet-mark[^{]*\{[^}]*\}/g) ?? []) {
+    assert.doesNotMatch(rule, /--coral/, "the mark borrows coral, which marks only what is live");
+  }
+});
+
 test("the disconnected header button says Connect wallet", async () => {
   for (const html of ["balance.html", "fleet.html", "trade.html", "fleet-dashboard.html", "fleet-privacy.html"]) {
     const text = await readFile(join(appRoot, html), "utf8");
