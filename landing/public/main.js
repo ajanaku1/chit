@@ -438,26 +438,31 @@
 
 
   /* ── Contract address copy ───────────────────────────── */
+  /* The address shows shortened, but its text is whole: this copies all of it. */
   const contractAddress = document.getElementById('contract-address');
   const copyButton = document.getElementById('copy-contract-address');
   const status = document.getElementById('copy-contract-status');
+  const copyLabel = copyButton?.querySelector('.contract-row__action');
 
-  if (contractAddress && copyButton && status) {
+  if (contractAddress && copyButton && status && copyLabel) {
     let resetTimer;
     copyButton.addEventListener('click', async () => {
       clearTimeout(resetTimer);
       try {
         await navigator.clipboard.writeText(contractAddress.textContent ?? "");
-        copyButton.textContent = "Copied";
+        copyLabel.textContent = "Copied";
+        copyButton.dataset.state = "copied";
         copyButton.classList.remove("error");
-        status.textContent = "Contract address copied.";
+        status.textContent = "CHIT token address copied.";
       } catch {
-        copyButton.textContent = "Copy failed. Try again.";
+        copyLabel.textContent = "Copy failed. Try again.";
+        delete copyButton.dataset.state;
         copyButton.classList.add("error");
         status.textContent = "Copy failed. Try again.";
       }
       resetTimer = setTimeout(() => {
-        copyButton.textContent = "Copy";
+        copyLabel.textContent = "Copy";
+        delete copyButton.dataset.state;
         copyButton.classList.remove("error");
         status.textContent = "";
       }, 2000);

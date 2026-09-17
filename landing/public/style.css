@@ -105,12 +105,20 @@ button{background:none;border:0;color:inherit;cursor:pointer}
   display:grid; grid-template-columns:auto minmax(0, 1fr) auto; align-items:center;
   gap:calc(8 * var(--u)); margin-top:calc(10 * var(--u));
   font-size:calc(11 * var(--u)); letter-spacing:var(--track-narrow)}
-.contract-row__label{opacity:.4; text-transform:uppercase; letter-spacing:var(--track-wide)}
-.contract-row code{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; opacity:.62}
-#copy-contract-address{padding:calc(3 * var(--u)) calc(7 * var(--u));
-  border:var(--hairline) solid rgba(245,239,229,.18); border-radius:var(--radius-control);
-  font-size:calc(10 * var(--u)); letter-spacing:var(--track-wide); text-transform:uppercase;
-  opacity:.62; transition:opacity var(--morph-dur) var(--ease-out), border-color var(--morph-dur) var(--ease-out)}
+.contract-row__label{opacity:.55}
+/* Shortened in the middle; the hidden middle stays in the text, so a copy,
+   a selection or a screen reader still gets the whole address. */
+.contract-row code{position:relative; min-width:0; white-space:nowrap; opacity:.8; font-size:calc(12 * var(--u))}
+.contract-row code > span:last-child::before{content:"…"; content:"…" / ""}
+#copy-contract-address{display:inline-flex; align-items:center; gap:calc(5 * var(--u));
+  padding:calc(3 * var(--u)) calc(10 * var(--u)) calc(3 * var(--u)) calc(8 * var(--u));
+  border:var(--hairline) solid rgba(245,239,229,.22); border-radius:999px;
+  font-size:calc(11 * var(--u));
+  opacity:.75; transition:opacity var(--morph-dur) var(--ease-out), border-color var(--morph-dur) var(--ease-out)}
+.contract-row__icon{flex:none; width:calc(12 * var(--u)); height:calc(12 * var(--u));
+  fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round}
+.contract-row__icon--done, #copy-contract-address[data-state="copied"] .contract-row__icon--copy{display:none}
+#copy-contract-address[data-state="copied"] .contract-row__icon--done{display:block}
 #copy-contract-address:focus-visible{outline:2px solid var(--coral); outline-offset:2px}
 
 .skip-link{position:absolute; left:-9999px; top:0; z-index:50;

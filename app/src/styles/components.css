@@ -99,11 +99,17 @@ a { color: inherit; }
 }
 
 /* ---- Contract row, status pill, footer ---- */
-.contract-row { grid-area: contract; justify-self: start; display: inline-grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; max-width: 100%; color: var(--text-muted); font-size: 0.72rem; }
-.contract-row__label { letter-spacing: var(--track-wide); }
-.contract-row code { overflow: hidden; color: var(--soft-paper); font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.contract-row button { padding: 0.15rem 0.45rem; border: 1px solid var(--glass-line); border-radius: var(--radius-control); background: transparent; color: var(--soft-paper); font: inherit; font-size: 0.65rem; letter-spacing: var(--track-wide); text-transform: uppercase; cursor: pointer; }
+/* The CHIT token's address, shortened in the middle. The hidden middle stays in the text, so copying, selecting and screen readers get all of it. */
+.contract-row { grid-area: contract; justify-self: start; display: inline-grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; max-width: 100%; color: var(--text-muted); font-size: 0.75rem; }
+.contract-row__label { color: var(--text-muted); white-space: nowrap; }
+.contract-row__action { white-space: nowrap; }
+.contract-row code { position: relative; color: var(--soft-paper); font-family: var(--font-mono); font-size: 0.78rem; white-space: nowrap; }
+.contract-row code > span:last-child::before { content: "…"; content: "…" / ""; }
+.contract-row button { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.2rem 0.65rem 0.2rem 0.5rem; border: 1px solid var(--glass-line); border-radius: var(--radius-pill); background: transparent; color: var(--soft-paper); font: inherit; font-size: 0.72rem; cursor: pointer; }
 .contract-row button.error { border-color: var(--coral-deep); }
+.contract-row__icon { flex: none; width: 0.8rem; height: 0.8rem; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.contract-row__icon--done, #copy-contract-address[data-state="copied"] .contract-row__icon--copy { display: none; }
+#copy-contract-address[data-state="copied"] .contract-row__icon--done { display: block; }
 
 .pill { display: inline-flex; align-items: center; gap: 0.5rem; margin-block: 0.5rem 1.5rem; padding: 0.55rem 0.75rem; border: 1px solid rgba(222, 214, 202, 0.12); border-radius: var(--radius-control); background: linear-gradient(90deg, rgba(255, 90, 60, 0.1), rgba(255, 90, 60, 0.24) 45%, rgba(255, 90, 60, 0.1)); font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
 .pill[data-live="false"] { background: rgba(122, 36, 21, 0.45); }
@@ -152,6 +158,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
   .wallet-menu__actions button:hover .wallet-icon { color: var(--paper); }
   .wallet-menu__actions .danger:hover { background: rgba(122, 36, 21, 0.45); }
   .wallet-menu__net button:hover { background: var(--soft-paper); }
+  .contract-row button:hover { border-color: rgba(245, 239, 229, 0.6); color: var(--paper); }
   .ghost:hover, .back:hover { border-color: rgba(245, 239, 229, 0.38); }
 }
 @keyframes banner-in { from { opacity: 0; transform: translate(-50%, 0.6rem); } to { opacity: 1; transform: translate(-50%, 0); } }

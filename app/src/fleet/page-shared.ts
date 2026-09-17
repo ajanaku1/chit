@@ -873,28 +873,38 @@ export const initMenu = (): void => {
   });
 };
 
-/** The masthead's contract row, copied as on the landing. */
+/**
+ * The masthead's CHIT token row, copied as on the landing. The address shows
+ * shortened, but its text is whole, so this copies all of it.
+ */
 export const initContractCopy = (): void => {
   const address = document.getElementById("contract-address");
   const button = document.getElementById("copy-contract-address");
   const status = document.getElementById("copy-contract-status");
-  if (!address || !button || !status) return;
+  const label = button?.querySelector(".contract-row__action");
+  if (!address || !button || !status || !label) return;
+  let reset: number | undefined;
   button.addEventListener("click", () => {
-    void navigator.clipboard
-      .writeText(address.textContent ?? "")
+    void Promise.resolve()
+      .then(() => navigator.clipboard.writeText(address.textContent ?? ""))
       .then(() => {
         button.classList.remove("error");
-        button.textContent = "Copied";
-        status.textContent = "Contract address copied.";
+        button.dataset["state"] = "copied";
+        label.textContent = "Copied";
+        status.textContent = "CHIT token address copied.";
       })
       .catch(() => {
         button.classList.add("error");
-        button.textContent = "Copy failed. Try again.";
+        delete button.dataset["state"];
+        label.textContent = "Copy failed. Try again.";
         status.textContent = "Copy failed. Try again.";
       })
       .finally(() => {
-        window.setTimeout(() => {
-          button.textContent = "Copy";
+        window.clearTimeout(reset);
+        reset = window.setTimeout(() => {
+          button.classList.remove("error");
+          delete button.dataset["state"];
+          label.textContent = "Copy";
         }, 1600);
       });
   });
