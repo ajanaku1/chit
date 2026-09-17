@@ -7,10 +7,11 @@
  * keys and the backup never touch storage; sessionStorage clears with the tab.
  */
 
-import { freshPoolStatus, loadCachedBalance, poolStatus } from "./balance.js";
+import { freshPoolStatus, isFresh, loadCachedBalance, poolStatus } from "./balance.js";
 import { SetupError } from "./campaign-setup.js";
 import { hydrateLed } from "./led.js";
 import { revealOnEnter } from "./motion.js";
+import { icon, walletMark, type IconName } from "./wallet-menu.js";
 
 const SNAPSHOT_KEY = "chit-fleet-snapshot";
 const ETH_DECIMAL = /^\d+(\.\d{1,18})?$/;
@@ -45,13 +46,13 @@ export const banner = (message: string, tone: "pending" | "error" | "ok"): void 
 
 export const SIGN_IS_FREE = "Signing is free and sends no transaction.";
 
+let openAsk: HTMLElement | undefined;
+
 /**
  * Resolves once the trader asks for what needs a signature. A page never opens
  * the wallet while it loads: a popup nobody clicked for reads as a bug. Shown
  * only when there is no recent answer to show instead.
  */
-let openAsk: HTMLElement | undefined;
-
 export const askBeforeSigning = (
   anchor: HTMLElement,
   lead: string,
@@ -571,10 +572,36 @@ function watchAccounts(eth: Eip1193 | undefined): void {
   });
 }
 
+/** The wallet app holding the connection, when the page can tell which one. */
+const connectedWalletApp = (): InstalledWallet | undefined => {
+  if (chosen) return chosen;
+  const rdns = recall(PROVIDER_KEY);
+  if (rdns) return installed.get(rdns);
+  return installed.size === 1 ? [...installed.values()][0] : undefined;
+};
+
+const make = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string): HTMLElementTagNameMap[K] => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+
+const menuRow = (name: IconName, label: string, className?: string): { row: HTMLButtonElement; label: HTMLSpanElement } => {
+  const row = make("button", className);
+  row.type = "button";
+  const text = make("span", undefined, label);
+  row.append(icon(name), text);
+  return { row, label: text };
+};
+
 /**
  * Wires the header wallet control and keeps it in sync with wallet events.
- * Disconnected, a click connects. Connected, a click opens a menu to copy the
- * address or disconnect, so reaching for the address never drops the wallet.
+ * Disconnected, a click connects. Connected, a click opens the wallet menu:
+ * which wallet and network this is, what it holds, and the actions (copy,
+ * switch wallet, disconnect), so reaching for the address never drops the
+ * wallet. Nothing in the menu signs: the wallet's ETH and its network are
+ * silent reads, and the Chit balance shows only from a recent read.
  * Disconnect is soft: EIP-1193 has no revoke, so it forgets the address for
  * this session.
  */
@@ -583,27 +610,113 @@ export const initHeaderWallet = (): void => {
   if (!button) return;
   connected = readStoredWallet();
 
-  const menu = document.createElement("div");
+  const menu = make("div", "wallet-menu");
   menu.id = "hdr-wallet-menu";
-  menu.className = "wallet-menu";
   menu.hidden = true;
-  const fullAddress = document.createElement("p");
-  fullAddress.className = "wallet-menu__address";
-  const copy = document.createElement("button");
-  copy.type = "button";
-  copy.textContent = "Copy address";
-  const disconnect = document.createElement("button");
-  disconnect.type = "button";
-  disconnect.textContent = "Disconnect";
-  const copyStatus = document.createElement("span");
-  copyStatus.className = "sr-only";
+
+  const who = make("div", "wallet-menu__who");
+  const shortLine = make("p", "wallet-menu__short");
+  const via = make("p", "wallet-menu__via");
+  const fullAddress = make("p", "wallet-menu__address");
+
+  const network = make("div", "wallet-menu__net");
+  const networkText = make("span");
+  const switchNetwork = make("button", undefined, "Switch network");
+  switchNetwork.type = "button";
+  switchNetwork.hidden = true;
+  network.append(networkText, switchNetwork);
+
+  const figures = make("dl", "wallet-menu__figures");
+  const walletFigure = make("dd");
+  const chitFigure = make("dd");
+  for (const [term, value] of [["In your wallet", walletFigure], ["At Chit", chitFigure]] as const) {
+    const row = make("div");
+    row.append(make("dt", undefined, term), value);
+    figures.append(row);
+  }
+
+  const actions = make("div", "wallet-menu__actions");
+  const { row: copy, label: copyLabel } = menuRow("copy", "Copy address");
+  const { row: switchWallet } = menuRow("swap", "Switch wallet");
+  const { row: disconnect } = menuRow("leave", "Disconnect", "danger");
+  actions.append(copy, switchWallet, disconnect);
+
+  const copyStatus = make("span", "sr-only");
   copyStatus.setAttribute("role", "status");
   copyStatus.setAttribute("aria-live", "polite");
-  menu.append(fullAddress, copy, disconnect, copyStatus);
+  menu.append(who, fullAddress, network, figures, actions, copyStatus);
   button.after(menu);
 
+  const stillShowing = (address: Hex): boolean => !menu.hidden && getConnectedWallet() === address;
+
+  const showNetwork = async (address: Hex): Promise<boolean | undefined> => {
+    const eth = walletProvider();
+    let onChain: boolean | undefined;
+    try {
+      onChain = eth ? (await chainIdOf(eth)) === ROBINHOOD_TESTNET.chainId : undefined;
+    } catch {
+      onChain = undefined;
+    }
+    if (!stillShowing(address)) return onChain;
+    network.dataset["state"] = onChain === undefined ? "unknown" : onChain ? "ok" : "wrong";
+    network.dataset["live"] = String(onChain === true);
+    networkText.textContent =
+      onChain === undefined ? "Network not known" : onChain ? ROBINHOOD_TESTNET.chainName : "Your wallet is on another network.";
+    switchNetwork.hidden = onChain !== false;
+    return onChain;
+  };
+
+  /**
+   * The network, then the wallet's ETH on it. Only a balance on Robinhood
+   * testnet is the one Chit uses; with no provider or another network,
+   * walletEth would report a zero or another chain's ETH.
+   */
+  const showChainAndEth = async (address: Hex): Promise<void> => {
+    walletFigure.textContent = "…";
+    const text = await showNetwork(address)
+      .then((onChain) => (onChain ? walletEth(address).then((wei) => `${toEth(wei)} ETH`) : "—"))
+      .catch(() => "—");
+    if (stillShowing(address)) walletFigure.textContent = text;
+  };
+
+  /** Everything the menu says, read fresh each time it opens. */
+  const fillMenu = (address: Hex): void => {
+    who.replaceChildren(walletMark(address), shortLine, via);
+    shortLine.textContent = shortWallet(address);
+    const app = connectedWalletApp();
+    via.replaceChildren();
+    if (app && /^data:image\//.test(app.icon)) {
+      const logo = make("img");
+      logo.src = app.icon;
+      logo.alt = "";
+      via.append(logo);
+    }
+    via.append(app ? app.name : "Connected wallet");
+    fullAddress.textContent = address;
+    switchWallet.hidden = installed.size < 2;
+
+    network.dataset["state"] = "unknown";
+    network.dataset["live"] = "false";
+    networkText.textContent = "Checking network…";
+    switchNetwork.hidden = true;
+    void showChainAndEth(address);
+
+    // A recent read only: opening the menu never opens the wallet.
+    const cached = loadCachedBalance(sessionStorage, address);
+    if (cached && isFresh(cached.savedAt, new Date())) {
+      chitFigure.textContent = `${toEth(cached.available)} ETH`;
+    } else {
+      const link = make("a", undefined, "See balance");
+      link.href = "./balance.html";
+      chitFigure.replaceChildren(link);
+    }
+  };
+
   const openMenu = (): void => {
+    const address = getConnectedWallet();
+    if (!address) return;
     menu.hidden = false;
+    fillMenu(address);
     button.setAttribute("aria-expanded", "true");
     copy.focus();
   };
@@ -617,13 +730,13 @@ export const initHeaderWallet = (): void => {
   const render = (): void => {
     const address = getConnectedWallet();
     if (address) {
-      button.textContent = shortWallet(address);
+      button.replaceChildren(walletMark(address), make("span", undefined, shortWallet(address)), icon("chevron", "wallet-btn__chevron"));
       button.dataset["state"] = "connected";
       button.setAttribute("aria-label", `Wallet ${shortWallet(address)}`);
       button.setAttribute("aria-controls", menu.id);
       button.setAttribute("aria-expanded", String(!menu.hidden));
-      button.title = "Copy address or disconnect";
-      fullAddress.textContent = address;
+      button.title = "Wallet details";
+      if (!menu.hidden) fillMenu(address);
     } else {
       closeMenu(false);
       button.textContent = "Connect wallet";
@@ -668,19 +781,36 @@ export const initHeaderWallet = (): void => {
     void Promise.resolve()
       .then(() => navigator.clipboard.writeText(address))
       .then(() => {
-        copy.textContent = "Copied";
+        copy.replaceChildren(icon("check"), copyLabel);
+        copyLabel.textContent = "Copied";
         copyStatus.textContent = "Wallet address copied.";
       })
       .catch(() => {
-        copy.textContent = "Copy failed";
+        copy.replaceChildren(icon("copy"), copyLabel);
+        copyLabel.textContent = "Copy failed";
         copyStatus.textContent = "Copy failed. Try again.";
       })
       .finally(() => {
         window.clearTimeout(copyReset);
         copyReset = window.setTimeout(() => {
-          copy.textContent = "Copy address";
+          copy.replaceChildren(icon("copy"), copyLabel);
+          copyLabel.textContent = "Copy address";
         }, 1600);
       });
+  });
+  switchNetwork.addEventListener("click", () => {
+    const eth = walletProvider();
+    const address = getConnectedWallet();
+    if (!eth || !address) return;
+    void withWalletPrompt("Check your wallet: approve the switch to Robinhood Chain testnet.", () => ensureRobinhoodTestnet(eth))
+      .catch(() => false)
+      .then(() => showChainAndEth(address));
+  });
+  switchWallet.addEventListener("click", () => {
+    closeMenu(false);
+    void connectWallet().catch((error: unknown) => {
+      window.dispatchEvent(new CustomEvent("chit-wallet-error", { detail: { reason: "rejected", message: (error as Error)?.message } }));
+    });
   });
   disconnect.addEventListener("click", () => {
     closeMenu(false);
