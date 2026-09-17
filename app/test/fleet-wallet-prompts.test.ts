@@ -119,6 +119,6 @@ test("setup says up front that launching needs a balance, and never sends the tr
   }
   assert.match(html, /id="recheck-balance"/, "coming back from the Balance tab has no way to see the new balance");
   const page = await source("fleet-page.ts");
-  assert.match(page, /el\("balance-first"\)\.hidden = available === undefined \|\| BigInt\(available\) > 0n/);
+  assert.match(page, /el\("balance-first"\)\.hidden = !this\.#balanceKnown \|\| BigInt\(this\.#availableBalance\) > 0n/);
   assert.match(page, /el\("recheck-balance"\)\.addEventListener\("click"/);
 });

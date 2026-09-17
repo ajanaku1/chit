@@ -271,7 +271,7 @@ test("every page takes up a remembered wallet on load, not only on the event", a
     const direct = /getConnectedWallet\(\)[\s\S]{0,120}(#adopt|onWalletChanged)\(/.test(text);
     const viaRefresh =
       /start\(\): void \{[\s\S]*?void this\.#refresh\(\)/.test(text) &&
-      /async #refresh\(\)[\s\S]{0,200}getConnectedWallet\(\)/.test(text);
+      /async #refresh\([^)]*\)[\s\S]{0,200}getConnectedWallet\(\)/.test(text);
     assert.ok(direct || viaRefresh, `${page} does not take up an already-connected wallet when it loads`);
   }
 });
@@ -304,12 +304,12 @@ test("the Trade page's load reads come from the shared cached signed read", asyn
     assert.match(text, new RegExp(`readSigned\\(wallet, "${action}"`), `the Trade page does not read "${action}" through the cache`);
   }
   const onWallet = /async #onWallet\(\)[\s\S]*?\n  \}/.exec(text);
-  const holdings = /async #holdings\(\)[\s\S]*?\n  \}/.exec(text);
+  const holdings = /async #holdings\([^)]*\)[\s\S]*?\n  \}/.exec(text);
   assert.ok(onWallet && holdings, "no load path to inspect");
   for (const body of [onWallet[0], holdings[0]]) {
     assert.doesNotMatch(body, /signedFleetApi\(/, "the Trade page signs on load, so every visit prompts");
   }
-  const poll = /async #pollOnce\(\)[\s\S]*?\n  \}/.exec(text);
+  const poll = /async #pollOnce\([^)]*\)[\s\S]*?\n  \}/.exec(text);
   assert.ok(poll && /forgetSignedReads\(wallet\)/.test(poll[0]), "a trade leaves the cached fleets and holdings stale");
   for (const page of ["fleet-page.ts", "fleet-dashboard.ts"]) {
     assert.match(await source(page), /forgetSignedReads\(/, `${page} changes a fleet but leaves the cached list stale`);

@@ -359,6 +359,32 @@ test("without a secret no token is issued, and an unsigned poll is refused", asy
   assert.equal(chain.submissions.length, 0);
 });
 
+test("a signed poll renews the order's token, so the polls after it need no signature", async () => {
+  const now = { value: new Date("2026-09-15T12:00:00.000Z") };
+  const { router, service, campaign, order, chain } = await placedWithToken(now);
+  now.value = new Date(now.value.getTime() + ORDER_TOKEN_TTL_MS);
+  const signedPoll = await router.handle(await signed(service, "trade", { campaign, order, pending: [0, 1] }), key("renew1"));
+  assert.equal(signedPoll.status, 200, JSON.stringify(signedPoll.body));
+  const renewed = (signedPoll.body as { orderToken?: string }).orderToken;
+  assert.match(renewed ?? "", /^\d+\.[0-9a-f]{64}$/);
+
+  const next = await router.handle(poll(renewed!, { campaign, order, pending: [2, 3, 4] }), key("renew2"));
+  assert.equal(next.status, 200, JSON.stringify(next.body));
+  assert.equal(chain.submissions.length, 5);
+  assert.equal((next.body as { orderToken?: string }).orderToken, undefined, "a token poll does not mint another token");
+});
+
+test("the unsigned quote names the pool, so its public deposit record needs no signature", async () => {
+  const pool = owner(0x901);
+  const service = new CampaignService(serviceConfig);
+  const withPool = new CampaignRouter({ service, poolAddress: pool });
+  const quoted = await withPool.handle({ action: "quote", body: { primaryWallet: trader.address } });
+  assert.equal(quoted.status, 200);
+  assert.equal((quoted.body as { poolAddress?: string }).poolAddress, pool);
+  const without = await new CampaignRouter({ service }).handle({ action: "quote", body: { primaryWallet: trader.address } });
+  assert.equal((without.body as { poolAddress?: string }).poolAddress, undefined);
+});
+
 test("only a trade poll may use an order token", async () => {
   const now = { value: new Date("2026-09-15T12:00:00.000Z") };
   const { router, campaign, orderToken } = await placedWithToken(now);
