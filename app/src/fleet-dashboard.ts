@@ -6,13 +6,13 @@
  */
 
 import { buildControlRoomView, confirmationFor, isLiveState, type CampaignState, type ControlAction } from "./fleet/control-room.js";
-import { banner, clearFleetSnapshot, confirmDialog, getConnectedWallet, initHeaderWallet, initShell, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
-import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
-import { forgetSignedReads, readSigned } from "./fleet/signed-read.js";
+import { askBeforeSigning, banner, clearFleetSnapshot, confirmDialog, dropSigningAsk, getConnectedWallet, initHeaderWallet, initShell, loadFleetSnapshot, parseEth, saveFleetSnapshot, toEth, type FleetSnapshot } from "./fleet/page-shared.js";
+import { invalidateBalance, readBalance, recentBalance } from "./fleet/balance-read.js";
+import { forgetSignedReads, readSigned, recentSigned } from "./fleet/signed-read.js";
 import { StatusUnavailable, readStatus } from "./fleet/status-read.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 import type { DrawView } from "./fleet/control-room.js";
-import { capShare, pollDelayMs, stateLabel } from "./fleet/balance.js";
+import { capShare, pollDelayMs, stateLabel, type CachedBalance } from "./fleet/balance.js";
 import { renderLed } from "./fleet/led.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -31,6 +31,8 @@ class FleetDashboard {
   /** Live pool facts, refreshed from the service; absent before it answers. */
   #draw: DrawView | undefined;
   #available = "0";
+  /** False until a balance is read: the strip shows a dash, not a zero nobody measured. */
+  #availableKnown = false;
   #poolPaused = false;
 
   constructor(snapshot: FleetSnapshot) {
@@ -80,7 +82,7 @@ class FleetDashboard {
     const strip = el("balance-strip");
     strip.hidden = this.#draw === undefined;
     if (this.#draw) {
-      renderLed(el("bal-available"), toEth(this.#available), "ETH");
+      renderLed(el("bal-available"), this.#availableKnown ? toEth(this.#available) : "—", "ETH");
       renderLed(el("draw-amount"), toEth(this.#draw.amount), "ETH");
       renderLed(el("draw-spent"), toEth(this.#draw.spent), "ETH");
       renderLed(el("draw-remaining"), toEth(this.#draw.remaining), "ETH");
@@ -135,38 +137,55 @@ class FleetDashboard {
     }
   }
 
+  #showBalance(balance: CachedBalance): void {
+    this.#available = String(balance.available ?? "0");
+    this.#availableKnown = true;
+    this.#poolPaused = Boolean(balance.pool?.paused);
+  }
+
   /**
    * What each wallet holds now: ETH and the venue's tokens, read from the
    * chain by the service. Best effort; the list stays readable without it.
    */
-  async #portfolio(wallet: `0x${string}`): Promise<void> {
+  async #portfolio(wallet: `0x${string}`, body: Record<string, unknown>): Promise<void> {
     try {
-      const body = (await readSigned(wallet, "holdings", { campaign: this.#snapshot.campaign })) as {
-        holdings?: { wallet: string; eth: string; tokens: Record<string, string> }[];
-        symbols?: Record<string, string>;
-      };
-      if (this.#snapshot.accounts.length === 0 && body.holdings?.length) {
-        this.#snapshot = { ...this.#snapshot, accounts: body.holdings.map((holding) => holding.wallet) };
-        saveFleetSnapshot(this.#snapshot);
-        this.#renderAccounts();
-      }
-      for (const holding of body.holdings ?? []) {
-        const item = document.querySelector<HTMLElement>(`#fleet-accounts li[data-wallet="${holding.wallet.toLowerCase()}"] .account-list__holdings`);
-        if (!item) continue;
-        const parts = [`${toEth(holding.eth)} ETH`];
-        for (const [token, amount] of Object.entries(holding.tokens)) {
-          if (BigInt(amount) === 0n) continue;
-          parts.push(`${toEth(amount)} ${body.symbols?.[token.toLowerCase()] ?? token.slice(0, 8)}`);
-        }
-        item.textContent = parts.join(" · ");
-      }
+      this.#renderPortfolio(await readSigned(wallet, "holdings", body));
     } catch {
       for (const node of Array.from(document.querySelectorAll<HTMLElement>("#fleet-accounts .account-list__holdings"))) node.textContent = "";
     }
   }
 
-  /** Reads the live campaign so the page shows the chain, not the snapshot. */
-  async #refresh(): Promise<void> {
+  #renderPortfolio(reply: Record<string, unknown>): void {
+    const body = reply as {
+      holdings?: { wallet: string; eth: string; tokens: Record<string, string> }[];
+      symbols?: Record<string, string>;
+    };
+    if (this.#snapshot.accounts.length === 0 && body.holdings?.length) {
+      this.#snapshot = { ...this.#snapshot, accounts: body.holdings.map((holding) => holding.wallet) };
+      saveFleetSnapshot(this.#snapshot);
+      this.#renderAccounts();
+    }
+    for (const holding of body.holdings ?? []) {
+      const item = document.querySelector<HTMLElement>(`#fleet-accounts li[data-wallet="${holding.wallet.toLowerCase()}"] .account-list__holdings`);
+      if (!item) continue;
+      const parts = [`${toEth(holding.eth)} ETH`];
+      for (const [token, amount] of Object.entries(holding.tokens)) {
+        if (BigInt(amount) === 0n) continue;
+        parts.push(`${toEth(amount)} ${body.symbols?.[token.toLowerCase()] ?? token.slice(0, 8)}`);
+      }
+      item.textContent = parts.join(" · ");
+    }
+  }
+
+  /**
+   * Reads the live campaign so the page shows the chain, not the snapshot.
+   *
+   * `asked`: the trader clicked for this. Without that, only what needs no
+   * signature is read: the status always, the balance and holdings only from a
+   * recent read. The page asks before it signs for the rest, so neither
+   * opening it nor the funding poll ever opens the wallet on its own.
+   */
+  async #refresh(asked = false): Promise<void> {
     const wallet = getConnectedWallet();
     if (!wallet) return;
     try {
@@ -178,14 +197,28 @@ class FleetDashboard {
         this.#snapshot.budget = { funded: this.#draw.amount, reserved: "0", spent: this.#draw.spent, unused: this.#draw.remaining };
         saveFleetSnapshot(this.#snapshot);
       }
-      const balance = await readBalance(wallet);
-      this.#available = String(balance.available ?? "0");
-      this.#poolPaused = Boolean(balance.pool?.paused);
-      this.#render();
-      void this.#portfolio(wallet);
       // A fleet still being funded is finished by requests like this one.
       const delay = pollDelayMs(state, this.#draw?.dueAt, new Date());
       if (delay !== undefined) globalThis.setTimeout(() => void this.#refresh(), delay);
+
+      const holdingsBody = { campaign: this.#snapshot.campaign };
+      const recent = recentBalance(wallet);
+      const recentHoldings = recentSigned(wallet, "holdings", holdingsBody);
+      if (!asked && (!recent || !recentHoldings)) {
+        if (recent) this.#showBalance(recent);
+        this.#render();
+        if (recentHoldings) this.#renderPortfolio(recentHoldings);
+        // Beside the figures it unlocks: under the balance strip when it shows, else under the state.
+        const strip = el("balance-strip");
+        const anchor = strip.hidden ? el("state-note") : (strip.querySelector<HTMLElement>("dl") ?? strip);
+        void askBeforeSigning(anchor, "Your balance and what your fleet holds are private to your wallet.", "Show them", "after")
+          .then(() => this.#refresh(true));
+        return;
+      }
+      dropSigningAsk();
+      this.#showBalance(await readBalance(wallet));
+      this.#render();
+      void this.#portfolio(wallet, holdingsBody);
     } catch (error) {
       // A campaign the service cannot find is one that was created but never
       // activated: it lived only in the memory of the instance that made it.
@@ -263,7 +296,12 @@ class FleetDashboard {
  */
 const resumeFromService = async (): Promise<boolean> => {
   const wallet = getConnectedWallet();
+  dropSigningAsk();
   if (!wallet) return false;
+  if (!recentSigned(wallet, "list", {})) {
+    await askBeforeSigning(el("no-fleet"), "Made a fleet in another tab? Your fleets are private to your wallet.", "Find my fleets");
+    if (getConnectedWallet() !== wallet) return false;
+  }
   let fleets: { campaign: string; state: string }[] = [];
   try {
     const body = (await readSigned(wallet, "list", {})) as { fleets?: { campaign: string; state: string }[] };

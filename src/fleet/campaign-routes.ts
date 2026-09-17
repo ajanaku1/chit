@@ -50,6 +50,11 @@ export type RouterDeps = {
   chain?: FleetChain;
   /** Stage 2 pool; absent means balance and withdrawal answer 503, never a guess. */
   pool?: PoolPort;
+  /**
+   * The pool contract's address, public on chain. The unsigned quote carries
+   * it, so a page can read a wallet's public deposit record without a signature.
+   */
+  poolAddress?: Address;
   /** Read-only market facts for the trading panel; absent means tokenQuote/order/holdings/list answer 503. */
   market?: MarketPort;
   /**
@@ -191,7 +196,8 @@ export class CampaignRouter {
 
     if (action === "quote") {
       const wallet = String(body["primaryWallet"] ?? "");
-      return { status: 200, body: await this.#quote(wallet as Address, this.#randomId()) };
+      const poolAddress = this.#deps.poolAddress;
+      return { status: 200, body: { ...(await this.#quote(wallet as Address, this.#randomId())), ...(poolAddress ? { poolAddress } : {}) } };
     }
     if (action === "challenge") {
       return {
@@ -235,7 +241,7 @@ export class CampaignRouter {
       action: String(action),
       campaign: String(body["campaign"] ?? "new"),
     };
-    return this.#deps.service.runIdempotent(idempotencyKey, scope, body, async () => {
+    const result = await this.#deps.service.runIdempotent(idempotencyKey, scope, body, async () => {
       switch (action) {
         case "create":
           return this.#create(wallet, body);
@@ -262,6 +268,14 @@ export class CampaignRouter {
           throw new ServiceError("state_invalid", `unknown_action:${String(action)}`);
       }
     });
+    // A signed poll renews the order's token, so the polls after it need no
+    // signature. Added here, outside the stored result: a token is never persisted.
+    if (action === "trade" && auth && result.status === 200) {
+      const order = asRecord(body["order"]);
+      const orderToken = this.#deps.service.issueOrderToken({ id: String(order["id"] ?? ""), owner: wallet });
+      if (orderToken) return { ...result, body: { ...asRecord(result.body), orderToken } };
+    }
+    return result;
   }
 
   async #create(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {

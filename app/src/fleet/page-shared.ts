@@ -45,6 +45,45 @@ export const banner = (message: string, tone: "pending" | "error" | "ok"): void 
 
 export const SIGN_IS_FREE = "Signing is free and sends no transaction.";
 
+/**
+ * Resolves once the trader asks for what needs a signature. A page never opens
+ * the wallet while it loads: a popup nobody clicked for reads as a bug. Shown
+ * only when there is no recent answer to show instead.
+ */
+let openAsk: HTMLElement | undefined;
+
+export const askBeforeSigning = (
+  anchor: HTMLElement,
+  lead: string,
+  label: string,
+  where: "inside" | "after" = "inside",
+): Promise<void> =>
+  new Promise((resolve) => {
+    dropSigningAsk();
+    const gate = document.createElement("div");
+    gate.className = "wallet-gate";
+    const text = document.createElement("p");
+    text.textContent = `${lead} ${SIGN_IS_FREE}`;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "primary";
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      dropSigningAsk();
+      resolve();
+    });
+    gate.append(text, button);
+    if (where === "after") anchor.after(gate);
+    else anchor.append(gate);
+    openAsk = gate;
+  });
+
+/** Takes down the page's pending ask; its wallet is gone or another ask replaces it. */
+export const dropSigningAsk = (): void => {
+  openAsk?.remove();
+  openAsk = undefined;
+};
+
 const openPrompts: string[] = [];
 
 /**

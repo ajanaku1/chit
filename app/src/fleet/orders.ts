@@ -43,6 +43,8 @@ export type OrderRecord = {
   remainingAtSend?: string;
   /** Issued with the signed order; it lets polls run this order's due slices, and nothing else, without a new signature. */
   orderToken?: string;
+  /** Its token no longer serves, and a background poll does not open the wallet: the trader continues it with a click. */
+  needsSignature?: boolean;
 };
 
 export type OrderStore = {
@@ -94,6 +96,14 @@ export const applyResults = (record: OrderRecord, executed: ExecutedSlice[]): Or
     // happened, so it may be sent again.
     return slice.state === "sent" ? { ...slice, state: "pending" } : slice;
   });
+};
+
+/** The poll never left (no signature), so those slices go back to pending and the attempt does not count. */
+export const markUnsent = (record: OrderRecord, indices: number[]): OrderRecord => {
+  const chosen = new Set(indices);
+  return withSlices(record, (slice) =>
+    chosen.has(slice.index) && slice.state === "sent" ? { ...slice, state: "pending", attempts: Math.max(0, slice.attempts - 1) } : slice,
+  );
 };
 
 export const markUnconfirmed = (record: OrderRecord, indices: number[]): OrderRecord => {

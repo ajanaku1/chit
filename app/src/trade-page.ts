@@ -20,6 +20,7 @@ import {
   createOrderStore,
   markSent,
   markUnconfirmed,
+  markUnsent,
   pendingIndices,
   progress,
   reconcile,
@@ -30,7 +31,9 @@ import {
   type WireOrder,
 } from "./fleet/orders.js";
 import {
+  askBeforeSigning,
   confirmDialog,
+  dropSigningAsk,
   getConnectedWallet,
   initHeaderWallet,
   initShell,
@@ -38,8 +41,8 @@ import {
   parseEth,
   toEth,
 } from "./fleet/page-shared.js";
-import { forgetSignedReads, readSigned } from "./fleet/signed-read.js";
-import { orderTrade, RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
+import { forgetSignedReads, readSigned, recentSigned } from "./fleet/signed-read.js";
+import { orderTrade, RequestFailed, SignatureMissing, signedFleetApi } from "./fleet/signed-request.js";
 import { readStatus } from "./fleet/status-read.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -80,6 +83,8 @@ class TradePage {
   /** The poll in flight, if any; a second request waits for it and runs once more. */
   #polling: Promise<void> | undefined;
   #pollAgain = false;
+  /** The trader clicked Continue: the next poll may open the wallet. */
+  #signNext = false;
 
   start(): void {
     el<HTMLSelectElement>("fleet-switch").addEventListener("change", (event) => {
@@ -105,6 +110,7 @@ class TradePage {
   async #onWallet(): Promise<void> {
     const wallet = getConnectedWallet();
     this.#wallet = wallet;
+    dropSigningAsk();
     if (!wallet) {
       this.#store = undefined;
       this.#fleets = [];
@@ -120,6 +126,15 @@ class TradePage {
       return;
     }
     this.#store = createOrderStore(localStorage, wallet);
+    // Orders already placed run on their own tokens, whatever the list read does.
+    this.#render();
+    this.#schedule();
+    let asked = false;
+    if (!recentSigned(wallet, "list", {})) {
+      await askBeforeSigning(this.#gateHost(), "Your fleets are private to your wallet.", "Show my fleets");
+      if (getConnectedWallet() !== wallet) return;
+      asked = true;
+    }
     try {
       const body = (await readSigned(wallet, "list", {})) as { fleets?: Fleet[] };
       this.#fleets = await Promise.all((body.fleets ?? []).map((fleet) => this.#live(fleet)));
@@ -136,9 +151,13 @@ class TradePage {
     }
     const saved = loadFleetSnapshot()?.campaign;
     const initial = (saved && this.#fleets.some((fleet) => fleet.campaign === saved) ? saved : this.#fleets[0]?.campaign);
-    if (initial) await this.#selectFleet(initial);
+    if (initial) await this.#selectFleet(initial, asked);
     else this.#render();
-    this.#schedule();
+  }
+
+  /** Where the page asks before a signed read: the fleet card, above the order form. */
+  #gateHost(): HTMLElement {
+    return el("fleet-switch").closest("section") ?? el("trade");
   }
 
   /** The list may be a cached answer; state and what's left come from the unsigned status read. */
@@ -151,23 +170,33 @@ class TradePage {
     }
   }
 
-  async #selectFleet(campaign: string): Promise<void> {
+  /** `asked`: the trader clicked for this, so a signed read may open the wallet. */
+  async #selectFleet(campaign: string, asked = true): Promise<void> {
     this.#fleet = this.#fleets.find((fleet) => fleet.campaign === campaign);
     const select = el<HTMLSelectElement>("fleet-switch");
     if (select.value !== campaign) select.value = campaign;
-    await this.#holdings();
-    void this.#quoteToken();
     this.#render();
+    void this.#quoteToken();
+    await this.#holdings(asked);
   }
 
   /**
    * Sums holdings across the fleet's wallets: the venue's tokens always (the
    * service adds them), plus any token an order in this browser has touched.
    */
-  async #holdings(): Promise<void> {
+  async #holdings(asked: boolean): Promise<void> {
     const wallet = this.#wallet;
     const fleet = this.#fleet;
     if (!wallet || !fleet) return;
+    const recent = recentSigned(wallet, "holdings", this.#holdingsBody(fleet));
+    if (recent) {
+      this.#renderHoldings(recent as HoldingsReply);
+      return;
+    }
+    if (!asked) {
+      await askBeforeSigning(this.#gateHost(), "What your fleet holds is private to your wallet.", "Show holdings");
+      if (this.#wallet !== wallet || this.#fleet !== fleet) return;
+    }
     try {
       this.#renderHoldings((await this.#readHoldings(wallet, fleet)) as HoldingsReply);
     } catch {
@@ -211,8 +240,12 @@ class TradePage {
   }
 
   /** One body for every holdings read, so placing an order reuses the one the page already made. */
+  #holdingsBody(fleet: Fleet): Record<string, unknown> {
+    return { campaign: fleet.campaign, tokens: [...this.#orderTokens(fleet).keys()] };
+  }
+
   #readHoldings(wallet: Hex, fleet: Fleet): Promise<Record<string, unknown>> {
-    return readSigned(wallet, "holdings", { campaign: fleet.campaign, tokens: [...this.#orderTokens(fleet).keys()] });
+    return readSigned(wallet, "holdings", this.#holdingsBody(fleet));
   }
 
   /** Quotes the pasted token against the fleet's current total, on blur or 400ms after typing stops. */
@@ -348,7 +381,8 @@ class TradePage {
    * poll; running two together could send the same due slices twice, so a
    * second request waits for the first and runs once more afterwards.
    */
-  async #poll(): Promise<void> {
+  async #poll(sign = false): Promise<void> {
+    if (sign) this.#signNext = true;
     if (this.#polling) {
       this.#pollAgain = true;
       return this.#polling;
@@ -356,7 +390,9 @@ class TradePage {
     this.#polling = (async () => {
       do {
         this.#pollAgain = false;
-        await this.#pollOnce();
+        const signNow = this.#signNext;
+        this.#signNext = false;
+        await this.#pollOnce(signNow);
       } while (this.#pollAgain);
     })().finally(() => {
       this.#polling = undefined;
@@ -371,8 +407,11 @@ class TradePage {
    * rather than sent again. A confirmed rejection (a 4xx from the service)
    * settles the slice directly; anything else — a dropped connection, a
    * timeout — is a lost reply, reconciled from the unsigned status read.
+   *
+   * `sign`: the trader clicked Continue. Only then may a poll open the wallet;
+   * a timer's poll that would need a signature leaves the order waiting.
    */
-  async #pollOnce(): Promise<void> {
+  async #pollOnce(sign: boolean): Promise<void> {
     const wallet = this.#wallet;
     const store = this.#store;
     if (!wallet || !store) return;
@@ -380,6 +419,7 @@ class TradePage {
     for (const id of store.list().map((record) => record.order.id)) {
       const current = store.get(id);
       if (!current || current.cancelled) continue;
+      if (current.needsSignature && !sign) continue;
       const dueNow = new Set(
         pendingIndices(current).filter((index) => {
           const slice = current.slices.find((entry) => entry.index === index);
@@ -387,6 +427,10 @@ class TradePage {
         }),
       );
       if (dueNow.size === 0) continue;
+      if (!current.orderToken && !sign) {
+        store.update(current.order.id, (record) => ({ ...record, needsSignature: true }));
+        continue;
+      }
       // The draw's remaining right now, without a signature: a lost reply is
       // settled against how far it falls.
       const remainingAtSend = await readStatus(current.order.campaign).then((body) => body.draw?.remaining, () => undefined);
@@ -399,12 +443,19 @@ class TradePage {
           campaign: current.order.campaign,
           order: current.order,
           pending: pendingIndices(current).filter((index) => dueNow.has(index)),
-        });
+        }, { sign });
         const executed = (res["executed"] as ExecutedSlice[] | undefined) ?? [];
-        store.update(current.order.id, (record) => applyResults(record, executed));
+        // A signed poll comes back with a fresh token, so the polls after it need no signature.
+        const renewed = typeof res["orderToken"] === "string" ? { orderToken: res["orderToken"] } : {};
+        store.update(current.order.id, (record) => ({ ...applyResults(record, executed), ...renewed, needsSignature: false }));
         // A trade that bought something returns what the fleet now holds, so the tile updates without a signature.
         if (res["holdings"] && current.order.campaign === this.#fleet?.campaign) this.#renderHoldings(res as HoldingsReply);
       } catch (error) {
+        if (error instanceof SignatureMissing) {
+          // The poll never left: nothing ran, and the order waits for the trader.
+          store.update(current.order.id, (record) => ({ ...markUnsent(record, [...dueNow]), needsSignature: true }));
+          continue;
+        }
         if (error instanceof RequestFailed && error.status >= 400 && error.status < 500) {
           const reason = error.reason ? `${error.code}: ${error.reason}` : error.code;
           store.update(current.order.id, (record) =>
@@ -444,7 +495,8 @@ class TradePage {
     if (this.#timer !== undefined) window.clearTimeout(this.#timer);
     const store = this.#store;
     if (!store) return;
-    const records = store.list().filter((record) => !record.cancelled);
+    // An order waiting for the trader's signature is not polled until they continue it.
+    const records = store.list().filter((record) => !record.cancelled && !record.needsSignature);
     const dueTimes = records
       .map((record) => progress(record).nextDueAt)
       .filter((due): due is string => due !== undefined)
@@ -493,7 +545,9 @@ class TradePage {
     meta.textContent =
       waiting > 0
         ? `waiting for a reply on ${waiting} slice${waiting === 1 ? "" : "s"}`
-        : nextDueAt
+        : record.needsSignature && !finished
+          ? `${done}/${total} slices · paused until you sign to continue`
+          : nextDueAt
           ? `${done}/${total} slices · next in about ${Math.max(0, Math.round((Date.parse(nextDueAt) - Date.now()) / 60_000))} min`
           : `${done}/${total} slices`;
     head.append(h3, meta);
@@ -518,6 +572,15 @@ class TradePage {
     }
 
     li.append(head, meter, slices);
+    if (record.needsSignature && !finished && !record.cancelled) {
+      // The order's token lapsed (the tab was closed too long); one signature renews it.
+      const resume = document.createElement("button");
+      resume.type = "button";
+      resume.className = "primary";
+      resume.textContent = "Sign to continue";
+      resume.addEventListener("click", () => void this.#poll(true));
+      li.append(resume);
+    }
     if (!finished && !record.cancelled) {
       const cancel = document.createElement("button");
       cancel.type = "button";

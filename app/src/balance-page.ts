@@ -21,10 +21,10 @@ import {
   withdrawIssue,
   type BalanceState,
 } from "./fleet/balance.js";
-import { invalidateBalance, readBalance, rememberBalance } from "./fleet/balance-read.js";
+import { invalidateBalance, readBalance, recentBalance, rememberBalance } from "./fleet/balance-read.js";
 import { renderLed } from "./fleet/led.js";
 import { countTo } from "./fleet/motion.js";
-import { banner, ensureRobinhoodTestnet, getConnectedWallet, initHeaderWallet, initShell, parseEth, type Eip1193, waitForReceipt, walletEth, walletProvider, withWalletPrompt } from "./fleet/page-shared.js";
+import { askBeforeSigning, banner, dropSigningAsk, ensureRobinhoodTestnet, getConnectedWallet, initHeaderWallet, initShell, parseEth, type Eip1193, waitForReceipt, walletEth, walletProvider, withWalletPrompt } from "./fleet/page-shared.js";
 import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 
 initHeaderWallet();
@@ -281,12 +281,14 @@ const describe = (error: unknown): string => {
  */
 const onWalletChanged = async (): Promise<void> => {
   const address = getConnectedWallet();
+  dropSigningAsk();
   if (!address) {
     wallet = undefined;
     banner("Connect your wallet to see your balance.", "pending");
     return;
   }
   wallet = address;
+  void renderWalletEth();
   // Last known figures first, so nothing blanks while the fresh read waits on
   // a signature; then the live read replaces them.
   const cached = loadCachedBalance(sessionStorage, address);
@@ -294,6 +296,11 @@ const onWalletChanged = async (): Promise<void> => {
     state = cached;
     poolAddress = (cached.poolAddress as Hex | undefined) ?? poolAddress;
     render(cached);
+  }
+  // Opening the page never opens the wallet: without a recent read, the trader asks for one.
+  if (!recentBalance(address)) {
+    await askBeforeSigning(el("balance-h"), "Your Chit balance is private to your wallet.", "Show my balance", "after");
+    if (getConnectedWallet() !== address) return;
   }
   try {
     await refresh();

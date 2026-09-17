@@ -14,12 +14,18 @@ import { signedFleetApi } from "./signed-request.js";
 
 export type ReadOptions = { force?: boolean; now?: Date };
 
-/** The trader's balance, from the last minute's read unless forced. */
+/** A recent balance read, or undefined: never signs, so it is safe while a page loads. */
+export const recentBalance = (wallet: Hex, now = new Date()): CachedBalance | undefined => {
+  const cached = loadCachedBalance(sessionStorage, wallet);
+  return cached && isFresh(cached.savedAt, now) ? cached : undefined;
+};
+
+/** The trader's balance, from a recent read unless forced. */
 export const readBalance = async (wallet: Hex, options: ReadOptions = {}): Promise<CachedBalance> => {
   const now = options.now ?? new Date();
   if (!options.force) {
-    const cached = loadCachedBalance(sessionStorage, wallet);
-    if (cached && isFresh(cached.savedAt, now)) return cached;
+    const cached = recentBalance(wallet, now);
+    if (cached) return cached;
   }
   const body = (await signedFleetApi(wallet, "balance", {})) as unknown as BalanceState;
   return rememberBalance(wallet, body, now);

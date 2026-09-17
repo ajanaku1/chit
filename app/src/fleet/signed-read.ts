@@ -39,6 +39,17 @@ const load = (storage: Store, wallet: Hex): Record<string, Entry> => {
 // A page that asks twice while the first prompt is still open gets one prompt.
 const inFlight = new Map<string, Promise<Body>>();
 
+/** A recent answer to this read, or undefined: never signs, so it is safe while a page loads. */
+export const recentSigned = (
+  wallet: Hex,
+  action: string,
+  body: Body,
+  { now = new Date(), maxAgeMs, storage = sessionStorage }: Pick<SignedReadOptions, "now" | "maxAgeMs" | "storage"> = {},
+): Body | undefined => {
+  const cached = load(storage, wallet)[`${action}:${payloadHash(body)}`];
+  return cached && isFresh(cached.savedAt, now, maxAgeMs) ? cached.body : undefined;
+};
+
 export const readSigned = async (
   wallet: Hex,
   action: string,
@@ -46,8 +57,8 @@ export const readSigned = async (
   { force = false, now = new Date(), maxAgeMs, storage = sessionStorage, sign = signedFleetApi }: SignedReadOptions = {},
 ): Promise<Body> => {
   const slot = `${action}:${payloadHash(body)}`;
-  const cached = load(storage, wallet)[slot];
-  if (!force && cached && isFresh(cached.savedAt, now, maxAgeMs)) return cached.body;
+  const cached = force ? undefined : recentSigned(wallet, action, body, { now, storage, ...(maxAgeMs !== undefined ? { maxAgeMs } : {}) });
+  if (cached) return cached;
 
   const flight = `${keyOf(wallet)}:${slot}`;
   const pending = inFlight.get(flight);

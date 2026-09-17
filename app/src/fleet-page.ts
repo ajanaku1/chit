@@ -12,6 +12,7 @@
  * user asks for it.
  */
 
+import { decodeFunctionResult, encodeFunctionData } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 import {
@@ -35,7 +36,7 @@ import {
   walletProvider,
   withWalletPrompt,
 } from "./fleet/page-shared.js";
-import { invalidateBalance, readBalance } from "./fleet/balance-read.js";
+import { invalidateBalance, readBalance, recentBalance } from "./fleet/balance-read.js";
 import { forgetSignedReads } from "./fleet/signed-read.js";
 import { prefersReducedMotion } from "./fleet/motion.js";
 import { readStatus } from "./fleet/status-read.js";
@@ -45,7 +46,17 @@ import { confirmRecovery, createRecoveryVault, type VaultContext } from "./fleet
 type Hex = `0x${string}`;
 
 const FLEET_CHAIN_ID = "46630";
-const STEPS = ["welcome", "connect", "size", "backup", "launch", "done"] as const;
+
+const DEPOSITOR_ABI = [{
+  type: "function", name: "depositorOf", stateMutability: "view",
+  inputs: [{ name: "depositor", type: "address" }],
+  outputs: [
+    { name: "deposited", type: "uint256" }, { name: "spent", type: "uint256" },
+    { name: "exitRequestedAt", type: "uint64" }, { name: "exitAmount", type: "uint256" },
+  ],
+}] as const;
+
+const STEPS =["welcome", "connect", "size", "backup", "launch", "done"] as const;
 type Step = (typeof STEPS)[number];
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -115,7 +126,11 @@ class FleetWizard {
     this.#history.push(this.#step);
     this.#show(step);
     // Arriving at launch, the button must already say whether it can be used.
-    if (step === "launch") this.#renderLaunch();
+    // The trader clicked to get here, so an unknown balance is read now.
+    if (step === "launch") {
+      this.#renderLaunch();
+      if (!this.#balanceKnown && this.#wallet) void this.#loadBalance(false);
+    }
   }
 
   #back(): void {
@@ -182,18 +197,24 @@ class FleetWizard {
 
   /** The trader's spendable Chit balance: the last one read, zero until one is. */
   #availableBalance = "0";
+  #balanceKnown = false;
+  /** From the unsigned quote: where the wallet's public deposit record lives. */
+  #poolAddress: Hex | undefined;
 
   /**
    * Takes up a wallet the header already connected. Calling connectWallet again
    * here would ask the wallet a second time for something it has just granted.
+   * Nothing here signs: opening the app must not open the wallet. A recent
+   * balance shows if there is one; otherwise the launch step reads it.
    */
   async #adopt(address: Hex, advance = true): Promise<void> {
     this.#wallet = address;
     this.#setup ??= new CampaignSetup(this.#deps());
-    this.#showBalance(await this.#fetchBalance(address));
+    this.#showBalance(recentBalance(address)?.available);
     el("wallet-line").hidden = false;
 
     await this.#setup.connect(address);
+    if (!this.#balanceKnown) void this.#warnIfNothingDeposited(address);
     // Only move the trader on if they are waiting on this step; adopting a
     // wallet from the header must not yank them out of a later one.
     if (advance && (this.#step === "connect" || this.#step === "welcome")) this.#go("size");
@@ -203,22 +224,48 @@ class FleetWizard {
   #showBalance(available: string | undefined): void {
     const wallet = this.#wallet;
     if (!wallet) return;
-    if (available !== undefined) this.#availableBalance = available;
+    if (available !== undefined) {
+      this.#availableBalance = available;
+      this.#balanceKnown = true;
+    }
     this.#renderLaunch();
     el("wallet-line").textContent =
       `Connected: ${wallet.slice(0, 6)}…${wallet.slice(-4)} · Robinhood testnet` +
-      (available === undefined ? "" : ` · balance ${toEth(available)} ETH`);
+      (this.#balanceKnown ? ` · balance ${toEth(this.#availableBalance)} ETH` : "");
     // Said before anything is created: learning it at launch meant leaving the
     // page, and the setup with it.
-    el("balance-first").hidden = available === undefined || BigInt(available) > 0n;
+    el("balance-first").hidden = !this.#balanceKnown || BigInt(this.#availableBalance) > 0n;
+  }
+
+  /**
+   * The early warning without a signature: the pool's deposit record is
+   * public, and a wallet that never deposited has nothing to launch with.
+   */
+  async #warnIfNothingDeposited(wallet: Hex): Promise<void> {
+    const eth = walletProvider();
+    const pool = this.#poolAddress;
+    if (!eth || !pool) return;
+    try {
+      const data = encodeFunctionData({ abi: DEPOSITOR_ABI, functionName: "depositorOf", args: [wallet] });
+      const raw = (await eth.request({ method: "eth_call", params: [{ to: pool, data }, "latest"] })) as Hex;
+      const [deposited] = decodeFunctionResult({ abi: DEPOSITOR_ABI, functionName: "depositorOf", data: raw });
+      if (deposited === 0n && this.#wallet === wallet && !this.#balanceKnown) this.#showBalance("0");
+    } catch {
+      // Unknown stays unknown; the launch step reads the balance.
+    }
+  }
+
+  /** One balance read. `force` for the trader's own re-check; otherwise a recent read serves. */
+  async #loadBalance(force: boolean): Promise<void> {
+    if (!this.#wallet) return;
+    const available = await this.#fetchBalance(this.#wallet, force);
+    this.#showBalance(available);
+    if (available === undefined) banner("Couldn't read your balance. Try again with the button below.", "error");
   }
 
   /** The trader says they added ETH in the other tab: one signed read, on request. */
   async #recheckBalance(): Promise<void> {
-    if (!this.#wallet) return;
-    const available = await this.#fetchBalance(this.#wallet, true);
-    this.#showBalance(available);
-    if (available === undefined) banner("Couldn't read your balance. Try again in a moment.", "error");
+    await this.#loadBalance(true);
   }
 
   /** Keeps the launch button and its note telling the same story. */
@@ -228,7 +275,9 @@ class FleetWizard {
     const note = document.getElementById("draw-note");
     if (!input || !button || !note) return;
     const drawWei = parseEth(input.value);
-    const state = launchState(drawWei, this.#availableBalance);
+    const state = this.#balanceKnown
+      ? launchState(drawWei, this.#availableBalance)
+      : { disabled: true, note: "Your balance shows here once your wallet signs for it." };
     button.disabled = state.disabled;
     note.textContent = state.note;
     const share = drawShare(drawWei);
@@ -278,6 +327,7 @@ class FleetWizard {
 
   async #fetchQuote(wallet: Hex): Promise<SetupQuote> {
     const { status, body } = await fleetApi("quote", { action: "quote", body: { primaryWallet: wallet } });
+    if (typeof body["poolAddress"] === "string") this.#poolAddress = body["poolAddress"] as Hex;
     const line = el("eligibility-line");
     if (status === 200 && typeof body["netFee"] === "string") {
       const eligible = body["eligible"] === true;

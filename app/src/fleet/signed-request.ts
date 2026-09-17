@@ -41,6 +41,17 @@ export class RequestFailed extends Error {
   }
 }
 
+/**
+ * The request never left: the wallet refused to sign, or the caller may not
+ * open the wallet right now. Nothing ran, so it is safe to ask again later.
+ */
+export class SignatureMissing extends Error {
+  constructor(message = "This needs your wallet's signature.") {
+    super(message);
+    this.name = "SignatureMissing";
+  }
+}
+
 /** What each signature is for, in the words the trader sees while the wallet asks. */
 const PURPOSE: Record<string, string> = {
   balance: "show your Chit balance",
@@ -88,9 +99,14 @@ export const signedFleetApi = async (
   }
 
   const eth = ethereum();
-  const signature = (await withWalletPrompt(promptFor(action), () =>
-    eth.request({ method: "personal_sign", params: [String(challenge.body["challenge"]), wallet] }),
-  )) as Hex;
+  let signature: Hex;
+  try {
+    signature = (await withWalletPrompt(promptFor(action), () =>
+      eth.request({ method: "personal_sign", params: [String(challenge.body["challenge"]), wallet] }),
+    )) as Hex;
+  } catch (error) {
+    throw new SignatureMissing((error as Error)?.message || "The wallet did not sign.");
+  }
 
   const auth = {
     primaryWallet: wallet,
@@ -114,19 +130,26 @@ const answered = (result: { status: number; body: Record<string, unknown> }): Re
 /**
  * Polls an order the trader already signed. The token the service issued with
  * the order stands in for a fresh signature, so the wallet is not asked again.
- * Refused (expired, or the service no longer knows it), the poll signs.
+ * Refused (expired, or the service no longer knows it), the poll signs, but
+ * only when `sign` says the trader just asked; a background poll reports
+ * SignatureMissing instead of opening the wallet on its own.
  */
 export const orderTrade = async (
   wallet: Hex,
   orderToken: string | undefined,
   body: Record<string, unknown>,
+  { sign }: { sign: boolean },
 ): Promise<Record<string, unknown>> => {
-  if (!orderToken) return signedFleetApi(wallet, "trade", body);
+  const signed = (): Promise<Record<string, unknown>> => {
+    if (!sign) throw new SignatureMissing();
+    return signedFleetApi(wallet, "trade", body);
+  };
+  if (!orderToken) return signed();
   try {
     return answered(await fleetApi("trade", { action: "trade", orderToken, body }));
   } catch (error) {
     // Refused before anything ran: authentication is checked before any slice is claimed.
-    if (error instanceof RequestFailed && error.code === "challenge_invalid") return signedFleetApi(wallet, "trade", body);
+    if (error instanceof RequestFailed && error.code === "challenge_invalid") return signed();
     throw error;
   }
 };

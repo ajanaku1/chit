@@ -330,6 +330,7 @@ export const getFleetRouter = (): CampaignRouter => {
   const nonceSecret = nonceSecretFromEnv();
   const store = storeFromEnv();
   const pool = poolFromEnv(store);
+  const poolAddress = poolAddressFromEnv();
   const market = marketFromEnv();
   const allowedTokens = allowedTokensFromEnv();
   const maxSlippageBps = maxSlippageFromEnv();
@@ -350,6 +351,7 @@ export const getFleetRouter = (): CampaignRouter => {
     ...(maxSlippageBps !== undefined ? { maxSlippageBps } : {}),
     // Without the pool, balance and withdrawal answer 503 the same way.
     ...(pool ? { pool } : {}),
+    ...(pool && poolAddress ? { poolAddress } : {}),
     // Without the market, tokenQuote, order, list and holdings answer 503 too.
     ...(market ? { market } : {}),
   };
