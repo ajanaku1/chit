@@ -1,20 +1,18 @@
-From 874a9febf0ec3fdbb4b58872ae3f47bc1949d455 Mon Sep 17 00:00:00 2001
+From cab41e5182f14a334eff2e2c7dbb71f60cce1267 Mon Sep 17 00:00:00 2001
 From: Bambam <mykdahunsi@gmail.com>
-Date: Mon, 14 Sep 2026 16:26:11 +0100
+Date: Thu, 17 Sep 2026 18:34:01 +0100
 Subject: [PATCH] docs: point onboarding at what the public mirror actually
  carries
 
-The build-contract documents and the specs tree stay in the private repo,
-so the links to them were dead here. Name that boundary instead.
 ---
  ONBOARDING.md | 20 +++++++++-----------
  1 file changed, 9 insertions(+), 11 deletions(-)
 
 diff --git a/ONBOARDING.md b/ONBOARDING.md
-index 17b9ead..d883b77 100644
+index a601c5a..2b8de7d 100644
 --- a/ONBOARDING.md
 +++ b/ONBOARDING.md
-@@ -60,20 +60,18 @@ Testnet and test token only, today.
+@@ -60,21 +60,19 @@ Testnet and test token only, today.
  
  ## 2. The canonical documents
  
@@ -37,13 +35,14 @@ index 17b9ead..d883b77 100644
 +| [README.md](README.md) | The product, the three stages, and the honest privacy claim. Start here. |
  | [IMPLEMENTATION.md](IMPLEMENTATION.md) | The running build log. ~60KB, newest at the bottom. Read the tail before starting work — it explains most of the "why is it like this" questions. |
 -| [verify.sh](verify.sh) | The done predicates. Has the final vote. |
+ | [PROGRESS.md](PROGRESS.md) | How the landing's "how far along" sheet is computed from the task lists. Progress is read, never typed. |
 -| The workspace laws | Not in this repo. They live one level up in the workspace and govern every project in it, so the parts that bind this build are reproduced in [§7](#7-the-rules). Ask the founder for the file itself. |
 +| [docs/round-creation-architecture.md](docs/round-creation-architecture.md) | How round creation is put together. |
 +| The workspace laws | Not in this repo. They govern every project in the workspace, so the parts that bind this build are reproduced in [§7](#7-the-rules). |
  
  Traceability runs: approved design → FR/SC numbers in the spec → COMP components
  → T-numbered tasks → a `verify.sh` tag. Every change should be locatable in that
-@@ -306,7 +304,7 @@ non-mutating dry run — start there).
+@@ -296,7 +294,7 @@ non-mutating dry run — start there).
  
  ## 7. The rules
  
