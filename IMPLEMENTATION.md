@@ -1893,3 +1893,14 @@ icon that turns into a check with "Copied", and the status line announces
 "CHIT token address copied." Both test suites now check that the shortened
 markup still spells the full address.
 
+
+## Production follows main (2026-09-17)
+
+Until today chit.tools moved only when someone ran `vercel --prod`, so a push
+to `main` could sit unshipped for hours and a dev's local build was ahead of
+production without anyone noticing. The Vercel project is now linked to
+`ajanaku1/chit-fleet` with `main` as the production branch: every push to
+`main` builds and deploys; every other branch gets a preview URL. The
+`.vercelignore` keeps recordings and the build contract out of the upload,
+and `vercel.json` still runs `scripts/assemble-site.mjs`. `vercel --prod` by
+hand still works and is now the exception, not the way.
