@@ -139,8 +139,13 @@ test("every link on every app page reaches a page or an element that exists", as
 test("every page carries the contract row, the status pill and the non-affiliation line", async () => {
   for (const page of PAGES) {
     const html = await read(page);
-    assert.match(html, /<code id="contract-address">0xD523A627030509021cC39B6d7C8543417D3E50D8<\/code>/, `${page} has no contract row`);
-    assert.match(html, /<button id="copy-contract-address" type="button" aria-label="Copy contract address">Copy<\/button>/);
+    const code = /<code id="contract-address" title="([^"]+)">([\s\S]*?)<\/code>/.exec(html);
+    assert.ok(code, `${page} has no contract row`);
+    assert.equal(code[1], "0xD523A627030509021cC39B6d7C8543417D3E50D8", `${page}: hovering the address does not show all of it`);
+    assert.equal(code[2]!.replace(/<[^>]+>/g, ""), code[1], `${page}: the shortened address no longer copies whole`);
+    assert.match(code[2]!, /<span class="sr-only">/, `${page}: the address is not shortened in the middle`);
+    assert.match(html, /<span class="contract-row__label">CHIT token<\/span>/, `${page} names the address with jargon`);
+    assert.match(html, /<button id="copy-contract-address" type="button" aria-label="Copy CHIT token address">[\s\S]*?<span class="contract-row__action">Copy<\/span><\/button>/);
     assert.match(html, /<p id="pool-status" class="pill" role="status" hidden>/, `${page} has no hidden-by-default status pill`);
     assert.match(html, /not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap/, `${page} lacks the non-affiliation line`);
   }

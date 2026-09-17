@@ -174,8 +174,14 @@ test("uses the canonical Chit mark and exposes a copyable contract address", asy
   assert.match(html, /<link rel="icon" href="favicon\.ico"/);
   assert.match(html, /<link rel="apple-touch-icon" href="apple-touch-icon\.png">/);
   assert.match(html, /class="brand-lockup"/);
-  assert.match(html, new RegExp(`<code id="contract-address">${contractAddress}</code>`));
-  assert.match(html, /<button id="copy-contract-address" type="button">Copy<\/button>/);
+  const code = /<code id="contract-address" title="([^"]+)">([\s\S]*?)<\/code>/.exec(html);
+  assert.ok(code, "no contract address");
+  assert.equal(code[1], contractAddress, "hovering the address does not show all of it");
+  // Shown shortened, but the text is whole: copying, selecting and screen readers get every character.
+  assert.equal(code[2].replace(/<[^>]+>/g, ""), contractAddress);
+  assert.match(code[2], /<span class="sr-only">/);
+  assert.match(html, /<span class="contract-row__label">CHIT token<\/span>/);
+  assert.match(html, /<button id="copy-contract-address" type="button" aria-label="Copy CHIT token address">[\s\S]*?<span class="contract-row__action">Copy<\/span><\/button>/);
   assert.match(html, /<span id="copy-contract-status" class="sr-only" role="status" aria-live="polite"><\/span>/);
 });
 
@@ -185,7 +191,8 @@ test("copies the complete contract address with inline button feedback", async (
   assert.match(script, /navigator\.clipboard\.writeText\(contractAddress\.textContent \?\? ""\)/);
   assert.match(script, /copy-contract-status/);
   assert.match(script, /textContent = "Copied"/);
-  assert.match(script, /textContent = "Contract address copied\."/);
+  assert.match(script, /textContent = "CHIT token address copied\."/);
+  assert.match(script, /copyLabel\.textContent = "Copied"/, "the copy result replaces the button's icons instead of its label");
   assert.match(script, /textContent = "Copy"/);
   assert.match(script, /Copy failed\. Try again\./);
   assert.match(script, /classList\.add\("error"\)/);
