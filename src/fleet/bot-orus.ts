@@ -34,7 +34,7 @@ export type OrusScan = {
 export type OrusScanner = {
   /** The scan, or undefined when Orus has no answer right now (unknown token, quota, outage, slow). */
   scan(token: Address): Promise<OrusScan | undefined>;
-  /** Where "checked by orus" points. */
+  /** Where "checked by orus" points: the token's own page on Orus. */
   link(token: Address): string;
 };
 
@@ -140,8 +140,9 @@ export const createOrusScanner = (config: OrusConfig): OrusScanner => {
       if (kept.size > 500) for (const [k, v] of kept) if (v.until <= now()) kept.delete(k);
       return scan;
     },
-    link() {
-      return base;
+    link(token) {
+      // Orus's token page, /token/<chainId>/<address> (their words, 17 September: simple for now, being worked on).
+      return `${base}/token/${config.chainId}/${token.toLowerCase()}`;
     },
   };
 };

@@ -31,8 +31,8 @@ test("the line says what Orus knows and calls the rest unknown, never safe", () 
   assert.ok(scan);
   assert.equal(scan.honeypot, null);
   assert.equal(scan.holders, 502);
-  const line = orusLine(scan, "https://www.orusagent.xyz");
-  assert.equal(line, `honeypot unknown · bundled 29% · top 10 hold 25% · 502 holders · liq $22k, burned · deployer 11 launches · <a href="https://www.orusagent.xyz">checked by orus</a>`);
+  const line = orusLine(scan, "https://www.orusagent.xyz/token/4663/" + TOKEN);
+  assert.equal(line, `honeypot unknown · bundled 29% · top 10 hold 25% · 502 holders · liq $22k, burned · deployer 11 launches · <a href="https://www.orusagent.xyz/token/4663/${TOKEN}">checked by orus</a>`);
   assert.doesNotMatch(line, /safe/);
 });
 
