@@ -1841,3 +1841,29 @@ the hero says testnet and test ETH instead. The progress sheet stays at
 changed deliberately with the requirement: the landing must now link into the
 wizard (and only the wizard; Control Room and Balance are reached from inside
 the app), and must not call the app private.
+
+## No wallet popup until the trader clicks (2026-09-17, branch fix/no-popup-on-load)
+
+With "Open the app" now landing on the wizard, a remembered wallet met a
+signature request before anything was clicked: the wizard read the balance as
+it took the wallet up, and Balance, Trade and the Control Room did the same on
+load, the Control Room again whenever its funding poll outlived the cached
+read. The line explaining the prompt was there; the prompt still read as a bug.
+
+No page signs while it loads now. A recent cached answer shows; what is public
+is read without a signature (the wallet's own ETH, a campaign's status, the
+pool's deposit record); anything else waits behind a box that says why it is
+private and a button that opens the wallet. The wizard reads the balance when
+the trader clicks through to Launch, and still warns about an empty balance
+on the Size step: the unsigned quote now names the pool, and a wallet whose
+public deposit record is zero has nothing to launch with. The Control Room's
+balance shows a dash until read, not a zero nobody measured.
+
+Background trade polls never open the wallet either. When an order's token is
+refused (the tab was closed past its 90 minutes, or the order predates tokens)
+the poll does not sign: its slices go back to pending without counting an
+attempt, and the order shows "Sign to continue". That signed poll returns a
+fresh token, added outside the stored idempotent result, so the polls after
+it need no signature. A signature the trader refuses is reported as not sent,
+never as a lost reply, so its slices are not reconciled as failed.
+

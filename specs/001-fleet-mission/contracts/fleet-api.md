@@ -10,7 +10,7 @@ For every signed request, the route handler MUST reject unless outer request `ac
 
 ### Order token (trade polls)
 
-A signed `order` is the trader's authorization for every slice it plans. When the service holds a nonce secret, the `order` response carries `orderToken`: `<issuedAtMs>.<hex HMAC-SHA256 over fleet-order-v1|origin|orderId|owner|issuedAtMs>`. A `trade` request MAY carry `orderToken` at the top level in place of `auth`; no other action accepts it. The token authorizes only the order whose `id` and `owner` it was issued for, and only for 90 minutes (the longest order window plus one hour) from issue. The route still recomputes the order id from its fields, requires the order's owner to own the campaign, runs only slices that are due and still pending, and claims each slice once, so a replayed poll buys nothing twice. A missing, forged, foreign, or expired token returns `401 challenge_invalid` before any slice is claimed; the browser then signs the poll as above. Without a nonce secret no token is issued and every poll is signed.
+A signed `order` is the trader's authorization for every slice it plans. When the service holds a nonce secret, the `order` response carries `orderToken`: `<issuedAtMs>.<hex HMAC-SHA256 over fleet-order-v1|origin|orderId|owner|issuedAtMs>`. A `trade` request MAY carry `orderToken` at the top level in place of `auth`; no other action accepts it. The token authorizes only the order whose `id` and `owner` it was issued for, and only for 90 minutes (the longest order window plus one hour) from issue. The route still recomputes the order id from its fields, requires the order's owner to own the campaign, runs only slices that are due and still pending, and claims each slice once, so a replayed poll buys nothing twice. A missing, forged, foreign, or expired token returns `401 challenge_invalid` before any slice is claimed. The browser signs the poll then only when the trader has just asked (a background poll never opens the wallet; the order waits for a click), and a successful signed `trade` response carries a fresh `orderToken` for the same order, never stored with the idempotent result. Without a nonce secret no token is issued and every poll is signed.
 
 ## Route matrix
 
@@ -47,7 +47,8 @@ type FundInput = CampaignInput & { fundingReference: string };
 type BuyInput = CampaignInput & { accounts: Address[]; token: Address; value: Uint };
 type ControlInput = CampaignInput;
 type SignedAction<A extends string, T> = { action: A; auth: AuthEnvelope; body: T };
-type FeeQuote = { quoteId: string; threshold: Uint; baseFee: Uint; discount: Uint; netFee: Uint; eligible: boolean };
+type FeeQuote = { quoteId: string; threshold: Uint; baseFee: Uint; discount: Uint; netFee: Uint; eligible: boolean; poolAddress?: Address };
+// poolAddress: the Stage 2 pool contract when configured; public on chain, so a page can read a wallet's deposit record without a signature.
 type FeeCharge = FeeQuote & { feeAsset: string; recipient: string; chargeEvidence: string };
 type Budget = { funded: Uint; reserved: Uint; spent: Uint; unused: Uint };
 type AccountResult = { account: Address; status: "sponsored" | "rejected"; budget: Budget };
