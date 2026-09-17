@@ -1882,3 +1882,14 @@ Switch wallet appears only with more than one wallet installed. Nothing in
 the menu signs. On the narrowest phones the header's gaps tighten and the
 chevron goes, so brand, wallet and menu button still fit on one row.
 
+## The token address reads as the CHIT token, shortened, and still copies whole (2026-09-17)
+
+The header row on the landing and every app page said "CA", printed all 42
+characters, and ended in a boxed COPY. It now says "CHIT token" and shows
+`0xD523A6…3E50D8`. The middle of the address stays in the text, hidden only
+visually, so the copy button, a manual selection and a screen reader all get
+the whole address, and hovering shows it in full. The button carries a copy
+icon that turns into a check with "Copied", and the status line announces
+"CHIT token address copied." Both test suites now check that the shortened
+markup still spells the full address.
+
