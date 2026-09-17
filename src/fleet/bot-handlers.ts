@@ -41,6 +41,8 @@ import {
   CANARY_KEY, DEFAULT_SETTINGS, RefCodeTaken, SealError, checkCanary, fleetAad, fleetKeyAad, open, openKey, refCodeOf, seal, sealCanary, sealKey, walletAad, withDefaults,
   type BotSettings, type BotWallet, type BotWalletStore, type FleetRecordLike,
 } from "./bot-wallets.js";
+import type { OrusScanner } from "./bot-orus.js";
+import { orusLine } from "./bot-orus.js";
 import { minimumDraw } from "./pool-buy.js";
 import type { Address, Hex } from "./types.js";
 import { minOutFor } from "./v4-swap.js";
@@ -55,6 +57,8 @@ export type BotDeps = {
   bridge?: BotBridge;
   /** Draws a position as a picture with the referral link on it; absent means no 📸 button. */
   share?: ShareRenderer;
+  /** Orus, the safety line on the token card; absent means the card has no such line. */
+  orus?: OrusScanner;
   /** Seals the playground keys at rest and keys the referral codes. */
   keySecret: string;
   /** The bot's @username, for links. */
@@ -584,7 +588,8 @@ export class ChitBot {
     const wallet = await this.#d.store.get(tgId);
     if (!wallet) return this.#start(chatId, tgId);
     if (!isAddress(token)) return this.#say(chatId, "that is not an address.", kb(back()));
-    const [info, balance, ethBal] = await Promise.all([this.#d.chain.tokenInfo(token), this.#d.chain.tokenBalance(token, wallet.address), this.#d.chain.ethBalance(wallet.address)]);
+    // Orus is asked alongside the chain reads and given the same patience; a card never waits on it alone.
+    const [info, balance, ethBal, scan] = await Promise.all([this.#d.chain.tokenInfo(token), this.#d.chain.tokenBalance(token, wallet.address), this.#d.chain.ethBalance(wallet.address), this.#d.orus?.scan(token)]);
     if (!info.hasPool) {
       return this.#out(chatId, messageId, `<b>${esc(info.symbol)}</b> <code>${token}</code>\nno ETH pool on the venue for this token, so nothing to buy it with here.`, kb(back()));
     }
@@ -593,6 +598,7 @@ export class ChitBot {
     const text = [
       `<b>${esc(info.symbol)}</b> · <code>${token}</code> <i>(tap to copy)</i>`,
       `price: <code>${fmt(info.perEth, info.decimals, 2)} ${esc(info.symbol)}</code> per ETH · pool: <code>${eth(info.poolEth, 4)} ETH</code>`,
+      ...(scan && this.#d.orus ? [`orus: ${orusLine(scan, this.#d.orus.link(token))}`] : []),
       `you hold: <code>${fmt(balance, info.decimals, 4)} ${esc(info.symbol)}</code> · wallet: <code>${eth(ethBal)} ETH</code>`,
       "",
       info.hooked

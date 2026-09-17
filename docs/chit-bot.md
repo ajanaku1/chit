@@ -32,6 +32,15 @@ balance: 0.02 ETH
   deepest pool wins). A hooked pool says so on the card, since the hook's
   own fee is not in the quote and the slippage guard is the limit. A token
   with no pool says so.
+- **Checked by Orus**: with `ORUS_PARTNER_API_KEY` set, the card carries one
+  more line under the price, from Orus's scan of the token (`bot-orus.ts`):
+  honeypot, taxes, bundlers, top-10 share, holders, liquidity and whether the
+  LP is burned, the deployer's launches, then "checked by orus" linking to
+  them. Orus is asked alongside the chain reads with the same patience (1.5 s)
+  and a card never waits on it alone; an answer or a miss is kept a minute
+  per token, so refresh spam stays inside their quota (30 a minute). A null
+  from Orus reads as "unknown", never as "safe". Orus scans Robinhood Chain
+  mainnet only, so on testnet the line is never asked for and never shown.
 - **Buy**: your three presets, or a custom amount through the reply field.
   Quoted from the pool with fee and price impact (the exact-in math, matched
   to the wei on a fork), a slippage guard from your settings, then the real

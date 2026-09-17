@@ -37,6 +37,13 @@
  *                                serves landing/public/bot) or a local folder
  *                                for one machine; home.png, buy.png,
  *                                refer.png, fleet.png. Empty string: no banners
+ *   ORUS_PARTNER_API_KEY         Orus partner key: the safety line on the token
+ *                                card (honeypot, taxes, bundlers, holders,
+ *                                liquidity, deployer), "checked by orus".
+ *                                Absent: no line, no call. Orus scans chain
+ *                                4663 only, so on testnet the line shows for
+ *                                nothing and costs nothing
+ *   ORUS_API_BASE                default https://www.orusagent.xyz
  *   FLEET_CHAIN_ID, FLEET_RPC_URL, FLEET_POOL_ADDRESS, FLEET_TOKEN_ALLOWLIST
  *                                as for the service; the first allowlisted
  *                                token is the one the bot trades
@@ -51,6 +58,7 @@ import { isAddress, type Address } from "./types.js";
 import { createRelayBridge } from "./bot-bridge.js";
 import { createShareRenderer } from "./bot-share.js";
 import { createBotChain } from "./bot-chain.js";
+import { createOrusScanner } from "./bot-orus.js";
 import { createFetchFleetApi } from "./bot-fleet.js";
 import { ChitBot } from "./bot-handlers.js";
 import { createTelegram } from "./bot-telegram.js";
@@ -142,6 +150,7 @@ const build = (overrides: BotOverrides = {}): ChitBot => {
     ...(process.env.BOT_BRIDGE_OFF === "1" ? {} : { bridge: createRelayBridge() }),
     // Share cards are drawn from landing/public/bot (the plate and the fonts); BOT_SHARE_OFF=1 hides the 📸 button.
     ...(process.env.BOT_SHARE_OFF === "1" ? {} : { share: createShareRenderer(process.env.BOT_ASSET_DIR || undefined) }),
+    ...(process.env.ORUS_PARTNER_API_KEY ? { orus: createOrusScanner({ apiKey: process.env.ORUS_PARTNER_API_KEY, chainId, ...(process.env.ORUS_API_BASE ? { baseUrl: process.env.ORUS_API_BASE } : {}) }) } : {}),
     keySecret: keySecret!,
     botUsername: username!,
     ...(faucetWei !== undefined ? { faucetWei } : {}),
