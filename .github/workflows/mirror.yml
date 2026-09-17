@@ -1,0 +1,49 @@
+name: Sync the public mirror
+
+# Every push to main re-filters the history and force-pushes the public
+# mirror, ajanaku1/chit-app, exactly as mirror/sync-public.sh does by hand.
+# Until today that was a manual step, and the mirror fell three days behind
+# while the site's /api/progress read from it.
+#
+# One repository secret: MIRROR_PUSH_TOKEN, a fine-grained personal access
+# token with "Contents: read and write" on ajanaku1/chit-app and nothing else.
+# Without it the job runs the whole filter and its checks as a dry run and
+# passes, so the sync is proven before the first real push.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mirror
+  cancel-in-progress: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # The script clones the private repo itself; it only needs the patch and
+      # its own source from this checkout.
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: mirror
+          sparse-checkout-cone-mode: false
+
+      - name: Filter, verify, push
+        env:
+          MIRROR_PRIVATE_URL: https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git
+          MIRROR_PUSH_TOKEN: ${{ secrets.MIRROR_PUSH_TOKEN }}
+        run: |
+          chmod +x mirror/sync-public.sh
+          if [ -z "$MIRROR_PUSH_TOKEN" ]; then
+            echo "MIRROR_PUSH_TOKEN is not set: dry run only. Add the secret and the next push syncs the mirror."
+            ./mirror/sync-public.sh --dry
+          else
+            export MIRROR_PUBLIC_URL="https://x-access-token:${MIRROR_PUSH_TOKEN}@github.com/ajanaku1/chit-app.git"
+            ./mirror/sync-public.sh
+          fi

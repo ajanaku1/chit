@@ -16,8 +16,11 @@
 
 set -euo pipefail
 
-PRIVATE_URL="https://github.com/ajanaku1/chit-fleet.git"
-PUBLIC_URL="https://github.com/ajanaku1/chit-app.git"
+# Overridable so the GitHub workflow can clone and push with its own tokens;
+# by hand, the defaults use whatever credentials git already has.
+PRIVATE_URL="${MIRROR_PRIVATE_URL:-https://github.com/ajanaku1/chit-fleet.git}"
+PUBLIC_URL="${MIRROR_PUBLIC_URL:-https://github.com/ajanaku1/chit-app.git}"
+PUBLIC_DISPLAY="https://github.com/ajanaku1/chit-app.git"
 BRANCH="main"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -61,6 +64,8 @@ echo "==> replaying mirror docs patch"
 # --committer-date-is-author-date keeps the replayed commit's SHA stable across
 # runs. Without it git am stamps "now" as the committer date, so the tip commit
 # would get a new SHA on every sync and churn the history for no reason.
+git config user.name "$(git log -1 --format=%an)" >/dev/null
+git config user.email "$(git log -1 --format=%ae)" >/dev/null
 if ! git am -3 --quiet --committer-date-is-author-date "$PATCH"; then
   git am --abort 2>/dev/null || true
   echo "ERROR: the docs patch no longer applies. README.md or ONBOARDING.md"
@@ -125,4 +130,4 @@ fi
 echo "==> pushing"
 git remote add public "$PUBLIC_URL"
 git push --force public "$BRANCH"
-echo "==> done: $PUBLIC_URL"
+echo "==> done: $PUBLIC_DISPLAY"
