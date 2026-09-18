@@ -202,6 +202,20 @@ export const loadCachedBalance = (storage: Storage, wallet: string): CachedBalan
 export const isFresh = (savedAt: number | undefined, now: Date, maxAgeMs = FRESH_MS): boolean =>
   savedAt !== undefined && now.getTime() - savedAt <= maxAgeMs;
 
+/**
+ * The one rule for putting a Chit balance on screen without signing: a kept
+ * read still inside the fresh window, or nothing at all.
+ *
+ * Every surface that can show the figure asks this and only this. A page that
+ * reached for the cache directly would show a balance its neighbour was still
+ * gating, and a trader who sees the same number revealed in one place and
+ * withheld in another learns that the gate is theatre.
+ */
+export const showableBalance = (storage: Storage, wallet: string, now = new Date()): CachedBalance | undefined => {
+  const cached = loadCachedBalance(storage, wallet);
+  return cached && isFresh(cached.savedAt, now) ? cached : undefined;
+};
+
 /** Whether the chosen deposit size may actually be added right now. */
 export const canAddFunds = (state: BalanceState, selected: string | undefined): boolean => {
   if (!selected) return false;

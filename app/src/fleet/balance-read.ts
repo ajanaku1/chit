@@ -9,16 +9,14 @@
 
 import type { Hex } from "viem";
 
-import { clearCachedBalance, isFresh, loadCachedBalance, saveCachedBalance, type BalanceState, type CachedBalance } from "./balance.js";
+import { clearCachedBalance, saveCachedBalance, showableBalance, type BalanceState, type CachedBalance } from "./balance.js";
 import { signedFleetApi } from "./signed-request.js";
 
 export type ReadOptions = { force?: boolean; now?: Date };
 
 /** A recent balance read, or undefined: never signs, so it is safe while a page loads. */
-export const recentBalance = (wallet: Hex, now = new Date()): CachedBalance | undefined => {
-  const cached = loadCachedBalance(sessionStorage, wallet);
-  return cached && isFresh(cached.savedAt, now) ? cached : undefined;
-};
+export const recentBalance = (wallet: Hex, now = new Date()): CachedBalance | undefined =>
+  showableBalance(sessionStorage, wallet, now);
 
 /** The trader's balance, from a recent read unless forced. */
 export const readBalance = async (wallet: Hex, options: ReadOptions = {}): Promise<CachedBalance> => {

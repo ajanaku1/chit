@@ -193,7 +193,9 @@ class FleetDashboard {
       this.#draw = body.draw as DrawView | undefined;
       const state = body.state;
       this.#snapshot = { ...this.#snapshot, state };
-      if (this.#draw && this.#snapshot.budget.funded === "0") {
+      // Kept in step with the draw, so the next load paints today's figures
+      // before the status answers, not the ones from when the fleet was made.
+      if (this.#draw) {
         this.#snapshot.budget = { funded: this.#draw.amount, reserved: "0", spent: this.#draw.spent, unused: this.#draw.remaining };
         saveFleetSnapshot(this.#snapshot);
       }
@@ -205,14 +207,27 @@ class FleetDashboard {
       const recent = recentBalance(wallet);
       const recentHoldings = recentSigned(wallet, "holdings", holdingsBody);
       if (!asked && (!recent || !recentHoldings)) {
+        // A balance this page read earlier is withheld once its read is no
+        // longer recent, exactly as every other surface withholds it.
         if (recent) this.#showBalance(recent);
+        else this.#availableKnown = false;
         this.#render();
         if (recentHoldings) this.#renderPortfolio(recentHoldings);
-        // Beside the figures it unlocks: under the balance strip when it shows, else under the state.
+        // Beside the figures it unlocks: the wallet list when only holdings
+        // are hidden, else under the balance strip when it shows, else under the state.
         const strip = el("balance-strip");
-        const anchor = strip.hidden ? el("state-note") : (strip.querySelector<HTMLElement>("dl") ?? strip);
-        void askBeforeSigning(anchor, "Your balance and what your fleet holds are private to your wallet.", "Show them", "after")
-          .then(() => this.#refresh(true));
+        const anchor = recent
+          ? el("wallets-note")
+          : strip.hidden ? el("state-note") : (strip.querySelector<HTMLElement>("dl") ?? strip);
+        // Ask for what is actually hidden, never for what is already on screen.
+        // A balance showing from a recent read sitting above a button offering
+        // to reveal it is the same figure hidden and shown at once.
+        const ask = recent
+          ? { lead: "What your fleet holds is private to your wallet.", label: "Show holdings" }
+          : recentHoldings
+            ? { lead: "Your Chit balance is private to your wallet.", label: "Show my balance" }
+            : { lead: "Your balance and what your fleet holds are private to your wallet.", label: "Show them" };
+        void askBeforeSigning(anchor, ask.lead, ask.label, "after").then(() => this.#refresh(true));
         return;
       }
       dropSigningAsk();

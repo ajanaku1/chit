@@ -14,7 +14,6 @@ import {
   countFrame,
   depositOptions,
   exitView,
-  loadCachedBalance,
   receiptOutcome,
   toEth,
   TRADER_CAP,
@@ -289,16 +288,16 @@ const onWalletChanged = async (): Promise<void> => {
   }
   wallet = address;
   void renderWalletEth();
-  // Last known figures first, so nothing blanks while the fresh read waits on
-  // a signature; then the live read replaces them.
-  const cached = loadCachedBalance(sessionStorage, address);
-  if (cached) {
-    state = cached;
-    poolAddress = (cached.poolAddress as Hex | undefined) ?? poolAddress;
-    render(cached);
-  }
-  // Opening the page never opens the wallet: without a recent read, the trader asks for one.
-  if (!recentBalance(address)) {
+  // A recent read stands in, so nothing blanks while the live read waits on a
+  // signature. An older one does not: showing figures the page is about to ask
+  // permission to show is what made the gate look arbitrary.
+  const recent = recentBalance(address);
+  if (recent) {
+    state = recent;
+    poolAddress = (recent.poolAddress as Hex | undefined) ?? poolAddress;
+    render(recent);
+  } else {
+    // Opening the page never opens the wallet: without a recent read, the trader asks for one.
     await askBeforeSigning(el("balance-h"), "Your Chit balance is private to your wallet.", "Show my balance", "after");
     if (getConnectedWallet() !== address) return;
   }

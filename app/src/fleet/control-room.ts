@@ -119,7 +119,11 @@ export function buildControlRoomView(input: ControlRoomInput): ControlRoomView {
     // A depleted pooled campaign is not finished: its balance can refill it.
     availableActions: pooled && input.state === "Depleted" ? ["topUp", ...actions] : actions,
     terminal: TERMINAL_STATES.includes(input.state),
-    budget: input.budget,
+    // A pooled fleet's budget is its draw, read live; a kept copy goes stale
+    // the moment the fleet spends and then disagrees with the strip above it.
+    budget: input.draw
+      ? { funded: input.draw.amount, reserved: "0", spent: input.draw.spent, unused: input.draw.remaining }
+      : input.budget,
     ...(input.returnedEth === undefined ? {} : { returnedEth: input.returnedEth }),
     ...(input.draw === undefined ? {} : { draw: input.draw }),
     ...(input.balance === undefined ? {} : { balance: input.balance }),

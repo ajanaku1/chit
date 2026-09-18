@@ -7,7 +7,7 @@
  * keys and the backup never touch storage; sessionStorage clears with the tab.
  */
 
-import { freshPoolStatus, isFresh, loadCachedBalance, poolStatus } from "./balance.js";
+import { freshPoolStatus, loadCachedBalance, poolStatus, showableBalance } from "./balance.js";
 import { SetupError } from "./campaign-setup.js";
 import { hydrateLed } from "./led.js";
 import { revealOnEnter } from "./motion.js";
@@ -702,8 +702,8 @@ export const initHeaderWallet = (): void => {
     void showChainAndEth(address);
 
     // A recent read only: opening the menu never opens the wallet.
-    const cached = loadCachedBalance(sessionStorage, address);
-    if (cached && isFresh(cached.savedAt, new Date())) {
+    const cached = showableBalance(sessionStorage, address);
+    if (cached) {
       chitFigure.textContent = `${toEth(cached.available)} ETH`;
     } else {
       const link = make("a", undefined, "See balance");
