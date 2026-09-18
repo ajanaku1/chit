@@ -603,7 +603,7 @@ export class ChitBot {
       `<b>${esc(info.symbol)}</b> · <code>${token}</code> <i>(tap to copy)</i>`,
       `price: <code>${fmt(info.perEth, info.decimals, 2)} ${esc(info.symbol)}</code> per ETH · pool: <code>${eth(info.poolEth, 4)} ETH</code>`,
       ...(scan && this.#d.orus ? [`orus: ${orusLine(scan, this.#d.orus.link(token))}`] : []),
-      ...(hey ? [`hey: ${heyLine(hey)}`] : []),
+      ...(hey ? [`hey research lab: ${heyLine(hey)}`] : []),
       `you hold: <code>${fmt(balance, info.decimals, 4)} ${esc(info.symbol)}</code> · wallet: <code>${eth(ethBal)} ETH</code>`,
       "",
       info.hooked

@@ -1,5 +1,5 @@
 /**
- * HEY on the token card: the builder line. HEY Research (heyresearch.xyz)
+ * Hey Research Lab on the token card: the builder line. HEY (heyresearch.xyz)
  * records public, source-backed activity behind a token's project on
  * Robinhood Chain: commits, releases, ships, whether the builder is
  * verified, and a status ("Shipping", "Still Building", ...). The bot asks

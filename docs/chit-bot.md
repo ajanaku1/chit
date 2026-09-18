@@ -41,7 +41,7 @@ balance: 0.02 ETH
   per token, so refresh spam stays inside their quota (30 a minute). A null
   from Orus reads as "unknown", never as "safe". Orus scans Robinhood Chain
   mainnet only, so on testnet the line is never asked for and never shown.
-- **See on HEY**: under the Orus line, the builder line from HEY Research
+- **Hey Research Lab**: under the Orus line, the builder line from Hey Research Lab
   (`bot-hey.ts`): the project's status ("shipping", "still building"), commits
   and releases in 30 days, "verified builder", then "see on HEY" linking to the
   project's page there. Their rules kept: `found:false` prints nothing, a missing
