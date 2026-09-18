@@ -1904,3 +1904,19 @@ production without anyone noticing. The Vercel project is now linked to
 `.vercelignore` keeps recordings and the build contract out of the upload,
 and `vercel.json` still runs `scripts/assemble-site.mjs`. `vercel --prod` by
 hand still works and is now the exception, not the way.
+
+## The Chit balance is hidden or shown the same way on every page (2026-09-19)
+
+A trader filmed it: the Control Room asked for a signature to show their
+balance while the header menu showed it, and the Balance page showed it with
+no ask at all. "If it's hidden, let's hide it in all. If it's displayed, let
+it be displayed." One rule now decides, `showableBalance`: a signed read kept
+in this tab and still inside the ten-minute window may show without signing;
+anything older shows nothing and the page asks. The wallet menu, the Balance
+page and the Control Room all ask it and only it. The Balance page no longer
+paints an expired read above "Show my balance". The Control Room no longer
+keeps a balance it read once after that read ages out or a top up clears it,
+and its ask names only what is hidden: "Show holdings" sits by the wallet
+list it reveals, not under the balance. Its gas budget card now reads the
+fleet's live draw, so it no longer says 0 spent under a strip that says
+0.001211.
