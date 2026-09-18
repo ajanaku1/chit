@@ -44,6 +44,14 @@
  *                                4663 only, so on testnet the line shows for
  *                                nothing and costs nothing
  *   ORUS_API_BASE                default https://www.orusagent.xyz
+ *   HEY_API_KEY                  HEY Research key (heyresearch.xyz/account) for
+ *                                the builder line on the token card: status,
+ *                                commits, releases, verified builder, "see on
+ *                                HEY". Optional: without it the bot asks
+ *                                anonymously (120 a minute). HEY indexes 4663
+ *                                only, so on testnet nothing is asked or shown
+ *   BOT_HEY_OFF                  1 hides the HEY line and stops the asks
+ *   HEY_API_BASE                 default https://heyresearch.xyz
  *   FLEET_CHAIN_ID, FLEET_RPC_URL, FLEET_POOL_ADDRESS, FLEET_TOKEN_ALLOWLIST
  *                                as for the service; the first allowlisted
  *                                token is the one the bot trades
@@ -58,6 +66,7 @@ import { isAddress, type Address } from "./types.js";
 import { createRelayBridge } from "./bot-bridge.js";
 import { createShareRenderer } from "./bot-share.js";
 import { createBotChain } from "./bot-chain.js";
+import { createHeyScanner } from "./bot-hey.js";
 import { createOrusScanner } from "./bot-orus.js";
 import { createFetchFleetApi } from "./bot-fleet.js";
 import { ChitBot } from "./bot-handlers.js";
@@ -151,6 +160,7 @@ const build = (overrides: BotOverrides = {}): ChitBot => {
     // Share cards are drawn from landing/public/bot (the plate and the fonts); BOT_SHARE_OFF=1 hides the 📸 button.
     ...(process.env.BOT_SHARE_OFF === "1" ? {} : { share: createShareRenderer(process.env.BOT_ASSET_DIR || undefined) }),
     ...(process.env.ORUS_PARTNER_API_KEY ? { orus: createOrusScanner({ apiKey: process.env.ORUS_PARTNER_API_KEY, chainId, ...(process.env.ORUS_API_BASE ? { baseUrl: process.env.ORUS_API_BASE } : {}) }) } : {}),
+    ...(process.env.BOT_HEY_OFF === "1" ? {} : { hey: createHeyScanner({ chainId, ...(process.env.HEY_API_KEY ? { apiKey: process.env.HEY_API_KEY } : {}), ...(process.env.HEY_API_BASE ? { baseUrl: process.env.HEY_API_BASE } : {}) }) }),
     keySecret: keySecret!,
     botUsername: username!,
     ...(faucetWei !== undefined ? { faucetWei } : {}),

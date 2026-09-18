@@ -41,6 +41,14 @@ balance: 0.02 ETH
   per token, so refresh spam stays inside their quota (30 a minute). A null
   from Orus reads as "unknown", never as "safe". Orus scans Robinhood Chain
   mainnet only, so on testnet the line is never asked for and never shown.
+- **See on HEY**: under the Orus line, the builder line from HEY Research
+  (`bot-hey.ts`): the project's status ("shipping", "still building"), commits
+  and releases in 30 days, "verified builder", then "see on HEY" linking to the
+  project's page there. Their rules kept: `found:false` prints nothing, a missing
+  field is skipped (unknown, never zero). Asked alongside the chain reads, same
+  patience and cache as Orus; anonymous (120 a minute) unless `HEY_API_KEY`
+  is set, `BOT_HEY_OFF=1` hides it. HEY indexes 4663 only, so testnet shows
+  nothing.
 - **Buy**: your three presets, or a custom amount through the reply field.
   Quoted from the pool with fee and price impact (the exact-in math, matched
   to the wei on a fork), a slippage guard from your settings, then the real

@@ -14,6 +14,7 @@
  *   ORUS_API_BASE          default https://www.orusagent.xyz
  */
 
+import { createPartnerScanner } from "./bot-partner.js";
 import type { Address } from "./types.js";
 
 export type OrusScan = {
@@ -102,44 +103,27 @@ export const orusLine = (scan: OrusScan, link: string): string => {
 
 export const createOrusScanner = (config: OrusConfig): OrusScanner => {
   const base = (config.baseUrl ?? DEFAULT_BASE).replace(/\/$/, "");
-  const timeoutMs = config.timeoutMs ?? 1_500;
-  const cacheMs = config.cacheMs ?? 60_000;
   const doFetch = config.fetch ?? fetch;
-  const now = config.now ?? (() => Date.now());
-  const kept = new Map<string, { until: number; scan: OrusScan | undefined }>();
-
-  const ask = async (token: Address): Promise<OrusScan | undefined> => {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
+  const inner = createPartnerScanner<OrusScan>({
+    name: "orus",
+    chainId: config.chainId,
+    supportedChains: [...SUPPORTED_CHAINS],
+    ...(config.timeoutMs !== undefined ? { timeoutMs: config.timeoutMs } : {}),
+    ...(config.cacheMs !== undefined ? { cacheMs: config.cacheMs } : {}),
+    ...(config.now ? { now: config.now } : {}),
+    ask: async (token, signal) => {
       const url = `${base}/api/v1/scan?chainId=${config.chainId}&token=${token.toLowerCase()}&include=none`;
-      const r = await doFetch(url, { headers: { authorization: `Bearer ${config.apiKey}`, accept: "application/json" }, signal: controller.signal });
+      const r = await doFetch(url, { headers: { authorization: `Bearer ${config.apiKey}`, accept: "application/json" }, signal });
       if (!r.ok) {
         // 404 is a token Orus has not indexed: silence, not an error. The rest is worth a line in the log.
         if (r.status !== 404) console.warn(`orus scan ${r.status} for ${token}`);
         return undefined;
       }
       return readScan(await r.json());
-    } catch (error) {
-      console.warn(`orus scan: ${error instanceof Error ? error.message.split("\n")[0] : String(error)}`);
-      return undefined;
-    } finally {
-      clearTimeout(timer);
-    }
-  };
-
-  return {
-    async scan(token) {
-      if (!SUPPORTED_CHAINS.has(config.chainId)) return undefined;
-      const key = token.toLowerCase();
-      const hit = kept.get(key);
-      if (hit && hit.until > now()) return hit.scan;
-      const scan = await ask(token);
-      kept.set(key, { until: now() + cacheMs, scan });
-      // A map that only grows is a leak on a long-lived process; forget what is stale when it gets big.
-      if (kept.size > 500) for (const [k, v] of kept) if (v.until <= now()) kept.delete(k);
-      return scan;
     },
+  });
+  return {
+    scan: (token) => inner.scan(token),
     link(token) {
       // Orus's token page, /token/<chainId>/<address> (their words, 17 September: simple for now, being worked on).
       return `${base}/token/${config.chainId}/${token.toLowerCase()}`;
