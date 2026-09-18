@@ -8,6 +8,11 @@
  * 250k gas at 0.01 gwei); it holds nothing else and can do nothing else.
  * Without the two variables the script reads the contract, prints, and
  * exits 0. Plain node plus viem (installed by the workflow).
+ *
+ * With TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID a landed buy is told to the
+ * group as one line, the figures read from the BoughtAndBurned event in the
+ * receipt; the host's keeper route (api/buyback/keeper.js) posts the same
+ * line, so whichever clock lands the buy, the group hears it once.
  */
 
 import { createPublicClient, createWalletClient, defineChain, formatEther, http, parseAbi } from "viem";
@@ -16,6 +21,11 @@ import { privateKeyToAccount } from "viem/accounts";
 const RPC = process.env.ROBINHOOD_MAINNET_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
 const address = process.env.BUYBACK_ADDRESS;
 const key = process.env.BUYBACK_KEEPER_KEY;
+const EXPLORER = process.env.ROBINHOOD_EXPLORER ?? "https://robinhoodchain.blockscout.com";
+const tgToken = process.env.TELEGRAM_BOT_TOKEN;
+const tgChat = process.env.BUYBACK_CHAT_ID ?? process.env.TELEGRAM_CHAT_ID;
+/** BoughtAndBurned(address indexed caller, uint256 ethIn, uint256 tokensBought, uint256 tokensBurned, uint256 totalSpent, uint256 totalBurned) */
+const BURNED_TOPIC = "0xc70d0935d3f7a32b837a0281c2344f8c8cd5f254c9fd80e26e291e197c9ede0f";
 
 const ABI = parseAbi([
   "function dueAt() view returns (uint256)",
@@ -53,3 +63,20 @@ const hash = await wallet.writeContract({ address, abi: ABI, functionName: "buyA
 const receipt = await publicClient.waitForTransactionReceipt({ hash, timeout: 120_000 });
 if (receipt.status !== "success") { console.error(`buyAndBurn reverted: ${hash}`); process.exit(1); }
 console.log(`bought and burned: ${hash}; now ${await read("buys")} buys, ${formatEther(await read("totalBurned"))} CHIT burned in all`);
+
+// The group hears every buy: one line, figures from the event, links to the tx and the burn page.
+const log = receipt.logs.find((l) => l.address.toLowerCase() === address.toLowerCase() && l.topics[0] === BURNED_TOPIC);
+if (log && tgToken && tgChat) {
+  const [ethIn, , burned, totalSpent, totalBurned] = log.data.slice(2).match(/.{64}/g).map((w) => BigInt("0x" + w));
+  const chit = (wei) => Math.round(Number(wei) / 1e18).toLocaleString("en-US");
+  const ethShort = (wei) => (Number(wei) / 1e18).toLocaleString("en-US", { maximumFractionDigits: 4 });
+  const text = [
+    `🔥 buy #${Number(buys) + 1} · <b>${ethShort(ethIn)} ETH</b> bought and burned <b>${chit(burned)} $CHIT</b>`,
+    `total: <b>${chit(totalBurned)} $CHIT</b> burned, ${ethShort(totalSpent)} ETH spent · next buy in an hour`,
+    `<a href="${EXPLORER}/tx/${hash}">tx</a> · <a href="https://chit.tools/burn">chit.tools/burn</a>`,
+  ].join(String.fromCharCode(10));
+  const r = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: tgChat, text, parse_mode: "HTML", disable_web_page_preview: true }) });
+  console.log(r.ok ? "told the group" : `telegram answered ${r.status}: ${(await r.text()).slice(0, 200)}`);
+} else if (log) {
+  console.log("no TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID: the group is not told; the daily post still is");
+}
