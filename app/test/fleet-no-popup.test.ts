@@ -117,9 +117,47 @@ test("the Balance page asks before it signs when it has nothing recent to show",
   const page = await source("balance-page.ts");
   const onWallet = /const onWalletChanged = async[\s\S]*?\n\};/.exec(page)?.[0] ?? "";
   const ask = onWallet.indexOf("askBeforeSigning(");
-  assert.ok(ask > 0 && onWallet.indexOf("if (!recentBalance(address))") < ask, "no ask guarded by a recent read");
+  assert.ok(ask > 0 && onWallet.indexOf("const recent = recentBalance(address);") < ask, "no ask guarded by a recent read");
   assert.ok(ask < onWallet.indexOf("await refresh()"), "the page signs before it asks");
   assert.match(onWallet, /renderWalletEth\(\)/, "the wallet's own ETH, which needs no signature, waits for the ask");
+  // Figures on screen above a button offering to reveal them is the gate
+  // contradicting itself: either the read is recent enough to show, or it is not.
+  assert.doesNotMatch(onWallet, /loadCachedBalance\(/, "a read too old to show without signing is rendered anyway");
+  assert.match(onWallet, /if \(recent\) \{[\s\S]*\} else \{[\s\S]*askBeforeSigning\(/, "the figures and the ask are not exclusive branches");
+});
+
+/**
+ * Put to us as: why is it hidden on some pages and not on another page? The
+ * Control Room gated the balance behind a signature while the header menu had
+ * it on show, because each surface decided for itself what "recent" meant.
+ */
+test("only the shared freshness rule decides a Chit balance may show without signing", async () => {
+  for (const name of ["balance-page.ts", "fleet-dashboard.ts", "fleet-page.ts", "trade-page.ts"]) {
+    assert.doesNotMatch(await source(name), /loadCachedBalance\(/, `${name} reaches around the freshness rule`);
+  }
+  assert.match(await source("fleet/balance-read.ts"), /showableBalance\(sessionStorage, wallet, now\)/, "recentBalance keeps its own copy of the rule");
+  assert.match(await source("fleet/page-shared.ts"), /showableBalance\(sessionStorage, address\)/, "the wallet menu keeps its own copy of the rule");
+});
+
+test("the Control Room asks only for the figures it is actually hiding", async () => {
+  const page = await source("fleet-dashboard.ts");
+  const refresh = method(page, /async #refresh\(asked = false\)/);
+  assert.match(refresh, /const ask = recent\b/, "the wording ignores what is already on screen");
+  assert.match(refresh, /"Show holdings"/, "a balance already showing is re-gated along with the holdings");
+  assert.match(refresh, /"Show my balance"/, "holdings already read are re-gated along with the balance");
+  assert.match(refresh, /askBeforeSigning\(anchor, ask\.lead, ask\.label, "after"\)/, "the ask does not follow what is missing");
+});
+
+/**
+ * The same complaint, from the other side: the strip kept a balance it had
+ * read once, so after the read aged out, or a top up cleared it, the figure
+ * stayed on screen above "Your balance ... is private. Show them".
+ */
+test("the Control Room never keeps a balance on screen while it asks for it", async () => {
+  const page = await source("fleet-dashboard.ts");
+  const refresh = method(page, /async #refresh\(asked = false\)/);
+  assert.match(refresh, /if \(recent\) this\.#showBalance\(recent\);\s*else this\.#availableKnown = false;/, "a balance read before the window closed stays up beside the ask for it");
+  assert.match(refresh, /const anchor = recent\s*\?\s*el\("wallets-note"\)/, "the ask for holdings sits under the balance, which it does not unlock");
 });
 
 test("the Trade page asks before it signs for fleets or holdings, and its polls never open the wallet alone", async () => {

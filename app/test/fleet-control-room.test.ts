@@ -92,6 +92,17 @@ test("a pooled campaign reports its draw rather than an escrow budget", () => {
   assert.equal(view.balance?.available, "80000000000000000");
 });
 
+/**
+ * The Control Room showed "Spent 0 ETH, Left 0.005 ETH" in the gas budget
+ * right under a strip reading 0.001211 spent and 0.003788 left: the budget was
+ * copied from the draw once and never again. A pooled fleet's budget is its draw.
+ */
+test("a pooled campaign's gas budget is its live draw, so the two cards agree", () => {
+  const stale = { funded: draw.amount, reserved: "0", spent: "0", unused: draw.amount };
+  const view = buildControlRoomView(pooled({ budget: stale }));
+  assert.deepEqual(view.budget, { funded: draw.amount, reserved: "0", spent: draw.spent, unused: draw.remaining });
+});
+
 test("closing a pooled campaign promises the balance, not a refund", () => {
   const view = buildControlRoomView(pooled({ state: "Closed", creditedToBalance: "15000000000000000" }));
   assert.equal(view.creditedToBalance, "15000000000000000");

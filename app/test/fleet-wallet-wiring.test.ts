@@ -171,7 +171,7 @@ test("the wallet menu shows the wallet app, the network and the balances, and si
   assert.match(menu, /chainIdOf\(eth\)/, "the menu does not check the wallet's network");
   assert.match(menu, /ensureRobinhoodTestnet\(eth\)/, "a wallet on the wrong network cannot be switched from the menu");
   assert.match(menu, /walletEth\(address\)/, "the wallet's own ETH is not shown");
-  assert.match(menu, /isFresh\(cached\.savedAt/, "the Chit balance is shown without checking the read is recent");
+  assert.match(menu, /showableBalance\(sessionStorage, address\)/, "the Chit balance is shown without the one freshness rule the other surfaces use");
   assert.match(menu, /switchWallet\.hidden = installed\.size < 2/, "Switch wallet shows with only one wallet installed");
   assert.match(menu, /walletMark\(address\)/, "the wallet has no mark to recognise it by");
 });

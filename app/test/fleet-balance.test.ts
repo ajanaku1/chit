@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { FRESH_MS, canAddFunds, clearCachedBalance, depositOptions, exitView, isFresh, loadCachedBalance, receiptOutcome, saveCachedBalance, toEth, withdrawIssue, type BalanceState } from "../src/fleet/balance.js";
+import { FRESH_MS, canAddFunds, clearCachedBalance, depositOptions, exitView, isFresh, loadCachedBalance, receiptOutcome, saveCachedBalance, showableBalance, toEth, withdrawIssue, type BalanceState } from "../src/fleet/balance.js";
 
 /**
  * The Balance page decides what a trader is offered before any transaction is
@@ -131,6 +131,25 @@ test("the last known balance is kept per wallet and never shown to another", () 
 test("a corrupt cache is ignored rather than crashing the page", () => {
   const storage = { getItem: () => "{not json", setItem: () => undefined };
   assert.equal(loadCachedBalance(storage, "0x00000000000000000000000000000000000a11ce"), undefined);
+});
+
+/**
+ * One rule, asked by every surface. A figure the Control Room withholds until
+ * the trader signs must not be sitting in the header menu meanwhile, and the
+ * only thing allowed to decide either way is how old the read is.
+ */
+test("a kept balance shows without signing only while the read is fresh", () => {
+  const store = new Map<string, string>();
+  const storage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+  const alice = "0x00000000000000000000000000000000000a11ce";
+  const bob = "0x00000000000000000000000000000000000b0b00";
+  const at = new Date("2026-01-01T00:00:00Z");
+  assert.equal(showableBalance(storage, alice, at), undefined, "nothing was kept, yet something is shown");
+  saveCachedBalance(storage, alice, state({ available: eth("0.05") }), at);
+  assert.equal(showableBalance(storage, alice, at)?.available, eth("0.05"));
+  assert.equal(showableBalance(storage, alice, new Date(at.getTime() + FRESH_MS))?.available, eth("0.05"), "a read on the edge of the window is withheld");
+  assert.equal(showableBalance(storage, alice, new Date(at.getTime() + FRESH_MS + 1)), undefined, "a read past the window is shown anyway");
+  assert.equal(showableBalance(storage, bob, at), undefined, "one trader's figures are another's");
 });
 
 test("the page shows the wallet's own ETH beside the Chit balance", async () => {
