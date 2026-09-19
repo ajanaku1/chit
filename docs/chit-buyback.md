@@ -115,6 +115,9 @@ Run it with `npm run test:fork:buyback`.
     `TELEGRAM_CHAT_ID`) on the host; the GitHub script posts the same line
     from its secrets, so the group hears each buy once, from whichever clock
     landed it.
+    A buy that carries the total across a round number (1M, 5M, 10M, 25M,
+    50M, 100M, 250M, 500M CHIT) gets a second, bigger line from the same
+    clock; the milestones are one list in both keepers.
   - `.github/workflows/buyback-keeper.yml`, hourly, the backup. GitHub's
     scheduler skips slots under load (16 September: three buys in nine
     hours), which is why the pinger is the primary. Missed hours are gone

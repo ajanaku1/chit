@@ -57,6 +57,24 @@ export const burnLine = (buyNo, ev, hash) =>
     `<a href="${EXPLORER}/tx/${hash}">tx</a> · <a href="https://chit.tools/burn">chit.tools/burn</a>`,
   ].join("\n");
 
+/**
+ * Round numbers worth their own line in the group: whole millions to ten,
+ * then the steps a chart would mark, in CHIT. A buy that carries the total
+ * across one of these (the total before it was under, after it is not) gets
+ * a second, bigger message; a buy that lands exactly on one counts too.
+ */
+export const MILESTONES = [1, 5, 10, 25, 50, 100, 250, 500].map((m) => BigInt(m) * 10n ** 24n);
+export const crossedMilestone = (ev) => MILESTONES.find((m) => ev.totalBurned - ev.burned < m && ev.totalBurned >= m);
+export const milestoneLine = (m, ev) => {
+  const millions = Number(m / 10n ** 24n);
+  const pct = (Number(ev.totalBurned / 10n ** 18n) / 1e9 * 100).toFixed(2);
+  return [
+    `🔥🔥🔥 <b>${millions}M $CHIT burned.</b>`,
+    `${chit(ev.totalBurned)} $CHIT bought on the pool and sent to the dead address, ${ethShort(ev.totalSpent)} ETH spent, ${pct}% of the minted billion gone for good.`,
+    `nobody pressed a button: a contract with no owner and no withdraw did it, once an hour. next stop ${millions < 10 ? 10 : millions * 2}M. <a href="https://chit.tools/burn">chit.tools/burn</a>`,
+  ].join("\n");
+};
+
 /** Reads the BoughtAndBurned event out of the receipt; undefined when the receipt carries none. */
 export const burnedEvent = (receipt) => {
   const log = receipt.logs.find((l) => l.address.toLowerCase() === BUYBACK.toLowerCase() && l.topics[0] === BURNED_TOPIC);
@@ -110,6 +128,8 @@ async function keep() {
       status = receipt.status === "success" ? "burned" : "reverted";
       event = status === "burned" ? burnedEvent(receipt) : undefined;
       if (event) posted = await tellGroup(burnLine(Number(buys) + 1, event, hash));
+      const milestone = event && crossedMilestone(event);
+      if (milestone) await tellGroup(milestoneLine(milestone, event));
     } catch {
       status = "pending";
     }
