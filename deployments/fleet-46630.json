@@ -115,5 +115,11 @@
       },
       "deployedAt": "2026-09-08T21:34:53.299Z"
     }
+  },
+  "sessionKeys": {
+    "factory": "0xe6abb3aba7625c215f805ddc762e1148860796be",
+    "deployTx": "0x057fefee2ecec166f14cf1822789842054df019cd9fd73d086c3492086076c28",
+    "deployer": "0x6c4bdD9d9ec762d9ca86e91CAC1Ec87A98059254",
+    "deployedAt": "2026-09-19T09:46:07.691Z"
   }
 }

@@ -1,1 +1,4 @@
-{ "chainId": 46630, "sessionFactory": "" }
+{
+  "chainId": 46630,
+  "sessionFactory": "0xe6abb3aba7625c215f805ddc762e1148860796be"
+}
