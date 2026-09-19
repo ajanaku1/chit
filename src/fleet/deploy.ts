@@ -107,7 +107,8 @@ export const deployFleet = async ({ wallet, publicClient, operator, admin, netwo
   const sessionPolicy = await deploy("FleetSessionPolicy", [operator, operator]);
   const accountFactory = await deploy("FleetAccountFactory", [operator]);
   const campaignEscrow = await deploy("FleetCampaignEscrow", [operator]);
-  const paymaster = await deploy("FleetPaymaster", [ROBINHOOD_TESTNET_ENTRYPOINT, operator, campaignEscrow.address]);
+  // The fleet's own paymaster charges no fee; the sponsorship product's is deployed separately, with one.
+  const paymaster = await deploy("FleetPaymaster", [ROBINHOOD_TESTNET_ENTRYPOINT, operator, campaignEscrow.address, 0]);
 
   // Authorize the paymaster to settle budget against the escrow (set-once).
   const escrowArtifact = await loadArtifact("FleetCampaignEscrow");

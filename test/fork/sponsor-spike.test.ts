@@ -53,7 +53,7 @@ describe("Gas sponsorship spike (46630 fork)", () => {
     assert.equal(boundEntryPoint.toLowerCase(), ENTRYPOINT_V07, "the live SimpleAccount factory serves EntryPoint v0.7 accounts");
 
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
-    const paymaster = await viem.deployContract("FleetPaymaster", [ENTRYPOINT_V07, operator!.account.address, escrow.address]);
+    const paymaster = await viem.deployContract("FleetPaymaster", [ENTRYPOINT_V07, operator!.account.address, escrow.address, 0]);
     await escrow.write.setSettler([paymaster.address]);
     await escrow.write.registerCampaign([SPONSOR, sponsor!.account.address]);
     await escrow.write.fund([SPONSOR], { account: sponsor!.account, value: parseEther("0.01") });
