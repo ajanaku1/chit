@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#171513" />
+    <meta
+      name="description"
+      content="Session keys: give your bot a bounded key with a kill switch instead of your wallet. One contract, your rules, revoke in one transaction."
+    />
+    <title>Chit · Session keys</title>
+    <link rel="icon" href="./favicon.svg" />
+    <link rel="stylesheet" href="./fleet.css" />
+  </head>
+  <body class="fleet-body">
+    <a class="skip-link" href="#sessions">Skip to your sessions</a>
+    <div class="fleet-shell">
+      <header class="masthead">
+        <a class="brand-lockup" href="/" aria-label="Chit home">
+          <img src="./logo.svg" alt="" width="28" height="28" />
+          <span>Chit</span>
+        </a>
+        <nav class="nav" id="fleet-nav" aria-label="Fleet pages">
+          <a href="./balance.html">Balance</a>
+          <a href="./fleet.html">Set up</a>
+          <a href="./trade.html">Trade</a>
+          <a href="./fleet-dashboard.html">Control Room</a>
+          <a href="./fleet-privacy.html">Boundary</a>
+          <a href="./sessions.html" aria-current="page">Sessions</a>
+        </nav>
+        <button id="hdr-wallet" type="button" class="wallet-btn" data-state="disconnected" aria-label="Connect wallet">Connect</button>
+        <button class="burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="fleet-nav"><span></span><span></span><span></span></button>
+        <div class="contract-row">
+          <span class="contract-row__label">CA</span>
+          <code id="contract-address">0xD523A627030509021cC39B6d7C8543417D3E50D8</code>
+          <button id="copy-contract-address" type="button" aria-label="Copy contract address">Copy</button>
+          <span id="copy-contract-status" class="sr-only" role="status" aria-live="polite"></span>
+        </div>
+      </header>
+      <p id="pool-status" class="pill" role="status" hidden><span class="pill__dot" aria-hidden="true"></span><span class="pill__text"></span></p>
+
+      <main id="sessions" class="wizard">
+        <div id="status-banner" class="status-banner" role="status" aria-live="polite" hidden></div>
+
+        <section class="wstep card-glass" aria-labelledby="sessions-h" data-reveal>
+          <p class="kicker">Session keys</p>
+          <h1 id="sessions-h">Give your bot a key that can only do what you said.</h1>
+          <p class="lead">
+            Anyone running a bot today hands it their wallet key. Here you keep the wallet. You fund a
+            small account of your own, and you hand the bot a session: which contract, which function,
+            how much ETH per trade and in total, until when. Pause it or revoke it from your wallet in
+            one transaction. Chit is not in the loop: no operator, no service, nothing of yours held.
+          </p>
+          <dl class="summary grid">
+            <div><dt>Your account</dt><dd id="account-address">—</dd></div>
+            <div><dt>ETH in it</dt><dd id="account-eth">—</dd></div>
+            <div><dt>Status</dt><dd id="account-state">—</dd></div>
+            <div><dt>Figures</dt><dd><button id="account-refresh" type="button" class="ghost">Refresh</button></dd></div>
+          </dl>
+          <p id="account-note" class="fineprint" role="status" aria-live="polite">Connect your wallet to see your account.</p>
+          <div class="wnav">
+            <button id="account-create" type="button" class="primary" disabled>Create my account</button>
+          </div>
+        </section>
+
+        <section class="wstep" aria-labelledby="fund-h" data-reveal>
+          <h2 id="fund-h">Fund it</h2>
+          <p class="lead">ETH goes from your wallet to your account. Only your sessions can spend it, only within their rules; you take the rest back any time.</p>
+          <form id="fund-form" class="withdraw-form">
+            <div class="field">
+              <label for="fund-amount">Amount (ETH)</label>
+              <input id="fund-amount" name="amount" type="text" inputmode="decimal" value="0.01" />
+            </div>
+            <p id="fund-note" class="fineprint" role="status" aria-live="polite"></p>
+            <button id="fund-submit" type="submit" class="primary" disabled>Send to my account</button>
+          </form>
+          <form id="withdraw-form" class="withdraw-form">
+            <div class="field">
+              <label for="withdraw-amount">Take back (ETH)</label>
+              <input id="withdraw-amount" name="amount" type="text" inputmode="decimal" value="0.01" />
+            </div>
+            <p id="withdraw-note" class="fineprint" role="status" aria-live="polite"></p>
+            <button id="withdraw-submit" type="submit" class="ghost" disabled>Withdraw to my wallet</button>
+          </form>
+        </section>
+
+        <section class="wstep" aria-labelledby="grant-h" data-reveal>
+          <h2 id="grant-h">Grant a session</h2>
+          <p class="lead">The bot's key is the address its process signs with. It pays its own gas; your account pays the trades.</p>
+          <form id="grant-form" class="withdraw-form">
+            <div class="field">
+              <label for="grant-key">The bot's key</label>
+              <input id="grant-key" name="key" type="text" placeholder="0x…" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="grant-target">Contract it may call</label>
+              <input id="grant-target" name="target" type="text" placeholder="0x… (the Universal Router is filled in)" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="grant-selector">Function (4-byte selector, blank for any)</label>
+              <input id="grant-selector" name="selector" type="text" placeholder="0x3593564c" autocomplete="off" />
+            </div>
+            <div class="field">
+              <label for="grant-per-call">Max ETH per call</label>
+              <input id="grant-per-call" name="perCall" type="text" inputmode="decimal" value="0.001" />
+            </div>
+            <div class="field">
+              <label for="grant-cap">Max ETH in total</label>
+              <input id="grant-cap" name="cap" type="text" inputmode="decimal" value="0.005" />
+            </div>
+            <div class="field">
+              <label for="grant-hours">Valid for (hours)</label>
+              <input id="grant-hours" name="hours" type="text" inputmode="numeric" value="24" />
+            </div>
+            <p id="grant-note" class="fineprint" role="status" aria-live="polite"></p>
+            <button id="grant-submit" type="submit" class="primary" disabled>Grant</button>
+          </form>
+        </section>
+
+        <section class="wstep" aria-labelledby="list-h" data-reveal>
+          <h2 id="list-h">Your sessions</h2>
+          <p class="lead small">Read from the chain, never from us. Pause holds a key; revoke ends it for good.</p>
+          <div id="session-list" class="control-list"></div>
+          <p id="list-empty" class="fineprint">No sessions yet on this device. A session granted elsewhere shows up once you paste its key above and press Refresh.</p>
+        </section>
+
+        <section class="wstep card-warm" aria-labelledby="bot-h" data-reveal>
+          <h2 id="bot-h">For your bot</h2>
+          <p class="lead small">One call. The account executes it with its own ETH; the bot's key only signs.</p>
+          <pre class="hint" id="bot-snippet">account.execute(target, valueWei, calldata)   // from the key you granted
+canExecute(key, target, selector, value)      // ask first, it says why not</pre>
+          <p class="fineprint">The SDK is <code>src/fleet/session-keys.ts</code> in the repo: the ABI, the encoders, and <code>canExecute</code> so a bot never pays gas for a refusal.</p>
+        </section>
+      </main>
+
+      <footer class="fleet-foot">
+        <p>Testnet demonstration on Robinhood Chain. Test ETH and a test token only, no real money.</p>
+        <p class="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
+      </footer>
+    </div>
+    <script type="module" src="./sessions-page.js"></script>
+  </body>
+</html>

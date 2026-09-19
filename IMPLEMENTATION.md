@@ -1920,3 +1920,50 @@ and its ask names only what is hidden: "Show holdings" sits by the wallet
 list it reveals, not under the balance. Its gas budget card now reads the
 fleet's live draw, so it no longer says 0 spent under a strip that says
 0.001211.
+
+## Session keys, built (2026-09-16, advisor, branch feat/session-keys)
+
+The roadmap's "session keys as a product": a bounded key with a kill switch,
+for anyone running a bot. `SessionAccount` is a smart account the owner
+funds; `grant` hands a key up to eight (target, selector) rules, a value cap
+per call and in total, and an expiry; the key calls `execute` from its own
+address and pays its own gas while the account's ETH pays the call; the
+owner pauses, resumes, revokes (terminal), and withdraws ETH and tokens on a
+path no session can reach. `SessionAccountFactory` deploys one per (owner,
+salt) at an address known in advance. No operator, no fee, no Chit address
+anywhere in it: it is the primitive under the non-custodial trading bot, and
+a fee, if ever, is a new contract.
+
+Thirteen Solidity tests including a fuzz that spend never passes a cap; a
+fork test on 46630 where a bot buys through the live Uniswap v4 router from
+its session, is refused outside it, is revoked, and the owner takes the
+tokens and the ETH back. `src/fleet/session-keys.ts` is the SDK (ABI,
+encoders, `canExecute`); `app/sessions.html` is the page, all transactions
+from the wallet straight to the contracts and every figure read from the
+chain, in the app's own look and nav; `scripts/session-deploy-live.ts`
+deploys the factory and writes `app/session-target.json`, which the page
+reads. `docs/session-keys.md` is the whole product on one page.
+
+Two things seen on the way. `app/build.mjs` resolves entry points through
+`URL.pathname`, which esbuild cannot open on Windows ("/D:/…"), so the app
+build only runs on Linux and Vercel; the page was bundled and rendered
+directly to check it. And the app test that stages a build through a
+symlink fails on Windows with EPERM for the same reason; both predate this
+branch.
+
+## The session-keys demo, told by the bot (2026-09-16, advisor, branch feat/session-keys)
+
+`scripts/session-demo-live.ts` runs the whole session-keys story on testnet
+and posts it to the group with every hash: a throwaway owner creates an
+account, funds it, hands a fresh bot key a session (router only, 0.0005 a
+trade, 0.001 in all, an hour), the bot buys FLEET through the live router
+from its own key, is refused without gas when it asks to move the tokens or
+to trade above its limit, gets its key pulled, and the owner takes the
+tokens and the ETH back. The bot key is derived from the demo key and the
+run's moment, so every run is a new key, since a revoked one is never
+granted again. `.github/workflows/session-demo.yml` runs it by hand and on
+Sundays; the first run deploys the factory (no owner, so the demo key may)
+and commits the record. Rehearsed on a fork of 46630 against the real venue:
+0.198 FLEET for 0.0003 ETH, then revoked. Needs one secret nobody has yet,
+`DEMO_PRIVATE_KEY`, a throwaway with about 0.05 test ETH; never the
+operator's.

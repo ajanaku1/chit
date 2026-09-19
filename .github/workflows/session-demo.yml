@@ -1,0 +1,69 @@
+name: Session keys demo, live in the group
+
+# Runs the session-keys story on Robinhood Chain testnet and posts it to the
+# community group with every transaction hash: a throwaway owner hands a bot
+# a bounded key, the bot buys through the real Uniswap router, is refused
+# outside its rules, gets its key pulled, and the owner takes everything back.
+# See scripts/session-demo-live.ts.
+#
+# Secrets, under Settings > Secrets and variables > Actions:
+#   DEMO_PRIVATE_KEY     a fresh throwaway key funded with about 0.05 test
+#                        ETH. Never the operator's key. Any wallet can make
+#                        one; the address only ever holds test ETH.
+#   TELEGRAM_BOT_TOKEN   the group's bot (same as the push announcer)
+#   TELEGRAM_CHAT_ID     the group
+# Without the Telegram pair the story is printed and the job passes. Without
+# the demo key the job fails and says so.
+#
+# The first run deploys the SessionAccountFactory (no owner; whoever deploys
+# it does not matter) and commits the record and the app's session target,
+# so the Sessions page finds it on the next deploy.
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Sundays at noon UTC: a weekly reminder that the thing works, with fresh hashes.
+    - cron: '0 12 * * 0'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: session-demo
+  cancel-in-progress: false
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npx hardhat compile
+      - run: npm run build
+
+      - name: Run the demo and tell the group
+        env:
+          DEMO_PRIVATE_KEY: ${{ secrets.DEMO_PRIVATE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node dist/scripts/session-demo-live.js
+
+      # Only the first run changes these: the factory's address, recorded once.
+      - name: Commit the factory record if the first run deployed it
+        run: |
+          if git diff --quiet -- deployments/fleet-46630.json app/session-target.json; then
+            echo "nothing to record"
+            exit 0
+          fi
+          git config user.name "chit-demo"
+          git config user.email "demo@users.noreply.github.com"
+          git add deployments/fleet-46630.json app/session-target.json
+          git commit -m "chore(deploy): SessionAccountFactory on 46630, recorded by the demo's first run"
+          git push
