@@ -68,13 +68,14 @@ test("a receipt slower than the wait is a hash without a verdict: sent, not land
   const r = await chain.execute(ACCOUNT, ROUTER, parseEther("0.01"), "0x3593564c", 300);
   const waited = node.sinceSend();
   assert.deepEqual(r, { hash: HASH, landed: false });
-  assert.ok(waited >= 300 && waited < 1_500, `the caller's 300 ms bounded the wait, not the chain's 2 s: ${waited} ms after the send`);
+  // A timer can fire a millisecond early; the bound is the order of magnitude, not the exact tick.
+  assert.ok(waited >= 280 && waited < 1_500, `the caller's 300 ms bounded the wait, not the chain's 2 s: ${waited} ms after the send`);
   assert.ok(node.receiptPolls() >= 1, "the receipt was asked for while there was time");
   // The caller cannot ask for more than the chain gives.
   const long = fakeNode(undefined);
   await chainOn(long, 300).execute(ACCOUNT, ROUTER, parseEther("0.01"), "0x3593564c", 60_000);
   const ceiling = long.sinceSend();
-  assert.ok(ceiling >= 300 && ceiling < 1_500, `the chain's own wait is the ceiling: ${ceiling} ms after the send`);
+  assert.ok(ceiling >= 280 && ceiling < 1_500, `the chain's own wait is the ceiling: ${ceiling} ms after the send`);
 });
 
 test("no time left is no receipt asked for at all: the send goes out and comes back as sent, so a request at its cut-off still records and tells", async () => {
