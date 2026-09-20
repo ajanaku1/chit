@@ -15,6 +15,11 @@
  *
  * The last valid link wins; re-linking is the same flow. Nothing here holds
  * a key: the store keeps the Telegram id, the account, and the proof.
+ *
+ * Claiming Telegram update ids, so a request the host killed mid-trade is
+ * not acted on again when Telegram redelivers it, is not this store's job:
+ * the mainnet bot claims them in bot-updates.ts, the one table both floors
+ * of the bot share.
  */
 
 import { randomBytes } from "node:crypto";

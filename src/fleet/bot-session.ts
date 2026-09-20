@@ -8,9 +8,36 @@
  * their account, signed by the bot's key; the account pays the trade, the
  * bot pays the gas. Pause or revoke is the owner's, in one transaction.
  *
- * What this handler never does: hold a key of the owner's, sell (the
- * owner sells from the Sessions page in the beta), withdraw, or trade from
- * an account that was not linked with the owner's signature.
+ * Sell is the same shape, once the owner has turned the sell flag on for
+ * the bot's key (`setSellAllowed` on the account, from the Sessions page).
+ * The first sale of a token asks the account to approve Permit2 and the
+ * router once (`approveForSell`, from the bot's key, inside the session's
+ * rules); the sale itself is an `execute` with value zero, so the ETH caps
+ * are untouched and the amount is bounded by what the account holds. The
+ * bot's own calldata sends the ETH back to the account, and `withdraw` is
+ * the owner's alone.
+ *
+ * What that approval is, said plainly because the bot says it to the owner
+ * too: the account approves the token to Permit2 and Permit2 to the router
+ * without a limit and without an expiry, and the session's rule is the
+ * router's `execute` with the calldata unconstrained. So from the moment a
+ * token is approved, the bot's key (and so whoever holds it) can sell that
+ * token from the account, or route it and the ETH of a sale through the
+ * router to any address, at any time the session is live; the ETH caps do
+ * not count a call with value zero, and turning the flag off stops new
+ * approvals but undoes none. Pause or revoke is the off switch. The bound
+ * that would make this a real cap, an approval per sale for the sale's
+ * amount and deadline, is the contract's to add; until it does, no copy
+ * here says that only the owner can move the tokens.
+ *
+ * Each webhook request makes at most one send and waits for at most one
+ * receipt, inside the host's budget for the function: the first sale of a
+ * token is two taps, the approval on one and the sale on the next. Every
+ * update is claimed by id before it is acted on, so a request the host
+ * killed mid-trade is not acted on again when Telegram redelivers it.
+ *
+ * What this handler never does: hold a key of the owner's, withdraw, or
+ * trade from an account that was not linked with the owner's signature.
  */
 
 import { type Address, type Hex, isAddress } from "viem";
@@ -26,7 +53,7 @@ import { CAPTION_MAX_CHARS, esc, type Keyboard, type Outgoing, type Telegram } f
 import type { TokenPlateRenderer } from "./bot-token-card.js";
 import { MemoryUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { sessionState } from "./session-keys.js";
-import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4EthBuy, minOutFor } from "./v4-swap.js";
+import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4EthBuy, encodeV4TokenSell, minOutFor } from "./v4-swap.js";
 import type { Update } from "./bot-handlers.js";
 
 export type SessionBotDeps = {
@@ -51,12 +78,18 @@ export type SessionBotDeps = {
   dailyGasWei?: bigint;
   buySlippageBps?: number;
   buyPresetsEth?: string[];
+  sellSlippageBps?: number;
+  /** The shares of a position the Sell buttons offer, in whole percent. */
+  sellPresetsPct?: number[];
   /** Set when the testnet playground lives in the same bot: the home cards offer the door. */
   playgroundFloor?: boolean;
   now?: () => Date;
 };
 
-const DEFAULTS = { dailyExecutes: 200, dailyGasWei: 2_000_000_000_000_000n, buySlippageBps: 300, buyPresetsEth: ["0.005", "0.01", "0.05"] };
+const DEFAULTS = { dailyExecutes: 200, dailyGasWei: 2_000_000_000_000_000n, buySlippageBps: 300, buyPresetsEth: ["0.005", "0.01", "0.05"], sellSlippageBps: 300, sellPresetsPct: [25, 50, 100] };
+/** What the daily gas budget charges per send: the gas ceiling at one gwei, so a loop is stopped early rather than late. */
+const EXECUTE_GAS_WEI = 700_000n * 1_000_000_000n;
+const APPROVE_GAS_WEI = 200_000n * 1_000_000_000n;
 const short = (a: string): string => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const fmt = (units: bigint, decimals = 18, places = 5): string => {
   const neg = units < 0n; const u = neg ? -units : units;
@@ -80,7 +113,8 @@ type DayCount = { day: string; executes: number; gasWei: bigint };
 export class SessionBot {
   readonly #d: SessionBotDeps;
   readonly #days = new Map<string, DayCount>();
-  readonly #pending = new Map<string, { token: Address; order?: "limit" | "dca" }>();
+  /** What the next reply from this user is for: a buy or a sell of the token, or a limit or dca order on it. */
+  readonly #pending = new Map<string, { token: Address; side: "buy" | "sell"; order?: "limit" | "dca" }>();
   readonly #photos = new Set<string>();
   readonly #copy: CopyCards | undefined;
   readonly #updates: UpdateClaims;
@@ -132,7 +166,11 @@ export class SessionBot {
       // copy: a reply to a cap or handle prompt (bot-copy-cards.ts).
       if (this.#copy && (await this.#copy.reply(chatId, tgId, text, !!u.message.reply_to_message))) return;
       const pending = this.#pending.get(tgId);
-      if (pending && u.message.reply_to_message) { this.#pending.delete(tgId); return pending.order ? this.#placeOrder(chatId, tgId, pending.token, pending.order, text) : this.#buy(chatId, tgId, pending.token, text); }
+      if (pending && u.message.reply_to_message) {
+        this.#pending.delete(tgId);
+        if (pending.order) return this.#placeOrder(chatId, tgId, pending.token, pending.order, text);
+        return pending.side === "sell" ? this.#sell(chatId, tgId, pending.token, text) : this.#buy(chatId, tgId, pending.token, text);
+      }
       const pasted = text.match(/0x[0-9a-fA-F]{40}/)?.[0];
       if (pasted) return this.#tokenCard(chatId, tgId, pasted.toLowerCase() as Address);
       return this.#help(chatId);
@@ -155,15 +193,23 @@ export class SessionBot {
       case "ask": {
         await ack();
         if (!a || !isAddress(a)) return this.#help(chatId);
-        this.#pending.set(tgId, { token: a as Address });
+        this.#pending.set(tgId, { token: a as Address, side: "buy" });
         return this.#d.telegram.deliver({ kind: "send", chatId, text: `how much ETH into <code>${a}</code>? reply with a number, like 0.02.`, ask: "amount in ETH" });
+      }
+      // sell: "s:<token>:<pct>" from a button, "asks:<token>" opens the reply field for a share.
+      case "s": await ack(); return a && isAddress(a) && b ? this.#sell(chatId, tgId, a as Address, b) : this.#help(chatId);
+      case "asks": {
+        await ack();
+        if (!a || !isAddress(a)) return this.#help(chatId);
+        this.#pending.set(tgId, { token: a as Address, side: "sell" });
+        return this.#d.telegram.deliver({ kind: "send", chatId, text: `what share of your <code>${a}</code> to sell? reply with a whole percent, 1 to 100, like 50.`, ask: "share in percent" });
       }
       case "help": await ack(); return this.#help(chatId);
       // orders: the prompts, the list, a cancel (bot-orders.ts)
       case "lim": case "dca": {
         await ack();
         if (!a || !isAddress(a) || !this.#d.orders) return this.#help(chatId);
-        this.#pending.set(tgId, { token: a as Address, order: verb === "lim" ? "limit" : "dca" });
+        this.#pending.set(tgId, { token: a as Address, side: "buy", order: verb === "lim" ? "limit" : "dca" });
         return this.#d.telegram.deliver(verb === "lim"
           ? { kind: "send", chatId, text: `limit buy on <code>${a}</code>: reply with the amount in eth, then the price as tokens per eth, like <code>0.02 at 1200000</code>. it buys when one eth gets at least that many tokens (the price per token at or below that level).`, ask: "amount in eth at tokens per eth" }
           : { kind: "send", chatId, text: `dca on <code>${a}</code>: reply with the amount, every N hours, N times, like <code>0.01 every 4 hours 6 times</code>. the first buy goes at the next check (within five minutes), the rest one interval apart.`, ask: "amount every N hours N times" });
@@ -264,7 +310,7 @@ export class SessionBot {
     await this.#say(chatId, [
       "<b>chit bot on mainnet</b>",
       "the key stays with you. link a session account once, then paste any token's address and buy from your account in one tap.",
-      "sells, withdrawals and fleets are yours to do from the app in this beta.",
+      "sell from the token card too, once you turn on let it sell next to the bot's key on the Sessions page. know what that is: the first sale of a token approves it for the bot's key without a limit, and the approval stays until you pause or revoke the session; turning let it sell off does not undo it. withdrawals and fleets are yours to do from the app in this beta.",
       "/link to connect or re-link. /start for your card.",
     ].join("\n"), kb([btn("← Back", "home")]));
   }
@@ -281,7 +327,7 @@ export class SessionBot {
       ...(hey ? [`hey research lab: ${heyLine(hey)}`] : []),
       `your account holds: <code>${fmt(held, info.decimals, 4)} ${esc(info.symbol)}</code>`,
       "",
-      `<i>buys run as one execute on your account, guarded at ${(this.#cfg("buySlippageBps") / 100).toString()}%; the reply carries the hash. sells are yours from the app in this beta.${info.hooked ? " hooked pool: the hook's fee is not in the quote." : ""}</i>`,
+      `<i>buys run as one execute on your account, guarded at ${(this.#cfg("buySlippageBps") / 100).toString()}%; sells the same, guarded at ${(this.#cfg("sellSlippageBps") / 100).toString()}%, once you let the bot sell on the Sessions page. the reply carries the hash.${info.hooked ? " hooked pool: the hook's fee is not in the quote." : ""}</i>`,
     ].join("\n");
     const png = this.#d.plate
       ? await this.#d.plate({ symbol: info.symbol, address: token, perEth: fmt(info.perEth, info.decimals, 2), poolEth: eth(info.poolEth, 4), hooked: info.hooked, chainLabel: "robinhood chain", testnet: this.#d.session.chainId !== 4663, ...(this.#d.orus ? { orus: scan ?? null } : {}), ...(this.#d.hey ? { hey: hey ?? null } : {}) }).catch(() => undefined)
@@ -289,6 +335,8 @@ export class SessionBot {
     await this.#out(chatId, messageId, text, kb(
       this.#cfg("buyPresetsEth").map((p) => btn(`Buy ${p} ETH`, `b:${token}:${p}`)),
       [btn("Buy custom", `ask:${token}`)],
+      // Sell buttons only over a position: an account that holds none of the token has nothing to sell.
+      ...(held > 0n ? [this.#cfg("sellPresetsPct").map((p) => btn(`Sell ${p}%`, `s:${token}:${p}`)), [btn("Sell custom", `asks:${token}`)]] : []),
       ...(this.#d.orders ? [[btn("⏱ Limit buy", `lim:${token}`), btn("🔁 DCA", `dca:${token}`)]] : []),
       [btn("↻ Refresh", `token:${token}`), btn("← Back", "home")],
     ), png);
@@ -340,7 +388,7 @@ export class SessionBot {
     count.executes += 1;
     const r = await this.#d.session.execute(link.account, this.#d.reads.router, wei, data);
     // What the gas actually cost is the receipt's; here the budget counts the ceiling, so a loop is stopped early rather than late.
-    count.gasWei += 700_000n * 1_000_000_000n;
+    count.gasWei += EXECUTE_GAS_WEI;
     const explorer = `https://robinhoodchain.blockscout.com/tx/${r.hash}`;
     await this.#say(chatId, r.landed
       ? `landed. <a href="${explorer}">${short(r.hash)}</a> · the tokens are in your account.`
@@ -423,6 +471,59 @@ export class SessionBot {
     // One conditional statement in the store, so a run mid-send cannot write the order back to open over the cancel.
     if (o.status === "open") await orders.cancel(o.id);
     return this.#orders(chatId, tgId, messageId);
+  }
+
+  // ---------- sell ----------
+
+  /**
+   * A share of the account's position, sold through the router as one
+   * execute with value zero. The order of the checks is the cheap and the
+   * reversible first: the share, today's limits, the flag the owner set, the
+   * quote, the contract's own answer; only then a transaction the bot's key
+   * pays the gas for. One per request: a token not yet approved gets the
+   * approval now and a button that sells on the next tap, so no request
+   * waits for two receipts and outlives the webhook's budget.
+   */
+  async #sell(chatId: string, tgId: string, token: Address, share: string): Promise<void> {
+    const link = await this.#d.links.getLink(tgId);
+    if (!link) return this.#home(chatId, tgId);
+    const percent = /^\d{1,3}%?$/.test(share.trim()) ? Number(share.trim().replace("%", "")) : NaN;
+    if (!Number.isInteger(percent) || percent < 1 || percent > 100) return this.#say(chatId, "a whole percent of your position, 1 to 100, like 50.", kb([btn("← Back", `token:${token}`)]));
+    const count = this.#today(tgId);
+    if (count.executes >= this.#cfg("dailyExecutes")) return this.#say(chatId, `that is ${this.#cfg("dailyExecutes")} trades today from this account; again tomorrow.`, kb([btn("← Back", `token:${token}`)]));
+    if (count.gasWei >= this.#cfg("dailyGasWei")) return this.#say(chatId, "the bot has fronted its daily gas for this account; again tomorrow.", kb([btn("← Back", `token:${token}`)]));
+    const sessions = `${this.#d.siteUrl}/app/sessions.html`;
+    const [info, held, allowed] = await Promise.all([this.#d.reads.tokenInfo(token), this.#d.reads.tokenBalance(token, link.account), this.#d.session.sellAllowed(link.account)]);
+    const amount = (held * BigInt(percent)) / 100n;
+    if (amount === 0n) return this.#say(chatId, `nothing to sell: your account holds no ${esc(info.symbol)}.`, kb([btn("← Back", `token:${token}`)]));
+    // The flag is the owner's to set, from the wallet; the bot cannot give it to itself.
+    if (!allowed) return this.#say(chatId, "your session does not allow sells yet. on the Sessions page, next to the bot's key, turn on let it sell (one transaction), then try again. know before you do: the first sale of a token approves it for the bot's key without a limit, and that approval stays until you pause or revoke the session; turning let it sell off later does not undo it.", kb([url("🔑 Sessions page", sessions), btn("← Back", `token:${token}`)]));
+    const quote = info.hasPool ? await this.#d.reads.quoteSell(token, amount) : null;
+    if (quote === null) return this.#say(chatId, "no ETH pool on the venue for this token.", kb([btn("← Back", "home")]));
+    // The contract's own answer first: a paused, expired or revoked session refuses here, before any gas.
+    const can = await this.#d.session.canExecute(link.account, this.#d.reads.router, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, 0n);
+    if (!can.ok) return this.#say(chatId, `your session says no: <b>${esc(can.why)}</b>. manage it on the Sessions page.`, kb([url("🔑 Sessions page", sessions), btn("← Back", `token:${token}`)]));
+    if (!(await this.#d.session.tokenAllowanceReady(link.account, token, this.#d.reads.router))) {
+      // The approval is this request's one send; the sale is the next tap's, so a slow receipt never leaves a sale half told.
+      await this.#say(chatId, `first sale of <b>${esc(info.symbol)}</b> from your account: approving it for the router once. the approval is your account's, without a limit, and stays until you pause or revoke the session; turning let it sell off does not undo it…`);
+      count.gasWei += APPROVE_GAS_WEI;
+      const approval = await this.#d.session.approveForSell(link.account, token, this.#d.reads.router);
+      const explorer = `https://robinhoodchain.blockscout.com/tx/${approval.hash}`;
+      if (!approval.landed) return this.#say(chatId, `the approval is sent, not confirmed as landed: <a href="${explorer}">${short(approval.hash)}</a>. nothing was sold; check the explorer, then tap Sell again.`, kb([btn(`Sell ${percent}%`, `s:${token}:${percent}`), btn("↻ Card", `token:${token}`)]));
+      return this.#say(chatId, `approved: <a href="${explorer}">${short(approval.hash)}</a>. tap to sell ${percent}% of your <b>${esc(info.symbol)}</b> now.`, kb([btn(`Sell ${percent}%`, `s:${token}:${percent}`), btn("↻ Card", `token:${token}`)]));
+    }
+    const minOut = minOutFor(quote, this.#cfg("sellSlippageBps"));
+    const deadline = BigInt(Math.floor(this.#now.getTime() / 1000) + 3600);
+    const data = encodeV4TokenSell({ token, amountIn: amount, minOut, deadline, ...(info.poolKey ? { poolKey: info.poolKey } : {}) });
+    await this.#say(chatId, `selling <code>${fmt(amount, info.decimals, 4)} ${esc(info.symbol)}</code> (${percent}%) from your account: about <code>${eth(quote)} ETH</code>, floor <code>${eth(minOut)}</code>…`);
+    count.executes += 1;
+    const r = await this.#d.session.execute(link.account, this.#d.reads.router, 0n, data);
+    count.gasWei += EXECUTE_GAS_WEI;
+    const explorer = `https://robinhoodchain.blockscout.com/tx/${r.hash}`;
+    await this.#say(chatId, r.landed
+      ? `landed. <a href="${explorer}">${short(r.hash)}</a> · the ETH is in your account.`
+      : `sent, not confirmed as landed: <a href="${explorer}">${short(r.hash)}</a>. check the explorer; the account's floor protects the fill.`,
+      kb([btn("↻ Card", `token:${token}`), btn("← Back", "home")]));
   }
 }
 
