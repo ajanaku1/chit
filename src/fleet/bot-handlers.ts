@@ -66,6 +66,8 @@ export type BotDeps = {
   hey?: HeyScanner;
   /** Draws the token card as a plate with the partners' marks on it; absent means the card is text. */
   plate?: TokenPlateRenderer;
+  /** Set when this playground is a room inside the mainnet bot: the home card offers the way back. */
+  mainnetFloor?: boolean;
   /** Seals the playground keys at rest and keys the referral codes. */
   keySecret: string;
   /** The bot's @username, for links. */
@@ -554,6 +556,7 @@ export class ChitBot {
       [btn("🤝 Refer", "refer"), ...(this.#d.bridge ? [btn("🌉 Bridge", "bridge")] : [])],
       [btn("⚙️ Settings", "settings"), btn("🏦 Withdraw", "withdraw")],
       [...(this.#d.chain.hasFaucet ? [btn("🚰 Faucet", "faucet")] : []), btn("❓ Help", "help"), btn("↻ Refresh", "home")],
+      ...(this.#d.mainnetFloor ? [[btn("🔐 Back to mainnet", "floor:mainnet")]] : []),
     );
   }
 

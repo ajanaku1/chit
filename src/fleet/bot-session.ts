@@ -41,6 +41,8 @@ export type SessionBotDeps = {
   dailyGasWei?: bigint;
   buySlippageBps?: number;
   buyPresetsEth?: string[];
+  /** Set when the testnet playground lives in the same bot: the home cards offer the door. */
+  playgroundFloor?: boolean;
   now?: () => Date;
 };
 
@@ -126,6 +128,8 @@ export class SessionBot {
   }
 
   #mode(): string { return `<b>Robinhood Chain</b> · ${this.#d.session.chainId} · your keys stay with you`; }
+  /** The door to the testnet playground, when it is in this bot. */
+  #door(): Keyboard { return this.#d.playgroundFloor ? [[btn("🧪 Testnet playground", "floor:playground")]] : []; }
 
   async #start(chatId: string, tgId: string, param?: string): Promise<void> {
     const linked = param?.startsWith("t-") ? param.slice(2) : undefined;
@@ -145,7 +149,7 @@ export class SessionBot {
         "",
         "<i>beta. holders only. not audited by a firm yet, and we say so on every card.</i>",
       ].join("\n");
-      return this.#out(chatId, messageId, text, kb([btn("🔗 Connect your wallet", "connect")], [btn("❓ Help", "help")]));
+      return this.#out(chatId, messageId, text, kb([btn("🔗 Connect your wallet", "connect")], [btn("❓ Help", "help")], ...this.#door()));
     }
     const [s, ethBal] = await Promise.all([this.#d.session.sessionOf(link.account), this.#d.reads.ethBalance(link.account)]);
     const state = sessionState(s, Math.floor(this.#now.getTime() / 1000));
@@ -161,6 +165,7 @@ export class SessionBot {
     return this.#out(chatId, messageId, lines.join("\n"), kb(
       [url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions.html`), btn("🔗 Re-link", "connect")],
       [btn("❓ Help", "help"), btn("↻ Refresh", "home")],
+      ...this.#door(),
     ));
   }
 
