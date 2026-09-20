@@ -15,7 +15,13 @@
  * and the wallet's own signature (a stranger's is refused, a nonce is one
  * claim, a wallet is one leader's), and a venue buy by a claimed open
  * leader's wallet is mirrored and announced like a bot buy, told to the
- * leader, once per hash; anyone else's is ignored.
+ * leader, once per hash, claimed in the store before the first send so two
+ * instances cannot both mirror it; anyone else's is ignored, and so is
+ * dust, a buy through a pool that is not the token's, a day already full,
+ * while a token orus will not clear is neither posted nor mirrored and only
+ * the leader hears. The reads come before the claim and each step after it
+ * is caught, so a failure loses nothing that was not already told. The
+ * followers' daily allowance is one ledger for taps and both paths' mirrors.
  */
 
 import assert from "node:assert/strict";
@@ -23,11 +29,13 @@ import { test } from "node:test";
 import { type Address, type Hex, parseEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { BotChain, TokenInfo } from "../../src/fleet/bot-chain.js";
-import { CopyDesk, LeadError, MAX_FOLLOW_CAP_WEI, MIRROR_SEND_MS, MemoryCopyStore, leadMessage, registerCopyWatch, type VenueBuy } from "../../src/fleet/bot-copy.js";
+import { CopyDesk, LeadError, MAX_FOLLOW_CAP_WEI, MIRROR_SEND_MS, MemoryCopyStore, VENUE_BUYS_PER_DAY, VENUE_MIN_ETH_WEI, leadMessage, registerCopyWatch, type VenueBuy } from "../../src/fleet/bot-copy.js";
 import { MemoryBotLinkStore, NONCE_TTL_MS } from "../../src/fleet/bot-link.js";
 import type { OrusScan } from "../../src/fleet/bot-orus.js";
 import type { SessionChain } from "../../src/fleet/bot-session-chain.js";
 import type { Keyboard } from "../../src/fleet/bot-telegram.js";
+import { poolIdOf } from "../../src/fleet/pool-registry.js";
+import { venuePoolKey } from "../../src/fleet/v4-swap.js";
 
 const PEPE = "0x00000000000000000000000000000000000000ce" as Address;
 const ROUTER = "0x8876789976decbfcbbbe364623c63652db8c0904" as Address;
@@ -44,9 +52,15 @@ const reads = {
 } as unknown as BotChain;
 const safe: OrusScan = { symbol: "PEPE", honeypot: false, buyTaxPct: 0, sellTaxPct: 0, bundlersPct: null, top10Pct: null, holders: 100, liquidityUsd: 50_000, lpBurnedPct: null, marketCapUsd: null, deployerLaunches: 1, checkedAt: clock.toISOString() };
 
-const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; mirrorBudgetMs?: number; feed?: boolean; dailyExecutes?: number } = {}) => {
-  const store = new MemoryCopyStore();
-  const links = new MemoryBotLinkStore();
+const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; mirrorBudgetMs?: number; feed?: boolean; dailyExecutes?: number; venueMinEthWei?: bigint; venueBuysPerDay?: number; store?: MemoryCopyStore; links?: MemoryBotLinkStore } = {}) => {
+  const store = opts.store ?? new MemoryCopyStore();
+  const links = opts.links ?? new MemoryBotLinkStore();
+  /** Faults the test switches on: the chain read, the log line, the feed and the wallet leader's line each throw once when armed. */
+  const faults = { tokenInfo: false, log: false, feed: false, tell: false };
+  const once = (k: keyof typeof faults, why: string) => { if (faults[k]) { faults[k] = false; throw new Error(why); } };
+  const chain = { ...reads, async tokenInfo(token: Address) { once("tokenInfo", "rpc timed out"); return reads.tokenInfo(token); } } as unknown as BotChain;
+  const storeLog = store.log.bind(store);
+  store.log = async (m) => { once("log", "store is away"); await storeLog(m); };
   const calls: { account: Address; value: bigint }[] = [];
   /** The receipt wait each execute was given, in the order of the sends. */
   const waits: (number | undefined)[] = [];
@@ -70,17 +84,19 @@ const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; 
   const answer: OrusScan | undefined = opts.orus === null || opts.orus === "off" ? undefined : opts.orus ?? safe;
   const orus = opts.orus === "off" ? undefined : { scan: async () => answer, link: (t: Address) => `https://www.orusagent.xyz/token/${t}` };
   const desk = new CopyDesk({
-    store, links, reads, session, now: () => t,
+    store, links, reads: chain, session, now: () => t,
     ...(orus ? { orus } : {}),
     ...(opts.tokenDayCapWei !== undefined ? { tokenDayCapWei: opts.tokenDayCapWei } : {}),
     ...(opts.mirrorBudgetMs !== undefined ? { mirrorBudgetMs: opts.mirrorBudgetMs } : {}),
     ...(opts.dailyExecutes !== undefined ? { dailyExecutes: opts.dailyExecutes } : {}),
-    tell: async (to, text) => { told.push({ to, text }); },
+    ...(opts.venueMinEthWei !== undefined ? { venueMinEthWei: opts.venueMinEthWei } : {}),
+    ...(opts.venueBuysPerDay !== undefined ? { venueBuysPerDay: opts.venueBuysPerDay } : {}),
+    tell: async (to, text) => { if (to === "9") once("tell", "telegram 429"); told.push({ to, text }); },
     botUsername: "usechit_bot",
-    ...(opts.feed === false ? {} : { feed: { chatId: "-100", post: async (text, keyboard) => { posted.push({ text, keyboard }); } } }),
+    ...(opts.feed === false ? {} : { feed: { chatId: "-100", post: async (text, keyboard) => { once("feed", "telegram 429"); posted.push({ text, keyboard }); } } }),
   });
   const link = (tgId: string, n: number) => links.putLink({ tgId, account: acct(n), owner: OWNER, chainId: 4663, nonce: "n", signature: "0x00", linkedAt: clock.toISOString() });
-  return { desk, store, links, link, calls, waits, told, posted, refuseWith: (f: typeof refuse) => { refuse = f; }, failSendFor: (f: typeof failSend) => { failSend = f; }, advance: (ms: number) => { t = new Date(t.getTime() + ms); } };
+  return { desk, store, links, link, calls, waits, told, posted, faults, refuseWith: (f: typeof refuse) => { refuse = f; }, failSendFor: (f: typeof failSend) => { failSend = f; }, advance: (ms: number) => { t = new Date(t.getTime() + ms); } };
 };
 
 test("become leader needs a link; the leader's account is the linked one; close hides them from the list and from leader()", async () => {
@@ -312,7 +328,10 @@ const STRANGER = privateKeyToAccount("0x8b3a350cf5c34c9194ca85829a2df0ec3153be03
 const CHAIN = 4663;
 const signedBy = (who: typeof WHALE, nonce: string, wallet: Address = WHALE.address, chainId = CHAIN) => who.signMessage({ message: leadMessage(chainId, wallet, nonce) });
 const refused = (p: Promise<unknown>, status: number, why: RegExp) => assert.rejects(p, (e: unknown) => e instanceof LeadError && e.status === status && why.test(e.message), `${status} ${why}`);
-const venueBuy = (over: Partial<VenueBuy> = {}): VenueBuy => ({ block: 100n, txHash: ("0x" + "cd".repeat(32)) as Hex, buyer: WHALE.address, token: PEPE, ethInWei: parseEther("0.05"), tokensOut: 1n, poolId: ("0x" + "11".repeat(32)) as Hex, ...over });
+/** The token's own pool on the venue, the one the bot quotes and the followers buy through; the fake's tokenInfo names no key, so it is the venue's default. */
+const PEPE_POOL = poolIdOf(venuePoolKey(PEPE));
+const venueBuy = (over: Partial<VenueBuy> = {}): VenueBuy => ({ block: 100n, txHash: ("0x" + "cd".repeat(32)) as Hex, buyer: WHALE.address, token: PEPE, ethInWei: parseEther("0.05"), tokensOut: 1n, poolId: PEPE_POOL, ...over });
+const hash = (h: string): Hex => ("0x" + h.repeat(32)) as Hex;
 
 test("claim: a fresh nonce of this telegram's and the wallet's own signature make a wallet leader, no link needed; the wallet is the public address and the nonce is spent; a stranger's signature, another chain's, a foreign or expired nonce and junk are refused by name without spending the nonce", async () => {
   const s = setup();
@@ -441,21 +460,147 @@ test("onVenueBuy: the same transaction hash is not mirrored twice, whichever pat
   assert.equal(s.calls.length, 2);
 });
 
-test("onVenueBuy: the gate holds and the leader hears the skips; the follower's daily allowance is counted from the mirrors' log, so the venue path cannot run past what the session bot would allow", async () => {
+test("onVenueBuy: a token orus will not clear, or has no read for, is neither posted nor mirrored and the followers are not messaged; only the leader is told why and what buy would be", async () => {
   const hp = setup({ orus: { ...safe, honeypot: true } });
   await walletLeaderWithFollowers(hp, ["0.01"]);
-  const out = await hp.desk.onVenueBuy(venueBuy());
-  assert.deepEqual(out!.map((m) => [m.outcome, m.why]), [["skipped", "orus says honeypot"]]);
+  assert.deepEqual(await hp.desk.onVenueBuy(venueBuy()), [], "the leader's, but not for the feed");
   assert.equal(hp.calls.length, 0);
-  assert.match(hp.told.find((t) => t.to === "9")!.text, /mirrored to 0 of 1 follower, 1 skipped \(each was told why\)\.$/);
-  assert.match(hp.posted[0]!.text, /mirrored into 0 of 1 follower account/);
+  assert.equal(hp.posted.length, 0, "a token the desk refuses to mirror is not advertised either");
+  assert.deepEqual(hp.told.map((t) => t.to), ["9"], "the follower hears nothing for it");
+  assert.match(hp.told[0]!.text, /from your wallet \(.*\) was not posted or mirrored: orus says honeypot\. a token orus clears is\.$/);
+  assert.equal((await hp.store.recent("9", 5)).length, 0);
+  const blind = setup({ orus: null });
+  await walletLeaderWithFollowers(blind, ["0.01"]);
+  assert.deepEqual(await blind.desk.onVenueBuy(venueBuy()), []);
+  assert.equal(blind.posted.length, 0);
+  assert.match(blind.told[0]!.text, /was not posted or mirrored: orus had no read; unknown is not safe\./);
+  // The refusal is the transaction's answer: delivered again it is nothing.
+  assert.equal(await blind.desk.onVenueBuy(venueBuy()), undefined);
+  assert.equal(blind.told.length, 1);
+});
+
+test("onVenueBuy: the follower's daily allowance is one ledger with the session bot's taps: taps noted there count against a venue mirror, a venue mirror counts against the next tap, and the ledger's charge is add-first so two at once cannot both take the last slot", async () => {
   const tight = setup({ dailyExecutes: 3 });
   await walletLeaderWithFollowers(tight, ["0.01"]);
-  // Two mirrors already landed today for this follower, from an earlier run of the watcher; a third was skipped and counts for nothing.
-  for (const [h, outcome] of [["aa", "landed"], ["bb", "sent"], ["cc", "skipped"]] as const) await tight.store.log({ leaderTgId: "9", followerTgId: "2", token: PEPE, ethWei: parseEther("0.01"), hash: ("0x" + h.repeat(32)) as Hex, outcome, why: "", at: clock.toISOString() });
+  // Two taps today, noted by the session bot from its own request: the third buy is the mirror, the fourth is refused.
+  await tight.desk.noteDay("2");
+  await tight.desk.noteDay("2");
+  assert.equal(await tight.desk.overDay("2"), null);
   assert.deepEqual((await tight.desk.onVenueBuy(venueBuy()))!.map((m) => m.outcome), ["landed"], "two so far, the cap is three: the third runs");
-  assert.deepEqual((await tight.desk.onVenueBuy(venueBuy({ txHash: ("0x" + "ef".repeat(32)) as Hex })))!.map((m) => [m.outcome, m.why]), [["skipped", "that is 3 buys today from your account; again tomorrow"]]);
+  assert.equal(await tight.desk.overDay("2"), "that is 3 buys today from your account; again tomorrow", "and a tap now would be refused by the ledger the session bot asks");
+  assert.deepEqual((await tight.desk.onVenueBuy(venueBuy({ txHash: hash("ef") })))!.map((m) => [m.outcome, m.why]), [["skipped", "that is 3 buys today from your account; again tomorrow"]]);
   assert.equal(tight.calls.length, 1);
+  const gas = setup({ dailyExecutes: 100 });
+  const pricey = new CopyDesk({ store: gas.store, links: gas.links, reads, session: { chainId: 4663 } as unknown as SessionChain, dailyGasWei: 700_000n * 1_000_000_000n * 2n, now: () => clock });
+  await pricey.noteDay("5");
+  assert.equal(await pricey.overDay("5"), null);
+  await pricey.noteDay("5");
+  assert.equal(await pricey.overDay("5"), "the bot has fronted its daily gas for your account; again tomorrow");
+  // The last slot, asked for twice at once: one charge passes, the other is refused, the count left over only tightens the day.
+  const race = setup({ dailyExecutes: 1 });
+  const [a, b] = await Promise.all([race.desk.chargeDay("4"), race.desk.chargeDay("4")]);
+  assert.deepEqual([a, b].filter((x) => x === null).length, 1);
+  assert.equal(await race.desk.overDay("4"), "that is 1 buys today from your account; again tomorrow");
+});
+
+test("onVenueBuy: dust is read as nothing, nobody is told and the hash is not claimed; the size is the desk's constant or the deployment's", async () => {
+  const s = setup();
+  await walletLeaderWithFollowers(s, ["0.01"]);
+  assert.equal(VENUE_MIN_ETH_WEI, parseEther("0.01"));
+  assert.equal(await s.desk.onVenueBuy(venueBuy({ ethInWei: parseEther("0.01") - 1n })), undefined);
+  assert.equal(s.told.length, 0, "five hundred dust buys are five hundred nothings, not five hundred messages");
+  assert.equal(s.posted.length, 0);
+  assert.equal(await s.store.venueBuysSince("9", new Date(0)), 0, "not claimed, not counted against the day");
+  assert.equal((await s.desk.onVenueBuy(venueBuy({ ethInWei: parseEther("0.01") })))!.length, 1, "the minimum itself is read");
+  const loose = setup({ venueMinEthWei: parseEther("0.001") });
+  await walletLeaderWithFollowers(loose, ["0.01"]);
+  assert.equal((await loose.desk.onVenueBuy(venueBuy({ ethInWei: parseEther("0.002") })))!.length, 1);
+});
+
+test("onVenueBuy: a buy through a pool that is not the token's own on the venue is the leader's alone: nothing mirrored, nothing posted, the leader told what buy would be read, the hash claimed", async () => {
+  const s = setup();
+  await walletLeaderWithFollowers(s, ["0.01"]);
+  const own = venueBuy({ poolId: hash("11") });
+  assert.deepEqual(await s.desk.onVenueBuy(own), []);
+  assert.equal(s.calls.length, 0, "a pool the leader provides for themselves would make the trigger free");
+  assert.equal(s.posted.length, 0);
+  assert.deepEqual(s.told.map((t) => t.to), ["9"]);
+  assert.match(s.told[0]!.text, /went through a pool that is not the token's pool on the venue, so it was not posted or mirrored\. a buy through the venue's own pool for the token, the one the bot quotes, is\.$/);
+  assert.equal(await s.desk.onVenueBuy(own), undefined, "answered once");
+  assert.equal((await s.desk.onVenueBuy(venueBuy({ poolId: ("0x" + PEPE_POOL.slice(2).toUpperCase()) as Hex, txHash: hash("ef") })))!.length, 1, "the id compares whatever its case");
+  assert.equal(s.calls.length, 1);
+  // The token's pool as the registry knows it, hooked or not, is the one that counts.
+  const hooked = { currency0: "0x0000000000000000000000000000000000000000" as Address, currency1: PEPE, fee: 0, tickSpacing: 60, hooks: acct(0x77) };
+  const withHook = new CopyDesk({ store: s.store, links: s.links, session: { chainId: 4663, async canExecute() { return { ok: true, why: "" }; }, async execute() { return { hash: HASH, landed: true }; } } as unknown as SessionChain, now: () => clock,
+    reads: { ...reads, async tokenInfo(token: Address) { return { ...info, address: token, poolKey: hooked }; } } as unknown as BotChain, orus: { scan: async () => safe, link: () => "" }, tell: async () => undefined });
+  assert.deepEqual(await withHook.onVenueBuy(venueBuy({ txHash: hash("a1") })), [], "the venue's default pool is not this token's pool");
+  assert.equal((await withHook.onVenueBuy(venueBuy({ txHash: hash("a2"), poolId: poolIdOf(hooked) })))!.length, 1);
+});
+
+test("onVenueBuy: a wallet leader's day holds so many buys; the last one read says so, the ones after it are nothing until tomorrow, and a day full of refusals is a day full", async () => {
+  const s = setup({ venueBuysPerDay: 2 });
+  await walletLeaderWithFollowers(s, ["0.01"]);
+  assert.equal(VENUE_BUYS_PER_DAY, 20);
+  assert.equal((await s.desk.onVenueBuy(venueBuy({ txHash: hash("01") })))!.length, 1);
+  assert.doesNotMatch(s.told.at(-1)!.text, /read from your wallet today/);
+  assert.equal((await s.desk.onVenueBuy(venueBuy({ txHash: hash("02") })))!.length, 1);
+  assert.match(s.told.at(-1)!.text, /\. that is 2 buys read from your wallet today; the next ones are read again tomorrow\.$/);
+  assert.equal(await s.desk.onVenueBuy(venueBuy({ txHash: hash("03") })), undefined, "silent: the group and the followers are not this wallet's to flood");
+  assert.equal(s.calls.length, 2);
+  assert.equal(s.posted.length, 2);
+  assert.equal(s.told.filter((t) => t.to === "9").length, 2);
+  assert.equal(await s.store.venueBuysSince("9", new Date(0)), 2, "the third was not claimed either");
+  // Tomorrow the count starts again.
+  s.advance(24 * 3600_000);
+  assert.equal((await s.desk.onVenueBuy(venueBuy({ txHash: hash("04") })))!.length, 1);
+  // A scam token's buys count the same: two refusals fill a day of two.
+  const hp = setup({ orus: { ...safe, honeypot: true }, venueBuysPerDay: 2 });
+  await walletLeaderWithFollowers(hp, ["0.01"]);
+  await hp.desk.onVenueBuy(venueBuy({ txHash: hash("01") }));
+  await hp.desk.onVenueBuy(venueBuy({ txHash: hash("02") }));
+  assert.equal(await hp.desk.onVenueBuy(venueBuy({ txHash: hash("03") })), undefined);
+  assert.equal(hp.told.length, 2);
+});
+
+test("onVenueBuy: the transaction is claimed in the store before the first send, so two instances handed the same buy from the same window mirror it once; the second reads undefined", async () => {
+  const one = setup();
+  await walletLeaderWithFollowers(one, ["0.01"]);
+  const two = setup({ store: one.store, links: one.links });
+  const [a, b] = await Promise.all([one.desk.onVenueBuy(venueBuy()), two.desk.onVenueBuy(venueBuy())]);
+  assert.equal([a, b].filter((x) => x === undefined).length, 1);
+  assert.equal([a, b].filter((x) => x?.length === 1).length, 1);
+  assert.equal(one.calls.length + two.calls.length, 1, "one execute across both instances");
+  assert.equal(one.posted.length + two.posted.length, 1);
+  assert.equal(await one.store.claimVenueBuy(venueBuy().txHash, "9", clock), false, "the row is one per hash");
+  assert.equal(await one.store.claimVenueBuy(hash("CD"), "9", clock), false, "whatever the case of the hash");
+});
+
+test("onVenueBuy: a chain read that fails before the claim rejects with nothing claimed, so the delivery again is read again; after the claim a mirror run that throws, a feed that refuses and a leader who cannot be reached are each caught, the claim stands and the leader hears what happened", async () => {
+  const s = setup();
+  await walletLeaderWithFollowers(s, ["0.01"]);
+  s.faults.tokenInfo = true;
+  await assert.rejects(s.desk.onVenueBuy(venueBuy()), /rpc timed out/);
+  assert.equal(await s.store.venueBuysSince("9", new Date(0)), 0, "nothing claimed, nothing told");
+  assert.equal(s.told.length, 0);
+  assert.equal((await s.desk.onVenueBuy(venueBuy()))!.length, 1, "delivered again: mirrored");
+  // The log line after the follower's send throws: the send happened, so the claim stands; the leader is told the mirror broke; the feed is still posted.
+  s.faults.log = true;
+  assert.deepEqual(await s.desk.onVenueBuy(venueBuy({ txHash: hash("e1") })), []);
+  assert.equal(s.calls.length, 2, "the send had gone");
+  assert.equal(s.posted.length, 2, "the feed still posted");
+  assert.match(s.told.at(-1)!.text, /was posted to the feed; a mirror broke on our side, every follower who was reached was told and the rest were not mirrored this time\.$/);
+  assert.equal(await s.desk.onVenueBuy(venueBuy({ txHash: hash("e1") })), undefined, "not mirrored again: money moves at most once");
+  assert.equal(s.calls.length, 2);
+  // The feed refuses: the mirrors stand, the leader hears the feed broke.
+  s.faults.feed = true;
+  assert.equal((await s.desk.onVenueBuy(venueBuy({ txHash: hash("e2") })))!.length, 1);
+  assert.equal(s.posted.length, 2);
+  assert.match(s.told.at(-1)!.text, /was not posted, the feed broke on our side and mirrored to 1 of 1 follower\.$/);
+  // The leader cannot be reached: the handler still resolves with the mirrors.
+  s.faults.tell = true;
+  const out = await s.desk.onVenueBuy(venueBuy({ txHash: hash("e3") }));
+  assert.equal(out!.length, 1);
+  assert.equal(s.posted.length, 3);
 });
 
 test("registerCopyWatch puts the desk's handler in the watcher's registry, and the handler is onVenueBuy", async () => {

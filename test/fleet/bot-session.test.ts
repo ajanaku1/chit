@@ -14,7 +14,11 @@
  * what is left of the request's sixty seconds, receipts included. Become a
  * leader asks from where, the account or the wallet; the wallet choice
  * mints a nonce and sends the Sessions page's lead link, and a wallet
- * leader's cards say the wallet and what is copied from it.
+ * leader's cards say the wallet and what is copied from it, with the venue
+ * path's bounds; a wallet leader's own taps are not mirrored or posted. A
+ * tap asks the copy desk's ledger too and writes itself into it, so the
+ * mirrors the watcher's function made into an account and the taps made
+ * here are one day's allowance.
  */
 
 import assert from "node:assert/strict";
@@ -216,6 +220,8 @@ const withCopy = (opts: Partial<Deps> = {}, feed: { post?: (text: string) => Pro
   const posted: { text: string; keyboard?: unknown; executesSoFar: number }[] = [];
   const copy = new CopyDesk({
     store, links: s.links, reads, session: opts.session ?? s.session.s, orus, now: opts.now ?? (() => clock), botUsername: "usechit_bot",
+    // The daily limits are the bot's, as the runtime hands the same env to both.
+    ...(opts.dailyExecutes !== undefined ? { dailyExecutes: opts.dailyExecutes } : {}), ...(opts.dailyGasWei !== undefined ? { dailyGasWei: opts.dailyGasWei } : {}),
     tell: (to, text) => s.telegram.deliver({ kind: "send", chatId: to, text }),
     feed: { chatId: "-100", post: async (text, keyboard) => { if (feed.post) await feed.post(text); posted.push({ text, keyboard, executesSoFar: s.session.calls.length }); } },
   });
@@ -243,7 +249,7 @@ test("⭐ Become a leader asks from where, the account or the wallet, and says w
   await bot.handle(asUser(7, "lead:on", { username: "ogle", first_name: "O" }));
   assert.match(telegram.last(), /<b>become a leader<\/b>\nwhere do you trade from\?/);
   assert.match(telegram.last(), /<b>my session account<\/b>: every buy you tap in this bot that lands is posted to the feed and mirrored/);
-  assert.match(telegram.last(), /<b>my own wallet<\/b>: you sign one message on the Sessions page with the wallet you trade from \(no account, no session, no key handed over\), and every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted and mirrored the same way/);
+  assert.match(telegram.last(), /<b>my own wallet<\/b>: you sign one message on the Sessions page with the wallet you trade from \(no account, no session, no key handed over\), and every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted and mirrored the same way: a buy of 0.01 ETH or more through the token's own pool on the venue, up to 20 a day, for a token orus clears; a smaller buy, one through another pool or a token orus will not clear is not, and your taps in this bot are not either\./);
   assert.match(telegram.last(), /either way your sells and your standing orders are never mirrored/);
   assert.deepEqual(buttons(), ["lead:acct", "lead:wallet", "home"]);
   assert.equal(await copy.leader("7"), undefined, "asking opens nobody");
@@ -390,6 +396,44 @@ test("a mirrored buy spends the follower's own daily allowance, the same one the
   const toFollower = fresh.telegram.sent.filter((o) => o.kind === "send" && o.chatId === "8").map((o) => (o as { text: string }).text);
   assert.match(toFollower.at(-1)!, /copy from <b>@ogle<\/b>: skipped\. that is 2 buys today from your account; again tomorrow\./);
   assert.match(fresh.telegram.last(), /mirrored to 0 of 1 follower, 1 skipped/);
+});
+
+test("a wallet leader who links an account too keeps their taps to themselves: their followers were promised that wallet's venue buys, so a tapped buy of theirs is neither mirrored nor posted and no count is said", async () => {
+  const { bot, links, telegram, session, posted, store } = withCopy();
+  await linked(links);
+  await followerLinked(links);
+  const wallet = "0x00000000000000000000000000000000000000ee" as Address;
+  await store.putLeader({ tgId: "7", account: wallet, wallet, handle: "whale", since: clock.toISOString(), open: true, kind: "wallet" });
+  await bot.handle(asUser(8, "askf:7"));
+  await bot.handle(says(8, "0.005", "how much"));
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.deepEqual(session.calls.map((c) => c.account), [ACCOUNT], "the leader's own buy and nothing into the follower");
+  assert.equal(posted.length, 0, "the feed has nothing: the group was promised the wallet's buys");
+  assert.doesNotMatch(telegram.last(), /mirrored to/);
+  assert.match(telegram.last(), /landed\./);
+  // Opened from the account again, the same user is an account leader and the tap is mirrored as before.
+  await bot.handle(asUser(7, "lead:acct", { username: "whale" }));
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.deepEqual(session.calls.map((c) => c.account), [ACCOUNT, ACCOUNT, FOLLOWER_ACCOUNT]);
+  assert.equal(posted.length, 1);
+});
+
+test("a tap asks the copy desk's ledger and writes itself into it: mirrors the watcher's function made into the account today refuse the tap in the same words, and a tap counts against the next venue mirror", async () => {
+  const { bot, links, telegram, session, copy } = withCopy({ dailyExecutes: 2 });
+  await linked(links);
+  // Two mirrors landed into this account from the watcher's function, in another instance: this instance's memory never saw them.
+  await copy.chargeDay("7");
+  await copy.chargeDay("7");
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.equal(session.calls.length, 0, "the ledger says the day is spent");
+  assert.match(telegram.last(), /^that is 2 buys today from your account; again tomorrow\.$/);
+  const fresh = withCopy({ dailyExecutes: 2 });
+  await linked(fresh.links);
+  await fresh.bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.equal(fresh.session.calls.length, 1);
+  assert.equal(await fresh.copy.overDay("7"), null, "one tap in the ledger, room for one more");
+  assert.equal(await fresh.copy.chargeDay("7"), null, "a venue mirror takes the second");
+  assert.equal(await fresh.copy.chargeDay("7"), "that is 2 buys today from your account; again tomorrow", "and the next venue mirror is refused: the tap counted");
 });
 
 test("a failure in the feed or the mirrors after the leader's buy landed is caught: the leader is told, the handle resolves, and a redelivery of the tap runs nothing", async () => {
@@ -724,7 +768,7 @@ test("the wallet choice mints a nonce of this telegram's and sends the Sessions 
   await bot.handle(asUser(7, "lead:wallet", { username: "ogle" }));
   assert.match(telegram.last(), /<b>lead from your own wallet<\/b>/);
   assert.match(telegram.last(), /press <b>Lead from this wallet<\/b>: one signature, no transaction, nothing moves\. the link is good for 15 minutes/);
-  assert.match(telegram.last(), /every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted to the feed with the hash and mirrored into your followers' accounts/);
+  assert.match(telegram.last(), /every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted to the feed with the hash and mirrored into your followers' accounts, each inside their own caps and behind orus's read: a buy of 0.01 ETH or more through the token's own pool on the venue, up to 20 a day, for a token orus clears\. a smaller buy, one through another pool or a token orus will not clear is not posted or mirrored, and you are told why in private\. your taps in this bot, if you link an account too, and your sells are never mirrored/);
   assert.match(telegram.last(), /your sells are never mirrored, and the wallet's own trades are never touched\. close leader on your card stops the feed and the mirrors, any time/);
   const [href, back] = buttons();
   assert.ok(href!.startsWith("https://chit.tools/app/sessions.html?lead=") && /lead=[0-9a-f]{32}&handle=ogle$/.test(href!), href);
@@ -749,17 +793,17 @@ test("a wallet leader's cards: the list marks them and says what is copied from 
   await bot.handle(dm("/start"));
   assert.ok(buttons().includes("lead:off"), "a wallet leader closes from the same button");
   await bot.handle(asUser(8, "leaders"));
-  assert.match(telegram.last(), /one marked "trades from their own wallet" is copied from the chain instead: every ETH buy that wallet makes on the venue/);
+  assert.match(telegram.last(), /one marked "trades from their own wallet" is copied from the chain instead: a buy of 0.01 ETH or more through the token's own pool on the venue, up to 20 a day, for a token orus clears\./);
   assert.match(telegram.last(), new RegExp(`<b>whale</b> · <code>${whale.address.slice(0, 6)}…${whale.address.slice(-4)}</code> · trades from their own wallet · 0 followers`));
   await bot.handle(asUser(8, "fl:7"));
   assert.match(telegram.last(), new RegExp(`wallet <code>${whale.address}</code> · trades from their own wallet · 0 followers`));
-  assert.match(telegram.last(), /when that wallet buys a token with ETH on the venue, the same token is bought on your session account within a few minutes, sized to the smaller of their amount and your cap/);
-  assert.match(telegram.last(), /they trade from their own wallet: every ETH buy that wallet makes on the venue is mirrored, read from the chain within a few minutes of landing, and their sells are never mirrored, so getting out of a mirrored position is yours alone/);
+  assert.match(telegram.last(), /when that wallet buys a token with ETH on the venue \(a buy of 0.01 ETH or more through the token's own pool on the venue, up to 20 a day, for a token orus clears\), the same token is bought on your session account within a few minutes, sized to the smaller of their amount and your cap/);
+  assert.match(telegram.last(), /they trade from their own wallet: a buy of 0.01 ETH or more through the token's own pool on the venue, up to 20 a day, for a token orus clears, is read from the chain within a few minutes of landing and mirrored; a smaller one, one through another pool or a token orus will not clear is not, and you are not messaged for it; their taps in this bot and their sells are never mirrored, so getting out of a mirrored position is yours alone/);
   assert.doesNotMatch(telegram.last(), /only a buy they tap in this bot/, "the account words are not on a wallet leader's card");
   assert.match(telegram.last(), /orus's read first/);
   await bot.handle(asUser(8, "askf:7"));
   await bot.handle(says(8, "0.02", "how much"));
-  assert.match(telegram.last(), /following <b>whale<\/b> at <code>0.02 ETH<\/code> a buy\.\ntheir next ETH buy from their wallet on the venue is mirrored on your account within a few minutes, inside your session's caps and behind orus's read; their sells are not, so the exit is yours/);
+  assert.match(telegram.last(), /following <b>whale<\/b> at <code>0.02 ETH<\/code> a buy\.\ntheir next ETH buy from their wallet on the venue \(a buy of 0.01 ETH or more through the token's own pool on the venue, up to 20 a day, for a token orus clears\) is mirrored on your account within a few minutes, inside your session's caps and behind orus's read; their taps in this bot and their sells are not, so the exit is yours/);
   await bot.handle(says(8, `/start f-${whale.address}`));
   assert.match(telegram.last(), /<b>follow whale<\/b>/, "the feed's door is the wallet they proved");
   await bot.handle(asUser(7, "lead:off"));

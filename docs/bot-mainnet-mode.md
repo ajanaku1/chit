@@ -87,8 +87,16 @@ wallet, signature, handle}` to `/api/bot/lead`. No account, no session, no
 chain read: the signature is the proof, the nonce is one claim, a wallet is
 one leader's. From then on the watcher (`bot-watch.ts`, its own cron) reads
 that wallet's ETH buys from the venue's swap logs and the desk mirrors and
-posts them as it does a tapped buy; sells are never mirrored. The name is a
-plain one, because a page cannot prove a Telegram username.
+posts them as it does a tapped buy, inside the venue path's own bounds: from
+0.01 ETH, through the token's own pool on the venue (the pool id the watcher
+read against the registry's key for the token), up to twenty buys a day per
+leader, a token orus clears only (else nothing is posted, the followers are
+not messaged, the leader is told), the transaction claimed in
+`bot_venue_buys` before the first send so two runs cannot both mirror it,
+and the followers' daily allowance from `bot_copy_user_days`, the ledger
+the session bot's taps write too. Sells, and a wallet leader's own taps in
+the bot, are never mirrored. The name is a plain one, because a page cannot
+prove a Telegram username.
 
 ## Defaults the page suggests
 

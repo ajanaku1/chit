@@ -190,8 +190,17 @@ into it: the bot mints a one-time code and opens the Sessions page with
 session, nothing moves), and the watcher reads that wallet's ETH buys from
 the venue's swap logs and mirrors and posts them the same way, telling you
 in private how many followed; the list marks you "trades from their own
-wallet". Either way your sells and your standing orders are never mirrored,
-so a follower's exit is their own, and close leader stops it any time.
+wallet". A wallet is one signature, so the venue path keeps its own bounds:
+a buy is read from 0.01 ETH, through the token's own pool on the venue (the
+one the bot quotes; a pool you opened for yourself is yours alone), up to
+twenty a day, and a token orus will not clear is neither posted nor
+mirrored, the followers hear nothing for it and you are told why in
+private. The transaction is claimed in the store before the first mirror,
+so two overlapping runs of the watcher cannot mirror it twice. A follower's
+daily allowance is one ledger for the taps they make here and the mirrors
+of both paths. Either way your sells, your standing orders and, for a
+wallet leader, your taps in the bot are never mirrored, so a follower's
+exit is their own, and close leader stops it any time.
 `src/fleet/bot-copy.ts`, `bot-copy-cards.ts`, `bot-lead-runtime.ts`.
 
 ## What is built, what is next

@@ -23,8 +23,13 @@
  * with `?lead=`, where the wallet signs one message (bot-copy.ts,
  * claimLeadWallet, through api/bot/lead.js); such a leader's card shows the
  * wallet, the list marks them "trades from their own wallet", and the words
- * about what is mirrored change with the kind: every ETH buy that wallet
- * makes on the venue, read from the chain by the watcher, sells never.
+ * about what is mirrored change with the kind: every ETH buy of 0.01 ETH or
+ * more that wallet makes through the token's own pool on the venue, read
+ * from the chain by the watcher, up to twenty a day, a token orus clears
+ * only; sells never. A wallet leader's taps in this bot, should they link
+ * an account too, are theirs alone: their followers were promised that
+ * wallet's venue buys and nothing else, so `afterBuy` mirrors and posts for
+ * an account leader only.
  *
  * After a leader's landed buy the order is: mirrors first, in their fixed
  * order, then the feed's one message, then one line to the leader. The feed
@@ -50,7 +55,7 @@
 
 import { type Address, type Hex, isAddress } from "viem";
 import type { TokenInfo } from "./bot-chain.js";
-import { type CopyDesk, HANDLE_MAX, MAX_FOLLOW_CAP_WEI, plainHandleOk } from "./bot-copy.js";
+import { type CopyDesk, HANDLE_MAX, MAX_FOLLOW_CAP_WEI, type MirrorOptions, VENUE_BUYS_PER_DAY, VENUE_MIN_ETH_WEI, plainHandleOk } from "./bot-copy.js";
 import type { HeyScanner } from "./bot-hey.js";
 import type { OrusScanner } from "./bot-orus.js";
 import { esc, type Keyboard, type Telegram } from "./bot-telegram.js";
@@ -61,8 +66,8 @@ export type CopyCardsDeps = {
   siteUrl: string;
   orus?: OrusScanner;
   hey?: HeyScanner;
-  /** The session bot's charge to a follower's daily allowance (bot-session.ts): the refusal, or null once one execute is counted. */
-  budget?: (followerTgId: string) => string | null;
+  /** The session bot's charge to a follower's daily allowance (bot-session.ts, its memory and the desk's ledger): the refusal, or null once one execute is counted. */
+  budget?: MirrorOptions["budget"];
 };
 
 /** Who tapped: what Telegram sent about them, enough for a handle. */
@@ -96,10 +101,12 @@ export const handleOf = (t: Tapper): string | undefined => {
 };
 
 const GUARDS = "every mirrored buy passes orus's read first (a honeypot, or no read at all, is skipped and you are told), then your own session's caps (the contract refuses past them, no gas spent), and spends your own daily allowance of buys from the bot like a tap of yours would.";
+/** The venue path's own bounds, in the cards' words: the smallest buy that is read and how many a day. */
+const VENUE_BOUNDS = `a buy of ${eth(VENUE_MIN_ETH_WEI)} ETH or more through the token's own pool on the venue, up to ${VENUE_BUYS_PER_DAY} a day, for a token orus clears`;
 /** What is mirrored, by the kind of leader: the words must match what the desk does for each. */
 const SCOPE = {
   account: "only a buy they tap in this bot is mirrored: their limit buys and dca fire from the clock and are not, and their sells are never mirrored, so getting out of a mirrored position is yours alone, from the token card or the Sessions page.",
-  wallet: "they trade from their own wallet: every ETH buy that wallet makes on the venue is mirrored, read from the chain within a few minutes of landing, and their sells are never mirrored, so getting out of a mirrored position is yours alone, from the token card or the Sessions page.",
+  wallet: `they trade from their own wallet: ${VENUE_BOUNDS}, is read from the chain within a few minutes of landing and mirrored; a smaller one, one through another pool or a token orus will not clear is not, and you are not messaged for it; their taps in this bot and their sells are never mirrored, so getting out of a mirrored position is yours alone, from the token card or the Sessions page.`,
 };
 const EXIT = "unfollow is one tap here; revoke the session in one transaction on the Sessions page and nothing can run.";
 const gateFor = (kind: "account" | "wallet"): string => [GUARDS, SCOPE[kind], EXIT].join(" ");
@@ -180,11 +187,14 @@ export class CopyCards {
    * leader's buy is already on chain, and a failure that reached Telegram
    * as a 5xx would have the same tap delivered again. `until` is the epoch
    * ms by which the mirrors, receipts included, must be through so the feed
-   * and the leader's line still fit in the request (bot-session.ts).
+   * and the leader's line still fit in the request (bot-session.ts). An
+   * account leader's tap only: a wallet leader's followers were promised
+   * that wallet's venue buys, and a tap of theirs in the bot is not one.
    */
   async afterBuy(chatId: string, tgId: string, token: Address, ethWei: bigint, hash: Hex, info: TokenInfo, until?: number): Promise<void> {
     try {
-      if (!(await this.#d.copy.leader(tgId))) return;
+      const leader = await this.#d.copy.leader(tgId);
+      if (!leader || leader.kind !== "account") return;
       const mirrors = await this.#d.copy.mirror(tgId, token, ethWei, { ...(this.#d.budget ? { budget: this.#d.budget } : {}), ...(until !== undefined ? { until } : {}) });
       const [scan, hey] = await Promise.all([this.#d.orus?.scan(token), this.#d.hey?.scan(token)]);
       await this.#d.copy.announce(tgId, token, ethWei, hash, info, scan, hey, mirrors);
@@ -206,7 +216,7 @@ export class CopyCards {
     const counts = await Promise.all(leaders.map((l) => this.#d.copy.followersOf(l.tgId)));
     const lines = [
       "<b>leaders</b>",
-      `people who opened their buys to followers. follow one with a cap per mirrored buy: when a buy they tap in this bot lands, the same token is bought on your own session account, sized to the smaller of their amount and your cap. one marked "${WALLET_MARK}" is copied from the chain instead: every ETH buy that wallet makes on the venue.`,
+      `people who opened their buys to followers. follow one with a cap per mirrored buy: when a buy they tap in this bot lands, the same token is bought on your own session account, sized to the smaller of their amount and your cap. one marked "${WALLET_MARK}" is copied from the chain instead: ${VENUE_BOUNDS}.`,
       GATE,
       "",
       ...(leaders.length ? leaders.map((l, i) => `<b>${esc(l.handle)}</b> · <code>${short(l.account)}</code>${l.kind === "wallet" ? ` · ${WALLET_MARK}` : ""} · ${counts[i]!.length} follower${counts[i]!.length === 1 ? "" : "s"}`) : ["no open leaders yet. be the first: ⭐ Become a leader on your card."]),
@@ -226,7 +236,7 @@ export class CopyCards {
       `${l.kind === "wallet" ? `wallet <code>${l.account}</code> · ${WALLET_MARK}` : `account <code>${l.account}</code>`} · ${followers.length} follower${followers.length === 1 ? "" : "s"} · leading since ${l.since.slice(0, 10)}`,
       "",
       l.kind === "wallet"
-        ? "when that wallet buys a token with ETH on the venue, the same token is bought on your session account within a few minutes, sized to the smaller of their amount and your cap."
+        ? `when that wallet buys a token with ETH on the venue (${VENUE_BOUNDS}), the same token is bought on your session account within a few minutes, sized to the smaller of their amount and your cap.`
         : "when a buy they tap in this bot lands, the same token is bought on your session account, sized to the smaller of their amount and your cap.",
       gateFor(l.kind),
       ...(mine ? ["", `you follow them at <code>${eth(mine.capWei)} ETH</code> a buy; a new cap replaces it.`] : []),
@@ -250,7 +260,7 @@ export class CopyCards {
       await this.#say(chatId, [
         `following <b>${esc(l?.handle ?? leaderTgId)}</b> at <code>${eth(f.capWei)} ETH</code> a buy.`,
         l?.kind === "wallet"
-          ? "their next ETH buy from their wallet on the venue is mirrored on your account within a few minutes, inside your session's caps and behind orus's read; their sells are not, so the exit is yours. unfollow is one tap, revoke is one tx."
+          ? `their next ETH buy from their wallet on the venue (${VENUE_BOUNDS}) is mirrored on your account within a few minutes, inside your session's caps and behind orus's read; their taps in this bot and their sells are not, so the exit is yours. unfollow is one tap, revoke is one tx.`
           : "their next tapped buy that lands through this bot is mirrored on your account, inside your session's caps and behind orus's read; their orders and their sells are not, so the exit is yours. unfollow is one tap, revoke is one tx.",
       ].join("\n"), [[btn("👥 My follows", "follows"), btn("← Back", "home")]]);
     } catch (e) {
@@ -289,7 +299,7 @@ export class CopyCards {
       "where do you trade from?",
       "",
       "<b>my session account</b>: every buy you tap in this bot that lands is posted to the feed and mirrored into your followers' accounts.",
-      "<b>my own wallet</b>: you sign one message on the Sessions page with the wallet you trade from (no account, no session, no key handed over), and every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted and mirrored the same way.",
+      `<b>my own wallet</b>: you sign one message on the Sessions page with the wallet you trade from (no account, no session, no key handed over), and every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted and mirrored the same way: ${VENUE_BOUNDS}; a smaller buy, one through another pool or a token orus will not clear is not, and your taps in this bot are not either.`,
       "either way your sells and your standing orders are never mirrored, and close leader stops it any time.",
     ].join("\n"), [[btn("from my session account", "lead:acct"), btn("from my own wallet", "lead:wallet")], [btn("← Back", "home")]]);
   }
@@ -310,7 +320,7 @@ export class CopyCards {
       "1. open the Sessions page from the button below (the only link this bot ever sends is chit.tools).",
       "2. connect the wallet you trade from, check your name, and press <b>Lead from this wallet</b>: one signature, no transaction, nothing moves. the link is good for 15 minutes.",
       "",
-      "from then on every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted to the feed with the hash and mirrored into your followers' accounts, each inside their own caps and behind orus's read. your sells are never mirrored, and the wallet's own trades are never touched. close leader on your card stops the feed and the mirrors, any time.",
+      `from then on every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted to the feed with the hash and mirrored into your followers' accounts, each inside their own caps and behind orus's read: ${VENUE_BOUNDS}. a smaller buy, one through another pool or a token orus will not clear is not posted or mirrored, and you are told why in private. your taps in this bot, if you link an account too, and your sells are never mirrored, and the wallet's own trades are never touched. close leader on your card stops the feed and the mirrors, any time.`,
     ].join("\n"), [[url("🔑 Open the Sessions page", href)], [btn("↻ I signed it", "home")]]);
   }
 
