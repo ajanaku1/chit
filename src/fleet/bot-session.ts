@@ -42,6 +42,8 @@
  */
 
 import { type Address, type Hex, isAddress } from "viem";
+import { AlertCards } from "./bot-alert-cards.js";
+import type { AlertStore } from "./bot-alerts.js";
 import type { BotChain } from "./bot-chain.js";
 import type { CopyDesk } from "./bot-copy.js";
 import { CopyCards } from "./bot-copy-cards.js";
@@ -72,6 +74,8 @@ export type SessionBotDeps = {
   updates?: UpdateClaims;
   /** Standing orders (limit buys, DCA), fired by api/bot/orders.js; absent, the card offers none. */
   orders?: OrderStore;
+  /** Big-buy alerts (bot-alerts.ts): the user's line, read by the watcher's cron; absent, no 🔔 Alerts button. */
+  alerts?: AlertStore;
   botUsername: string;
   siteUrl: string;
   /** Per user, per UTC day: how many executes and how much gas the bot fronts. */
@@ -127,6 +131,7 @@ export class SessionBot {
   readonly #pending = new Map<string, { token: Address; side: "buy" | "sell"; order?: "limit" | "dca" }>();
   readonly #photos = new Set<string>();
   readonly #copy: CopyCards | undefined;
+  readonly #alerts: AlertCards | undefined;
   readonly #updates: UpdateClaims;
 
   constructor(d: SessionBotDeps) {
@@ -134,6 +139,8 @@ export class SessionBot {
     this.#updates = d.updates ?? new MemoryUpdateClaims();
     // copy: a mirrored buy spends the follower's own daily allowance, the same one their own taps spend.
     this.#copy = d.copy ? new CopyCards({ copy: d.copy, telegram: d.telegram, siteUrl: d.siteUrl, budget: (tgId) => this.#charge(tgId), ...(d.orus ? { orus: d.orus } : {}), ...(d.hey ? { hey: d.hey } : {}) }) : undefined;
+    // alerts: the card writes the subscription; the watcher's cron sends the alerts (bot-alert-cards.ts).
+    this.#alerts = d.alerts ? new AlertCards({ store: d.alerts, telegram: d.telegram }) : undefined;
   }
 
   get #now(): Date { return this.#d.now ? this.#d.now() : new Date(); }
@@ -177,6 +184,8 @@ export class SessionBot {
       if (cmd === "/link") return this.#connect(chatId, tgId);
       // copy: a reply to a cap or handle prompt (bot-copy-cards.ts).
       if (this.#copy && (await this.#copy.reply(chatId, tgId, text, !!u.message.reply_to_message))) return;
+      // alerts: a reply to the line prompt (bot-alert-cards.ts).
+      if (this.#alerts && (await this.#alerts.reply(chatId, tgId, text, !!u.message.reply_to_message))) return;
       const pending = this.#pending.get(tgId);
       if (pending && u.message.reply_to_message) {
         this.#pending.delete(tgId);
@@ -197,6 +206,8 @@ export class SessionBot {
     const [verb, a, b] = data.split(":");
     // copy: leaders, follows and their prompts (bot-copy-cards.ts).
     if (this.#copy?.owns(verb ?? "")) { await ack(); return this.#copy.callback(chatId, tgId, verb!, a, q.from); }
+    // alerts: the card, on, off and the line prompt (bot-alert-cards.ts).
+    if (this.#alerts?.owns(verb ?? "")) { await ack(); return this.#alerts.callback(chatId, tgId, verb!, a); }
     switch (verb) {
       case "home": await ack(); return this.#home(chatId, tgId, messageId);
       case "connect": await ack(); return this.#connect(chatId, tgId);
@@ -270,7 +281,8 @@ export class SessionBot {
         "",
         "<i>beta. holders only. not audited by a firm yet, and we say so on every card.</i>",
       ].join("\n");
-      return this.#out(chatId, messageId, text, kb([btn("🔗 Connect your wallet", "connect")], [btn("❓ Help", "help")], ...this.#door()));
+      // alerts: no link needed, the alert goes to this chat.
+      return this.#out(chatId, messageId, text, kb([btn("🔗 Connect your wallet", "connect")], ...(this.#alerts ? [this.#alerts.homeRow()] : []), [btn("❓ Help", "help")], ...this.#door()));
     }
     const [s, ethBal] = await Promise.all([this.#d.session.sessionOf(link.account), this.#d.reads.ethBalance(link.account)]);
     const state = sessionState(s, Math.floor(this.#now.getTime() / 1000));
@@ -288,6 +300,8 @@ export class SessionBot {
       ...(this.#d.orders ? [[btn("📋 Orders", "orders")]] : []),
       // copy: the leaders list, my follows, become or close leader.
       ...(this.#copy ? await this.#copy.homeRows(tgId) : []),
+      // alerts: on, off and the line (bot-alert-cards.ts).
+      ...(this.#alerts ? [this.#alerts.homeRow()] : []),
       [btn("❓ Help", "help"), btn("↻ Refresh", "home")],
       ...this.#door(),
     ));

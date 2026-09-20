@@ -177,6 +177,43 @@ one owner cannot drain the signer's gas. Orders carry the chain they were
 placed on; `BOT_ORDERS_OFF=1` stops the cron with the buttons.
 `src/fleet/bot-orders.ts`.
 
+The venue's tokens are watched. A second cron (`api/bot/watch.js`, every
+five minutes, the same `CRON_SECRET` bearer) reads the pool manager's own
+Swap logs since the block it last reached, at most 600 blocks a pass so a
+watcher that fell behind catches up in steps the public RPC answers, and
+hands on every ETH buy of a watched token once: a swap in an ETH pool of
+$CHIT or a token on `FLEET_TOKEN_ALLOWLIST` where the swapper paid ETH and
+tokens came out, the buyer being the transaction's sender, the token the
+pool's other side as its Initialize event named it. The watched tokens'
+pools are named through the bot's registry before the first log is read,
+however old they are; the pool manager is one contract for every pool on
+the chain and anyone can open a pool on it, so a pool of any other token
+is never a buy, whoever swaps in it and however much. A sell is not a buy,
+a pool whose opening cannot be found is skipped rather than guessed, a
+transaction the bot's own signer sent (a leader's tapped buy the desk
+already posted, a mirror, an order's fill, a user's own buy) is not
+handed on, and each hash is claimed in the store in one statement before
+its handlers run, so a pass the host kills, or two passes over one window
+at once, is never a buy announced twice. What is handed on is a
+`VenueBuy`; the alerts are its first reader, and other features register
+theirs in `watchHandlers` (`src/fleet/bot-watch-runtime.ts`), each caught
+on its own. `src/fleet/bot-watch.ts`.
+
+**🔔 Alerts** on the home card, linked or not: a buy of at least the
+group's line (`BOT_ALERT_GROUP_MIN_ETH`, 0.5 by default) is posted once to
+the group (`BOT_GROUP_CHAT_ID`, the same feed the leaders' buys land in),
+and a buy of at least a user's own line, set on the card, is told to that
+user in private. The message is the chain's facts and nothing else: who
+sent how much ETH for which token (the transaction's sender, and the
+message says so), the hash, the orus and HEY lines as the token card shows
+them, "unknown" where a partner has no read (never a missing line, which
+would read as clean), "read from the chain, not from us", and a "buy this"
+door into the bot by the token. Bounds: twenty group posts a pass and no
+more, one private message per user per token an hour, claimed in the store
+in one statement so two passes tell nobody twice. `BOT_WATCH_OFF=1` stops
+the cron and hides the button.
+`src/fleet/bot-alerts.ts`, `src/fleet/bot-alert-cards.ts`.
+
 ## What is built, what is next
 
 Built (branch `feat/chit-bot`): the playground, end to end, buttons and

@@ -69,6 +69,23 @@
  *   BOT_ORDERS_CHAIN_ID          4663 (default) or 46630: the runner fires
  *                                only the orders placed on its chain
  *                                (bot-orders-runtime.ts has the rest)
+ *   BOT_WATCH_OFF                1 hides the 🔔 Alerts button in session
+ *                                mode and stops the chain watcher's cron at
+ *                                api/bot/watch.js; otherwise the watcher
+ *                                reads the venue's swap logs every five
+ *                                minutes (bot-watch.ts) and posts the big
+ *                                buys to the group and to the users who
+ *                                asked (bot-alerts.ts), and hands every buy
+ *                                to the handlers other features register
+ *   BOT_WATCH_CHAIN_ID           4663 (default) or 46630: the chain the
+ *                                watcher reads; its cursor is per chain
+ *   BOT_WATCH_BLOCKS_PER_RUN     how far the watcher's cursor moves in one
+ *                                pass at most; default 600
+ *   BOT_ALERT_GROUP_MIN_ETH      a buy of this much ETH or more is posted
+ *                                to BOT_GROUP_CHAT_ID by the watcher;
+ *                                default 0.5. Each user sets their own line
+ *                                on the Alerts card (bot-watch-runtime.ts
+ *                                has the rest)
  *   BOT_ASSET_DIR                where the share card's plate and fonts are
  *                                (default landing/public/bot, shipped with
  *                                the function)
@@ -122,6 +139,7 @@ import { MemoryOrderStore, NeonOrderStore, type OrderStore } from "./bot-orders.
 import { createSessionChain } from "./bot-session-chain.js";
 import { SessionBot, type SessionBotDeps } from "./bot-session.js";
 import { CopyDesk, MemoryCopyStore, NeonCopyStore, type CopyStore } from "./bot-copy.js";
+import { MemoryAlertStore, NeonAlertStore, type AlertStore } from "./bot-alerts.js";
 import { MemoryUpdateClaims, NeonUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { DualBot, MemoryFloorStore, NeonFloorStore, type FloorStore } from "./bot-dual.js";
 
@@ -213,6 +231,18 @@ const ordersFromEnv = (): OrderStore | undefined => {
   return new MemoryOrderStore();
 };
 
+/** Session mode's alert subscriptions, read by the watcher's cron; the same store rule as the links. BOT_WATCH_OFF=1 offers no button. */
+const alertsFromEnv = (): AlertStore | undefined => {
+  if (process.env.BOT_WATCH_OFF === "1") return undefined;
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    const sql = neon(url);
+    return new NeonAlertStore({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
+  }
+  if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
+  return new MemoryAlertStore();
+};
+
 /** Session mode: mainnet, no key of the owner's anywhere; the bot's own signer pays gas and holds nothing. */
 const buildSession = (overrides: SessionOverrides): SessionBot => {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -233,6 +263,8 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
   if (dailyExecutes !== undefined && !(Number.isInteger(dailyExecutes) && dailyExecutes > 0)) refuse("BOT_DAILY_EXECUTES must be a whole number");
   const dailyGasWei = ethFromEnv("BOT_DAILY_GAS_ETH");
   const orders = overrides.orders ?? ordersFromEnv();
+  // alerts: the 🔔 card writes a line per user; the watcher's cron (api/bot/watch.js) reads it.
+  const alerts = overrides.alertStore ?? alertsFromEnv();
   const deps: SessionBotDeps = {
     reads: createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER }),
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as `0x${string}` }),
@@ -246,6 +278,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     siteUrl: site,
     ...(overrides.playgroundFloor ? { playgroundFloor: true } : {}),
     ...(orders ? { orders } : {}),
+    ...(alerts ? { alerts } : {}),
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
   };
@@ -323,7 +356,7 @@ const build = (overrides: BotOverrides = {}): ChitBot => {
   });
 };
 
-export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore; updates?: UpdateClaims; orders?: OrderStore; floors?: FloorStore; copyStore?: CopyStore; playgroundFloor?: boolean };
+export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore; updates?: UpdateClaims; orders?: OrderStore; floors?: FloorStore; copyStore?: CopyStore; alertStore?: AlertStore; playgroundFloor?: boolean };
 
 export const botMode = (): "playground" | "session" | "dual" => {
   const m = process.env.BOT_MODE || "playground";
