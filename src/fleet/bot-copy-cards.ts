@@ -9,8 +9,17 @@
  * sized to the smaller of the leader's amount and the follower's cap, runs
  * on the follower's own session account inside the caps the follower
  * granted (the contract refuses past them, with no gas spent), passes
- * orus's read first (a honeypot or no read at all is skipped), unfollow is
- * one tap here and revoke is one transaction on the Sessions page.
+ * orus's read first (a honeypot or no read at all is skipped), spends the
+ * follower's own daily allowance from the bot like a tap of theirs would,
+ * unfollow is one tap here and revoke is one transaction on the Sessions
+ * page.
+ *
+ * After a leader's landed buy the order is: mirrors first, in their fixed
+ * order, then the feed's one message, then one line to the leader. The feed
+ * after the mirrors, because a message before them is a list of buys about
+ * to land for anyone in the group to run ahead of. Whatever fails in there
+ * fails after the leader's own buy landed, so it is caught here and logged;
+ * the leader is told; the request never fails over it.
  *
  * Callbacks owned here (all under Telegram's 64 bytes):
  *   leaders            the open leaders, a follow button each
@@ -18,14 +27,15 @@
  *   askf:<tgId>        the reply prompt for the cap in ETH per mirrored buy
  *   follows            who I follow, an unfollow button each
  *   unf:<tgId>         unfollow
- *   lead:on, lead:off  become a leader (the Telegram username or first
- *                      name is the handle; asked once when there is
- *                      neither) and close it again
+ *   lead:on, lead:off  become a leader (the Telegram @username is the
+ *                      handle; a first name that passes as a plain name is
+ *                      next; asked once when there is neither) and close
+ *                      it again
  */
 
 import type { Address, Hex } from "viem";
 import type { TokenInfo } from "./bot-chain.js";
-import { type CopyDesk, MAX_FOLLOW_CAP_WEI } from "./bot-copy.js";
+import { type CopyDesk, HANDLE_MAX, MAX_FOLLOW_CAP_WEI, plainHandleOk } from "./bot-copy.js";
 import type { HeyScanner } from "./bot-hey.js";
 import type { OrusScanner } from "./bot-orus.js";
 import { esc, type Keyboard, type Telegram } from "./bot-telegram.js";
@@ -36,13 +46,14 @@ export type CopyCardsDeps = {
   siteUrl: string;
   orus?: OrusScanner;
   hey?: HeyScanner;
+  /** The session bot's charge to a follower's daily allowance (bot-session.ts): the refusal, or null once one execute is counted. */
+  budget?: (followerTgId: string) => string | null;
 };
 
 /** Who tapped: what Telegram sent about them, enough for a handle. */
 export type Tapper = { username?: string; first_name?: string };
 
 const VERBS = new Set(["leaders", "fl", "askf", "follows", "unf", "lead"]);
-const HANDLE_MAX = 32;
 
 const short = (a: string): string => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const eth = (wei: bigint): string => {
@@ -57,14 +68,19 @@ const toWei = (s: string): bigint | null => {
 const btn = (text: string, data: string) => ({ text, callback_data: data });
 const url = (text: string, href: string) => ({ text, url: href });
 
-/** The handle followers see: the @username when there is one, else the first name, else nothing (and the bot asks). */
+/**
+ * The handle followers see: the @username when there is one (Telegram's
+ * own, unique, never typed here), else the first name when it passes as a
+ * plain name (a first name is any text, so one that starts with @ or reads
+ * as the project is not taken), else nothing, and the bot asks.
+ */
 export const handleOf = (t: Tapper): string | undefined => {
   if (t.username && /^[A-Za-z0-9_]{1,32}$/.test(t.username)) return `@${t.username}`;
-  const name = t.first_name?.trim().slice(0, HANDLE_MAX);
-  return name || undefined;
+  const name = t.first_name?.trim().slice(0, HANDLE_MAX) ?? "";
+  return plainHandleOk(name) ? name : undefined;
 };
 
-const GATE = "every mirrored buy passes orus's read first (a honeypot, or no read at all, is skipped and you are told) and then your own session's caps (the contract refuses past them, no gas spent). unfollow is one tap here; revoke the session in one transaction on the Sessions page and nothing can run.";
+const GATE = "every mirrored buy passes orus's read first (a honeypot, or no read at all, is skipped and you are told), then your own session's caps (the contract refuses past them, no gas spent), and spends your own daily allowance of buys from the bot like a tap of yours would. unfollow is one tap here; revoke the session in one transaction on the Sessions page and nothing can run.";
 
 type Pending = { kind: "cap"; leaderTgId: string } | { kind: "handle" };
 
@@ -113,25 +129,33 @@ export class CopyCards {
     if (!p || !isReply) return false;
     this.#pending.delete(tgId);
     if (p.kind === "cap") await this.#follow(chatId, tgId, p.leaderTgId, text);
-    else await this.#open(chatId, tgId, text.trim().slice(0, HANDLE_MAX));
+    else await this.#typedHandle(chatId, tgId, text.trim());
     return true;
   }
 
   /**
-   * The leader's own buy landed: the feed first, then the mirrors in their
-   * fixed order, then one line to the leader saying how many followed. The
-   * partners are asked again here (their scanners keep an answer a minute,
-   * so the card's read is reused, not repeated).
+   * The leader's own buy landed: the mirrors in their fixed order, then the
+   * feed, then one line to the leader saying how many followed. The partners
+   * are asked again here (their scanners keep an answer a minute, so the
+   * card's read is reused, not repeated). Nothing in here may throw out: the
+   * leader's buy is already on chain, and a failure that reached Telegram
+   * as a 5xx would have the same tap delivered again.
    */
   async afterBuy(chatId: string, tgId: string, token: Address, ethWei: bigint, hash: Hex, info: TokenInfo): Promise<void> {
-    if (!(await this.#d.copy.leader(tgId))) return;
-    const [scan, hey] = await Promise.all([this.#d.orus?.scan(token), this.#d.hey?.scan(token)]);
-    await this.#d.copy.announce(tgId, token, ethWei, hash, info, scan, hey);
-    const mirrors = await this.#d.copy.mirror(tgId, token, ethWei);
-    if (!mirrors.length) return;
-    const skipped = mirrors.filter((m) => m.outcome === "skipped").length;
-    const went = mirrors.length - skipped;
-    await this.#say(chatId, `mirrored to ${went} of ${mirrors.length} follower${mirrors.length === 1 ? "" : "s"}${skipped ? `, ${skipped} skipped (each was told why)` : ""}.`);
+    try {
+      if (!(await this.#d.copy.leader(tgId))) return;
+      const mirrors = await this.#d.copy.mirror(tgId, token, ethWei, this.#d.budget ? { budget: this.#d.budget } : {});
+      const [scan, hey] = await Promise.all([this.#d.orus?.scan(token), this.#d.hey?.scan(token)]);
+      await this.#d.copy.announce(tgId, token, ethWei, hash, info, scan, hey, mirrors);
+      if (!mirrors.length) return;
+      const skipped = mirrors.filter((m) => m.outcome === "skipped").length;
+      const went = mirrors.length - skipped;
+      await this.#say(chatId, `mirrored to ${went} of ${mirrors.length} follower${mirrors.length === 1 ? "" : "s"}${skipped ? `, ${skipped} skipped (each was told why)` : ""}.`);
+    } catch (error) {
+      const detail = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "unknown";
+      console.error("copy afterBuy:", tgId, detail);
+      await this.#say(chatId, "your buy landed. the feed or a mirror broke on our side after it; every follower who was reached was told, the rest were not mirrored this time.").catch(() => undefined);
+    }
   }
 
   // ---------- cards ----------
@@ -222,8 +246,14 @@ export class CopyCards {
     return this.#open(chatId, tgId, handle);
   }
 
+  /** A name typed in reply is a plain one: never an @ (that is Telegram's, and only Telegram hands it in), never the project's. */
+  async #typedHandle(chatId: string, tgId: string, name: string): Promise<void> {
+    if (!name) return this.#say(chatId, "a leader needs a name. tap ⭐ Become a leader again and reply with one.", [[btn("← Back", "home")]]);
+    if (!plainHandleOk(name)) return this.#say(chatId, `that name will not do: letters, digits, spaces, _ . - and up to ${HANDLE_MAX}, no @, not the project's name. tap ⭐ Become a leader again and reply with another.`, [[btn("← Back", "home")]]);
+    return this.#open(chatId, tgId, name);
+  }
+
   async #open(chatId: string, tgId: string, handle: string): Promise<void> {
-    if (!handle) return this.#say(chatId, "a leader needs a name. tap ⭐ Become a leader again and reply with one.", [[btn("← Back", "home")]]);
     try {
       const l = await this.#d.copy.becomeLeader(tgId, handle);
       await this.#say(chatId, [
@@ -233,6 +263,7 @@ export class CopyCards {
       ].join("\n"), [[btn("📣 Leaders", "leaders"), btn("← Back", "home")]]);
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
+      if (/name/.test(why)) return this.#say(chatId, `not a leader yet: ${esc(why)}. tap ⭐ Become a leader again and reply with another.`, [[btn("← Back", "home")]]);
       await this.#say(chatId, `not a leader yet: ${esc(why)}. connect your wallet from your card, then tap again.`, [[btn("🔗 Connect your wallet", "connect"), btn("← Back", "home")]]);
     }
   }

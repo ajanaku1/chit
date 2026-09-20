@@ -100,6 +100,7 @@ import { MemoryBotLinkStore, NeonBotLinkStore, type BotLinkStore } from "./bot-l
 import { createSessionChain } from "./bot-session-chain.js";
 import { SessionBot, type SessionBotDeps } from "./bot-session.js";
 import { CopyDesk, MemoryCopyStore, NeonCopyStore, type CopyStore } from "./bot-copy.js";
+import { MemoryUpdateClaims, NeonUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { DualBot, MemoryFloorStore, NeonFloorStore, type FloorStore } from "./bot-dual.js";
 
 const chainIdFromEnv = (): number => Number(process.env.FLEET_CHAIN_ID || 46630);
@@ -155,6 +156,18 @@ const linksFromEnv = (): BotLinkStore => {
   return new MemoryBotLinkStore();
 };
 
+/** Session mode: each update id acted on once across every instance (bot-updates.ts); the same store rule as the links. */
+const updateClaimsFromEnv = (): UpdateClaims => {
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    const sql = neon(url);
+    return new NeonUpdateClaims({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
+  }
+  if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
+  warnOnce("updates", "BOT_MEMORY_STORE=1: a redelivered update is caught in this instance's memory only");
+  return new MemoryUpdateClaims();
+};
+
 const copyStoreFromEnv = (): CopyStore => {
   const url = process.env.DATABASE_URL;
   if (url) {
@@ -189,6 +202,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     reads: createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER }),
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as `0x${string}` }),
     links: overrides.links ?? linksFromEnv(),
+    updates: overrides.updates ?? updateClaimsFromEnv(),
     telegram: createTelegram(token!),
     ...(process.env.BOT_PLATE_OFF === "1" ? {} : { plate: createTokenPlateRenderer(process.env.BOT_ASSET_DIR || undefined) }),
     ...(process.env.ORUS_PARTNER_API_KEY ? { orus: createOrusScanner({ apiKey: process.env.ORUS_PARTNER_API_KEY, chainId, ...(process.env.ORUS_API_BASE ? { baseUrl: process.env.ORUS_API_BASE } : {}) }) } : {}),
@@ -200,6 +214,8 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
   };
   // Leaders and followers: the same reads, session and links; a follower is told in their private chat (its id is their Telegram id); the feed only with BOT_GROUP_CHAT_ID.
+  // Without orus the desk still opens but every mirror is skipped (unknown is not safe), so the operator is told once at build.
+  if (!deps.orus) warnOnce("copy-orus", "ORUS_PARTNER_API_KEY is not set: leaders and followers work, but every mirrored buy is skipped until it is");
   const groupChatId = process.env.BOT_GROUP_CHAT_ID?.trim();
   if (groupChatId !== undefined && groupChatId !== "" && !/^-?\d+$/.test(groupChatId)) refuse("BOT_GROUP_CHAT_ID must be a Telegram chat id (a number, -100… for a supergroup)");
   const copy = new CopyDesk({
@@ -271,7 +287,7 @@ const build = (overrides: BotOverrides = {}): ChitBot => {
   });
 };
 
-export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore; floors?: FloorStore; copyStore?: CopyStore; playgroundFloor?: boolean };
+export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore; updates?: UpdateClaims; floors?: FloorStore; copyStore?: CopyStore; playgroundFloor?: boolean };
 
 export const botMode = (): "playground" | "session" | "dual" => {
   const m = process.env.BOT_MODE || "playground";

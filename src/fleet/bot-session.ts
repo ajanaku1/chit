@@ -23,6 +23,7 @@ import { orusLine, type OrusScanner } from "./bot-orus.js";
 import type { SessionChain } from "./bot-session-chain.js";
 import { CAPTION_MAX_CHARS, esc, type Keyboard, type Outgoing, type Telegram } from "./bot-telegram.js";
 import type { TokenPlateRenderer } from "./bot-token-card.js";
+import { MemoryUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { sessionState } from "./session-keys.js";
 import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4EthBuy, minOutFor } from "./v4-swap.js";
 import type { Update } from "./bot-handlers.js";
@@ -38,6 +39,8 @@ export type SessionBotDeps = {
   plate?: TokenPlateRenderer;
   /** Leaders and followers (bot-copy.ts): the cards, the feed and the mirrors after a landed buy. Absent: no such buttons. */
   copy?: CopyDesk;
+  /** Each update id acted on once (bot-updates.ts); absent, this instance's memory, which is enough for one machine only. */
+  updates?: UpdateClaims;
   botUsername: string;
   siteUrl: string;
   /** Per user, per UTC day: how many executes and how much gas the bot fronts. */
@@ -77,16 +80,45 @@ export class SessionBot {
   readonly #pending = new Map<string, { token: Address }>();
   readonly #photos = new Set<string>();
   readonly #copy: CopyCards | undefined;
+  readonly #updates: UpdateClaims;
 
   constructor(d: SessionBotDeps) {
     this.#d = d;
-    this.#copy = d.copy ? new CopyCards({ copy: d.copy, telegram: d.telegram, siteUrl: d.siteUrl, ...(d.orus ? { orus: d.orus } : {}), ...(d.hey ? { hey: d.hey } : {}) }) : undefined;
+    this.#updates = d.updates ?? new MemoryUpdateClaims();
+    // copy: a mirrored buy spends the follower's own daily allowance, the same one their own taps spend.
+    this.#copy = d.copy ? new CopyCards({ copy: d.copy, telegram: d.telegram, siteUrl: d.siteUrl, budget: (tgId) => this.#charge(tgId), ...(d.orus ? { orus: d.orus } : {}), ...(d.hey ? { hey: d.hey } : {}) }) : undefined;
   }
 
   get #now(): Date { return this.#d.now ? this.#d.now() : new Date(); }
   #cfg<K extends keyof typeof DEFAULTS>(k: K): (typeof DEFAULTS)[K] { return (this.#d[k] as (typeof DEFAULTS)[K] | undefined) ?? DEFAULTS[k]; }
 
+  /**
+   * One update in, zero or more messages out; never throws at the caller.
+   * The update id is claimed first, so a redelivery (Telegram retries
+   * anything that was not answered 2xx: a throw, a function killed at its
+   * limit) runs nothing twice; a failure after that is a message, never a
+   * 5xx that would earn the retry.
+   */
   async handle(u: Update): Promise<void> {
+    if (u.update_id !== undefined && !(await this.#updates.claim(u.update_id, this.#now))) return;
+    const chatId = u.message?.chat.id ?? u.callback_query?.message?.chat.id;
+    try {
+      await this.#route(u);
+    } catch (error) {
+      const detail = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "unknown";
+      console.error("chit bot (mainnet):", detail);
+      if (chatId !== undefined) await this.#say(String(chatId), this.#failureText(error), kb([btn("← Back", "home")])).catch(() => undefined);
+    }
+  }
+
+  /** What a user is told: the chain's own words for a chain failure, a plain line for anything internal (the detail stays in the log). */
+  #failureText(error: unknown): string {
+    const chain = (error as { shortMessage?: unknown }).shortMessage;
+    if (typeof chain === "string" && chain) return `the chain said: <code>${esc(chain.split("\n")[0] ?? chain)}</code>. try again in a moment.`;
+    return "something broke on our side. try again in a moment.";
+  }
+
+  async #route(u: Update): Promise<void> {
     if (u.message?.text && u.message.from) {
       const chatId = String(u.message.chat.id), tgId = String(u.message.from.id), text = u.message.text.trim();
       if (u.message.chat.type !== "private") return;
@@ -107,6 +139,8 @@ export class SessionBot {
     const chatId = String(q.message.chat.id), tgId = String(q.from.id), messageId = q.message.message_id, data = q.data ?? "";
     if (q.message.photo) this.#photos.add(`${chatId}:${messageId}`);
     const ack = (text?: string) => this.#d.telegram.deliver({ kind: "answer", callbackId: q.id, ...(text ? { text } : {}) });
+    // A tap from a group (the feed's messages carry url buttons only, so a callback there is forged) is answered and nothing is drawn or edited in the group.
+    if (q.message.chat.type !== "private") { await ack("open the bot in private"); return; }
     const [verb, a, b] = data.split(":");
     // copy: leaders, follows and their prompts (bot-copy-cards.ts).
     if (this.#copy?.owns(verb ?? "")) { await ack(); return this.#copy.callback(chatId, tgId, verb!, a, q.from); }
@@ -253,6 +287,21 @@ export class SessionBot {
     const fresh = { day, executes: 0, gasWei: 0n };
     this.#days.set(tgId, fresh);
     return fresh;
+  }
+
+  /**
+   * copy: a mirrored execute on a follower's account is charged to that
+   * follower's day like one of their own taps (the same two limits #buy
+   * checks), so the bot's gas per user is bounded whoever's buy it follows.
+   * The refusal, in the follower's words, or null once the execute is counted.
+   */
+  #charge(tgId: string): string | null {
+    const count = this.#today(tgId);
+    if (count.executes >= this.#cfg("dailyExecutes")) return `that is ${this.#cfg("dailyExecutes")} buys today from your account; again tomorrow`;
+    if (count.gasWei >= this.#cfg("dailyGasWei")) return "the bot has fronted its daily gas for your account; again tomorrow";
+    count.executes += 1;
+    count.gasWei += 700_000n * 1_000_000_000n;
+    return null;
   }
 
   async #buy(chatId: string, tgId: string, token: Address, amount: string, fromButton = false): Promise<void> {
