@@ -139,3 +139,68 @@ test("with a plate renderer the token card is a picture; the plate says mainnet;
   await bot.handle(tap(`token:${PEPE}`, true));
   assert.equal(telegram.sent.at(-1)!.kind, "editPhoto");
 });
+
+test("orders: the card offers a limit buy and a dca only with a store; the prompts parse strictly and create orders the account first agreed to; the list cancels", async () => {
+  const { MemoryOrderStore } = await import("../../src/fleet/bot-orders.js");
+  const orders = new MemoryOrderStore();
+  const { bot, telegram, buttons, links, session } = setup({ orders });
+  await linked(links);
+  await bot.handle(dm(PEPE));
+  assert.ok(buttons().includes(`lim:${PEPE}`) && buttons().includes(`dca:${PEPE}`));
+  // Without a store, no order buttons at all.
+  const bare = setup();
+  await linked(bare.links);
+  await bare.bot.handle(dm(PEPE));
+  assert.ok(!bare.buttons().some((b) => b.startsWith("lim:") || b.startsWith("dca:") || b === "orders"));
+  // A limit: the wrong shape is refused with the format; the right one is stored in the token's base units.
+  await bot.handle(tap(`lim:${PEPE}`));
+  assert.match(telegram.last(), /like <code>0.02 at 1200000<\/code>/);
+  await bot.handle(dm("0.02 for 1200000", "limit buy"));
+  assert.match(telegram.last(), /not the format/);
+  assert.equal((await orders.openFor("7")).length, 0);
+  await bot.handle(tap(`lim:${PEPE}`));
+  await bot.handle(dm("0.02 at 1200000", "limit buy"));
+  let open = await orders.openFor("7");
+  assert.equal(open.length, 1);
+  assert.equal(open[0]!.kind, "limit");
+  assert.equal(open[0]!.ethWei, parseEther("0.02"));
+  assert.equal(open[0]!.triggerPerEth, 1_200_000n * 10n ** 6n, "tokens per eth in the token's six decimals");
+  assert.equal(open[0]!.account, ACCOUNT);
+  assert.match(telegram.last(), /limit buy <code>0.02 ETH<\/code> of <b>PEPE<\/b> at <code>1200000 PEPE<\/code> per ETH or better/);
+  // Over the per-trade cap: the account says no before the order exists.
+  await bot.handle(tap(`lim:${PEPE}`));
+  await bot.handle(dm("0.06 at 1200000", "limit buy"));
+  assert.match(telegram.last(), /your session says no to a buy of that size: <b>over your per-trade cap<\/b>/);
+  assert.equal((await orders.openFor("7")).length, 1);
+  // A dca: the first buy is due now, the interval in hours, the count kept.
+  await bot.handle(tap(`dca:${PEPE}`));
+  assert.match(telegram.last(), /like <code>0.01 every 4 hours 6 times<\/code>/);
+  await bot.handle(dm("0.01 every 4 hours", "dca"));
+  assert.match(telegram.last(), /not the format/);
+  await bot.handle(tap(`dca:${PEPE}`));
+  await bot.handle(dm("0.01 every 4 hours 6 times", "dca"));
+  open = await orders.openFor("7");
+  assert.equal(open.length, 2);
+  const d = open.find((o) => o.kind === "dca")!;
+  assert.equal(d.everyMs, 4 * 3_600_000);
+  assert.equal(d.remaining, 6);
+  assert.equal(d.nextAt, clock.toISOString());
+  assert.equal(session.calls.length, 0, "placing an order executes nothing");
+  // The home card has the list; the list has a cancel per order; only the owner's cancel counts.
+  await bot.handle(dm("/start"));
+  assert.ok(buttons().includes("orders"));
+  await bot.handle(tap("orders"));
+  assert.match(telegram.last(), /<b>your orders<\/b>\n1\. ⏱ limit buy .*\n2\. 🔁 dca <code>0.01 ETH<\/code> of <b>PEPE<\/b> every 4 hours, 6 left/);
+  const cancels = buttons().filter((b) => b.startsWith("oc:"));
+  assert.equal(cancels.length, 2);
+  const stranger: Update = { callback_query: { id: "cb", data: cancels[0]!, from: { id: 8 }, message: { message_id: 9, chat: { id: 8, type: "private" } } } };
+  await bot.handle(stranger);
+  assert.equal((await orders.openFor("7")).length, 2, "someone else's tap cancels nothing");
+  await bot.handle(tap(cancels[0]!));
+  open = await orders.openFor("7");
+  assert.equal(open.length, 1);
+  assert.equal(open[0]!.kind, "dca");
+  assert.equal((await orders.get(cancels[0]!.slice(3)))!.status, "cancelled");
+  await bot.handle(tap(cancels[1]!));
+  assert.match(telegram.last(), /no open orders/);
+});

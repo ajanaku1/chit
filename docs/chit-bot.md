@@ -149,6 +149,19 @@ pieces:
 
 Trojan gives speed by taking your key. Chit gives speed without it.
 
+Standing orders ride on the same session. From a token's card, **Limit buy**
+takes an amount and a price as tokens per ETH (`0.02 at 1200000`: buy when
+one ETH gets at least that many, the price per token at or below the level)
+and **DCA** takes an amount, an interval and a count (`0.01 every 4 hours 6
+times`, the first buy at the next check). A cron (`api/bot/orders.js`, every
+five minutes, the `CRON_SECRET` bearer) fires what is due as the same one
+`execute` a tapped Buy is: the account is asked `canExecute` first, the
+quote sets the floor, the bot's key signs, the account pays. A refusal (a
+paused session, over a cap) leaves the order open with the reason on it and
+tells you; three in a row switch it off. **Orders** on the home card lists
+what is open, a cancel under each. One pass sends at most twenty executes,
+so a cron gone wrong cannot drain the signer's gas. `src/fleet/bot-orders.ts`.
+
 ## What is built, what is next
 
 Built (branch `feat/chit-bot`): the playground, end to end, buttons and
