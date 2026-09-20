@@ -4,6 +4,11 @@
   "buildCommand": "npm run build && node scripts/assemble-site.mjs",
   "outputDirectory": "public",
   "framework": null,
+  "git": {
+    "deploymentEnabled": {
+      "main": false
+    }
+  },
   "functions": {
     "api/bot.js": {
       "maxDuration": 60,
