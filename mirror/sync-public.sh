@@ -39,7 +39,14 @@ trap cleanup EXIT
 # main and read TELEGRAM_* from repo secrets. Mirrored, they would fire on the
 # public repo, which has no such secrets, and leave a failed red Action after
 # every sync. They also describe internal comms, which is not public business.
-STRIP="marketing proposals specs .specify .agents .github loop reports submission mirror Goal.md plan.md prompt.md GO-LIVE.md feedback.md design.md design-stage2.md verify.sh"
+#
+# The mainnet-blockers reproductions are stripped for a different reason. Each
+# one states, with file and line, a way the money path loses a trader's ETH
+# before it is fixed. They belong in the private repo where CI runs them; they
+# do not belong in a public one until the behaviour they describe is gone.
+STRIP="marketing proposals specs .specify .agents .github loop reports submission mirror Goal.md plan.md prompt.md GO-LIVE.md feedback.md design.md design-stage2.md design-mainnet-beta.md design-app-redesign.md verify.sh \
+test/fleet/mainnet-blockers.test.ts test/fleet/mainnet-blockers-m4c.test.ts \
+test/fleet/FleetPoolMainnetBlockers.t.sol"
 
 echo "==> cloning private"
 git clone -q --single-branch --branch "$BRANCH" "$PRIVATE_URL" "$WORK/m"
@@ -78,7 +85,7 @@ fi
 
 echo "==> verifying no stripped path survived"
 LEAK="$(git log --pretty=format: --name-only | sort -u | grep -vE '^$' \
-  | grep -E '^(marketing|proposals|specs|\.specify|\.agents|loop|reports|submission|mirror)/|^(Goal|plan|prompt|GO-LIVE|feedback|design|design-stage2)\.md$|^verify\.sh$' || true)"
+  | grep -E '^(marketing|proposals|specs|\.specify|\.agents|loop|reports|submission|mirror)/|^(Goal|plan|prompt|GO-LIVE|feedback|design|design-stage2|design-mainnet-beta|design-app-redesign)\.md$|^verify\.sh$' || true)"
 if [ -n "$LEAK" ]; then
   echo "ERROR: stripped paths present in filtered history:"
   echo "$LEAK"
