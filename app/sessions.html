@@ -132,6 +132,20 @@
           <button id="link-submit" type="button" class="primary" disabled>Link to the bot</button>
         </section>
 
+        <section class="wstep card-glass" aria-labelledby="lead-h" data-reveal id="lead-section" hidden>
+          <h2 id="lead-h">Lead from this wallet</h2>
+          <p class="lead small">You came from Chit Bot to lead from the wallet you already trade with. No account, no session, no key handed over: connect that wallet and sign one message. From then on every ETH buy it makes on the venue is read from the chain within a few minutes, posted to the leaders' feed with its hash, and mirrored into your followers' own session accounts, each inside the caps they set and behind orus's read. Your sells are never mirrored. Close leader in the bot stops it any time; the wallet's own trades are never touched.</p>
+          <form id="lead-form" class="withdraw-form">
+            <div class="field">
+              <label for="lead-handle">Your name on the leaders list (letters, digits, spaces, _ . - and up to 32; no @)</label>
+              <input id="lead-handle" name="handle" type="text" maxlength="32" autocomplete="off" />
+            </div>
+            <p class="fineprint">The message you sign names this chain, this wallet and a one-time code; it is good for 15 minutes. The signature is the only proof the bot gets, and a signature moves nothing.</p>
+            <p id="lead-note" class="fineprint" role="status" aria-live="polite"></p>
+            <button id="lead-submit" type="submit" class="primary" disabled>Lead from this wallet</button>
+          </form>
+        </section>
+
         <section class="wstep card-warm" aria-labelledby="bot-h" data-reveal>
           <h2 id="bot-h">For your bot</h2>
           <p class="lead small">One call. The account executes it with its own ETH; the bot's key only signs.</p>

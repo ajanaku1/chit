@@ -137,8 +137,8 @@ export class SessionBot {
   constructor(d: SessionBotDeps) {
     this.#d = d;
     this.#updates = d.updates ?? new MemoryUpdateClaims();
-    // copy: a mirrored buy spends the follower's own daily allowance, the same one their own taps spend.
-    this.#copy = d.copy ? new CopyCards({ copy: d.copy, telegram: d.telegram, siteUrl: d.siteUrl, budget: (tgId) => this.#charge(tgId), ...(d.orus ? { orus: d.orus } : {}), ...(d.hey ? { hey: d.hey } : {}) }) : undefined;
+    // copy: a mirrored buy spends the follower's own daily allowance, the same one their own taps spend: this instance's count first, then the desk's ledger, which the watcher's mirrors charge too.
+    this.#copy = d.copy ? new CopyCards({ copy: d.copy, telegram: d.telegram, siteUrl: d.siteUrl, budget: async (tgId) => this.#charge(tgId) ?? d.copy!.chargeDay(tgId), ...(d.orus ? { orus: d.orus } : {}), ...(d.hey ? { hey: d.hey } : {}) }) : undefined;
     // alerts: the card writes the subscription; the watcher's cron sends the alerts (bot-alert-cards.ts).
     this.#alerts = d.alerts ? new AlertCards({ store: d.alerts, telegram: d.telegram }) : undefined;
   }
@@ -404,6 +404,9 @@ export class SessionBot {
     const count = this.#today(tgId);
     if (count.executes >= this.#cfg("dailyExecutes")) return this.#say(chatId, `that is ${this.#cfg("dailyExecutes")} buys today from this account; again tomorrow.`, kb([btn("← Back", `token:${token}`)]));
     if (count.gasWei >= this.#cfg("dailyGasWei")) return this.#say(chatId, "the bot has fronted its daily gas for this account; again tomorrow.", kb([btn("← Back", `token:${token}`)]));
+    // copy: the desk's ledger holds the mirrors the watcher's function made into this account today, which this instance's count never saw (bot-copy.ts).
+    const mirrored = this.#d.copy ? await this.#d.copy.overDay(tgId) : null;
+    if (mirrored) return this.#say(chatId, `${mirrored}.`, kb([btn("← Back", `token:${token}`)]));
     const [info, quote] = await Promise.all([this.#d.reads.tokenInfo(token), this.#d.reads.quoteBuy(token, wei)]);
     if (!info.hasPool || quote === null) return this.#say(chatId, "no ETH pool on the venue for this token.", kb([btn("← Back", "home")]));
     // The contract's own answer first, so a refused buy burns no gas and says why in the contract's words.
@@ -417,6 +420,8 @@ export class SessionBot {
     const r = await this.#d.session.execute(link.account, this.#d.reads.router, wei, data);
     // What the gas actually cost is the receipt's; here the budget counts the ceiling, so a loop is stopped early rather than late.
     count.gasWei += EXECUTE_GAS_WEI;
+    // copy: the tap goes into the desk's ledger too, so a mirror from the watcher's function counts it against the same day.
+    if (this.#d.copy) await this.#d.copy.noteDay(tgId);
     const explorer = `https://robinhoodchain.blockscout.com/tx/${r.hash}`;
     await this.#say(chatId, r.landed
       ? `landed. <a href="${explorer}">${short(r.hash)}</a> · the tokens are in your account.`

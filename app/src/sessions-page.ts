@@ -8,7 +8,7 @@
  * account) so the list can be rebuilt; the chain is the truth for each one.
  */
 
-import { createPublicClient, http, isAddress, type Hex } from "viem";
+import { createPublicClient, getAddress, http, isAddress, type Hex } from "viem";
 
 import {
   ANY_FUNCTION,
@@ -336,6 +336,62 @@ button("link-submit").addEventListener("click", async () => {
   }
 });
 
+// ---- the bot's lead link ----
+// `?lead=<nonce>&handle=<name>` comes from Chit Bot's "from my own wallet" choice under ⭐ Become a leader. The nonce is
+// the bot's (the same store and fifteen minutes as the link's); the name is a hint the bot took from Telegram, without
+// the @, filled in for the leader to keep or change. No account is needed here: the wallet that trades is the proof, and
+// a signature over `chit-bot-lead|<chainId>|<wallet>|<nonce>` is all the bot gets. Nothing is sent to the chain.
+
+const leadNonce = linkParams.get("lead");
+const LEAD_API = "/api/bot/lead";
+
+const leadMessage = (chainId: number, walletAddress: Hex, nonce: string): string => `chit-bot-lead|${chainId}|${getAddress(walletAddress)}|${nonce}`;
+
+const initLead = async (): Promise<void> => {
+  if (!leadNonce || !/^[0-9a-f]{32}$/.test(leadNonce)) return;
+  el("lead-section").hidden = false;
+  const hint = linkParams.get("handle");
+  if (hint) input("lead-handle").value ||= hint.slice(0, 32);
+  const note = el("lead-note");
+  try {
+    const r = await (await fetch(`${LEAD_API}?nonce=${leadNonce}`)).json() as { ok: boolean; why?: string };
+    if (!r.ok) { note.textContent = r.why === "used" ? "This link was already used. Ask the bot for a new one (⭐ Become a leader, from my own wallet)." : "This link expired. Ask the bot for a new one (⭐ Become a leader, from my own wallet)."; return; }
+  } catch { note.textContent = "Could not reach the bot's lead service right now."; return; }
+  button("lead-submit").disabled = false;
+};
+
+el("lead-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const note = el("lead-note");
+  if (!leadNonce) return;
+  if (!wallet) { note.textContent = "Connect the wallet you trade from first."; return; }
+  const handle = input("lead-handle").value.trim();
+  if (!handle) { note.textContent = "Give followers a name to find you by."; return; }
+  if (handle.startsWith("@")) { note.textContent = "No @ here: a name typed on a page cannot prove a Telegram username. Letters, digits, spaces, _ . - only."; return; }
+  const eth = ethereum();
+  if (!(await ensureRobinhoodTestnet(eth))) { note.textContent = "Switch your wallet to Robinhood Chain first."; return; }
+  const message = leadMessage(Number(ROBINHOOD_TESTNET.chainId), wallet, leadNonce);
+  note.textContent = "Sign the message in your wallet… it moves nothing.";
+  let signature: string;
+  try {
+    signature = (await eth.request({ method: "personal_sign", params: [message, wallet] })) as string;
+  } catch (error) {
+    note.textContent = (error as { message?: string }).message?.split("\n")[0] ?? "The wallet refused.";
+    return;
+  }
+  button("lead-submit").disabled = true;
+  try {
+    const r = await fetch(LEAD_API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nonce: leadNonce, wallet: getAddress(wallet), signature, handle }) });
+    const j = (await r.json()) as { ok?: boolean; error?: string; wallet?: string; handle?: string };
+    if (!r.ok || !j.ok) { note.textContent = j.error ?? `The bot said ${r.status}.`; button("lead-submit").disabled = r.status === 409 || r.status === 410; return; }
+    note.textContent = `You lead as ${j.handle} from ${j.wallet}. Every ETH buy this wallet makes on the venue is now posted and mirrored. Go back to Telegram and press "I signed it".`;
+    banner("Leading from this wallet.", "ok");
+  } catch {
+    note.textContent = "Could not reach the bot's lead service; try again.";
+    button("lead-submit").disabled = false;
+  }
+});
+
 el("account-refresh").addEventListener("click", () => {
   const typed = input("grant-key").value.trim();
   if (account && isAddress(typed)) rememberKey(account, typed as Hex);
@@ -343,4 +399,4 @@ el("account-refresh").addEventListener("click", () => {
 });
 window.addEventListener("chit-wallet-changed", () => void refreshAccount());
 
-void loadTarget().then(() => refreshAccount()).then(() => initLink());
+void loadTarget().then(() => refreshAccount()).then(() => initLink()).then(() => initLead());
