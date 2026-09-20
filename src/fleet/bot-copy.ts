@@ -28,19 +28,30 @@
  *    the day's room is given back, the next follower runs.
  *  - a time budget: mirrors stop being started once it is spent and the
  *    rest are told, because the request that runs them has a limit of its
- *    own and a request cut off mid-way tells nobody.
+ *    own and a request cut off mid-way tells nobody. The budget counts the
+ *    receipts too, not only the sends: the session bot hands in the moment
+ *    the request must be done with its mirrors (`until`, measured from the
+ *    request's start, so the leader's own receipt wait is already out of
+ *    it), each mirror waits for its receipt only as long as is left after
+ *    a send's own allowance, and none is started with less than that.
  *
  * The first slice: leaders trade through the bot, so the bot sees the buy
- * the moment it lands and mirrors it in the same request. Watching an
- * outside wallet, and a queue of mirrors that outlives one request, is the
- * second slice.
+ * the moment it lands and mirrors it in the same request. That is a buy the
+ * leader taps: a limit buy or a DCA of theirs fires from the orders' cron
+ * in a function of its own (bot-orders.ts), without the desk, and is
+ * neither posted nor mirrored, and a sell is never mirrored, so a follower
+ * gets out of a mirrored position on their own; every card says both.
+ * Watching an outside wallet, mirroring the orders' fires, and a queue of
+ * mirrors that outlives one request, is the second slice.
  *
  * The feed is the group's window on the same thing: one message once a
  * leader's buy has landed and its mirrors are through, with the hash, the
  * partners' lines, how many followers it reached, and two doors into the
- * bot (buy this token, follow this leader). Only landed buys are posted,
- * one message each; a buy that did not land, or a buy by someone who is
- * not an open leader, posts nothing.
+ * bot (buy this token, follow this leader). The follow door carries the
+ * leader's account, the one thing they agreed to show when they opened,
+ * never their Telegram id: a group can read a button's link. Only landed
+ * buys are posted, one message each; a buy that did not land, or a buy by
+ * someone who is not an open leader, posts nothing.
  *
  * A handle is either the Telegram @username, taken from Telegram and never
  * typed, or a plain name: letters, digits, spaces and _ . - , no leading @,
@@ -111,11 +122,15 @@ const RESERVED = /chit|admin|support|official|orus|hey research/i;
 /** Whether a typed name may be a handle. The @ form is Telegram's own and is never accepted from a reply. */
 export const plainHandleOk = (h: string): boolean => PLAIN_HANDLE.test(h) && !RESERVED.test(h);
 
-/** What the mirror run is handed by the session bot: the charge to each follower's daily allowance. */
+/** What the mirror run is handed by the session bot: the charge to each follower's daily allowance, and the request's cut-off. */
 export type MirrorOptions = {
   /** Counts one execute against the follower's day and returns null, or the refusal in the follower's words and counts nothing. */
   budget?: (followerTgId: string) => string | null;
+  /** Epoch ms by which the mirrors must be through, receipts included: the request's cut-off less what the feed and the leader's line need. Absent, `mirrorBudgetMs` from the run's start alone. */
+  until?: number;
 };
+/** What one mirror needs besides its receipt wait: the send itself, the log line and the follower's message. No mirror starts with less left, and every receipt wait is what is left above it. */
+export const MIRROR_SEND_MS = 5_000;
 
 const eth = (wei: bigint): string => {
   const w = wei / 10n ** 18n, f = (wei % 10n ** 18n).toString().padStart(18, "0").slice(0, 5).replace(/0+$/, "");
@@ -153,6 +168,10 @@ export class CopyDesk {
     const l = await this.#d.store.getLeader(tgId);
     return l && l.open ? l : undefined;
   }
+  /** The open leader behind a session account (the feed's follow door names it), or undefined. */
+  async leaderAt(account: Address): Promise<Leader | undefined> {
+    return (await this.#d.store.leaders()).find((l) => l.account.toLowerCase() === account.toLowerCase());
+  }
   leaders(): Promise<Leader[]> { return this.#d.store.leaders(); }
   followsOf(followerTgId: string): Promise<Follow[]> { return this.#d.store.followsOf(followerTgId); }
   followersOf(leaderTgId: string): Promise<Follow[]> { return this.#d.store.followersOf(leaderTgId); }
@@ -161,7 +180,9 @@ export class CopyDesk {
    * A leader's buy landed and its mirrors are through: one message to the
    * group. The hash so anyone can check it, orus's and HEY's lines so the
    * group sees what the leader saw, how many followers it reached, and two
-   * doors into the bot: buy the same token, or follow this leader. True when
+   * doors into the bot: buy the same token, or follow this leader, by the
+   * leader's account (public since they opened) and never their Telegram id,
+   * which the group would otherwise read off the button's link. True when
    * posted; false when there is no feed or the buyer is not an open leader,
    * and nothing was sent. Posted after the mirrors on purpose: a message
    * before them would tell the group exactly which buys are about to land.
@@ -180,7 +201,7 @@ export class CopyDesk {
       ...(mirrors.length ? [`mirrored into ${went} of ${mirrors.length} follower account${mirrors.length === 1 ? "" : "s"}, already landed or sent`] : []),
     ];
     const bot = `https://t.me/${this.#d.botUsername ?? ""}`;
-    await feed.post(lines.join("\n"), [[{ text: "buy this", url: `${bot}?start=t-${token}` }, { text: `follow ${leader.handle}`, url: `${bot}?start=f-${leaderTgId}` }]]);
+    await feed.post(lines.join("\n"), [[{ text: "buy this", url: `${bot}?start=t-${token}` }, { text: `follow ${leader.handle}`, url: `${bot}?start=f-${leader.account}` }]]);
     return true;
   }
 
@@ -203,6 +224,11 @@ export class CopyDesk {
    * in the log, so a follower can see why they did not get a fill. A send
    * that throws for one follower is logged for that follower and the run
    * goes on; once the time budget is spent the rest are skipped and told.
+   * The budget is the smaller of the run's own and the request's `until`,
+   * and it bounds the receipts as well as the sends: a mirror is started
+   * only with MIRROR_SEND_MS left and waits for its receipt only for the
+   * rest, so a slow block is a mirror reported as sent, not a request the
+   * host kills with the log, the feed and the followers' lines unwritten.
    */
   async mirror(leaderTgId: string, token: Address, leaderEthWei: bigint, opts: MirrorOptions = {}): Promise<Mirror[]> {
     const leader = await this.#d.store.getLeader(leaderTgId);
@@ -210,7 +236,7 @@ export class CopyDesk {
     const followers = await this.#d.store.followersOf(leaderTgId);
     if (!followers.length) return [];
     const now = this.#now, day = now.toISOString().slice(0, 10);
-    const budgetUntil = now.getTime() + (this.#d.mirrorBudgetMs ?? DEFAULT_MIRROR_BUDGET_MS);
+    const budgetUntil = Math.min(now.getTime() + (this.#d.mirrorBudgetMs ?? DEFAULT_MIRROR_BUDGET_MS), opts.until ?? Number.POSITIVE_INFINITY);
     const out: Mirror[] = [];
     const record = async (m: Mirror) => { out.push(m); await this.#d.store.log(m); if (this.#d.tell) await this.#d.tell(m.followerTgId, this.#tellText(leader, m)); };
     // The gate is asked once for the token, not once per follower: same answer, less traffic.
@@ -226,7 +252,8 @@ export class CopyDesk {
       if (!link) { await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: "follower is not linked" }); continue; }
       // Sized to the leader's buy, never above the follower's cap.
       const wei = leaderEthWei < f.capWei ? leaderEthWei : f.capWei;
-      if (this.#now.getTime() > budgetUntil) { await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: "this run ran out of time before your turn; nothing was sent for you" }); continue; }
+      const left = budgetUntil - this.#now.getTime();
+      if (left < MIRROR_SEND_MS) { await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: "this run ran out of time before your turn; nothing was sent for you" }); continue; }
       const soFar = await this.#d.store.addTokenDay(day, token, wei);
       if (soFar > cap) { await this.#d.store.addTokenDay(day, token, -wei); await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: `today's cap into this token across all followers (${eth(cap)} ETH) is reached` }); continue; }
       const can = await this.#d.session.canExecute(link.account, this.#d.reads.router, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, wei);
@@ -241,7 +268,8 @@ export class CopyDesk {
       const data = encodeV4EthBuy({ token, amountIn: wei, minOut, deadline, ...(info.poolKey ? { poolKey: info.poolKey } : {}) });
       let r: { hash: Hex; landed: boolean };
       try {
-        r = await this.#d.session.execute(link.account, this.#d.reads.router, wei, data);
+        // The receipt is waited for only with the time that is left after the send's own allowance; slower than that is "sent".
+        r = await this.#d.session.execute(link.account, this.#d.reads.router, wei, data, left - MIRROR_SEND_MS);
       } catch (error) {
         // The send itself failed (the signer, the rpc): nothing was broadcast for this follower, the day's room is theirs again, the next follower runs.
         const detail = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "unknown";

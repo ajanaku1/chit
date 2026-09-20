@@ -165,8 +165,12 @@ over a cap) leaves the order open with the reason on it and tells you;
 three in a row switch it off. **Orders** on the home card lists what is
 open, a cancel under each; a cancel is one statement in the store and a run
 mid-send cannot write over it. Money moves at most once per slot: the run
-claims an order before the send and a run cut off in between is settled by
-the next as sent, never sent again. One pass sends at most twenty executes,
+claims an order before the send, the claim names the DCA slot it is for (so
+two runs overlapping cannot buy one slot twice from an older read), and a
+run cut off in between is settled by the next as sent, never sent again.
+Orders are the owner's alone: a limit buy or a DCA that fires is neither
+posted to the leaders' feed nor mirrored into followers' accounts, and the
+cards say so. One pass sends at most twenty executes,
 one per owner in turn, each owner has the same daily budget a tapped Buy
 has, and an account keeps at most ten orders open, so a cron gone wrong or
 one owner cannot drain the signer's gas. Orders carry the chain they were

@@ -7,7 +7,11 @@
  * refused in the contract's words, with no approval step before or after;
  * an update delivered twice runs once; a failure is a message, never a
  * throw; a tap from a group draws nothing there; withdrawals are never
- * offered.
+ * offered. A refusal of a typed reply says how to get the prompt back and
+ * offers it. The copy desk's cards promise only what the desk does: tapped
+ * buys mirrored, orders and sells not; the feed's follow door names the
+ * leader's account, never their Telegram id; a leader's mirrors are given
+ * what is left of the request's sixty seconds, receipts included.
  */
 
 import assert from "node:assert/strict";
@@ -41,7 +45,8 @@ const reads = {
 } as unknown as BotChain;
 
 const fakeSession = () => {
-  const calls: { account: Address; target: Address; value: bigint; data: Hex }[] = [];
+  const calls: { account: Address; target: Address; value: bigint; data: Hex; receiptWaitMs?: number }[] = [];
+  let onExecute: ((account: Address) => Promise<void>) | undefined;
   let state = { exists: true, paused: false, revoked: false, expiry: Math.floor(clock.getTime() / 1000) + 86400, maxValuePerCall: parseEther("0.05").toString(), totalValueCap: parseEther("0.5").toString(), spentValue: "0", calls: 0 };
   let refuse: string | null = null;
   // The sell side: the owner's flag, each sale sent, and whether a sale lands. canSell answers the way the contract does: the flag first, then the session.
@@ -52,7 +57,7 @@ const fakeSession = () => {
     async ownerOf(a) { return a.toLowerCase() === ACCOUNT ? OWNER : undefined; },
     async sessionOf() { return state; },
     async canExecute(_a, _t, _sel, value) { if (refuse) return { ok: false, why: refuse }; if (value > BigInt(state.maxValuePerCall)) return { ok: false, why: "over your per-trade cap" }; return { ok: true, why: "" }; },
-    async execute(account, target, value, data) { calls.push({ account, target, value, data }); return { hash: ("0x" + "ab".repeat(32)) as Hex, landed: true }; },
+    async execute(account, target, value, data, receiptWaitMs) { calls.push({ account, target, value, data, ...(receiptWaitMs !== undefined ? { receiptWaitMs } : {}) }); if (onExecute) await onExecute(account); return { hash: ("0x" + "ab".repeat(32)) as Hex, landed: true }; },
     async signerBalance() { return parseEther("1"); },
     async sellAllowed() { return sell; },
     async canSell(_a, _router, poolKey, _amountIn, minOut) {
@@ -63,7 +68,7 @@ const fakeSession = () => {
     },
     async sell(account, sale) { sales.push({ account, sale }); return { hash: ("0x" + "cd".repeat(32)) as Hex, landed: saleLands }; },
   };
-  return { s, calls, sales, set: (p: Partial<typeof state>) => { state = { ...state, ...p }; }, refuseWith: (why: string | null) => { refuse = why; }, allowSell: (v: boolean) => { sell = v; }, saleLands: (v: boolean) => { saleLands = v; } };
+  return { s, calls, sales, set: (p: Partial<typeof state>) => { state = { ...state, ...p }; }, refuseWith: (why: string | null) => { refuse = why; }, allowSell: (v: boolean) => { sell = v; }, saleLands: (v: boolean) => { saleLands = v; }, during: (f: ((account: Address) => Promise<void>) | undefined) => { onExecute = f; } };
 };
 
 const dm = (text: string, replyTo?: string): Update => ({ message: { message_id: 1, text, chat: { id: 7, type: "private" }, from: { id: 7 }, ...(replyTo ? { reply_to_message: { text: replyTo } } : {}) } });
@@ -207,7 +212,7 @@ const withCopy = (opts: Partial<Deps> = {}, feed: { post?: (text: string) => Pro
   // What the feed saw when each message was posted: the text and how many executes had run by then.
   const posted: { text: string; keyboard?: unknown; executesSoFar: number }[] = [];
   const copy = new CopyDesk({
-    store, links: s.links, reads, session: opts.session ?? s.session.s, orus, now: () => clock, botUsername: "usechit_bot",
+    store, links: s.links, reads, session: opts.session ?? s.session.s, orus, now: opts.now ?? (() => clock), botUsername: "usechit_bot",
     tell: (to, text) => s.telegram.deliver({ kind: "send", chatId: to, text }),
     feed: { chatId: "-100", post: async (text, keyboard) => { if (feed.post) await feed.post(text); posted.push({ text, keyboard, executesSoFar: s.session.calls.length }); } },
   });
@@ -234,13 +239,17 @@ test("become a leader takes the Telegram username as the handle; the card then o
   await linked(links);
   await bot.handle(asUser(7, "lead:on", { username: "ogle", first_name: "O" }));
   assert.match(telegram.last(), /you are a leader as <b>@ogle<\/b>/);
-  assert.match(telegram.last(), new RegExp(`<code>${ACCOUNT}</code> is public on the leaders list`));
+  assert.match(telegram.last(), new RegExp(`<code>${ACCOUNT}</code> is public on the leaders list and on the feed's follow button now \\(your telegram id never is\\)`));
+  assert.match(telegram.last(), /every buy you tap here that lands is posted to the feed and mirrored/);
+  assert.match(telegram.last(), /a limit buy or a dca of yours that fires from the clock, and a sell, is yours alone: not posted, not mirrored/, "the leader is promised only what the desk does");
   assert.equal((await copy.leader("7"))!.handle, "@ogle");
   await bot.handle(dm("/start"));
   assert.ok(buttons().includes("lead:off"));
   await bot.handle(tap("leaders"));
   assert.match(telegram.last(), /<b>@ogle<\/b> · <code>0x0000…00aa<\/code> · 0 followers/);
   assert.match(telegram.last(), /orus's read first/);
+  assert.match(telegram.last(), /when a buy they tap in this bot lands/);
+  assert.match(telegram.last(), /their sells are never mirrored/);
   assert.ok(!buttons().includes("fl:7"), "no follow button for yourself");
   await bot.handle(tap("lead:off"));
   assert.match(telegram.last(), /leader closed/);
@@ -274,7 +283,7 @@ test("a first name that starts with @ or reads as the project is not a handle: t
   assert.equal(await copy.leader("8"), undefined);
 });
 
-test("following: the list's button opens the leader's card, set a cap asks by reply, the reply follows within the cap; My follows lists it with an unfollow button; /start f-<id> opens the same card", async () => {
+test("following: the list's button opens the leader's card, set a cap asks by reply, the reply follows within the cap; My follows lists it with an unfollow button; /start f-<account> opens the same card, a Telegram id does not", async () => {
   const { bot, buttons, links, telegram, copy } = withCopy();
   await linked(links);
   await followerLinked(links);
@@ -284,18 +293,25 @@ test("following: the list's button opens the leader's card, set a cap asks by re
   await bot.handle(asUser(8, "fl:7"));
   assert.match(telegram.last(), /<b>follow @ogle<\/b>/);
   assert.match(telegram.last(), /unfollow is one tap here; revoke the session in one transaction/);
+  assert.match(telegram.last(), /when a buy they tap in this bot lands, the same token is bought on your session account/);
+  assert.match(telegram.last(), /only a buy they tap in this bot is mirrored: their limit buys and dca fire from the clock and are not, and their sells are never mirrored, so getting out of a mirrored position is yours alone/, "the card says what is not mirrored: the exit is the follower's own");
   assert.ok(buttons().includes("askf:7"));
   await bot.handle(asUser(8, "askf:7"));
   assert.match(telegram.last(), /how much ETH at most per buy mirrored from <b>@ogle<\/b>/);
   await bot.handle(says(8, "0.02", "how much"));
   assert.match(telegram.last(), /following <b>@ogle<\/b> at <code>0.02 ETH<\/code> a buy/);
+  assert.match(telegram.last(), /their next tapped buy that lands through this bot is mirrored on your account.*their orders and their sells are not, so the exit is yours/);
   assert.equal((await copy.followsOf("8"))[0]!.capWei, parseEther("0.02"));
   await bot.handle(asUser(8, "follows"));
   assert.match(telegram.last(), /<b>@ogle<\/b> · <code>0.02 ETH<\/code> a buy/);
   assert.ok(buttons().includes("unf:7"));
-  await bot.handle(says(8, "/start f-7"));
-  assert.match(telegram.last(), /<b>follow @ogle<\/b>/);
+  await bot.handle(says(8, `/start f-${ACCOUNT}`));
+  assert.match(telegram.last(), /<b>follow @ogle<\/b>/, "the feed's door names the leader's account");
   assert.match(telegram.last(), /you follow them at <code>0.02 ETH<\/code>/);
+  await bot.handle(says(8, "/start f-7"));
+  assert.match(telegram.last(), /that leader is not open to followers right now/, "a Telegram id is not a door: nobody maps an id to a leader through the bot");
+  await bot.handle(says(8, `/start f-${FOLLOWER_ACCOUNT}`));
+  assert.match(telegram.last(), /that leader is not open to followers right now/, "an account that is not an open leader's is not one either");
   await bot.handle(asUser(8, "unf:7"));
   assert.match(telegram.last(), /unfollowed <b>@ogle<\/b>/);
   assert.deepEqual(await copy.followsOf("8"), []);
@@ -318,7 +334,8 @@ test("a leader's landed buy is mirrored into the follower's account at the small
   assert.equal(posted[0]!.executesSoFar, 2, "posted after the follower's mirror ran, never before: the group cannot run ahead of it");
   assert.match(posted[0]!.text, /^<b>@ogle<\/b> bought <code>0.01 ETH<\/code> of <b>PEPE<\/b> · <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xabab/);
   assert.match(posted[0]!.text, /\nmirrored into 1 of 1 follower account, already landed or sent$/);
-  assert.deepEqual(posted[0]!.keyboard, [[{ text: "buy this", url: `https://t.me/usechit_bot?start=t-${PEPE}` }, { text: "follow @ogle", url: "https://t.me/usechit_bot?start=f-7" }]]);
+  assert.deepEqual(posted[0]!.keyboard, [[{ text: "buy this", url: `https://t.me/usechit_bot?start=t-${PEPE}` }, { text: "follow @ogle", url: `https://t.me/usechit_bot?start=f-${ACCOUNT}` }]], "the follow door carries the account the leader agreed to show, not their Telegram id");
+  assert.ok(!JSON.stringify(posted[0]).includes("f-7"), "the leader's Telegram id is nowhere in what the group reads");
   assert.deepEqual(session.calls.map((c) => [c.account, c.value]), [[ACCOUNT, parseEther("0.01")], [FOLLOWER_ACCOUNT, parseEther("0.005")]], "the leader first, then the follower at their cap");
   const toFollower = telegram.sent.filter((o) => o.kind === "send" && o.chatId === "8").map((o) => (o as { text: string }).text);
   assert.match(toFollower.at(-1)!, /copied <b>@ogle<\/b>: <code>0.005 ETH<\/code> into/);
@@ -395,7 +412,11 @@ test("orders: the card offers a limit buy and a dca only with a store; the promp
   await bot.handle(tap(`lim:${PEPE}`));
   assert.match(telegram.last(), /like <code>0.02 at 1200000<\/code>/);
   await bot.handle(dm("0.02 for 1200000", "limit buy"));
-  assert.match(telegram.last(), /not the format/);
+  assert.match(telegram.last(), /not the format.*like <code>0.02 at 1200000<\/code>\. tap \u23F1 Limit buy again to retry\./u, "the refusal says how to get the prompt back");
+  assert.ok(buttons().includes(`lim:${PEPE}`), "and offers it");
+  assert.equal((await orders.openFor("7", 4663)).length, 0);
+  await bot.handle(dm("0.02 at 1200000"));
+  assert.match(telegram.last(), /<b>chit bot on mainnet<\/b>/, "a corrected line typed without the prompt is not an order: the slot was spent, which is why the way back is said");
   assert.equal((await orders.openFor("7", 4663)).length, 0);
   await bot.handle(tap(`lim:${PEPE}`));
   await bot.handle(dm("0.02 at 1200000", "limit buy"));
@@ -416,7 +437,12 @@ test("orders: the card offers a limit buy and a dca only with a store; the promp
   await bot.handle(tap(`dca:${PEPE}`));
   assert.match(telegram.last(), /like <code>0.01 every 4 hours 6 times<\/code>/);
   await bot.handle(dm("0.01 every 4 hours", "dca"));
-  assert.match(telegram.last(), /not the format/);
+  assert.match(telegram.last(), /not the format.*\. tap \u{1F501} DCA again to retry\./u);
+  assert.ok(buttons().includes(`dca:${PEPE}`));
+  await bot.handle(tap(`dca:${PEPE}`));
+  await bot.handle(dm("0.01 every 0 hours 6 times", "dca"));
+  assert.match(telegram.last(), /the interval must be between 1 and 720 hours\. tap \u{1F501} DCA again to retry\./u, "every refusal of the shape says the same");
+  assert.ok(buttons().includes(`dca:${PEPE}`));
   await bot.handle(tap(`dca:${PEPE}`));
   await bot.handle(dm("0.01 every 4 hours 6 times", "dca"));
   open = await orders.openFor("7", 4663);
@@ -463,6 +489,71 @@ test("orders: an account keeps at most ten open; the eleventh is refused with th
   await bot.handle(dm("0.01 every 4 hours 6 times", "dca"));
   assert.match(telegram.last(), /set\. the bot checks every five minutes/);
   assert.equal((await orders.openFor("7", 4663)).length, MAX_OPEN_ORDERS);
+});
+
+test("the custom amount refusal says how to get the prompt back and offers it", async () => {
+  const { bot, links, telegram, buttons, session } = setup();
+  await linked(links);
+  await bot.handle(tap("ask:" + PEPE));
+  await bot.handle(dm("0,02", "how much"));
+  assert.match(telegram.last(), /amount must be a number of ETH, like 0\.02\. tap Buy custom again to retry\./);
+  assert.ok(buttons().includes(`ask:${PEPE}`));
+  assert.equal(session.calls.length, 0);
+});
+
+test("a leader's mirrors are given what is left of the request's budget: after a slow receipt on the leader's own buy each mirror waits only for the rest, and once that is spent the others are skipped and told, the feed still posted and the leader still told", async () => {
+  const { MIRRORS_UNTIL_MS } = await import("../../src/fleet/bot-session.js");
+  const { MIRROR_SEND_MS } = await import("../../src/fleet/bot-copy.js");
+  let t = clock;
+  const { bot, links, telegram, session, posted } = withCopy({ now: () => t });
+  await linked(links);
+  await followerLinked(links);
+  await links.putLink({ tgId: "9", account: "0x00000000000000000000000000000000000000cc", owner: OWNER, chainId: 4663, nonce: "n", signature: "0x00", linkedAt: clock.toISOString() });
+  await bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await bot.handle(asUser(8, "askf:7"));
+  await bot.handle(says(8, "0.005", "how much"));
+  await bot.handle(asUser(9, "askf:7"));
+  await bot.handle(says(9, "0.005", "how much"));
+  // The leader's receipt takes the full 40 s; the first mirror's own receipt is slow too.
+  session.during(async (account) => { t = new Date(t.getTime() + (account === ACCOUNT ? 40_000 : 10_000)); });
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.deepEqual(session.calls.map((c) => c.account), [ACCOUNT, FOLLOWER_ACCOUNT], "the leader, the first follower; the second was not started");
+  assert.equal(session.calls[0]!.receiptWaitMs, undefined, "the leader's own buy waits the chain's default");
+  assert.equal(session.calls[1]!.receiptWaitMs, MIRRORS_UNTIL_MS - 40_000 - MIRROR_SEND_MS, "the mirror waits only for what is left of the request after a send's own allowance");
+  const toNine = telegram.sent.filter((o) => o.kind === "send" && o.chatId === "9").map((o) => (o as { text: string }).text);
+  assert.match(toNine.at(-1)!, /skipped\. this run ran out of time before your turn; nothing was sent for you/);
+  assert.equal(posted.length, 1, "the feed is posted inside the request, not lost to the host's cut-off");
+  assert.match(posted[0]!.text, /mirrored into 1 of 2 follower accounts/);
+  assert.match(telegram.last(), /mirrored to 1 of 2 followers, 1 skipped/);
+  // A fast receipt on the leader's buy leaves the mirrors the desk's own thirty seconds, less the send's allowance.
+  const quick = withCopy();
+  await linked(quick.links);
+  await followerLinked(quick.links);
+  await quick.bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await quick.bot.handle(asUser(8, "askf:7"));
+  await quick.bot.handle(says(8, "0.005", "how much"));
+  await quick.bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.equal(quick.session.calls[1]!.receiptWaitMs, 30_000 - MIRROR_SEND_MS);
+});
+
+test("a leader's dca fired by the orders' cron is neither posted nor mirrored, as the cards say: the runner has no desk", async () => {
+  const { MemoryOrderStore, OrderRunner } = await import("../../src/fleet/bot-orders.js");
+  const orders = new MemoryOrderStore();
+  const { bot, links, session, telegram, posted, store } = withCopy({ orders });
+  await linked(links);
+  await followerLinked(links);
+  await bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await bot.handle(asUser(8, "askf:7"));
+  await bot.handle(says(8, "0.005", "how much"));
+  await bot.handle(tap(`dca:${PEPE}`));
+  await bot.handle(dm("0.01 every 4 hours 2 times", "dca"));
+  const runner = new OrderRunner({ orders, links, reads, session: session.s, telegram, now: () => clock });
+  const before = telegram.sent.length;
+  assert.deepEqual(await runner.run(), { fired: 1, landed: 1, refused: 0, waited: 0 });
+  assert.deepEqual(session.calls.map((c) => c.account), [ACCOUNT], "the leader's own buy, nobody else's");
+  assert.equal(posted.length, 0, "nothing to the feed");
+  assert.deepEqual(await store.recent("7", 5), [], "no mirror, not even a skip");
+  assert.deepEqual(telegram.sent.slice(before).map((o) => (o as { chatId: string }).chatId), ["7"], "one line to the owner; the follower hears nothing, because nothing of theirs happened");
 });
 
 // ---------- sells ----------
@@ -552,8 +643,8 @@ test("an update delivered twice is acted on once: the redelivery of a Sell callb
   assert.equal(session.sales.length, 3, "an update without an id (the dual bot's floor switch, a test) is not claimed");
 });
 
-test("the share is a whole percent of the position: 25% of 42 PEPE is 10.5, in the token's six decimals, with the sell floor; a share that is not a number sells nothing", async () => {
-  const { bot, links, session, telegram, textAt } = setup();
+test("the share is a whole percent of the position: 25% of 42 PEPE is 10.5, in the token's six decimals, with the sell floor; a share that is not a number sells nothing and says how to get the prompt back", async () => {
+  const { bot, links, session, telegram, textAt, buttons } = setup();
   await linked(links);
   session.allowSell(true);
   await bot.handle(tap(`asks:${PEPE}`));
@@ -566,8 +657,15 @@ test("the share is a whole percent of the position: 25% of 42 PEPE is 10.5, in t
   assert.equal(session.sales[0]!.sale.minOut, minOutFor(quote, 300), "the floor is the quote less 3%");
   await bot.handle(tap(`asks:${PEPE}`));
   await bot.handle(dm("half", "what share"));
-  assert.match(telegram.last(), /a whole percent of your position, 1 to 100/);
+  assert.match(telegram.last(), /a whole percent of your position, 1 to 100, like 50\. tap Sell custom again to retry\./, "the refusal says how to get the prompt back");
+  assert.ok(buttons().includes(`asks:${PEPE}`), "and offers it");
   assert.equal(session.sales.length, 1);
+  await bot.handle(dm("50"));
+  assert.match(telegram.last(), /<b>chit bot on mainnet<\/b>/, "a retyped share without the prompt sells nothing: the slot was spent");
+  assert.equal(session.sales.length, 1);
+  await bot.handle(tap(`asks:${PEPE}`));
+  await bot.handle(dm("50", "what share"));
+  assert.equal(session.sales.length, 2, "the offered button reopens the prompt and the share goes through");
 });
 
 test("a sell the contract refuses is quoted in its words, before any gas: a paused session, and a floor of zero in the contract's own check", async () => {

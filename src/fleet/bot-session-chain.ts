@@ -30,8 +30,13 @@ export type SessionChain = {
   sessionOf(account: Address): Promise<SessionView>;
   /** The contract's own answer: ok, or the reason it would refuse. */
   canExecute(account: Address, target: Address, selector: Hex, value: bigint): Promise<{ ok: boolean; why: string }>;
-  /** `execute(target, value, data)` on the account, from the bot's key; the hash once sent, the receipt's status once landed. */
-  execute(account: Address, target: Address, value: bigint, data: Hex): Promise<{ hash: Hex; landed: boolean }>;
+  /**
+   * `execute(target, value, data)` on the account, from the bot's key; the hash once sent, the receipt's status once
+   * landed. `receiptWaitMs` caps the wait for this one receipt below the chain's default (RECEIPT_WAIT_MS): a send with
+   * less of the request's budget left waits that much and is reported as sent, not landed, when the receipt is slower;
+   * zero or less waits for none.
+   */
+  execute(account: Address, target: Address, value: bigint, data: Hex, receiptWaitMs?: number): Promise<{ hash: Hex; landed: boolean }>;
   signerBalance(): Promise<bigint>;
   /** Whether the owner let the bot's key sell from this account (`sellAllowed(key)` on the account). */
   sellAllowed(account: Address): Promise<boolean>;
@@ -55,8 +60,12 @@ export type SessionChainConfig = { chainId: number; rpcUrl: string; signerKey: H
  * seconds (vercel.json, api/bot.js), and a send that outlives it is a trade
  * with no reply and a request Telegram delivers again. So one send waits
  * for its receipt well inside that budget, and the bot makes at most one
- * send per request; a receipt that takes longer is reported as sent, not
- * confirmed, with the explorer link.
+ * send per request on its own account; a receipt that takes longer is
+ * reported as sent, not confirmed, with the explorer link. The mirrors a
+ * leader's buy sets off in the same request are the exception, and they
+ * are given only what is left of the request's budget: each waits for its
+ * receipt at most that long (`receiptWaitMs` on `execute`), and none is
+ * started once the budget is spent (bot-copy.ts, bot-session.ts).
  */
 export const RECEIPT_WAIT_MS = 40_000;
 const EXECUTE_GAS = 700_000n;
@@ -89,11 +98,13 @@ export const createSessionChain = (config: SessionChainConfig): SessionChain => 
   const account = privateKeyToAccount(config.signerKey);
   const wallet: WalletClient = createWalletClient({ account, chain, transport });
   const receiptWaitMs = config.receiptWaitMs ?? RECEIPT_WAIT_MS;
-  /** One send from the bot's key to the account, then the receipt; a wait that runs out is a hash without a verdict. */
-  const send = async (a: Address, data: Hex, gas: bigint): Promise<{ hash: Hex; landed: boolean }> => {
+  /** One send from the bot's key to the account, then the receipt; a wait that runs out, or none asked for, is a hash without a verdict. */
+  const send = async (a: Address, data: Hex, gas: bigint, waitMs = receiptWaitMs): Promise<{ hash: Hex; landed: boolean }> => {
     const hash = await wallet.sendTransaction({ account, chain, to: a, data, gas });
+    // viem reads a timeout of zero as no timeout at all, so no time left is no wait, said here rather than handed on.
+    if (waitMs <= 0) return { hash, landed: false };
     try {
-      const receipt = await pub.waitForTransactionReceipt({ hash, timeout: receiptWaitMs });
+      const receipt = await pub.waitForTransactionReceipt({ hash, timeout: Math.min(waitMs, receiptWaitMs) });
       return { hash, landed: receipt.status === "success" };
     } catch {
       return { hash, landed: false };
@@ -108,7 +119,7 @@ export const createSessionChain = (config: SessionChainConfig): SessionChain => 
       const [ok, why] = await pub.readContract({ address: a, abi: SESSION_ACCOUNT_ABI, functionName: "canExecute", args: [account.address, target, selector, value] });
       return { ok, why };
     },
-    execute: (a, target, value, data) => send(a, encodeSessionExecute(target, value, data), EXECUTE_GAS),
+    execute: (a, target, value, data, receiptWait) => send(a, encodeSessionExecute(target, value, data), EXECUTE_GAS, receiptWait),
     signerBalance: () => pub.getBalance({ address: account.address }),
     // An account deployed before the flag existed has no `sellAllowed`; the read fails and the answer is no.
     sellAllowed: (a) => pub.readContract({ address: a, abi: SESSION_ACCOUNT_ABI, functionName: "sellAllowed", args: [account.address] }).catch(() => false),

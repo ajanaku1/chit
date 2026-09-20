@@ -12,7 +12,12 @@
  * orus's read first (a honeypot or no read at all is skipped), spends the
  * follower's own daily allowance from the bot like a tap of theirs would,
  * unfollow is one tap here and revoke is one transaction on the Sessions
- * page.
+ * page. And what is not mirrored, said just as plainly: only a buy the
+ * leader taps in this bot is; their limit buys and DCA fire from the
+ * orders' cron without the desk (bot-orders.ts) and are neither posted nor
+ * mirrored, and their sells are never mirrored, so the exit from a
+ * mirrored position is the follower's own. The leader hears the same when
+ * they open, so nobody is promised a feed of buys the desk never sees.
  *
  * After a leader's landed buy the order is: mirrors first, in their fixed
  * order, then the feed's one message, then one line to the leader. The feed
@@ -33,7 +38,7 @@
  *                      it again
  */
 
-import type { Address, Hex } from "viem";
+import { type Address, type Hex, isAddress } from "viem";
 import type { TokenInfo } from "./bot-chain.js";
 import { type CopyDesk, HANDLE_MAX, MAX_FOLLOW_CAP_WEI, plainHandleOk } from "./bot-copy.js";
 import type { HeyScanner } from "./bot-hey.js";
@@ -80,7 +85,7 @@ export const handleOf = (t: Tapper): string | undefined => {
   return plainHandleOk(name) ? name : undefined;
 };
 
-const GATE = "every mirrored buy passes orus's read first (a honeypot, or no read at all, is skipped and you are told), then your own session's caps (the contract refuses past them, no gas spent), and spends your own daily allowance of buys from the bot like a tap of yours would. unfollow is one tap here; revoke the session in one transaction on the Sessions page and nothing can run.";
+const GATE = "every mirrored buy passes orus's read first (a honeypot, or no read at all, is skipped and you are told), then your own session's caps (the contract refuses past them, no gas spent), and spends your own daily allowance of buys from the bot like a tap of yours would. only a buy they tap in this bot is mirrored: their limit buys and dca fire from the clock and are not, and their sells are never mirrored, so getting out of a mirrored position is yours alone, from the token card or the Sessions page. unfollow is one tap here; revoke the session in one transaction on the Sessions page and nothing can run.";
 
 type Pending = { kind: "cap"; leaderTgId: string } | { kind: "handle" };
 
@@ -106,10 +111,20 @@ export class CopyCards {
     ];
   }
 
-  /** /start f-<leaderTgId>: the feed's "follow" door lands on that leader's card. */
+  /** /start f-<leaderAccount>: the feed's "follow" door lands on that leader's card. The door names the account, never the Telegram id. */
   start(chatId: string, tgId: string, param: string): Promise<void> | undefined {
     if (!param.startsWith("f-")) return undefined;
-    return this.#leaderCard(chatId, tgId, param.slice(2));
+    return this.#fromFeed(chatId, tgId, param.slice(2));
+  }
+
+  async #fromFeed(chatId: string, tgId: string, account: string): Promise<void> {
+    const l = isAddress(account) ? await this.#d.copy.leaderAt(account as Address) : undefined;
+    if (!l) return this.#notOpen(chatId);
+    return this.#leaderCard(chatId, tgId, l.tgId);
+  }
+
+  #notOpen(chatId: string): Promise<void> {
+    return this.#say(chatId, "that leader is not open to followers right now. the list has the ones who are.", [[btn("📣 Leaders", "leaders"), btn("← Back", "home")]]);
   }
 
   async callback(chatId: string, tgId: string, verb: string, arg: string | undefined, from: Tapper): Promise<void> {
@@ -139,12 +154,14 @@ export class CopyCards {
    * are asked again here (their scanners keep an answer a minute, so the
    * card's read is reused, not repeated). Nothing in here may throw out: the
    * leader's buy is already on chain, and a failure that reached Telegram
-   * as a 5xx would have the same tap delivered again.
+   * as a 5xx would have the same tap delivered again. `until` is the epoch
+   * ms by which the mirrors, receipts included, must be through so the feed
+   * and the leader's line still fit in the request (bot-session.ts).
    */
-  async afterBuy(chatId: string, tgId: string, token: Address, ethWei: bigint, hash: Hex, info: TokenInfo): Promise<void> {
+  async afterBuy(chatId: string, tgId: string, token: Address, ethWei: bigint, hash: Hex, info: TokenInfo, until?: number): Promise<void> {
     try {
       if (!(await this.#d.copy.leader(tgId))) return;
-      const mirrors = await this.#d.copy.mirror(tgId, token, ethWei, this.#d.budget ? { budget: this.#d.budget } : {});
+      const mirrors = await this.#d.copy.mirror(tgId, token, ethWei, { ...(this.#d.budget ? { budget: this.#d.budget } : {}), ...(until !== undefined ? { until } : {}) });
       const [scan, hey] = await Promise.all([this.#d.orus?.scan(token), this.#d.hey?.scan(token)]);
       await this.#d.copy.announce(tgId, token, ethWei, hash, info, scan, hey, mirrors);
       if (!mirrors.length) return;
@@ -165,7 +182,7 @@ export class CopyCards {
     const counts = await Promise.all(leaders.map((l) => this.#d.copy.followersOf(l.tgId)));
     const lines = [
       "<b>leaders</b>",
-      "people who opened their buys to followers. follow one with a cap per mirrored buy: when their buy lands through this bot, the same token is bought on your own session account, sized to the smaller of their amount and your cap.",
+      "people who opened their buys to followers. follow one with a cap per mirrored buy: when a buy they tap in this bot lands, the same token is bought on your own session account, sized to the smaller of their amount and your cap.",
       GATE,
       "",
       ...(leaders.length ? leaders.map((l, i) => `<b>${esc(l.handle)}</b> · <code>${short(l.account)}</code> · ${counts[i]!.length} follower${counts[i]!.length === 1 ? "" : "s"}`) : ["no open leaders yet. be the first: ⭐ Become a leader on your card."]),
@@ -176,7 +193,7 @@ export class CopyCards {
 
   async #leaderCard(chatId: string, tgId: string, leaderTgId: string): Promise<void> {
     const l = await this.#d.copy.leader(leaderTgId);
-    if (!l) return this.#say(chatId, "that leader is not open to followers right now. the list has the ones who are.", [[btn("📣 Leaders", "leaders"), btn("← Back", "home")]]);
+    if (!l) return this.#notOpen(chatId);
     if (l.tgId === tgId) return this.#say(chatId, "that is you. your followers see this card; you cannot follow yourself.", [[btn("📣 Leaders", "leaders"), btn("← Back", "home")]]);
     const followers = await this.#d.copy.followersOf(leaderTgId);
     const mine = (await this.#d.copy.followsOf(tgId)).find((f) => f.leaderTgId === leaderTgId);
@@ -184,7 +201,7 @@ export class CopyCards {
       `<b>follow ${esc(l.handle)}</b>`,
       `account <code>${l.account}</code> · ${followers.length} follower${followers.length === 1 ? "" : "s"} · leading since ${l.since.slice(0, 10)}`,
       "",
-      "when their buy lands through this bot, the same token is bought on your session account, sized to the smaller of their amount and your cap.",
+      "when a buy they tap in this bot lands, the same token is bought on your session account, sized to the smaller of their amount and your cap.",
       GATE,
       ...(mine ? ["", `you follow them at <code>${eth(mine.capWei)} ETH</code> a buy; a new cap replaces it.`] : []),
     ];
@@ -206,7 +223,7 @@ export class CopyCards {
       const l = await this.#d.copy.leader(leaderTgId);
       await this.#say(chatId, [
         `following <b>${esc(l?.handle ?? leaderTgId)}</b> at <code>${eth(f.capWei)} ETH</code> a buy.`,
-        "their next buy that lands through this bot is mirrored on your account, inside your session's caps and behind orus's read. unfollow is one tap, revoke is one tx.",
+        "their next tapped buy that lands through this bot is mirrored on your account, inside your session's caps and behind orus's read; their orders and their sells are not, so the exit is yours. unfollow is one tap, revoke is one tx.",
       ].join("\n"), [[btn("👥 My follows", "follows"), btn("← Back", "home")]]);
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);
@@ -258,8 +275,8 @@ export class CopyCards {
       const l = await this.#d.copy.becomeLeader(tgId, handle);
       await this.#say(chatId, [
         `you are a leader as <b>${esc(l.handle)}</b>.`,
-        `your account <code>${l.account}</code> is public on the leaders list now, and every buy that lands from this bot is posted to the feed and mirrored into your followers' accounts, each inside their own caps and behind orus's read.`,
-        "close leader on your card stops both, any time.",
+        `your account <code>${l.account}</code> is public on the leaders list and on the feed's follow button now (your telegram id never is), and every buy you tap here that lands is posted to the feed and mirrored into your followers' accounts, each inside their own caps and behind orus's read.`,
+        "a limit buy or a dca of yours that fires from the clock, and a sell, is yours alone: not posted, not mirrored. close leader on your card stops the feed and the mirrors, any time.",
       ].join("\n"), [[btn("📣 Leaders", "leaders"), btn("← Back", "home")]]);
     } catch (e) {
       const why = e instanceof Error ? e.message : String(e);

@@ -28,7 +28,14 @@
  * order in one statement (only an open, unclaimed order takes the claim, so
  * a cancel that landed first stands and two runs cannot both send it), and
  * the run's write after the send only lands on an order that is still open,
- * so a cancel during the send is never overwritten. A run the platform
+ * so a cancel during the send is never overwritten. The claim names the
+ * slot it is for: a DCA's `nextAt` as the run read it. Every write to a DCA
+ * moves `nextAt` on (a buy, a wait, a refusal, a cut-off all set the next
+ * slot), so a second run working from an older read of the same order (two
+ * crons overlapping, a run stretched by slow RPC past the next tick) finds
+ * the slot it meant to fire already gone and takes nothing; without that
+ * the first run's settle would have cleared the claim and the second would
+ * have bought the same slot again from its stale copy. A run the platform
  * kills between the send and that write leaves the claim behind; the next
  * run finds it past its lease and settles the order as sent with the
  * outcome unknown (a limit closes, a DCA counts the slot) rather than
@@ -87,8 +94,12 @@ export interface OrderStore {
   /** Every open order on the chain, oldest first, claimed ones included: the runner settles the stale claims. */
   open(chainId: number): Promise<Order[]>;
   openFor(tgId: string, chainId: number): Promise<Order[]>;
-  /** One statement: marks the order as being sent now and writes the ledger, only when it is open and unclaimed; false otherwise. */
-  claim(id: string, at: Date): Promise<boolean>;
+  /**
+   * One statement: marks the order as being sent now and writes the ledger, only when it is open, unclaimed and still on
+   * the slot the run read (`slot` is the order's `nextAt` as read, undefined for a limit); false otherwise. A DCA another
+   * run has moved on since the read is not on that slot any more, so the claim does not land and nothing is sent twice.
+   */
+  claim(id: string, at: Date, slot: string | undefined): Promise<boolean>;
   /** The runner's write after a send, a wait or a refusal; clears the claim. Only an order still open takes it, so a cancel meanwhile stands; false when it did not land. */
   settle(o: Order): Promise<boolean>;
   /** Cancels an open order; false when it was not open. */
@@ -233,8 +244,9 @@ export class OrderRunner {
     if (!can.ok) return this.#refuse(o, now, `your session says no: ${can.why}`);
     const deadline = BigInt(Math.floor(now.getTime() / 1000) + 3600);
     const data = encodeV4EthBuy({ token: o.token, amountIn: o.ethWei, minOut, deadline, ...(info.poolKey ? { poolKey: info.poolKey } : {}) });
-    // The claim is the last word before money moves: cancelled meanwhile, or held by another run, and nothing is sent.
-    if (!(await this.#d.orders.claim(o.id, now))) return "skipped";
+    // The claim is the last word before money moves: cancelled meanwhile, held by another run, or a DCA slot another run
+    // already fired from a fresher read, and nothing is sent. The slot is the order's nextAt as this run read it.
+    if (!(await this.#d.orders.claim(o.id, now, o.nextAt))) return "skipped";
     budget.executes += 1;
     budget.gasWei += GAS_CEILING_WEI;
     let r: { hash: Hex; landed: boolean };
@@ -319,9 +331,9 @@ export class MemoryOrderStore implements OrderStore {
   async get(id: string) { const o = this.rows.get(id); return o ? { ...o } : undefined; }
   async open(chainId: number) { return [...this.rows.values()].filter((o) => o.status === "open" && o.chainId === chainId).sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((o) => ({ ...o })); }
   async openFor(tgId: string, chainId: number) { return (await this.open(chainId)).filter((o) => o.tgId === tgId); }
-  async claim(id: string, at: Date) {
+  async claim(id: string, at: Date, slot: string | undefined) {
     const o = this.rows.get(id);
-    if (!o || o.status !== "open" || o.firingAt) return false;
+    if (!o || o.status !== "open" || o.firingAt || (o.nextAt ?? null) !== (slot ?? null)) return false;
     o.firingAt = at.toISOString();
     this.fires.push({ orderId: id, tgId: o.tgId, chainId: o.chainId, at: o.firingAt });
     return true;
@@ -388,12 +400,13 @@ export class NeonOrderStore implements OrderStore {
   async get(id: string) { await this.#init(); const [r] = await this.sql.query(`SELECT * FROM bot_orders WHERE id = $1`, [id]); return r ? rowOrder(r) : undefined; }
   async open(chainId: number) { await this.#init(); return (await this.sql.query(`SELECT * FROM bot_orders WHERE status = 'open' AND chain_id = $1 ORDER BY created_at`, [chainId])).map(rowOrder); }
   async openFor(tgId: string, chainId: number) { await this.#init(); return (await this.sql.query(`SELECT * FROM bot_orders WHERE status = 'open' AND chain_id = $1 AND tg_id = $2 ORDER BY created_at`, [chainId, tgId])).map(rowOrder); }
-  async claim(id: string, at: Date) {
+  async claim(id: string, at: Date, slot: string | undefined) {
     await this.#init();
+    // The slot is compared as a timestamp, not a string: the run read it from this column, so a DCA still on it matches, one moved on does not; a limit has none on either side.
     const rows = await this.sql.query(
-      `WITH claimed AS (UPDATE bot_orders SET firing_at = $2 WHERE id = $1 AND status = 'open' AND firing_at IS NULL RETURNING id, tg_id, chain_id)
+      `WITH claimed AS (UPDATE bot_orders SET firing_at = $2 WHERE id = $1 AND status = 'open' AND firing_at IS NULL AND next_at IS NOT DISTINCT FROM $3::timestamptz RETURNING id, tg_id, chain_id)
        INSERT INTO bot_order_fires (order_id, tg_id, chain_id, fired_at) SELECT id, tg_id, chain_id, $2 FROM claimed RETURNING order_id`,
-      [id, at.toISOString()],
+      [id, at.toISOString(), slot ?? null],
     );
     return rows.length === 1;
   }

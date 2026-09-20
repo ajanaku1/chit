@@ -24,10 +24,18 @@
  * caps, and the Sessions page says so where the flag is set. `withdraw`
  * stays the owner's alone.
  *
- * Each webhook request makes at most one send and waits for at most one
- * receipt, inside the host's budget for the function. Every update is
- * claimed by id before it is acted on, so a request the host killed
- * mid-trade is not acted on again when Telegram redelivers it.
+ * Each webhook request makes at most one send on the tapping user's own
+ * account and waits for at most one receipt, inside the host's budget for
+ * the function (api/bot.js is stopped at sixty seconds). The one thing that
+ * sends more in a request is a leader's landed buy, which is mirrored into
+ * the followers' accounts before the reply is done: those sends are given
+ * only what is left of the request's budget after the leader's own receipt
+ * (MIRRORS_UNTIL_MS from the request's start), each waits for its receipt
+ * only that long, and none is started once it is spent, so the log, the
+ * feed and the followers' lines are written before the host's cut-off
+ * rather than lost to it. Every update is claimed by id before it is acted
+ * on, so a request the host killed mid-trade is not acted on again when
+ * Telegram redelivers it.
  *
  * What this handler never does: hold a key of the owner's, withdraw, or
  * trade from an account that was not linked with the owner's signature.
@@ -84,6 +92,14 @@ const DEFAULTS = { dailyExecutes: 200, dailyGasWei: 2_000_000_000_000_000n, buyS
 const EXECUTE_GAS_WEI = 700_000n * 1_000_000_000n;
 /** A sale's ceiling (bot-session-chain.ts SELL_GAS): the swap with its two approvals made and cleared around it. */
 const SELL_GAS_WEI = 1_000_000n * 1_000_000_000n;
+/**
+ * copy: how long after a request began its mirrors, receipts included, must
+ * be through. api/bot.js lives 60 s (vercel.json); the feed's message and
+ * the leader's line come after the mirrors and need the rest. A leader's
+ * own receipt wait (RECEIPT_WAIT_MS, 40 s) is inside this, so on a slow
+ * block the mirrors get what is left and are reported as sent, not landed.
+ */
+export const MIRRORS_UNTIL_MS = 50_000;
 const short = (a: string): string => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const fmt = (units: bigint, decimals = 18, places = 5): string => {
   const neg = units < 0n; const u = neg ? -units : units;
@@ -131,10 +147,12 @@ export class SessionBot {
    * 5xx that would earn the retry.
    */
   async handle(u: Update): Promise<void> {
+    // The request's clock starts here: what a leader's mirrors may spend is measured from it, not from when the leader's buy landed.
+    const startedAt = this.#now.getTime();
     if (u.update_id !== undefined && !(await this.#updates.claim(u.update_id, this.#now))) return;
     const chatId = u.message?.chat.id ?? u.callback_query?.message?.chat.id;
     try {
-      await this.#route(u);
+      await this.#route(u, startedAt);
     } catch (error) {
       const detail = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "unknown";
       console.error("chit bot (mainnet):", detail);
@@ -149,7 +167,7 @@ export class SessionBot {
     return "something broke on our side. try again in a moment.";
   }
 
-  async #route(u: Update): Promise<void> {
+  async #route(u: Update, startedAt: number): Promise<void> {
     if (u.message?.text && u.message.from) {
       const chatId = String(u.message.chat.id), tgId = String(u.message.from.id), text = u.message.text.trim();
       if (u.message.chat.type !== "private") return;
@@ -163,7 +181,7 @@ export class SessionBot {
       if (pending && u.message.reply_to_message) {
         this.#pending.delete(tgId);
         if (pending.order) return this.#placeOrder(chatId, tgId, pending.token, pending.order, text);
-        return pending.side === "sell" ? this.#sell(chatId, tgId, pending.token, text) : this.#buy(chatId, tgId, pending.token, text);
+        return pending.side === "sell" ? this.#sell(chatId, tgId, pending.token, text) : this.#buy(chatId, tgId, pending.token, text, false, startedAt);
       }
       const pasted = text.match(/0x[0-9a-fA-F]{40}/)?.[0];
       if (pasted) return this.#tokenCard(chatId, tgId, pasted.toLowerCase() as Address);
@@ -183,7 +201,7 @@ export class SessionBot {
       case "home": await ack(); return this.#home(chatId, tgId, messageId);
       case "connect": await ack(); return this.#connect(chatId, tgId);
       case "token": await ack(); return a && isAddress(a) ? this.#tokenCard(chatId, tgId, a as Address, messageId) : this.#help(chatId);
-      case "b": await ack(); return a && isAddress(a) && b ? this.#buy(chatId, tgId, a as Address, b, true) : this.#help(chatId);
+      case "b": await ack(); return a && isAddress(a) && b ? this.#buy(chatId, tgId, a as Address, b, true, startedAt) : this.#help(chatId);
       case "ask": {
         await ack();
         if (!a || !isAddress(a)) return this.#help(chatId);
@@ -234,7 +252,7 @@ export class SessionBot {
   async #start(chatId: string, tgId: string, param?: string): Promise<void> {
     const linked = param?.startsWith("t-") ? param.slice(2) : undefined;
     if (linked && isAddress(linked)) return this.#tokenCard(chatId, tgId, linked.toLowerCase() as Address);
-    // copy: the feed's "follow" door, /start f-<leaderTgId>.
+    // copy: the feed's "follow" door, /start f-<leaderAccount>.
     const follow = param && this.#copy ? this.#copy.start(chatId, tgId, param) : undefined;
     if (follow) return follow;
     return this.#home(chatId, tgId);
@@ -362,11 +380,13 @@ export class SessionBot {
     return null;
   }
 
-  async #buy(chatId: string, tgId: string, token: Address, amount: string, fromButton = false): Promise<void> {
+  /** `startedAt`: when the request began (epoch ms); a leader's mirrors are budgeted from it. */
+  async #buy(chatId: string, tgId: string, token: Address, amount: string, fromButton = false, startedAt = this.#now.getTime()): Promise<void> {
     const link = await this.#d.links.getLink(tgId);
     if (!link) return this.#home(chatId, tgId);
     const wei = toWei(amount.trim());
-    if (wei === null || wei <= 0n) return this.#say(chatId, "amount must be a number of ETH, like 0.02.", kb([btn("← Back", `token:${token}`)]));
+    // The reply slot was spent on this answer, so a corrected one typed next would not be read as an amount: the way back is said and offered.
+    if (wei === null || wei <= 0n) return this.#say(chatId, "amount must be a number of ETH, like 0.02. tap Buy custom again to retry.", kb([btn("Buy custom", `ask:${token}`), btn("← Back", `token:${token}`)]));
     const count = this.#today(tgId);
     if (count.executes >= this.#cfg("dailyExecutes")) return this.#say(chatId, `that is ${this.#cfg("dailyExecutes")} buys today from this account; again tomorrow.`, kb([btn("← Back", `token:${token}`)]));
     if (count.gasWei >= this.#cfg("dailyGasWei")) return this.#say(chatId, "the bot has fronted its daily gas for this account; again tomorrow.", kb([btn("← Back", `token:${token}`)]));
@@ -388,8 +408,8 @@ export class SessionBot {
       ? `landed. <a href="${explorer}">${short(r.hash)}</a> · the tokens are in your account.`
       : `sent, not confirmed as landed: <a href="${explorer}">${short(r.hash)}</a>. check the explorer; the account's floor protects the fill.`,
       kb([btn("↻ Card", `token:${token}`), btn("← Back", "home")]));
-    // copy: a leader's landed buy goes to the feed and into the followers' accounts, after the leader's own fill.
-    if (r.landed && this.#copy) await this.#copy.afterBuy(chatId, tgId, token, wei, r.hash, info);
+    // copy: a leader's landed buy goes to the feed and into the followers' accounts, after the leader's own fill, with what is left of the request's budget.
+    if (r.landed && this.#copy) await this.#copy.afterBuy(chatId, tgId, token, wei, r.hash, info, startedAt + MIRRORS_UNTIL_MS);
   }
 
   // ---------- orders (bot-orders.ts) ----------
@@ -401,19 +421,23 @@ export class SessionBot {
    * allow (over the per-trade cap, paused) is refused now, in the contract's
    * words, and not three times from the cron. An account keeps at most
    * MAX_OPEN_ORDERS open, so orders are not an unmetered channel for the
-   * bot's gas; the order carries the chain it was placed on.
+   * bot's gas; the order carries the chain it was placed on. A refusal of
+   * the shape says what to do next and offers the button, because the reply
+   * slot was spent on the answer that was refused: a corrected line typed
+   * after it is not read as an order until the prompt is opened again.
    */
   async #placeOrder(chatId: string, tgId: string, token: Address, kind: "limit" | "dca", text: string): Promise<void> {
     const orders = this.#d.orders;
     const link = await this.#d.links.getLink(tgId);
     if (!orders || !link) return this.#home(chatId, tgId);
-    const back = kb([btn("← Back", `token:${token}`)]);
+    const again = kind === "limit" ? "tap ⏱ Limit buy again to retry." : "tap 🔁 DCA again to retry.";
+    const retry = kb([btn(kind === "limit" ? "⏱ Limit buy" : "🔁 DCA", `${kind === "limit" ? "lim" : "dca"}:${token}`), btn("← Back", `token:${token}`)]);
     const t = text.trim().toLowerCase();
     const limit = kind === "limit" ? t.match(/^(\d+(?:\.\d+)?)\s+at\s+(\d+(?:\.\d+)?)$/) : null;
     const dca = kind === "dca" ? t.match(/^(\d+(?:\.\d+)?)\s+every\s+(\d+)\s+hours?\s+(\d+)\s+times?$/) : null;
-    if (!limit && !dca) return this.#say(chatId, kind === "limit" ? "that is not the format. amount in eth, then the price as tokens per eth, like <code>0.02 at 1200000</code>." : "that is not the format. amount, every N hours, N times, like <code>0.01 every 4 hours 6 times</code>.", back);
+    if (!limit && !dca) return this.#say(chatId, `${kind === "limit" ? "that is not the format. amount in eth, then the price as tokens per eth, like <code>0.02 at 1200000</code>." : "that is not the format. amount, every N hours, N times, like <code>0.01 every 4 hours 6 times</code>."} ${again}`, retry);
     const wei = toWei((limit ?? dca)![1]!);
-    if (wei === null || wei <= 0n) return this.#say(chatId, "the amount must be a number of ETH above zero, like 0.02.", back);
+    if (wei === null || wei <= 0n) return this.#say(chatId, `the amount must be a number of ETH above zero, like 0.02. ${again}`, retry);
     if ((await orders.openFor(tgId, this.#d.session.chainId)).length >= MAX_OPEN_ORDERS) return this.#say(chatId, `that is ${MAX_OPEN_ORDERS} open orders, the most one account keeps in the beta; cancel one from 📋 Orders to set another.`, kb([btn("📋 Orders", "orders"), btn("← Back", `token:${token}`)]));
     const info = await this.#d.reads.tokenInfo(token);
     if (!info.hasPool) return this.#say(chatId, "no ETH pool on the venue for this token, so nothing to order.", kb([btn("← Back", "home")]));
@@ -424,12 +448,12 @@ export class SessionBot {
     let order: Order;
     if (limit) {
       const trigger = toUnits(limit[2]!, info.decimals);
-      if (trigger === null || trigger <= 0n) return this.#say(chatId, `the price must be a number of ${esc(info.symbol)} per ETH above zero, like 1200000.`, back);
+      if (trigger === null || trigger <= 0n) return this.#say(chatId, `the price must be a number of ${esc(info.symbol)} per ETH above zero, like 1200000. ${again}`, retry);
       order = { ...base, kind: "limit", triggerPerEth: trigger };
     } else {
       const hours = Number(dca![2]), times = Number(dca![3]);
-      if (hours < 1 || hours > 720) return this.#say(chatId, "the interval must be between 1 and 720 hours.", back);
-      if (times < 1 || times > 100) return this.#say(chatId, "the count must be between 1 and 100 buys.", back);
+      if (hours < 1 || hours > 720) return this.#say(chatId, `the interval must be between 1 and 720 hours. ${again}`, retry);
+      if (times < 1 || times > 100) return this.#say(chatId, `the count must be between 1 and 100 buys. ${again}`, retry);
       order = { ...base, kind: "dca", everyMs: hours * 3_600_000, remaining: times, nextAt: now };
     }
     await orders.put(order);
@@ -482,7 +506,8 @@ export class SessionBot {
     const link = await this.#d.links.getLink(tgId);
     if (!link) return this.#home(chatId, tgId);
     const percent = /^\d{1,3}%?$/.test(share.trim()) ? Number(share.trim().replace("%", "")) : NaN;
-    if (!Number.isInteger(percent) || percent < 1 || percent > 100) return this.#say(chatId, "a whole percent of your position, 1 to 100, like 50.", kb([btn("← Back", `token:${token}`)]));
+    // The reply slot was spent on this answer: the way back to the prompt is said and offered, or a retyped share lands on the help card.
+    if (!Number.isInteger(percent) || percent < 1 || percent > 100) return this.#say(chatId, "a whole percent of your position, 1 to 100, like 50. tap Sell custom again to retry.", kb([btn("Sell custom", `asks:${token}`), btn("← Back", `token:${token}`)]));
     const count = this.#today(tgId);
     if (count.executes >= this.#cfg("dailyExecutes")) return this.#say(chatId, `that is ${this.#cfg("dailyExecutes")} trades today from this account; again tomorrow.`, kb([btn("← Back", `token:${token}`)]));
     if (count.gasWei >= this.#cfg("dailyGasWei")) return this.#say(chatId, "the bot has fronted its daily gas for this account; again tomorrow.", kb([btn("← Back", `token:${token}`)]));

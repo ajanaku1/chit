@@ -97,7 +97,7 @@
               <input id="grant-target" name="target" type="text" placeholder="0x… (the Universal Router is filled in)" autocomplete="off" />
             </div>
             <div class="field">
-              <label for="grant-selector">Function (4-byte selector, blank for any)</label>
+              <label for="grant-selector">Function (4-byte selector; blank lets the key call any function of that contract)</label>
               <input id="grant-selector" name="selector" type="text" placeholder="0x3593564c" autocomplete="off" />
             </div>
             <div class="field">
@@ -119,7 +119,7 @@
 
         <section class="wstep" aria-labelledby="list-h" data-reveal>
           <h2 id="list-h">Your sessions</h2>
-          <p class="lead small">Read from the chain, never from us. Pause holds a key; revoke ends it for good. "Let it sell" is one more thing you grant: without it a key can only buy; with it the key can sell what the account holds back into the account, at the price of the pool it names, and turning it off is complete, since nothing of a sale outlives the call.</p>
+          <p class="lead small">Read from the chain, never from us. Pause holds a key; revoke ends it for good. What a key can do is what its rules name, with the account's ETH inside the caps: the router's one function with the beta's defaults, or any function of any contract you name if you leave the selector blank, a token's own transfer included, so name only what the bot needs. "Let it sell" is one more thing you grant: without it the key cannot call sell, so the tokens the account holds go back to ETH only by your hand; with it the key can sell what the account holds back into the account, at the price of the pool it names, and turning it off is complete, since nothing of a sale outlives the call.</p>
           <div id="session-list" class="control-list"></div>
           <p id="list-empty" class="fineprint">No sessions yet on this device. A session granted elsewhere shows up once you paste its key above and press Refresh.</p>
         </section>

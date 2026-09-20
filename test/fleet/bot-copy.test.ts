@@ -6,16 +6,19 @@
  * day, by each follower's own session (its refusal quoted) and their own
  * daily allowance from the bot; it is sized to the smaller of the leader's
  * amount and the cap, runs in the fixed order inside a time budget, keeps
- * going past one follower's failed send, and logs every outcome; the feed
- * gets one message per landed buy, after the mirrors, with the two doors
- * into the bot, and nothing for a closed leader or without a feed.
+ * going past one follower's failed send, and logs every outcome; the time
+ * budget bounds the receipts too, from the request's cut-off when the
+ * session bot hands one in; the feed gets one message per landed buy,
+ * after the mirrors, with the two doors into the bot (the follow door by
+ * the leader's account, never their Telegram id), and nothing for a closed
+ * leader or without a feed.
  */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Address, type Hex, parseEther } from "viem";
 import type { BotChain, TokenInfo } from "../../src/fleet/bot-chain.js";
-import { CopyDesk, MAX_FOLLOW_CAP_WEI, MemoryCopyStore } from "../../src/fleet/bot-copy.js";
+import { CopyDesk, MAX_FOLLOW_CAP_WEI, MIRROR_SEND_MS, MemoryCopyStore } from "../../src/fleet/bot-copy.js";
 import { MemoryBotLinkStore } from "../../src/fleet/bot-link.js";
 import type { OrusScan } from "../../src/fleet/bot-orus.js";
 import type { SessionChain } from "../../src/fleet/bot-session-chain.js";
@@ -40,6 +43,8 @@ const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; 
   const store = new MemoryCopyStore();
   const links = new MemoryBotLinkStore();
   const calls: { account: Address; value: bigint }[] = [];
+  /** The receipt wait each execute was given, in the order of the sends. */
+  const waits: (number | undefined)[] = [];
   const told: { to: string; text: string }[] = [];
   const posted: { text: string; keyboard: Keyboard }[] = [];
   let refuse: ((account: Address) => string | null) = () => null;
@@ -50,7 +55,7 @@ const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; 
     async ownerOf() { return OWNER; },
     async sessionOf() { throw new Error("not read here"); },
     async canExecute(account) { const why = refuse(account); return why ? { ok: false, why } : { ok: true, why: "" }; },
-    async execute(account, _t, value) { if (failSend(account)) throw new Error("nonce too low"); calls.push({ account, value }); return { hash: HASH, landed: true }; },
+    async execute(account, _t, value, _data, receiptWaitMs) { if (failSend(account)) throw new Error("nonce too low"); calls.push({ account, value }); waits.push(receiptWaitMs); return { hash: HASH, landed: true }; },
     async signerBalance() { return parseEther("1"); },
     // The desk mirrors buys only; the sell side is never asked here.
     async sellAllowed() { return false; },
@@ -69,7 +74,7 @@ const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; 
     ...(opts.feed === false ? {} : { feed: { chatId: "-100", post: async (text, keyboard) => { posted.push({ text, keyboard }); } } }),
   });
   const link = (tgId: string, n: number) => links.putLink({ tgId, account: acct(n), owner: OWNER, chainId: 4663, nonce: "n", signature: "0x00", linkedAt: clock.toISOString() });
-  return { desk, store, links, link, calls, told, posted, refuseWith: (f: typeof refuse) => { refuse = f; }, failSendFor: (f: typeof failSend) => { failSend = f; }, advance: (ms: number) => { t = new Date(t.getTime() + ms); } };
+  return { desk, store, links, link, calls, waits, told, posted, refuseWith: (f: typeof refuse) => { refuse = f; }, failSendFor: (f: typeof failSend) => { failSend = f; }, advance: (ms: number) => { t = new Date(t.getTime() + ms); } };
 };
 
 test("become leader needs a link; the leader's account is the linked one; close hides them from the list and from leader()", async () => {
@@ -79,9 +84,12 @@ test("become leader needs a link; the leader's account is the linked one; close 
   const l = await desk.becomeLeader("1", "@ogle");
   assert.equal(l.account, acct(1));
   assert.deepEqual((await desk.leaders()).map((x) => x.tgId), ["1"]);
+  assert.equal((await desk.leaderAt(acct(1)))!.tgId, "1", "the feed's follow door finds the leader by account");
+  assert.equal(await desk.leaderAt(acct(2)), undefined);
   await desk.closeLeader("1");
   assert.deepEqual(await desk.leaders(), []);
   assert.equal(await desk.leader("1"), undefined);
+  assert.equal(await desk.leaderAt(acct(1)), undefined, "closed: no door");
 });
 
 test("a handle is the Telegram @ form or a plain name: markup, the project's name, a leading space are refused; a name another open leader has is refused whatever its case; a closed leader's name is free again", async () => {
@@ -174,15 +182,39 @@ test("mirror: the follower's own daily allowance is charged per execute, last of
   assert.equal(await s.store.addTokenDay(clock.toISOString().slice(0, 10), PEPE, 0n), parseEther("0.01"), "the refused follower's amount was given back to the day");
 });
 
-test("mirror: once the time budget is spent no more sends are started and the rest are skipped and told", async () => {
-  const s = setup({ mirrorBudgetMs: 1_000 });
+test("mirror: once the time budget is spent no more sends are started and the rest are skipped and told; each send waits for its receipt only with what is left after the send's own allowance", async () => {
+  const s = setup({ mirrorBudgetMs: 10_000 });
   await leaderWithFollowers(s, ["0.01", "0.01", "0.01"]);
   let n = 0;
-  s.failSendFor(() => { if (++n === 1) s.advance(5_000); return false; });
+  s.failSendFor(() => { if (++n === 1) s.advance(15_000); return false; });
   const out = await s.desk.mirror("1", PEPE, parseEther("0.05"));
   assert.deepEqual(out.map((m) => [m.followerTgId, m.outcome, m.why]), [["2", "landed", ""], ["3", "skipped", "this run ran out of time before your turn; nothing was sent for you"], ["4", "skipped", "this run ran out of time before your turn; nothing was sent for you"]]);
   assert.equal(s.calls.length, 1);
+  assert.deepEqual(s.waits, [10_000 - MIRROR_SEND_MS], "the receipt wait is the budget less the send's own allowance");
   assert.deepEqual(s.told.map((t) => t.to), ["2", "3", "4"], "everyone is told, the ones not reached too");
+  // Less than a send's allowance left is no send at all, not a send with no receipt.
+  const tight = setup({ mirrorBudgetMs: MIRROR_SEND_MS - 1 });
+  await leaderWithFollowers(tight, ["0.01"]);
+  assert.deepEqual((await tight.desk.mirror("1", PEPE, parseEther("0.05"))).map((m) => m.outcome), ["skipped"]);
+  assert.equal(tight.calls.length, 0);
+});
+
+test("mirror: the request's cut-off handed in by the session bot bounds the run below its own budget, receipts included, so a request that already spent forty seconds on the leader's receipt does not run its mirrors past the host", async () => {
+  const s = setup();
+  await leaderWithFollowers(s, ["0.01", "0.01", "0.01"]);
+  // The request began 40 s ago and must be done with its mirrors in 12 s: the desk's own 30 s do not apply.
+  const until = clock.getTime() + 12_000;
+  let n = 0;
+  s.failSendFor(() => { if (++n === 1) s.advance(8_000); return false; });
+  const out = await s.desk.mirror("1", PEPE, parseEther("0.05"), { until });
+  assert.deepEqual(out.map((m) => [m.followerTgId, m.outcome]), [["2", "landed"], ["3", "skipped"], ["4", "skipped"]], "12 s: one send with a 7 s receipt wait that took 8 s, then 4 s left is under a send's allowance");
+  assert.deepEqual(s.waits, [12_000 - MIRROR_SEND_MS]);
+  assert.match(out[1]!.why, /ran out of time before your turn/);
+  // A cut-off far away leaves the desk's own budget in charge.
+  const roomy = setup();
+  await leaderWithFollowers(roomy, ["0.01"]);
+  await roomy.desk.mirror("1", PEPE, parseEther("0.05"), { until: clock.getTime() + 600_000 });
+  assert.deepEqual(roomy.waits, [30_000 - MIRROR_SEND_MS]);
 });
 
 test("mirror: sized to the smaller of the leader's amount and the cap, in the order they followed, and only for an open leader", async () => {
@@ -236,7 +268,8 @@ test("announce: one message to the feed with the handle, the amount, the token, 
   assert.match(m!.text, /^<b>@ogle<\/b> bought <code>0.05 ETH<\/code> of <b>PEPE<\/b> · <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xabab[0-9a-f]+">0xabababab…<\/a>\n/);
   assert.match(m!.text, /\norus: no honeypot · .*checked by orus/);
   assert.match(m!.text, /\nhey research lab: shipping · 12 commits · 2 releases · verified builder · <a href="https:\/\/heyresearch\.xyz\/p\/pepe">see on HEY<\/a>$/);
-  assert.deepEqual(m!.keyboard, [[{ text: "buy this", url: `https://t.me/usechit_bot?start=t-${PEPE}` }, { text: "follow @ogle", url: "https://t.me/usechit_bot?start=f-1" }]]);
+  assert.deepEqual(m!.keyboard, [[{ text: "buy this", url: `https://t.me/usechit_bot?start=t-${PEPE}` }, { text: "follow @ogle", url: `https://t.me/usechit_bot?start=f-${acct(1)}` }]], "the follow door names the leader's account, public since they opened, never their Telegram id");
+  assert.ok(!JSON.stringify(m).includes("f-1"), "the Telegram id is nowhere in the message");
   assert.equal(await s.desk.announce("2", PEPE, parseEther("0.05"), HASH, info, safe, undefined), false, "not a leader: nothing");
   await s.desk.closeLeader("1");
   assert.equal(await s.desk.announce("1", PEPE, parseEther("0.05"), HASH, info, safe, undefined), false, "closed: nothing");

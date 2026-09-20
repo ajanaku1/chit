@@ -4,8 +4,9 @@
  * the session, moves a dca along and closes a limit, keeps a refused order
  * open with the reason and fails it after three in a row, never sends more
  * than its cap in one pass, and tells the owner every time. Money moves at
- * most once: a claim before the send, a settle that never overwrites a
- * cancel, a cut-off run settled as sent by the next; a limit never fills
+ * most once: a claim before the send that names the dca slot it is for (so
+ * two overlapping runs cannot buy one slot twice), a settle that never
+ * overwrites a cancel, a cut-off run settled as sent by the next; a limit never fills
  * under its level; one owner has a daily budget and cannot starve another;
  * a runner sees only its own chain's orders; the Neon store does each of
  * these in one conditional statement.
@@ -16,7 +17,7 @@ import { test } from "node:test";
 import { type Address, type Hex, parseEther } from "viem";
 import type { BotChain } from "../../src/fleet/bot-chain.js";
 import { MemoryBotLinkStore } from "../../src/fleet/bot-link.js";
-import { FIRING_LEASE_MS, MemoryOrderStore, NeonOrderStore, OrderRunner, due, fair, levelOut, type Order, type OrderSql } from "../../src/fleet/bot-orders.js";
+import { FIRING_LEASE_MS, MemoryOrderStore, NeonOrderStore, OrderRunner, due, fair, levelOut, type Order, type OrderSql, type OrderStore } from "../../src/fleet/bot-orders.js";
 import type { SessionChain } from "../../src/fleet/bot-session-chain.js";
 import { RecordingTelegram } from "../../src/fleet/bot-telegram.js";
 import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4EthBuy, minOutFor } from "../../src/fleet/v4-swap.js";
@@ -221,6 +222,45 @@ test("a claim goes before the send and the settle after it only lands on an open
   assert.equal((await orders.get("l"))!.refusals, 0);
 });
 
+test("two runs over the same dca: the second, working from a read taken before the first bought the slot, claims nothing and sends nothing, because the claim names the slot and every write moves a dca's slot on", async () => {
+  const { orders, links, session, telegram, runner } = setup();
+  await linked(links);
+  await orders.put(order({ id: "d", kind: "dca", everyMs: 4 * HOUR, remaining: 5, nextAt: clock.toISOString() }));
+  // Run B reads the open orders now (cron jitter, a manual POST) and is slow to reach this owner's order; run A fires it meanwhile.
+  const stale = await orders.open(4663);
+  const behind: OrderStore = {
+    put: (o) => orders.put(o), get: (id) => orders.get(id), openFor: (t, c) => orders.openFor(t, c), cancel: (id) => orders.cancel(id),
+    claim: (id, at, slot) => orders.claim(id, at, slot), settle: (o) => orders.settle(o), firesSince: (t, c, s) => orders.firesSince(t, c, s),
+    open: async () => stale.map((o) => ({ ...o })),
+  };
+  const runB = new OrderRunner({ orders: behind, links, reads: reads(1_500_000n), session: session.s, telegram, now: () => new Date(clock.getTime() + 45_000) });
+  assert.deepEqual(await runner.run(), { ...none, fired: 1, landed: 1 });
+  assert.equal((await orders.get("d"))!.remaining, 4);
+  assert.equal((await orders.get("d"))!.firingAt, undefined, "run A's settle cleared its claim, which alone would let a stale claim in");
+  assert.deepEqual(await runB.run(), none, "the slot run B read is gone: its claim does not land, nothing is skipped as refused or waited");
+  assert.equal(session.calls.length, 1, "one buy for one slot");
+  const d = (await orders.get("d"))!;
+  assert.equal(d.remaining, 4, "and the count is what one buy leaves, not a stale copy's arithmetic");
+  assert.equal(d.nextAt, new Date(clock.getTime() + 4 * HOUR).toISOString());
+  assert.equal(orders.fires.length, 1, "the ledger has one fire");
+  assert.equal(telegram.sent.length, 1, "the owner heard about one buy");
+  // A wait moves the slot too: run A's wait (the day's budget) is enough to keep a stale run B from firing what A held back.
+  await orders.put(order({ id: "w", kind: "dca", everyMs: HOUR, remaining: 2, nextAt: clock.toISOString(), createdAt: new Date(clock.getTime() + 1).toISOString() }));
+  const staleW = (await orders.open(4663)).filter((o) => o.id === "w");
+  const waiting = new OrderRunner({ orders, links, reads: reads(1_500_000n), session: session.s, telegram, now: () => clock, dailyExecutes: 1 });
+  assert.deepEqual(await waiting.run(), { ...none, waited: 1 });
+  const laterB = new OrderRunner({ orders: { ...behind, open: async () => staleW.map((o) => ({ ...o })) }, links, reads: reads(1_500_000n), session: session.s, telegram, now: () => clock });
+  assert.deepEqual(await laterB.run(), none);
+  assert.equal(session.calls.length, 1);
+  // The store itself: a claim with the slot as it stands lands, one with the slot as it was does not; a limit has no slot on either side.
+  await orders.put(order({ id: "d3", kind: "dca", everyMs: HOUR, remaining: 2, nextAt: clock.toISOString(), createdAt: new Date(clock.getTime() + 2).toISOString() }));
+  assert.equal(await orders.claim("d3", clock, new Date(clock.getTime() + 1).toISOString()), false, "another slot: not this order's");
+  assert.equal(await orders.claim("d3", clock, undefined), false, "no slot named for a dca: not taken");
+  assert.equal(await orders.claim("d3", clock, clock.toISOString()), true);
+  await orders.put(order({ id: "l", kind: "limit", triggerPerEth: 1n }));
+  assert.equal(await orders.claim("l", clock, undefined), true);
+});
+
 test("a claim a dead run left behind is settled as sent once its lease is over, never sent again: a limit closes, a dca counts the slot; a live claim is left alone", async () => {
   const { orders, links, session, telegram, runner } = setup();
   await linked(links);
@@ -380,12 +420,15 @@ test("neon: the claim is one statement that takes only an open, unclaimed order 
   const put = sql.calls.find((c) => c.query.includes("INSERT INTO bot_orders"))!;
   assert.ok(!/firing_at/.test(put.query), "a put never sets or clears a claim");
   assert.equal(put.params[3], 4663, "the chain goes in");
-  assert.equal(await store.claim("open", clock), true);
-  assert.equal(await store.claim("gone", clock), false);
+  assert.equal(await store.claim("open", clock, undefined), true);
+  assert.equal(await store.claim("gone", clock, undefined), false);
   const claim = sql.calls.find((c) => c.query.includes("WITH claimed"))!;
-  assert.match(claim.query, /UPDATE bot_orders SET firing_at = \$2 WHERE id = \$1 AND status = 'open' AND firing_at IS NULL RETURNING/);
+  assert.match(claim.query, /UPDATE bot_orders SET firing_at = \$2 WHERE id = \$1 AND status = 'open' AND firing_at IS NULL AND next_at IS NOT DISTINCT FROM \$3::timestamptz RETURNING/, "the claim names the slot: a dca another run moved on is not taken");
   assert.match(claim.query, /INSERT INTO bot_order_fires .* FROM claimed RETURNING/s);
+  assert.deepEqual(claim.params, ["open", clock.toISOString(), null], "a limit has no slot");
   assert.equal(sql.calls.filter((c) => c.query.includes("bot_order_fires") && !/^(CREATE|ALTER)/.test(c.query.trim())).length, 2, "one statement per claim, no read first");
+  await store.claim("open", clock, clock.toISOString());
+  assert.equal(sql.calls.at(-1)!.params[2], clock.toISOString(), "a dca's slot goes in as read");
   assert.equal(await store.settle(order({ id: "open", kind: "limit", triggerPerEth: 1n, status: "done" })), true);
   assert.equal(await store.settle(order({ id: "cancelled", kind: "limit", triggerPerEth: 1n, status: "done" })), false);
   const settle = sql.calls.find((c) => c.query.includes("UPDATE bot_orders SET remaining"))!;

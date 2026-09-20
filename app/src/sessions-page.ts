@@ -174,7 +174,9 @@ const renderSessions = async (): Promise<void> => {
   for (const { key, view } of known) {
     const state = sessionState(view, now);
     const rules = (await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "rulesOf", args: [key] })) as ReadonlyArray<{ target: Hex; selector: Hex }>;
-    const sells = (await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "sellAllowed", args: [key] })) as boolean;
+    // An account deployed before the flag existed has no `sellAllowed` (nor `setSellAllowed`): the read reverts, and with it,
+    // unguarded, the whole list and its Pause, Resume and Revoke would go. Such an account has no sell to allow; the box says so.
+    const sells = await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "sellAllowed", args: [key] }).then((v) => v as boolean, () => undefined);
     const card = document.createElement("article");
     card.className = "dash-card";
     card.dataset["state"] = state;
@@ -186,7 +188,9 @@ const renderSessions = async (): Promise<void> => {
       <p class="lead small">${spent}</p>
       <p class="fineprint">${rules.map((r) => `${r.target}${r.selector === ANY_FUNCTION ? " · any function" : ` · ${r.selector}`}`).join("<br>")}</p>
       <p class="fineprint">until ${until}</p>
-      <label class="fineprint sell-toggle"><input type="checkbox" data-act="sell" ${sells ? "checked" : ""} ${state === "revoked" ? "disabled" : ""} /> let it sell: the key may sell tokens the account holds, through its router, with the ETH landing here and nothing approved afterwards; the pool and the floor are the key's, so this trusts it with the position, not only the caps</label>
+      <label class="fineprint sell-toggle"><input type="checkbox" data-act="sell" ${sells ? "checked" : ""} ${state === "revoked" || sells === undefined ? "disabled" : ""} /> ${sells === undefined
+        ? "let it sell: not on this account. it was created before the flag existed, so no key can sell from it; a key here does only what its rules name."
+        : "let it sell: the key may sell tokens the account holds, through its router, with the ETH landing here and nothing approved afterwards; the pool and the floor are the key's, so this trusts it with the position, not only the caps"}</label>
       <div class="wnav">
         <button type="button" class="ghost" data-act="pause" ${state === "active" ? "" : "disabled"}>Pause</button>
         <button type="button" class="ghost" data-act="resume" ${state === "paused" ? "" : "disabled"}>Resume</button>
