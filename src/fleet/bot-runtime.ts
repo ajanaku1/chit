@@ -45,7 +45,10 @@
  *   BOT_SIGNER_PRIVATE_KEY       session mode: the bot's own key, the one
  *                                owners grant sessions to; pays the gas
  *   BOT_DAILY_EXECUTES,          session mode: per user per day, how many
- *   BOT_DAILY_GAS_ETH            executes and how much gas the bot fronts
+ *   BOT_DAILY_GAS_ETH            trades (buys, sells, mirrored buys and
+ *                                fired orders alike) and how much gas the
+ *                                bot fronts; the same budget the orders'
+ *                                cron reads
  *   BOT_GROUP_CHAT_ID            session mode: the group (a chat id, usually
  *                                -100…) where a leader's landed buy is posted
  *                                the second it lands, with the hash and two
@@ -57,6 +60,15 @@
  *                                api/bot/orders.js; otherwise the orders live
  *                                in the store beside the links and the cron
  *                                fires them (bot-orders.ts)
+ *   CRON_SECRET                  the bearer Vercel's cron sends to
+ *                                /api/bot/orders (and the buyback keeper);
+ *                                without it the route refuses every pass,
+ *                                because a pass sends executes
+ *   BOT_ORDERS_PER_RUN           at most this many executes one pass of the
+ *                                orders' cron sends; default 20
+ *   BOT_ORDERS_CHAIN_ID          4663 (default) or 46630: the runner fires
+ *                                only the orders placed on its chain
+ *                                (bot-orders-runtime.ts has the rest)
  *   BOT_ASSET_DIR                where the share card's plate and fonts are
  *                                (default landing/public/bot, shipped with
  *                                the function)
@@ -70,7 +82,11 @@
  *                                liquidity, deployer), "checked by orus".
  *                                Absent: no line, no call. Orus scans chain
  *                                4663 only, so on testnet the line shows for
- *                                nothing and costs nothing
+ *                                nothing and costs nothing. In session mode
+ *                                it also gates every mirrored buy: without
+ *                                the key leaders and followers still work,
+ *                                but every mirror is skipped and told, and
+ *                                the operator is warned once at build
  *   ORUS_API_BASE                default https://www.orusagent.xyz
  *   HEY_API_KEY                  HEY Research key (heyresearch.xyz/account) for
  *                                the builder line on the token card: status,

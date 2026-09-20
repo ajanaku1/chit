@@ -2,11 +2,12 @@
  * The mainnet bot: no link, no trade; a link is a nonce and a signed
  * message; a buy asks the account first and is refused in its words; a buy
  * that passes is one execute from the bot's key with the bot's floor; the
- * daily limits stop a loop; a sell needs the owner's flag, approves once
- * (its own tap, with the honest words about what the approval is), then is
- * one execute with value zero; an update delivered twice runs once; a
- * failure is a message, never a throw; a tap from a group draws nothing
- * there; withdrawals are never offered.
+ * daily limits stop a loop; a sell needs the owner's flag and is then one
+ * `sell` on the account from the bot's key, asked `canSell` first and
+ * refused in the contract's words, with no approval step before or after;
+ * an update delivered twice runs once; a failure is a message, never a
+ * throw; a tap from a group draws nothing there; withdrawals are never
+ * offered.
  */
 
 import assert from "node:assert/strict";
@@ -17,10 +18,11 @@ import type { Update } from "../../src/fleet/bot-handlers.js";
 import { CopyDesk, MemoryCopyStore } from "../../src/fleet/bot-copy.js";
 import { MemoryBotLinkStore } from "../../src/fleet/bot-link.js";
 import type { OrusScan } from "../../src/fleet/bot-orus.js";
-import type { SessionChain } from "../../src/fleet/bot-session-chain.js";
 import { SessionBot } from "../../src/fleet/bot-session.js";
+import type { SessionSell } from "../../src/fleet/session-keys.js";
 import { RecordingTelegram } from "../../src/fleet/bot-telegram.js";
-import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4TokenSell, minOutFor } from "../../src/fleet/v4-swap.js";
+import { sellPreflight, type SessionChain } from "../../src/fleet/bot-session-chain.js";
+import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, minOutFor, venuePoolKey } from "../../src/fleet/v4-swap.js";
 
 const PEPE = "0x00000000000000000000000000000000000000ce" as Address;
 const ACCOUNT = "0x00000000000000000000000000000000000000aa" as Address;
@@ -42,9 +44,9 @@ const fakeSession = () => {
   const calls: { account: Address; target: Address; value: bigint; data: Hex }[] = [];
   let state = { exists: true, paused: false, revoked: false, expiry: Math.floor(clock.getTime() / 1000) + 86400, maxValuePerCall: parseEther("0.05").toString(), totalValueCap: parseEther("0.5").toString(), spentValue: "0", calls: 0 };
   let refuse: string | null = null;
-  // The sell side: the owner's flag, the approval the account has (the first approveForSell puts it in place), and each approval sent.
-  let sell = false, ready = false, approvalLands = true;
-  const approvals: { account: Address; token: Address; spender: Address }[] = [];
+  // The sell side: the owner's flag, each sale sent, and whether a sale lands. canSell answers the way the contract does: the flag first, then the session.
+  let sell = false, saleLands = true;
+  const sales: { account: Address; sale: SessionSell }[] = [];
   const s: SessionChain = {
     chainId: 4663, signer: SIGNER,
     async ownerOf(a) { return a.toLowerCase() === ACCOUNT ? OWNER : undefined; },
@@ -53,10 +55,15 @@ const fakeSession = () => {
     async execute(account, target, value, data) { calls.push({ account, target, value, data }); return { hash: ("0x" + "ab".repeat(32)) as Hex, landed: true }; },
     async signerBalance() { return parseEther("1"); },
     async sellAllowed() { return sell; },
-    async approveForSell(account, token, spender) { approvals.push({ account, token, spender }); ready = approvalLands; return { hash: ("0x" + "cd".repeat(32)) as Hex, landed: approvalLands }; },
-    async tokenAllowanceReady() { return ready; },
+    async canSell(_a, _router, poolKey, _amountIn, minOut) {
+      const early = sellPreflight(poolKey?.currency1 ?? PEPE, poolKey, minOut);
+      if (early) return { ok: false, why: early };
+      if (!sell) return { ok: false, why: "sell not allowed" };
+      return refuse ? { ok: false, why: refuse } : { ok: true, why: "" };
+    },
+    async sell(account, sale) { sales.push({ account, sale }); return { hash: ("0x" + "cd".repeat(32)) as Hex, landed: saleLands }; },
   };
-  return { s, calls, approvals, set: (p: Partial<typeof state>) => { state = { ...state, ...p }; }, refuseWith: (why: string | null) => { refuse = why; }, allowSell: (v: boolean) => { sell = v; }, allowanceReady: (v: boolean) => { ready = v; }, approvalLands: (v: boolean) => { approvalLands = v; } };
+  return { s, calls, sales, set: (p: Partial<typeof state>) => { state = { ...state, ...p }; }, refuseWith: (why: string | null) => { refuse = why; }, allowSell: (v: boolean) => { sell = v; }, saleLands: (v: boolean) => { saleLands = v; } };
 };
 
 const dm = (text: string, replyTo?: string): Update => ({ message: { message_id: 1, text, chat: { id: 7, type: "private" }, from: { id: 7 }, ...(replyTo ? { reply_to_message: { text: replyTo } } : {}) } });
@@ -460,122 +467,145 @@ test("orders: an account keeps at most ten open; the eleventh is refused with th
 
 // ---------- sells ----------
 
-test("sell buttons are on the token card only when the account holds the token", async () => {
+test("sell buttons are on the token card only when the account holds the token; the card's words say a sell is one call with the ETH back into the account", async () => {
   const empty = setup({ reads: { ...reads, async tokenBalance() { return 0n; } } as unknown as BotChain });
   await linked(empty.links);
   await empty.bot.handle(dm(PEPE));
   assert.ok(!empty.buttons().some((x) => x.startsWith("s:") || x.startsWith("asks:")), "nothing held, nothing to sell");
-  const { bot, links, buttons } = setup();
+  const { bot, links, buttons, telegram } = setup();
   await linked(links);
   await bot.handle(dm(PEPE));
   const b = buttons();
   assert.deepEqual(b.filter((x) => x.startsWith("s:")), [`s:${PEPE}:25`, `s:${PEPE}:50`, `s:${PEPE}:100`]);
   assert.ok(b.includes(`asks:${PEPE}`), "Sell custom asks for a share");
+  assert.match(telegram.last(), /a sell is one call on your account too, guarded at 3%, the ETH back into your account/);
+  assert.ok(!/approv|permit2|allowance/i.test(telegram.last()), "no approval step to explain: the account approves inside the sale and clears it");
 });
 
-test("a sell without the owner's flag says what to do, with the Sessions page, what the approval will be and that only pause or revoke undoes it, and sends nothing", async () => {
+test("a sell without the owner's flag says what to do, with the Sessions page, and what the flag trusts the key with; nothing is sent", async () => {
   const { bot, links, session, telegram, buttons } = setup();
   await linked(links);
   await bot.handle(tap(`s:${PEPE}:50`));
   assert.match(telegram.last(), /your session does not allow sells yet\. on the Sessions page, next to the bot's key, turn on let it sell \(one transaction\), then try again\./);
-  assert.match(telegram.last(), /approves it for the bot's key without a limit, and that approval stays until you pause or revoke the session; turning let it sell off later does not undo it/, "the flag is not sold as a reversible bound");
+  assert.match(telegram.last(), /the ETH landing there and nothing approved afterwards, but the pool and the floor are the key's, so the flag trusts the bot's key with the position, not only the caps/, "the flag is sold for what it is: complete when off, unbounded on price");
   assert.ok(buttons().includes("https://chit.tools/app/sessions.html"), "the Sessions page is the button");
-  assert.equal(session.approvals.length, 0, "no approval");
-  assert.equal(session.calls.length, 0, "no execute");
+  assert.equal(session.sales.length, 0, "no sale");
+  assert.equal(session.calls.length, 0, "no execute either");
 });
 
-test("with the flag and no allowance the first tap approves the router once, says what the approval is, and offers the sale as the next tap; that tap sells as one execute with value zero; the next sale approves nothing", async () => {
-  const { bot, links, session, telegram, textAt, buttons } = setup();
-  await linked(links);
-  session.allowSell(true);
-  await bot.handle(tap(`s:${PEPE}:50`));
-  assert.deepEqual(session.approvals, [{ account: ACCOUNT, token: PEPE, spender: ROUTER }]);
-  assert.match(textAt(-2), /first sale of <b>PEPE<\/b> from your account: approving it for the router once\. the approval is your account's, without a limit, and stays until you pause or revoke the session; turning let it sell off does not undo it/);
-  assert.match(telegram.last(), /approved: <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xcdcd.*tap to sell 50% of your <b>PEPE<\/b> now/);
-  assert.equal(session.calls.length, 0, "the approval is this request's one send; no sale yet");
-  assert.equal(buttons()[0], `s:${PEPE}:50`, "the sale is the next tap, with the same share");
-  await bot.handle(tap(`s:${PEPE}:50`));
-  assert.equal(session.approvals.length, 1, "no second approval");
-  assert.match(textAt(-2), /selling <code>21 PEPE<\/code> \(50%\) from your account/);
-  assert.equal(session.calls.length, 1, "one execute");
-  assert.equal(session.calls[0]!.account, ACCOUNT);
-  assert.equal(session.calls[0]!.target, ROUTER);
-  assert.equal(session.calls[0]!.value, 0n, "a sale spends no ETH, so the caps are untouched");
-  assert.ok(session.calls[0]!.data.startsWith(UNIVERSAL_ROUTER_EXECUTE_SELECTOR));
-  assert.match(telegram.last(), /landed\. <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xabab.*the ETH is in your account/);
-  await bot.handle(tap(`s:${PEPE}:100`));
-  assert.equal(session.approvals.length, 1, "the allowance is in place, no second approval");
-  assert.equal(session.calls.length, 2);
-});
-
-test("an approval not confirmed as landed is reported with its hash, sells nothing, and leaves the sale to a tap after the explorer", async () => {
-  const { bot, links, session, telegram, buttons } = setup();
-  await linked(links);
-  session.allowSell(true);
-  session.approvalLands(false);
-  await bot.handle(tap(`s:${PEPE}:25`));
-  assert.equal(session.approvals.length, 1);
-  assert.match(telegram.last(), /the approval is sent, not confirmed as landed: <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xcdcd.*nothing was sold; check the explorer, then tap Sell again/);
-  assert.equal(session.calls.length, 0, "no sale on an unconfirmed approval");
-  assert.equal(buttons()[0], `s:${PEPE}:25`);
-});
-
-test("an update delivered twice is acted on once: the redelivery of a Sell callback sells nothing more and says nothing", async () => {
-  const { bot, links, session, telegram } = setup();
-  await linked(links);
-  session.allowSell(true);
-  session.allowanceReady(true);
-  await bot.handle(tap(`s:${PEPE}:50`, false, 1001));
-  assert.equal(session.calls.length, 1);
-  const said = telegram.sent.length;
-  await bot.handle(tap(`s:${PEPE}:50`, false, 1001));
-  assert.equal(session.calls.length, 1, "the same update id sells no second share");
-  assert.equal(telegram.sent.length, said, "not even an answer to the callback: the first delivery had it");
-  await bot.handle(tap(`s:${PEPE}:50`, false, 1002));
-  assert.equal(session.calls.length, 2, "a new update id is a new tap");
-  await bot.handle(tap(`s:${PEPE}:50`));
-  assert.equal(session.calls.length, 3, "an update without an id (the dual bot's floor switch, a test) is not claimed");
-});
-
-test("the share is a whole percent of the position: 25% of 42 PEPE is 10.5, in the token's six decimals, with the sell floor", async () => {
+test("with the flag a tap is one sell on the account from the bot's key: the share in base units, the quote's floor, the venue pool, the ETH into the account; no approval before or after, no execute", async () => {
   const { bot, links, session, telegram, textAt } = setup();
   await linked(links);
   session.allowSell(true);
-  session.allowanceReady(true);
+  await bot.handle(tap(`s:${PEPE}:50`));
+  assert.match(textAt(-2), /selling <code>21 PEPE<\/code> \(50%\) from your account: about <code>0\.00002 ETH<\/code>, floor <code>0\.00002<\/code>/, "five places shown");
+  assert.equal(session.sales.length, 1, "one sell");
+  assert.equal(session.calls.length, 0, "a sale is not an execute: the account writes the router calldata itself");
+  const { account, sale } = session.sales[0]!;
+  assert.equal(account, ACCOUNT);
+  assert.equal(sale.router, ROUTER);
+  assert.equal(sale.token, PEPE);
+  assert.equal(sale.amountIn, 21_000_000n, "half of 42 PEPE in six decimals");
+  const quote = (21_000_000n * 10n ** 18n) / 1_000_000_000_000n;
+  assert.equal(sale.minOut, minOutFor(quote, 300), "the floor is the quote less 3%");
+  assert.equal(sale.deadline, BigInt(Math.floor(clock.getTime() / 1000) + 3600));
+  assert.deepEqual(sale.poolKey, venuePoolKey(PEPE), "the venue's ETH pool for the token when the token has no hooked pool of its own");
+  assert.match(telegram.last(), /landed\. <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xcdcd.*the ETH is in your account/);
+  await bot.handle(tap(`s:${PEPE}:100`));
+  assert.equal(session.sales.length, 2, "the next sale is the same one call; nothing to approve first");
+});
+
+test("a hooked pool's own key goes into the sale", async () => {
+  const hooked = { currency0: "0x0000000000000000000000000000000000000000" as Address, currency1: PEPE, fee: 10_000, tickSpacing: 200, hooks: "0x00000000000000000000000000000000000000ee" as Address };
+  const { bot, links, session } = setup({ reads: { ...reads, async tokenInfo(token: Address) { return { address: token, symbol: "PEPE", decimals: 6, hasPool: true, perEth: 1_000_000_000_000n, poolEth: parseEther("5"), hooked: true, fee: 10_000, poolKey: hooked }; } } as unknown as BotChain });
+  await linked(links);
+  session.allowSell(true);
+  await bot.handle(tap(`s:${PEPE}:25`));
+  assert.equal(session.sales.length, 1);
+  assert.deepEqual(session.sales[0]!.sale.poolKey, hooked);
+});
+
+test("a sale sent but not confirmed as landed is reported with its hash and the explorer, once", async () => {
+  const { bot, links, session, telegram } = setup();
+  await linked(links);
+  session.allowSell(true);
+  session.saleLands(false);
+  await bot.handle(tap(`s:${PEPE}:25`));
+  assert.equal(session.sales.length, 1);
+  assert.match(telegram.last(), /sent, not confirmed as landed: <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xcdcd.*the account's floor protects the fill/);
+});
+
+test("an update delivered twice is acted on once: the redelivery of a Sell callback sells nothing more and says nothing", async () => {
+  // Three sales in a day at the sale's gas ceiling are past the default gas budget, which is not what this test is about.
+  const { bot, links, session, telegram } = setup({ dailyGasWei: parseEther("1") });
+  await linked(links);
+  session.allowSell(true);
+  await bot.handle(tap(`s:${PEPE}:50`, false, 1001));
+  assert.equal(session.sales.length, 1);
+  const said = telegram.sent.length;
+  await bot.handle(tap(`s:${PEPE}:50`, false, 1001));
+  assert.equal(session.sales.length, 1, "the same update id sells no second share");
+  assert.equal(telegram.sent.length, said, "not even an answer to the callback: the first delivery had it");
+  await bot.handle(tap(`s:${PEPE}:50`, false, 1002));
+  assert.equal(session.sales.length, 2, "a new update id is a new tap");
+  await bot.handle(tap(`s:${PEPE}:50`));
+  assert.equal(session.sales.length, 3, "an update without an id (the dual bot's floor switch, a test) is not claimed");
+});
+
+test("the share is a whole percent of the position: 25% of 42 PEPE is 10.5, in the token's six decimals, with the sell floor; a share that is not a number sells nothing", async () => {
+  const { bot, links, session, telegram, textAt } = setup();
+  await linked(links);
+  session.allowSell(true);
   await bot.handle(tap(`asks:${PEPE}`));
   assert.match(telegram.last(), /what share of your <code>0x.*to sell\? reply with a whole percent/);
   await bot.handle(dm("25", "what share"));
   assert.match(textAt(-2), /selling <code>10\.5 PEPE<\/code> \(25%\)/);
   const amountIn = 10_500_000n;
   const quote = (amountIn * 10n ** 18n) / 1_000_000_000_000n;
-  const expected = encodeV4TokenSell({ token: PEPE, amountIn, minOut: minOutFor(quote, 300), deadline: BigInt(Math.floor(clock.getTime() / 1000) + 3600) });
-  assert.equal(session.calls[0]!.data, expected, "amountIn is the share in base units; the floor is the quote less 3%");
+  assert.equal(session.sales[0]!.sale.amountIn, amountIn, "amountIn is the share in base units");
+  assert.equal(session.sales[0]!.sale.minOut, minOutFor(quote, 300), "the floor is the quote less 3%");
   await bot.handle(tap(`asks:${PEPE}`));
   await bot.handle(dm("half", "what share"));
   assert.match(telegram.last(), /a whole percent of your position, 1 to 100/);
-  assert.equal(session.calls.length, 1, "a share that is not a number sells nothing");
+  assert.equal(session.sales.length, 1);
 });
 
-test("a sell the contract refuses is quoted in its words, before any approval or gas", async () => {
+test("a sell the contract refuses is quoted in its words, before any gas: a paused session, and a floor of zero in the contract's own check", async () => {
   const { bot, links, session, telegram } = setup();
   await linked(links);
   session.allowSell(true);
   session.refuseWith("session paused");
   await bot.handle(tap(`s:${PEPE}:100`));
   assert.match(telegram.last(), /your session says no: <b>session paused<\/b>/);
-  assert.equal(session.approvals.length, 0, "no approval on a refusal");
+  assert.equal(session.sales.length, 0, "no sale on a refusal");
   assert.equal(session.calls.length, 0, "no execute on a refusal");
+  // A quote of zero (a pool too thin to give anything for the share) is a floor of zero, which `sell` reverts with NoFloor; the bot says so first.
+  session.refuseWith(null);
+  const dust = setup({ reads: { ...reads, async quoteSell() { return 0n; } } as unknown as BotChain });
+  await linked(dust.links);
+  dust.session.allowSell(true);
+  await dust.bot.handle(tap(`s:${PEPE}:1`));
+  assert.match(dust.telegram.last(), /your session says no: <b>no floor<\/b>/);
+  assert.equal(dust.session.sales.length, 0);
 });
 
-test("the daily execute limit counts sells with buys", async () => {
+test("the daily execute and gas limits count sells with buys, a sale at its own gas ceiling", async () => {
   const { bot, links, session, telegram } = setup({ dailyExecutes: 2 });
   await linked(links);
   session.allowSell(true);
-  session.allowanceReady(true);
   await bot.handle(tap(`b:${PEPE}:0.01`));
   await bot.handle(tap(`s:${PEPE}:50`));
-  assert.equal(session.calls.length, 2);
+  assert.equal(session.calls.length + session.sales.length, 2);
   await bot.handle(tap(`s:${PEPE}:50`));
-  assert.equal(session.calls.length, 2, "the third trade of the day is refused");
+  assert.equal(session.sales.length, 1, "the third trade of the day is refused");
   assert.match(telegram.last(), /2 trades today/);
+  // The gas budget: one sale is charged 1,000,000 gas at one gwei; a budget of that much is spent by one sale.
+  const tight = setup({ dailyGasWei: 1_000_000n * 1_000_000_000n });
+  await linked(tight.links);
+  tight.session.allowSell(true);
+  await tight.bot.handle(tap(`s:${PEPE}:50`));
+  assert.equal(tight.session.sales.length, 1);
+  await tight.bot.handle(tap(`s:${PEPE}:50`));
+  assert.equal(tight.session.sales.length, 1, "the second sale is over the day's gas");
+  assert.match(tight.telegram.last(), /fronted its daily gas/);
 });

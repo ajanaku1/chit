@@ -77,6 +77,10 @@ const fakeSession = () => {
       return { hash: ("0x" + "ab".repeat(32)) as Hex, landed: true };
     },
     async signerBalance() { return parseEther("1"); },
+    // Orders buy only; the sell side is never asked here.
+    async sellAllowed() { return false; },
+    async canSell() { return { ok: false, why: "sell not allowed" }; },
+    async sell() { throw new Error("not sold here"); },
   };
   return { s, calls, refuseWith: (why: string | null) => { refuse = why; }, failWith: (why: string | null) => { fail = why; }, during: (f: (() => Promise<void>) | undefined) => { onExecute = f; } };
 };

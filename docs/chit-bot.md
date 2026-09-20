@@ -144,8 +144,10 @@ pieces:
   once, from the Sessions page in your wallet: which router, how much per
   trade, how much in all, until when. The bot signs only inside that, from
   its own key, and you pull the key from your wallet in one transaction.
-  `docs/session-keys.md` is the contract; the bot's Buy and Sell become
-  `execute` calls on your session account.
+  `docs/session-keys.md` is the contract; the bot's Buy becomes an
+  `execute` on your session account, and Sell one `sell` on it, behind a
+  "let it sell" flag you set per key: the account writes the router
+  calldata itself, the ETH lands in the account, nothing stays approved.
 
 Trojan gives speed by taking your key. Chit gives speed without it.
 

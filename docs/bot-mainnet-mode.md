@@ -103,45 +103,47 @@ swap calldata (`v4-swap.ts`, the same exact-in ETH → token path), and:
 Confirm-trades and slippage settings stay per user in the store; sell
 protection is moot (see Sell).
 
-## Sell: the open decision
+## Sell: decided, B, built
 
 A sell through the router needs the account to approve Permit2 for that
 token first. A session rule is `(target, selector)` and the token is the
-target, so selling any token the user might hold needs a rule per token,
-which the owner cannot grant in advance for tokens that do not exist yet.
-Three ways out, in order of preference:
+target, so selling any token the user might hold would need a rule per
+token, which the owner cannot grant in advance for tokens that do not exist
+yet. Three ways were on the table: A, sells stay with the owner for the beta
+(the Sell button opens the Sessions page); B, one contract change, a sell
+flag per key, read by the firm with the rest; C, the owner grants a rule per token
+from the card, a tap too many. B is the one built, and in a stricter shape
+than first sketched: a standing approval plus an open `execute` on the
+router was no sale, since the router's calldata names who receives and a key
+could have moved the position to itself.
 
-- **A. Sells stay with the owner for the beta.** The bot's Sell button opens
-  the Sessions page (or the app's trade page) where the wallet sells. Buys
-  are the speed product; sells are rarer and the owner signing them is a
-  feature in a beta labelled "not audited by a firm yet". No contract change,
-  ships first.
-- **B. One contract change, audited with the rest:** a session flag "may
-  approve any ERC-20 to Permit2" (spender fixed in the contract, amount
-  capped to the balance, nothing else). Selling then needs no per-token rule.
-  This is the right shape long term and it is small; it goes into the audit
-  scope as an item so the auditors read it with the account.
-- C. The owner grants a rule per token from the card (a deep link into the
-  Sessions page with the token filled in). Works today, a tap too many.
-
-Recommendation: A now, B in the audit scope, C never.
-
-B is built (`feat/session-sell-flag`), in a stricter shape than the sketch
-above: a standing approval plus an open `execute` on the router was no sale,
-since the router's calldata names who receives and a key could have moved
-the position to itself. So `setSellAllowed(key, bool)` by the owner, and
+The contract: `setSellAllowed(key, bool)` by the owner, and
 `sell(router, poolKey, amountIn, minOut, deadline)` by a live key with the
-flag: the account writes the router calldata itself (the same bytes as
+flag. The account writes the router calldata itself (the same bytes as
 `encodeV4TokenSell`, so the router pays the account), makes the two Permit2
 approvals for `amountIn` and that block only, calls the router, clears the
 approvals, and reverts unless at most `amountIn` of the token left and at
 least `minOut` of ETH arrived. The router has to be a rule target for
-`execute`; a sale counts as a call and spends none of the caps. Nothing of a
-sale outlives it, so "stop selling" is complete and no other key inherits an
-allowance. What the flag does not bound is the price: the pool and the floor
-are the key's, so a hostile key can sell into a thin pool of its own; the
-owner is told this on the page where the flag is set. The Sessions page has
-the toggle per key, and the flag is an item in `docs/audit/2026-09-scope.md`.
+`execute`; a sale counts as a call and spends none of the caps; `canSell(key,
+router)` says why not before any gas. Nothing of a sale outlives it, so
+"stop selling" is complete and no other key inherits an allowance. What the
+flag does not bound is the price: the pool and the floor are the key's, so a
+hostile key can sell into a thin pool of its own; the owner is told this on
+the page where the flag is set. The Sessions page has the toggle per key,
+and the flag is an item in `docs/audit/2026-09-scope.md`.
+
+The bot, in three lines:
+
+1. Sell 25/50/100% or Sell custom on the token card, over a position. The
+   bot reads `sellAllowed`; without the flag it says where to turn it on and
+   what the flag trusts the key with, and sends nothing.
+2. The share in the token's units, the pool's quote, the floor at 3%, the
+   pool key (the token's hooked pool or the venue's), then `canSell` first:
+   a refusal is quoted in the contract's words and burns no gas.
+3. One `sell(...)` from the bot's signer, which pays the gas; the account
+   gives up only the tokens and the ETH lands in it; the reply carries the
+   hash. It counts against the user's daily trades and fronted gas like a
+   buy.
 
 ## Gas, and who pays it
 
@@ -212,15 +214,17 @@ named in words on every card, never inferred from a colour.
    buy, positions, revoke, refused buy).
 2. Mainnet, **holders only**, the same CHIT threshold as the app's beta, the
    caps above, labelled beta and "not audited by a firm yet" on every card.
-3. The firm audit reads SessionAccount (+ the sell flag if B is chosen) with
-   the rest; sells move into the bot after that.
+3. The firm audit reads SessionAccount with the sell flag and `sell` in it
+   (`docs/audit/2026-09-scope.md`); sells are in the bot behind the flag,
+   which is off by default until an owner turns it on.
 
 ## Work, roughly
 
-Contract: nothing for A; the sell flag for B is a day plus tests. SDK: exists.
-App: the `?link=` deep link and the Link button on the Sessions page, one
-day. Bot: the link route and store (one day), Buy through `execute` with
-`canExecute` first (one day), Positions from the account, the card copy and
+Contract: the sell flag and `sell` were a day plus the Solidity and fork
+tests. SDK: exists, with `encodeSetSellAllowed` and `encodeSell`. App: the
+`?link=` deep link and the Link button on the Sessions page, one day, and the
+"let it sell" toggle per key. Bot: the link route and store (one day), Buy
+through `execute` with `canExecute` first (one day), Sell through `sell` with
+`canSell` first (half a day), Positions from the account, the card copy and
 the refusals (half a day), runtime mode, env and tests (one day), the harness
-run on testnet (half a day). About five working days for A, plus the audit's
-calendar for B.
+run on testnet (half a day). Done, less the audit's calendar.

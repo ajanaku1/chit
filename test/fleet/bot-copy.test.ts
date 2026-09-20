@@ -52,6 +52,10 @@ const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; 
     async canExecute(account) { const why = refuse(account); return why ? { ok: false, why } : { ok: true, why: "" }; },
     async execute(account, _t, value) { if (failSend(account)) throw new Error("nonce too low"); calls.push({ account, value }); return { hash: HASH, landed: true }; },
     async signerBalance() { return parseEther("1"); },
+    // The desk mirrors buys only; the sell side is never asked here.
+    async sellAllowed() { return false; },
+    async canSell() { return { ok: false, why: "sell not allowed" }; },
+    async sell() { throw new Error("not sold here"); },
   };
   const answer: OrusScan | undefined = opts.orus === null || opts.orus === "off" ? undefined : opts.orus ?? safe;
   const orus = opts.orus === "off" ? undefined : { scan: async () => answer, link: (t: Address) => `https://www.orusagent.xyz/token/${t}` };
