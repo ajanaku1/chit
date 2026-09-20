@@ -21,13 +21,21 @@
  * The first slice: leaders trade through the bot, so the bot sees the buy
  * the moment it lands and mirrors it in the same request. Watching an
  * outside wallet is the second slice.
+ *
+ * The feed is the group's window on the same thing: one message the second
+ * a leader's buy lands, with the hash, the partners' lines, and two doors
+ * into the bot (buy this token, follow this leader). Only landed buys are
+ * posted, one message each; a buy that did not land, or a buy by someone
+ * who is not an open leader, posts nothing.
  */
 
 import type { Address, Hex } from "viem";
-import type { BotChain } from "./bot-chain.js";
+import type { BotChain, TokenInfo } from "./bot-chain.js";
+import { heyLine, type HeyScan } from "./bot-hey.js";
 import type { BotLinkStore } from "./bot-link.js";
-import type { OrusScanner } from "./bot-orus.js";
+import { orusLine, type OrusScan, type OrusScanner } from "./bot-orus.js";
 import type { SessionChain } from "./bot-session-chain.js";
+import { esc, type Keyboard } from "./bot-telegram.js";
 import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4EthBuy, minOutFor } from "./v4-swap.js";
 
 export type Leader = { tgId: string; account: Address; handle: string; since: string; open: boolean };
@@ -61,7 +69,13 @@ export type CopyDeps = {
   now?: () => Date;
   /** Told about each mirror, to message the follower. */
   tell?: (followerTgId: string, text: string) => Promise<void>;
+  /** The group the leaders' landed buys are posted to; absent means no feed. */
+  feed?: CopyFeed;
+  /** The bot's @username without the @, for the feed's deep links into it. */
+  botUsername?: string;
 };
+
+export type CopyFeed = { chatId: string; post(text: string, keyboard: Keyboard): Promise<void> };
 
 export const MAX_FOLLOW_CAP_WEI = 10n ** 18n;
 const DEFAULT_TOKEN_DAY_CAP = 2n * 10n ** 18n;
@@ -88,6 +102,37 @@ export class CopyDesk {
   async closeLeader(tgId: string): Promise<void> {
     const l = await this.#d.store.getLeader(tgId);
     if (l) await this.#d.store.putLeader({ ...l, open: false });
+  }
+  /** The open leader behind a Telegram id, or undefined: closed and never-opened read the same to the feed and the mirrors. */
+  async leader(tgId: string): Promise<Leader | undefined> {
+    const l = await this.#d.store.getLeader(tgId);
+    return l && l.open ? l : undefined;
+  }
+  leaders(): Promise<Leader[]> { return this.#d.store.leaders(); }
+  followsOf(followerTgId: string): Promise<Follow[]> { return this.#d.store.followsOf(followerTgId); }
+  followersOf(leaderTgId: string): Promise<Follow[]> { return this.#d.store.followersOf(leaderTgId); }
+
+  /**
+   * A leader's buy landed: one message to the group, the second it is
+   * known. The hash so anyone can check it, orus's and HEY's lines so the
+   * group sees what the leader saw, and two doors into the bot: buy the same
+   * token, or follow this leader. True when posted; false when there is no
+   * feed or the buyer is not an open leader, and nothing was sent.
+   */
+  async announce(leaderTgId: string, token: Address, ethWei: bigint, hash: Hex, info: TokenInfo, scan: OrusScan | undefined, hey: HeyScan | undefined): Promise<boolean> {
+    const feed = this.#d.feed;
+    if (!feed) return false;
+    const leader = await this.leader(leaderTgId);
+    if (!leader) return false;
+    const who = esc(leader.handle);
+    const lines = [
+      `<b>${who}</b> bought <code>${eth(ethWei)} ETH</code> of <b>${esc(info.symbol)}</b> · <a href="https://robinhoodchain.blockscout.com/tx/${hash}">${hash.slice(0, 10)}…</a>`,
+      ...(scan && this.#d.orus ? [`orus: ${orusLine(scan, this.#d.orus.link(token))}`] : []),
+      ...(hey ? [`hey research lab: ${heyLine(hey)}`] : []),
+    ];
+    const bot = `https://t.me/${this.#d.botUsername ?? ""}`;
+    await feed.post(lines.join("\n"), [[{ text: "buy this", url: `${bot}?start=t-${token}` }, { text: `follow ${leader.handle}`, url: `${bot}?start=f-${leaderTgId}` }]]);
+    return true;
   }
 
   /** A linked user follows an open leader with a cap per mirrored buy. A follower never follows themselves. */

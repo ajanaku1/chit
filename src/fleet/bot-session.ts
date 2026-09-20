@@ -15,6 +15,8 @@
 
 import { type Address, type Hex, isAddress } from "viem";
 import type { BotChain } from "./bot-chain.js";
+import type { CopyDesk } from "./bot-copy.js";
+import { CopyCards } from "./bot-copy-cards.js";
 import { heyLine, type HeyScanner } from "./bot-hey.js";
 import { issueNonce, type BotLinkStore } from "./bot-link.js";
 import { orusLine, type OrusScanner } from "./bot-orus.js";
@@ -34,6 +36,8 @@ export type SessionBotDeps = {
   orus?: OrusScanner;
   hey?: HeyScanner;
   plate?: TokenPlateRenderer;
+  /** Leaders and followers (bot-copy.ts): the cards, the feed and the mirrors after a landed buy. Absent: no such buttons. */
+  copy?: CopyDesk;
   botUsername: string;
   siteUrl: string;
   /** Per user, per UTC day: how many executes and how much gas the bot fronts. */
@@ -72,8 +76,12 @@ export class SessionBot {
   readonly #days = new Map<string, DayCount>();
   readonly #pending = new Map<string, { token: Address }>();
   readonly #photos = new Set<string>();
+  readonly #copy: CopyCards | undefined;
 
-  constructor(d: SessionBotDeps) { this.#d = d; }
+  constructor(d: SessionBotDeps) {
+    this.#d = d;
+    this.#copy = d.copy ? new CopyCards({ copy: d.copy, telegram: d.telegram, siteUrl: d.siteUrl, ...(d.orus ? { orus: d.orus } : {}), ...(d.hey ? { hey: d.hey } : {}) }) : undefined;
+  }
 
   get #now(): Date { return this.#d.now ? this.#d.now() : new Date(); }
   #cfg<K extends keyof typeof DEFAULTS>(k: K): (typeof DEFAULTS)[K] { return (this.#d[k] as (typeof DEFAULTS)[K] | undefined) ?? DEFAULTS[k]; }
@@ -86,6 +94,8 @@ export class SessionBot {
       if (cmd === "/start") return this.#start(chatId, tgId, arg);
       if (cmd === "/help") return this.#help(chatId);
       if (cmd === "/link") return this.#connect(chatId, tgId);
+      // copy: a reply to a cap or handle prompt (bot-copy-cards.ts).
+      if (this.#copy && (await this.#copy.reply(chatId, tgId, text, !!u.message.reply_to_message))) return;
       const pending = this.#pending.get(tgId);
       if (pending && u.message.reply_to_message) { this.#pending.delete(tgId); return this.#buy(chatId, tgId, pending.token, text); }
       const pasted = text.match(/0x[0-9a-fA-F]{40}/)?.[0];
@@ -98,6 +108,8 @@ export class SessionBot {
     if (q.message.photo) this.#photos.add(`${chatId}:${messageId}`);
     const ack = (text?: string) => this.#d.telegram.deliver({ kind: "answer", callbackId: q.id, ...(text ? { text } : {}) });
     const [verb, a, b] = data.split(":");
+    // copy: leaders, follows and their prompts (bot-copy-cards.ts).
+    if (this.#copy?.owns(verb ?? "")) { await ack(); return this.#copy.callback(chatId, tgId, verb!, a, q.from); }
     switch (verb) {
       case "home": await ack(); return this.#home(chatId, tgId, messageId);
       case "connect": await ack(); return this.#connect(chatId, tgId);
@@ -134,6 +146,9 @@ export class SessionBot {
   async #start(chatId: string, tgId: string, param?: string): Promise<void> {
     const linked = param?.startsWith("t-") ? param.slice(2) : undefined;
     if (linked && isAddress(linked)) return this.#tokenCard(chatId, tgId, linked.toLowerCase() as Address);
+    // copy: the feed's "follow" door, /start f-<leaderTgId>.
+    const follow = param && this.#copy ? this.#copy.start(chatId, tgId, param) : undefined;
+    if (follow) return follow;
     return this.#home(chatId, tgId);
   }
 
@@ -164,6 +179,8 @@ export class SessionBot {
     ];
     return this.#out(chatId, messageId, lines.join("\n"), kb(
       [url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions.html`), btn("🔗 Re-link", "connect")],
+      // copy: the leaders list, my follows, become or close leader.
+      ...(this.#copy ? await this.#copy.homeRows(tgId) : []),
       [btn("❓ Help", "help"), btn("↻ Refresh", "home")],
       ...this.#door(),
     ));
@@ -264,6 +281,8 @@ export class SessionBot {
       ? `landed. <a href="${explorer}">${short(r.hash)}</a> · the tokens are in your account.`
       : `sent, not confirmed as landed: <a href="${explorer}">${short(r.hash)}</a>. check the explorer; the account's floor protects the fill.`,
       kb([btn("↻ Card", `token:${token}`), btn("← Back", "home")]));
+    // copy: a leader's landed buy goes to the feed and into the followers' accounts, after the leader's own fill.
+    if (r.landed && this.#copy) await this.#copy.afterBuy(chatId, tgId, token, wei, r.hash, info);
   }
 }
 

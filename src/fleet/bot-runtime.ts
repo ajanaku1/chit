@@ -46,6 +46,12 @@
  *                                owners grant sessions to; pays the gas
  *   BOT_DAILY_EXECUTES,          session mode: per user per day, how many
  *   BOT_DAILY_GAS_ETH            executes and how much gas the bot fronts
+ *   BOT_GROUP_CHAT_ID            session mode: the group (a chat id, usually
+ *                                -100…) where a leader's landed buy is posted
+ *                                the second it lands, with the hash and two
+ *                                doors into the bot (buy this, follow them).
+ *                                Unset: no feed; leaders and followers still
+ *                                work, the mirrors are told in private
  *   BOT_ASSET_DIR                where the share card's plate and fonts are
  *                                (default landing/public/bot, shipped with
  *                                the function)
@@ -92,7 +98,8 @@ import { createTelegram } from "./bot-telegram.js";
 import { MemoryBotWalletStore, NeonBotWalletStore, secretIsStrong, type BotWalletStore } from "./bot-wallets.js";
 import { MemoryBotLinkStore, NeonBotLinkStore, type BotLinkStore } from "./bot-link.js";
 import { createSessionChain } from "./bot-session-chain.js";
-import { SessionBot } from "./bot-session.js";
+import { SessionBot, type SessionBotDeps } from "./bot-session.js";
+import { CopyDesk, MemoryCopyStore, NeonCopyStore, type CopyStore } from "./bot-copy.js";
 import { DualBot, MemoryFloorStore, NeonFloorStore, type FloorStore } from "./bot-dual.js";
 
 const chainIdFromEnv = (): number => Number(process.env.FLEET_CHAIN_ID || 46630);
@@ -148,6 +155,17 @@ const linksFromEnv = (): BotLinkStore => {
   return new MemoryBotLinkStore();
 };
 
+const copyStoreFromEnv = (): CopyStore => {
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    const sql = neon(url);
+    return new NeonCopyStore({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
+  }
+  if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
+  warnOnce("copy", "BOT_MEMORY_STORE=1: leaders and follows live in this instance's memory only");
+  return new MemoryCopyStore();
+};
+
 /** Session mode: mainnet, no key of the owner's anywhere; the bot's own signer pays gas and holds nothing. */
 const buildSession = (overrides: SessionOverrides): SessionBot => {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -167,7 +185,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
   const dailyExecutes = process.env.BOT_DAILY_EXECUTES ? Number(process.env.BOT_DAILY_EXECUTES) : undefined;
   if (dailyExecutes !== undefined && !(Number.isInteger(dailyExecutes) && dailyExecutes > 0)) refuse("BOT_DAILY_EXECUTES must be a whole number");
   const dailyGasWei = ethFromEnv("BOT_DAILY_GAS_ETH");
-  return new SessionBot({
+  const deps: SessionBotDeps = {
     reads: createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER }),
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as `0x${string}` }),
     links: overrides.links ?? linksFromEnv(),
@@ -180,7 +198,19 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     ...(overrides.playgroundFloor ? { playgroundFloor: true } : {}),
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
+  };
+  // Leaders and followers: the same reads, session and links; a follower is told in their private chat (its id is their Telegram id); the feed only with BOT_GROUP_CHAT_ID.
+  const groupChatId = process.env.BOT_GROUP_CHAT_ID?.trim();
+  if (groupChatId !== undefined && groupChatId !== "" && !/^-?\d+$/.test(groupChatId)) refuse("BOT_GROUP_CHAT_ID must be a Telegram chat id (a number, -100… for a supergroup)");
+  const copy = new CopyDesk({
+    store: overrides.copyStore ?? copyStoreFromEnv(),
+    links: deps.links, reads: deps.reads, session: deps.session,
+    ...(deps.orus ? { orus: deps.orus } : {}),
+    botUsername: username!,
+    tell: (followerTgId, text) => deps.telegram.deliver({ kind: "send", chatId: followerTgId, text }),
+    ...(groupChatId ? { feed: { chatId: groupChatId, post: (text, keyboard) => deps.telegram.deliver({ kind: "send", chatId: groupChatId, text, keyboard }) } } : {}),
   });
+  return new SessionBot({ ...deps, copy });
 };
 
 const build = (overrides: BotOverrides = {}): ChitBot => {
@@ -241,7 +271,7 @@ const build = (overrides: BotOverrides = {}): ChitBot => {
   });
 };
 
-export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore; floors?: FloorStore; playgroundFloor?: boolean };
+export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore; floors?: FloorStore; copyStore?: CopyStore; playgroundFloor?: boolean };
 
 export const botMode = (): "playground" | "session" | "dual" => {
   const m = process.env.BOT_MODE || "playground";

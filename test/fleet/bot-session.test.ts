@@ -10,6 +10,7 @@ import { test } from "node:test";
 import { type Address, type Hex, parseEther } from "viem";
 import type { BotChain } from "../../src/fleet/bot-chain.js";
 import type { Update } from "../../src/fleet/bot-handlers.js";
+import { CopyDesk, MemoryCopyStore } from "../../src/fleet/bot-copy.js";
 import { MemoryBotLinkStore } from "../../src/fleet/bot-link.js";
 import type { SessionChain } from "../../src/fleet/bot-session-chain.js";
 import { SessionBot } from "../../src/fleet/bot-session.js";
@@ -138,4 +139,120 @@ test("with a plate renderer the token card is a picture; the plate says mainnet;
   assert.equal(drawn[0]!.testnet, false);
   await bot.handle(tap(`token:${PEPE}`, true));
   assert.equal(telegram.sent.at(-1)!.kind, "editPhoto");
+});
+
+// ---------- leaders and followers (bot-copy.ts, bot-copy-cards.ts) ----------
+
+const FOLLOWER_ACCOUNT = "0x00000000000000000000000000000000000000bb" as Address;
+const withCopy = (opts: Partial<Deps> = {}) => {
+  const s = setup(opts);
+  const store = new MemoryCopyStore();
+  const posted: { text: string; keyboard?: unknown }[] = [];
+  const copy = new CopyDesk({
+    store, links: s.links, reads, session: opts.session ?? s.session.s, now: () => clock, botUsername: "usechit_bot",
+    tell: (to, text) => s.telegram.deliver({ kind: "send", chatId: to, text }),
+    feed: { chatId: "-100", post: async (text, keyboard) => { posted.push({ text, keyboard }); } },
+  });
+  const bot = new SessionBot({ reads, session: s.session.s, links: s.links, telegram: s.telegram, botUsername: "usechit_bot", siteUrl: "https://chit.tools", now: () => clock, copy, ...opts });
+  return { ...s, bot, copy, store, posted };
+};
+const asUser = (id: number, data: string, from: Record<string, unknown> = {}): Update => ({ callback_query: { id: "cb", data, from: { id, ...from }, message: { message_id: 9, chat: { id, type: "private" } } } });
+const says = (id: number, text: string, replyTo?: string): Update => ({ message: { message_id: 1, text, chat: { id, type: "private" }, from: { id }, ...(replyTo ? { reply_to_message: { text: replyTo } } : {}) } });
+const followerLinked = (links: MemoryBotLinkStore) => links.putLink({ tgId: "8", account: FOLLOWER_ACCOUNT, owner: OWNER, chainId: 4663, nonce: "n", signature: "0x00", linkedAt: clock.toISOString() });
+
+test("without a copy desk the home card has no leader buttons; with one, a linked card offers Leaders, My follows and Become a leader", async () => {
+  const plain = setup();
+  await linked(plain.links);
+  await plain.bot.handle(dm("/start"));
+  assert.ok(!plain.buttons().some((b) => /leaders|follows|lead:/.test(b)));
+  const { bot, buttons, links } = withCopy();
+  await linked(links);
+  await bot.handle(dm("/start"));
+  assert.deepEqual(buttons().filter((b) => /leaders|follows|lead:/.test(b)), ["leaders", "follows", "lead:on"]);
+});
+
+test("become a leader takes the Telegram username as the handle; the card then offers close leader; the list shows the leader with a short account and the count, without a follow button for yourself", async () => {
+  const { bot, buttons, links, telegram, copy } = withCopy();
+  await linked(links);
+  await bot.handle(asUser(7, "lead:on", { username: "ogle", first_name: "O" }));
+  assert.match(telegram.last(), /you are a leader as <b>@ogle<\/b>/);
+  assert.match(telegram.last(), new RegExp(`<code>${ACCOUNT}</code> is public on the leaders list`));
+  assert.equal((await copy.leader("7"))!.handle, "@ogle");
+  await bot.handle(dm("/start"));
+  assert.ok(buttons().includes("lead:off"));
+  await bot.handle(tap("leaders"));
+  assert.match(telegram.last(), /<b>@ogle<\/b> · <code>0x0000…00aa<\/code> · 0 followers/);
+  assert.match(telegram.last(), /orus's read first/);
+  assert.ok(!buttons().includes("fl:7"), "no follow button for yourself");
+  await bot.handle(tap("lead:off"));
+  assert.match(telegram.last(), /leader closed/);
+  assert.equal(await copy.leader("7"), undefined);
+});
+
+test("a leader with no username and no first name is asked once for a name, and the reply opens them", async () => {
+  const { bot, links, telegram, copy } = withCopy();
+  await linked(links);
+  await bot.handle(asUser(7, "lead:on"));
+  assert.match(telegram.last(), /what should followers call you/);
+  await bot.handle(dm("lucian", "what should"));
+  assert.equal((await copy.leader("7"))!.handle, "lucian");
+});
+
+test("following: the list's button opens the leader's card, set a cap asks by reply, the reply follows within the cap; My follows lists it with an unfollow button; /start f-<id> opens the same card", async () => {
+  const { bot, buttons, links, telegram, copy } = withCopy();
+  await linked(links);
+  await followerLinked(links);
+  await bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await bot.handle(asUser(8, "leaders"));
+  assert.ok(buttons().includes("fl:7"));
+  await bot.handle(asUser(8, "fl:7"));
+  assert.match(telegram.last(), /<b>follow @ogle<\/b>/);
+  assert.match(telegram.last(), /unfollow is one tap here; revoke the session in one transaction/);
+  assert.ok(buttons().includes("askf:7"));
+  await bot.handle(asUser(8, "askf:7"));
+  assert.match(telegram.last(), /how much ETH at most per buy mirrored from <b>@ogle<\/b>/);
+  await bot.handle(says(8, "0.02", "how much"));
+  assert.match(telegram.last(), /following <b>@ogle<\/b> at <code>0.02 ETH<\/code> a buy/);
+  assert.equal((await copy.followsOf("8"))[0]!.capWei, parseEther("0.02"));
+  await bot.handle(asUser(8, "follows"));
+  assert.match(telegram.last(), /<b>@ogle<\/b> · <code>0.02 ETH<\/code> a buy/);
+  assert.ok(buttons().includes("unf:7"));
+  await bot.handle(says(8, "/start f-7"));
+  assert.match(telegram.last(), /<b>follow @ogle<\/b>/);
+  assert.match(telegram.last(), /you follow them at <code>0.02 ETH<\/code>/);
+  await bot.handle(asUser(8, "unf:7"));
+  assert.match(telegram.last(), /unfollowed <b>@ogle<\/b>/);
+  assert.deepEqual(await copy.followsOf("8"), []);
+  // A cap over the bound is refused in words, with what to do.
+  await bot.handle(asUser(8, "askf:7"));
+  await bot.handle(says(8, "2", "how much"));
+  assert.match(telegram.last(), /not followed: cap must be between 1 wei and 1 ETH\. tap follow again/);
+  assert.deepEqual(await copy.followsOf("8"), []);
+});
+
+test("a leader's landed buy posts once to the feed with the two doors and is mirrored into the follower's account at the smaller of the amounts; the leader is told in one line, the follower too", async () => {
+  const { bot, links, telegram, session, posted } = withCopy();
+  await linked(links);
+  await followerLinked(links);
+  await bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await bot.handle(asUser(8, "askf:7"));
+  await bot.handle(says(8, "0.005", "how much"));
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.equal(posted.length, 1, "one message to the feed");
+  assert.match(posted[0]!.text, /^<b>@ogle<\/b> bought <code>0.01 ETH<\/code> of <b>PEPE<\/b> · <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xabab/);
+  assert.deepEqual(posted[0]!.keyboard, [[{ text: "buy this", url: `https://t.me/usechit_bot?start=t-${PEPE}` }, { text: "follow @ogle", url: "https://t.me/usechit_bot?start=f-7" }]]);
+  assert.deepEqual(session.calls.map((c) => [c.account, c.value]), [[ACCOUNT, parseEther("0.01")], [FOLLOWER_ACCOUNT, parseEther("0.005")]], "the leader first, then the follower at their cap");
+  const toFollower = telegram.sent.filter((o) => o.kind === "send" && o.chatId === "8").map((o) => (o as { text: string }).text);
+  assert.match(toFollower.at(-1)!, /copied <b>@ogle<\/b>: <code>0.005 ETH<\/code> into/);
+  assert.match(telegram.last(), /mirrored to 1 of 1 follower\./);
+  // A buy that did not land posts nothing and mirrors nothing.
+  const quiet = withCopy({ session: { ...session.s, execute: async () => ({ hash: ("0x" + "cd".repeat(32)) as Hex, landed: false }) } });
+  await linked(quiet.links);
+  await followerLinked(quiet.links);
+  await quiet.bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await quiet.bot.handle(asUser(8, "askf:7"));
+  await quiet.bot.handle(says(8, "0.005", "how much"));
+  await quiet.bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.equal(quiet.posted.length, 0);
+  assert.match(quiet.telegram.last(), /sent, not confirmed as landed/);
 });
