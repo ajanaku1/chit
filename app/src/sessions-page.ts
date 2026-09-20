@@ -21,6 +21,7 @@ import {
   encodePause,
   encodeResume,
   encodeRevoke,
+  encodeSetSellAllowed,
   encodeWithdraw,
   sessionState,
   type SessionView,
@@ -173,6 +174,7 @@ const renderSessions = async (): Promise<void> => {
   for (const { key, view } of known) {
     const state = sessionState(view, now);
     const rules = (await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "rulesOf", args: [key] })) as ReadonlyArray<{ target: Hex; selector: Hex }>;
+    const sells = (await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "sellAllowed", args: [key] })) as boolean;
     const card = document.createElement("article");
     card.className = "dash-card";
     card.dataset["state"] = state;
@@ -184,6 +186,7 @@ const renderSessions = async (): Promise<void> => {
       <p class="lead small">${spent}</p>
       <p class="fineprint">${rules.map((r) => `${r.target}${r.selector === ANY_FUNCTION ? " · any function" : ` · ${r.selector}`}`).join("<br>")}</p>
       <p class="fineprint">until ${until}</p>
+      <label class="fineprint sell-toggle"><input type="checkbox" data-act="sell" ${sells ? "checked" : ""} ${state === "revoked" ? "disabled" : ""} /> let it sell: the key may sell tokens the account holds, through its router, with the ETH landing here and nothing approved afterwards; the pool and the floor are the key's, so this trusts it with the position, not only the caps</label>
       <div class="wnav">
         <button type="button" class="ghost" data-act="pause" ${state === "active" ? "" : "disabled"}>Pause</button>
         <button type="button" class="ghost" data-act="resume" ${state === "paused" ? "" : "disabled"}>Resume</button>
@@ -191,6 +194,9 @@ const renderSessions = async (): Promise<void> => {
       </div>`;
     card.querySelectorAll<HTMLButtonElement>("button[data-act]").forEach((b) => {
       b.addEventListener("click", () => void act(b.dataset["act"] as "pause" | "resume" | "revoke", key));
+    });
+    card.querySelector<HTMLInputElement>("input[data-act=sell]")?.addEventListener("change", (event) => {
+      void setSell(key, (event.target as HTMLInputElement).checked);
     });
     list.append(card);
   }
@@ -207,6 +213,13 @@ const act = async (what: "pause" | "resume" | "revoke", key: Hex): Promise<void>
   }))) return;
   const data = what === "pause" ? encodePause(key) : what === "resume" ? encodeResume(key) : encodeRevoke(key);
   if (await transact(what === "pause" ? "Pause" : what === "resume" ? "Resume" : "Revoke", account, data)) await renderSessions();
+};
+
+/** The sell flag, from the wallet; the list is re-read from the chain either way so the box shows what the contract says. */
+const setSell = async (key: Hex, allowed: boolean): Promise<void> => {
+  if (!account) return;
+  await transact(allowed ? "Let it sell" : "Stop selling", account, encodeSetSellAllowed(key, allowed));
+  await renderSessions();
 };
 
 button("account-create").addEventListener("click", () => {
