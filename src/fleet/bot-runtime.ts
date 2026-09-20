@@ -32,6 +32,15 @@
  *   BOT_PLATE_OFF                1 keeps the token card as text; otherwise
  *                                it is drawn as a plate with the partners'
  *                                marks (landing/public/bot/partners)
+ *   BOT_MODE                     "playground" (default; testnet, the bot
+ *                                holds throwaway keys) or "session" (mainnet
+ *                                4663; the bot holds nothing of yours and
+ *                                trades through the session an owner
+ *                                granted its key). docs/bot-mainnet-mode.md
+ *   BOT_SIGNER_PRIVATE_KEY       session mode: the bot's own key, the one
+ *                                owners grant sessions to; pays the gas
+ *   BOT_DAILY_EXECUTES,          session mode: per user per day, how many
+ *   BOT_DAILY_GAS_ETH            executes and how much gas the bot fronts
  *   BOT_ASSET_DIR                where the share card's plate and fonts are
  *                                (default landing/public/bot, shipped with
  *                                the function)
@@ -76,6 +85,9 @@ import { createFetchFleetApi } from "./bot-fleet.js";
 import { ChitBot } from "./bot-handlers.js";
 import { createTelegram } from "./bot-telegram.js";
 import { MemoryBotWalletStore, NeonBotWalletStore, secretIsStrong, type BotWalletStore } from "./bot-wallets.js";
+import { MemoryBotLinkStore, NeonBotLinkStore, type BotLinkStore } from "./bot-link.js";
+import { createSessionChain } from "./bot-session-chain.js";
+import { SessionBot } from "./bot-session.js";
 
 const chainIdFromEnv = (): number => Number(process.env.FLEET_CHAIN_ID || 46630);
 /** Uniswap v4 on Robinhood Chain, same addresses on both chains (specs/001-fleet-mission/research.md). */
@@ -116,8 +128,51 @@ const ethFromEnv = (name: string): bigint | undefined => {
   return parseEther(raw.trim());
 };
 
-let bot: ChitBot | undefined;
+let bot: ChitBot | SessionBot | undefined;
 let fault: string | undefined;
+
+const linksFromEnv = (): BotLinkStore => {
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    const sql = neon(url);
+    return new NeonBotLinkStore({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
+  }
+  if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
+  warnOnce("links", "BOT_MEMORY_STORE=1: the bot's links live in this instance's memory only");
+  return new MemoryBotLinkStore();
+};
+
+/** Session mode: mainnet, no key of the owner's anywhere; the bot's own signer pays gas and holds nothing. */
+const buildSession = (overrides: SessionOverrides): SessionBot => {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const username = process.env.BOT_USERNAME;
+  if (!token) refuse("TELEGRAM_BOT_TOKEN is not set");
+  if (!username) refuse("BOT_USERNAME is not set");
+  const chainId = chainIdFromEnv();
+  if (chainId !== 4663 && chainId !== 46630) refuse("session mode runs on Robinhood Chain 4663 (or 46630 to rehearse)");
+  if (process.env.BOT_FAUCET_PRIVATE_KEY) refuse("BOT_FAUCET_PRIVATE_KEY is set: session mode holds no faucet and no user keys");
+  const signerKey = process.env.BOT_SIGNER_PRIVATE_KEY;
+  if (!signerKey || !isHex(signerKey) || signerKey.length !== 66) refuse("BOT_SIGNER_PRIVATE_KEY must be the bot's 32-byte hex key (the one owners grant sessions to)");
+  const rpcUrl = process.env.FLEET_RPC_URL || (chainId === 4663 ? process.env.ROBINHOOD_MAINNET_RPC_URL || "https://rpc.mainnet.chain.robinhood.com" : process.env.ROBINHOOD_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com");
+  const site = process.env.FLEET_ORIGIN || "https://chit.tools";
+  const allowlist = (process.env.FLEET_TOKEN_ALLOWLIST ?? "").split(",").map((t) => t.trim()).filter(isAddress);
+  const dailyExecutes = process.env.BOT_DAILY_EXECUTES ? Number(process.env.BOT_DAILY_EXECUTES) : undefined;
+  if (dailyExecutes !== undefined && !(Number.isInteger(dailyExecutes) && dailyExecutes > 0)) refuse("BOT_DAILY_EXECUTES must be a whole number");
+  const dailyGasWei = ethFromEnv("BOT_DAILY_GAS_ETH");
+  return new SessionBot({
+    reads: createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER }),
+    session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as `0x${string}` }),
+    links: overrides.links ?? linksFromEnv(),
+    telegram: createTelegram(token!),
+    ...(process.env.BOT_PLATE_OFF === "1" ? {} : { plate: createTokenPlateRenderer(process.env.BOT_ASSET_DIR || undefined) }),
+    ...(process.env.ORUS_PARTNER_API_KEY ? { orus: createOrusScanner({ apiKey: process.env.ORUS_PARTNER_API_KEY, chainId, ...(process.env.ORUS_API_BASE ? { baseUrl: process.env.ORUS_API_BASE } : {}) }) } : {}),
+    ...(process.env.BOT_HEY_OFF === "1" ? {} : { hey: createHeyScanner({ chainId, ...(process.env.HEY_API_KEY ? { apiKey: process.env.HEY_API_KEY } : {}), ...(process.env.HEY_API_BASE ? { baseUrl: process.env.HEY_API_BASE } : {}) }) }),
+    botUsername: username!,
+    siteUrl: site,
+    ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
+    ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
+  });
+};
 
 const build = (overrides: BotOverrides = {}): ChitBot => {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -176,10 +231,18 @@ const build = (overrides: BotOverrides = {}): ChitBot => {
   });
 };
 
-export const getBot = (overrides?: BotOverrides): ChitBot | undefined => {
+export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore };
+
+export const botMode = (): "playground" | "session" => {
+  const m = process.env.BOT_MODE || "playground";
+  if (m === "playground" || m === "session") return m;
+  return refuse(`BOT_MODE must be playground or session, not ${m}`);
+};
+
+export const getBot = (overrides?: BotOverrides & SessionOverrides): ChitBot | SessionBot | undefined => {
   if (bot || fault) return bot;
   try {
-    bot = build(overrides);
+    bot = botMode() === "session" ? buildSession(overrides ?? {}) : build(overrides);
   } catch (error) {
     // A malformed variable is a refusal like a missing one, never a 500 Telegram retries forever.
     fault = error instanceof Error ? error.message.split("\n")[0] : String(error);

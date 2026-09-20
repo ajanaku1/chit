@@ -19,7 +19,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { quoteExactIn } from "./market.js";
 import { createPoolRegistry, type DiscoveredPool } from "./pool-registry.js";
 import type { Address, Hex } from "./types.js";
-import { PERMIT2, VENUE_POOL, encodeV4EthBuy, encodeV4TokenSell, minOutFor, sellApprovals } from "./v4-swap.js";
+import { PERMIT2, VENUE_POOL, encodeV4EthBuy, encodeV4TokenSell, minOutFor, sellApprovals, type PoolKey } from "./v4-swap.js";
 
 /** `pending`: sent, but no receipt within the wait; the hash is real and the caller must not send again. */
 export type Landed = { hash: Hex; ok: boolean; pending?: boolean };
@@ -41,6 +41,8 @@ export type TokenInfo = {
   hooked: boolean;
   /** The pool's fee tier in hundredths of a basis point (3000 = 0.3%); a hooked pool often says 0 and charges through the hook. */
   fee: number;
+  /** The pool's own key when it is not the venue's default (a hooked pool); a swap built outside the bot needs it. */
+  poolKey?: PoolKey;
 };
 
 export type BotChain = {
@@ -187,6 +189,7 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
         poolEth: hasPool ? (pool!.liquidity * Q96) / pool!.sqrtPriceX96 : 0n,
         hooked: hasPool ? pool!.hooked : false,
         fee: hasPool ? pool!.key.fee : VENUE_POOL.fee,
+        ...(hasPool ? { poolKey: pool!.key } : {}),
       };
     },
     async quoteBuy(token, ethIn) {
