@@ -8,26 +8,53 @@
  * follower stops following in one tap and revokes the session in one tx.
  *
  * The guards, because a copy feed is the easiest thing in crypto to abuse:
- *  - orus is asked before every mirrored buy; a honeypot, or no read at
- *    all, is skipped and the follower is told. unknown is not safe.
+ *  - orus is asked before every mirrored buy; a honeypot, no read at all,
+ *    or no orus wired into this bot, and everyone is skipped and told.
+ *    unknown is not safe, and a bot without the scanner knows nothing.
  *  - a per-follow cap: at most this much ETH per mirrored buy.
  *  - an aggregate cap per token per day across all followers, so fifty
  *    followers cannot be walked into a 1 ETH pool behind one leader.
+ *  - the follower's own daily allowance of executes and gas from the bot,
+ *    the same one their own taps spend (the session bot hands the charge
+ *    in), so a leader with many followers cannot burn the bot's gas many
+ *    times over.
  *  - fixed order (followers in the order they followed) and a public log
  *    of every mirror, hash included, so the operator cannot quietly
  *    front-run its own followers without it being visible.
- *  - the leader's own trade lands first; mirrors go after, never before.
+ *  - the leader's own trade lands first; mirrors go after, never before;
+ *    the feed's message goes after the mirrors, never before, so the
+ *    group never reads a stream of follower buys that have not landed yet.
+ *  - one follower's failed send is that follower's alone: it is logged,
+ *    the day's room is given back, the next follower runs.
+ *  - a time budget: mirrors stop being started once it is spent and the
+ *    rest are told, because the request that runs them has a limit of its
+ *    own and a request cut off mid-way tells nobody.
  *
  * The first slice: leaders trade through the bot, so the bot sees the buy
  * the moment it lands and mirrors it in the same request. Watching an
- * outside wallet is the second slice.
+ * outside wallet, and a queue of mirrors that outlives one request, is the
+ * second slice.
+ *
+ * The feed is the group's window on the same thing: one message once a
+ * leader's buy has landed and its mirrors are through, with the hash, the
+ * partners' lines, how many followers it reached, and two doors into the
+ * bot (buy this token, follow this leader). Only landed buys are posted,
+ * one message each; a buy that did not land, or a buy by someone who is
+ * not an open leader, posts nothing.
+ *
+ * A handle is either the Telegram @username, taken from Telegram and never
+ * typed, or a plain name: letters, digits, spaces and _ . - , no leading @,
+ * nothing that reads as the project or its staff, and no name already on
+ * the list. The list is what followers trust; it must not be forgeable.
  */
 
 import type { Address, Hex } from "viem";
-import type { BotChain } from "./bot-chain.js";
+import type { BotChain, TokenInfo } from "./bot-chain.js";
+import { heyLine, type HeyScan } from "./bot-hey.js";
 import type { BotLinkStore } from "./bot-link.js";
-import type { OrusScanner } from "./bot-orus.js";
+import { orusLine, type OrusScan, type OrusScanner } from "./bot-orus.js";
 import type { SessionChain } from "./bot-session-chain.js";
+import { esc, type Keyboard } from "./bot-telegram.js";
 import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4EthBuy, minOutFor } from "./v4-swap.js";
 
 export type Leader = { tgId: string; account: Address; handle: string; since: string; open: boolean };
@@ -57,14 +84,38 @@ export type CopyDeps = {
   orus?: OrusScanner;
   /** ETH into one token per UTC day across all followers; default 2 ETH. */
   tokenDayCapWei?: bigint;
+  /** How long after a mirror run starts new sends are still started; default 30 seconds. */
+  mirrorBudgetMs?: number;
   buySlippageBps?: number;
   now?: () => Date;
   /** Told about each mirror, to message the follower. */
   tell?: (followerTgId: string, text: string) => Promise<void>;
+  /** The group the leaders' landed buys are posted to; absent means no feed. */
+  feed?: CopyFeed;
+  /** The bot's @username without the @, for the feed's deep links into it. */
+  botUsername?: string;
 };
+
+export type CopyFeed = { chatId: string; post(text: string, keyboard: Keyboard): Promise<void> };
 
 export const MAX_FOLLOW_CAP_WEI = 10n ** 18n;
 const DEFAULT_TOKEN_DAY_CAP = 2n * 10n ** 18n;
+const DEFAULT_MIRROR_BUDGET_MS = 30_000;
+export const HANDLE_MAX = 32;
+/** A plain name: starts with a letter or digit; letters, digits, spaces, _ . - after; never an @. */
+const PLAIN_HANDLE = /^[A-Za-z0-9][A-Za-z0-9_ .-]{0,31}$/;
+const TELEGRAM_HANDLE = /^@[A-Za-z0-9_]{1,32}$/;
+/** Names that read as the project or its staff, refused so nobody leads as us. */
+const RESERVED = /chit|admin|support|official|orus|hey research/i;
+
+/** Whether a typed name may be a handle. The @ form is Telegram's own and is never accepted from a reply. */
+export const plainHandleOk = (h: string): boolean => PLAIN_HANDLE.test(h) && !RESERVED.test(h);
+
+/** What the mirror run is handed by the session bot: the charge to each follower's daily allowance. */
+export type MirrorOptions = {
+  /** Counts one execute against the follower's day and returns null, or the refusal in the follower's words and counts nothing. */
+  budget?: (followerTgId: string) => string | null;
+};
 
 const eth = (wei: bigint): string => {
   const w = wei / 10n ** 18n, f = (wei % 10n ** 18n).toString().padStart(18, "0").slice(0, 5).replace(/0+$/, "");
@@ -76,10 +127,18 @@ export class CopyDesk {
   constructor(d: CopyDeps) { this.#d = d; }
   get #now(): Date { return this.#d.now ? this.#d.now() : new Date(); }
 
-  /** A linked user opens their account to followers. Their account address becomes public on the leader list. */
+  /**
+   * A linked user opens their account to followers. Their account address
+   * becomes public on the leader list. The handle is checked here, whoever
+   * typed it: the plain form or Telegram's @ form, and not one another open
+   * leader already has, so the list cannot carry two of the same name.
+   */
   async becomeLeader(tgId: string, handle: string): Promise<Leader> {
     const link = await this.#d.links.getLink(tgId);
     if (!link) throw new Error("link your account first");
+    if (!(TELEGRAM_HANDLE.test(handle) || plainHandleOk(handle))) throw new Error("that name will not do: letters, digits, spaces, _ . - and up to 32, not the project's name, no @");
+    const taken = (await this.#d.store.leaders()).some((l) => l.tgId !== tgId && l.handle.toLowerCase() === handle.toLowerCase());
+    if (taken) throw new Error("that name is already on the leaders list");
     const existing = await this.#d.store.getLeader(tgId);
     const leader: Leader = existing ? { ...existing, open: true, account: link.account, handle } : { tgId, account: link.account, handle, since: this.#now.toISOString(), open: true };
     await this.#d.store.putLeader(leader);
@@ -88,6 +147,41 @@ export class CopyDesk {
   async closeLeader(tgId: string): Promise<void> {
     const l = await this.#d.store.getLeader(tgId);
     if (l) await this.#d.store.putLeader({ ...l, open: false });
+  }
+  /** The open leader behind a Telegram id, or undefined: closed and never-opened read the same to the feed and the mirrors. */
+  async leader(tgId: string): Promise<Leader | undefined> {
+    const l = await this.#d.store.getLeader(tgId);
+    return l && l.open ? l : undefined;
+  }
+  leaders(): Promise<Leader[]> { return this.#d.store.leaders(); }
+  followsOf(followerTgId: string): Promise<Follow[]> { return this.#d.store.followsOf(followerTgId); }
+  followersOf(leaderTgId: string): Promise<Follow[]> { return this.#d.store.followersOf(leaderTgId); }
+
+  /**
+   * A leader's buy landed and its mirrors are through: one message to the
+   * group. The hash so anyone can check it, orus's and HEY's lines so the
+   * group sees what the leader saw, how many followers it reached, and two
+   * doors into the bot: buy the same token, or follow this leader. True when
+   * posted; false when there is no feed or the buyer is not an open leader,
+   * and nothing was sent. Posted after the mirrors on purpose: a message
+   * before them would tell the group exactly which buys are about to land.
+   */
+  async announce(leaderTgId: string, token: Address, ethWei: bigint, hash: Hex, info: TokenInfo, scan: OrusScan | undefined, hey: HeyScan | undefined, mirrors: Mirror[] = []): Promise<boolean> {
+    const feed = this.#d.feed;
+    if (!feed) return false;
+    const leader = await this.leader(leaderTgId);
+    if (!leader) return false;
+    const who = esc(leader.handle);
+    const went = mirrors.filter((m) => m.outcome !== "skipped").length;
+    const lines = [
+      `<b>${who}</b> bought <code>${eth(ethWei)} ETH</code> of <b>${esc(info.symbol)}</b> · <a href="https://robinhoodchain.blockscout.com/tx/${hash}">${hash.slice(0, 10)}…</a>`,
+      ...(scan && this.#d.orus ? [`orus: ${orusLine(scan, this.#d.orus.link(token))}`] : []),
+      ...(hey ? [`hey research lab: ${heyLine(hey)}`] : []),
+      ...(mirrors.length ? [`mirrored into ${went} of ${mirrors.length} follower account${mirrors.length === 1 ? "" : "s"}, already landed or sent`] : []),
+    ];
+    const bot = `https://t.me/${this.#d.botUsername ?? ""}`;
+    await feed.post(lines.join("\n"), [[{ text: "buy this", url: `${bot}?start=t-${token}` }, { text: `follow ${leader.handle}`, url: `${bot}?start=f-${leaderTgId}` }]]);
+    return true;
   }
 
   /** A linked user follows an open leader with a cap per mirrored buy. A follower never follows themselves. */
@@ -106,38 +200,56 @@ export class CopyDesk {
   /**
    * The leader's buy landed; mirror it. Runs the followers in their fixed
    * order and returns every outcome. A skip is a mirror too, with its reason
-   * in the log, so a follower can see why they did not get a fill.
+   * in the log, so a follower can see why they did not get a fill. A send
+   * that throws for one follower is logged for that follower and the run
+   * goes on; once the time budget is spent the rest are skipped and told.
    */
-  async mirror(leaderTgId: string, token: Address, leaderEthWei: bigint): Promise<Mirror[]> {
+  async mirror(leaderTgId: string, token: Address, leaderEthWei: bigint, opts: MirrorOptions = {}): Promise<Mirror[]> {
     const leader = await this.#d.store.getLeader(leaderTgId);
     if (!leader || !leader.open) return [];
     const followers = await this.#d.store.followersOf(leaderTgId);
     if (!followers.length) return [];
     const now = this.#now, day = now.toISOString().slice(0, 10);
+    const budgetUntil = now.getTime() + (this.#d.mirrorBudgetMs ?? DEFAULT_MIRROR_BUDGET_MS);
     const out: Mirror[] = [];
     const record = async (m: Mirror) => { out.push(m); await this.#d.store.log(m); if (this.#d.tell) await this.#d.tell(m.followerTgId, this.#tellText(leader, m)); };
     // The gate is asked once for the token, not once per follower: same answer, less traffic.
     const [info, scan] = await Promise.all([this.#d.reads.tokenInfo(token), this.#d.orus?.scan(token)]);
     const base = { leaderTgId, token, at: now.toISOString(), hash: null as Hex | null };
     if (!info.hasPool) { for (const f of followers) await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: "no ETH pool on the venue" }); return out; }
-    if (this.#d.orus && !scan) { for (const f of followers) await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: "orus had no read; unknown is not safe" }); return out; }
-    if (scan && scan.honeypot !== false) { for (const f of followers) await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: scan.honeypot ? "orus says honeypot" : "orus could not rule out a honeypot" }); return out; }
+    // No scanner wired is the same as no read: every card promises orus is asked first, and a bot without orus cannot keep that.
+    if (!scan) { for (const f of followers) await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: this.#d.orus ? "orus had no read; unknown is not safe" : "orus is not wired into this bot; unknown is not safe" }); return out; }
+    if (scan.honeypot !== false) { for (const f of followers) await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: scan.honeypot ? "orus says honeypot" : "orus could not rule out a honeypot" }); return out; }
     const cap = this.#d.tokenDayCapWei ?? DEFAULT_TOKEN_DAY_CAP;
     for (const f of followers) {
       const link = await this.#d.links.getLink(f.followerTgId);
       if (!link) { await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: "follower is not linked" }); continue; }
       // Sized to the leader's buy, never above the follower's cap.
       const wei = leaderEthWei < f.capWei ? leaderEthWei : f.capWei;
+      if (this.#now.getTime() > budgetUntil) { await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: "this run ran out of time before your turn; nothing was sent for you" }); continue; }
       const soFar = await this.#d.store.addTokenDay(day, token, wei);
       if (soFar > cap) { await this.#d.store.addTokenDay(day, token, -wei); await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: `today's cap into this token across all followers (${eth(cap)} ETH) is reached` }); continue; }
       const can = await this.#d.session.canExecute(link.account, this.#d.reads.router, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, wei);
       if (!can.ok) { await this.#d.store.addTokenDay(day, token, -wei); await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: `your session says no: ${can.why}` }); continue; }
       const quote = await this.#d.reads.quoteBuy(token, wei);
       if (quote === null) { await this.#d.store.addTokenDay(day, token, -wei); await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: "no quote right now" }); continue; }
+      // The follower's own daily allowance, last, so a skip for any other reason costs them nothing.
+      const refused = opts.budget ? opts.budget(f.followerTgId) : null;
+      if (refused) { await this.#d.store.addTokenDay(day, token, -wei); await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: refused }); continue; }
       const minOut = minOutFor(quote, this.#d.buySlippageBps ?? 300);
       const deadline = BigInt(Math.floor(now.getTime() / 1000) + 3600);
       const data = encodeV4EthBuy({ token, amountIn: wei, minOut, deadline, ...(info.poolKey ? { poolKey: info.poolKey } : {}) });
-      const r = await this.#d.session.execute(link.account, this.#d.reads.router, wei, data);
+      let r: { hash: Hex; landed: boolean };
+      try {
+        r = await this.#d.session.execute(link.account, this.#d.reads.router, wei, data);
+      } catch (error) {
+        // The send itself failed (the signer, the rpc): nothing was broadcast for this follower, the day's room is theirs again, the next follower runs.
+        const detail = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "unknown";
+        console.error("copy mirror:", f.followerTgId, detail);
+        await this.#d.store.addTokenDay(day, token, -wei);
+        await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: "the send failed on our side; nothing was spent for you" });
+        continue;
+      }
       await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, hash: r.hash, outcome: r.landed ? "landed" : "sent", why: r.landed ? "" : "sent, not confirmed as landed" });
     }
     return out;
