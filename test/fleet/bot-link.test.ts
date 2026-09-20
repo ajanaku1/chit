@@ -1,14 +1,15 @@
 /**
  * The signed link: only the account's owner can link it, once per nonce,
  * within the nonce's life; every refusal names its reason; a bad signature
- * leaves the nonce unspent so the owner can try again.
+ * leaves the nonce unspent so the owner can try again. The store claims a
+ * Telegram update id once, in memory and as one atomic statement on Neon.
  */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Address, getAddress } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { issueNonce, LinkError, linkMessage, MemoryBotLinkStore, NONCE_TTL_MS, verifyLink } from "../../src/fleet/bot-link.js";
+import { issueNonce, LinkError, linkMessage, MemoryBotLinkStore, NeonBotLinkStore, NONCE_TTL_MS, verifyLink, type BotLinkStore, type LinkSql } from "../../src/fleet/bot-link.js";
 
 const OWNER = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
 const STRANGER = privateKeyToAccount("0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba");
@@ -59,4 +60,34 @@ test("a stranger's signature, a wrong chain, a used nonce, an expired nonce and 
 
 test("the message is exact: chain id, checksummed account, nonce, pipe-separated", () => {
   assert.equal(linkMessage(4663, "0x00000000000000000000000000000000000000aa", "ab".repeat(16)), `chit-bot-link|4663|0x00000000000000000000000000000000000000AA|${"ab".repeat(16)}`);
+});
+
+test("an update id is claimed once: the first claim is true, a repeat false, another id true", async () => {
+  const store: BotLinkStore = new MemoryBotLinkStore();
+  assert.equal(await store.claimUpdate(1001, t0), true);
+  assert.equal(await store.claimUpdate(1001, t0), false, "a redelivery");
+  assert.equal(await store.claimUpdate(1002, t0), true);
+});
+
+test("the Neon store's claim is one INSERT ... ON CONFLICT DO NOTHING RETURNING, its answer the row count; the table is in the schema", async () => {
+  const sent: { q: string; params: unknown[] | undefined }[] = [];
+  let taken = false;
+  const fake: LinkSql = {
+    async query(q, params) {
+      sent.push({ q, params });
+      if (!/INSERT INTO bot_link_updates/.test(q)) return [];
+      if (taken) return [];
+      taken = true;
+      return [{ update_id: params![0] }];
+    },
+  };
+  const store = new NeonBotLinkStore(fake);
+  assert.equal(await store.claimUpdate(1001, t0), true);
+  assert.equal(await store.claimUpdate(1001, t0), false);
+  assert.ok(sent.some((s) => /CREATE TABLE IF NOT EXISTS bot_link_updates \(update_id BIGINT PRIMARY KEY/.test(s.q)), "the table is created with the schema");
+  const claims = sent.filter((s) => /INSERT INTO bot_link_updates/.test(s.q));
+  assert.equal(claims.length, 2);
+  assert.match(claims[0]!.q, /ON CONFLICT \(update_id\) DO NOTHING RETURNING update_id/);
+  assert.deepEqual(claims[0]!.params, [1001, t0.toISOString()]);
+  for (const s of sent) assert.ok(!/;\s*\S/.test(s.q), `one statement per query: ${s.q.slice(0, 40)}`);
 });

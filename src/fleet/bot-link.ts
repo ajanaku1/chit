@@ -15,6 +15,12 @@
  *
  * The last valid link wins; re-linking is the same flow. Nothing here holds
  * a key: the store keeps the Telegram id, the account, and the proof.
+ *
+ * The store also claims Telegram update ids for the mainnet bot, the way the
+ * playground's wallet store does for its own: a webhook request the host
+ * kills mid-trade makes Telegram deliver the same update again, and a Sell
+ * acted on twice is a share sold twice. The first claim wins; a repeat is
+ * dropped without a word.
  */
 
 import { randomBytes } from "node:crypto";
@@ -34,6 +40,8 @@ export interface BotLinkStore {
   getLink(tgId: string): Promise<BotLink | undefined>;
   /** Every Telegram id linked to this account, for the "which telegram" question. */
   linksTo(account: Address): Promise<BotLink[]>;
+  /** Claims a Telegram update id; false when it was seen before (a redelivery). Atomic across instances. */
+  claimUpdate(updateId: number, now: Date): Promise<boolean>;
 }
 
 /** The exact text the owner's wallet signs. The chain id is in it so a testnet link never opens a mainnet account. */
@@ -87,6 +95,7 @@ export const verifyLink = async (
 export class MemoryBotLinkStore implements BotLinkStore {
   readonly nonces = new Map<string, LinkNonce>();
   readonly links = new Map<string, BotLink>();
+  readonly #updates = new Set<number>();
   async putNonce(n: LinkNonce) { this.nonces.set(n.nonce, { ...n }); }
   async getNonce(nonce: string) { const n = this.nonces.get(nonce); return n ? { ...n } : undefined; }
   async useNonce(nonce: string, at: Date) {
@@ -98,6 +107,12 @@ export class MemoryBotLinkStore implements BotLinkStore {
   async putLink(link: BotLink) { this.links.set(link.tgId, { ...link }); }
   async getLink(tgId: string) { const l = this.links.get(tgId); return l ? { ...l } : undefined; }
   async linksTo(account: Address) { const a = getAddress(account); return [...this.links.values()].filter((l) => l.account === a).map((l) => ({ ...l })); }
+  async claimUpdate(updateId: number) {
+    if (this.#updates.has(updateId)) return false;
+    this.#updates.add(updateId);
+    if (this.#updates.size > 10_000) this.#updates.delete(this.#updates.values().next().value as number);
+    return true;
+  }
 }
 
 type Row = Record<string, unknown>;
@@ -107,6 +122,7 @@ const LINK_SCHEMA = [
   `CREATE TABLE IF NOT EXISTS bot_link_nonces (nonce TEXT PRIMARY KEY, tg_id TEXT NOT NULL, issued_at TIMESTAMPTZ NOT NULL, used_at TIMESTAMPTZ)`,
   `CREATE TABLE IF NOT EXISTS bot_links (tg_id TEXT PRIMARY KEY, account TEXT NOT NULL, owner TEXT NOT NULL, chain_id INTEGER NOT NULL, nonce TEXT NOT NULL, signature TEXT NOT NULL, linked_at TIMESTAMPTZ NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS bot_links_account ON bot_links (account)`,
+  `CREATE TABLE IF NOT EXISTS bot_link_updates (update_id BIGINT PRIMARY KEY, seen_at TIMESTAMPTZ NOT NULL)`,
 ];
 
 const rowLink = (r: Row): BotLink => ({
@@ -117,6 +133,7 @@ const rowLink = (r: Row): BotLink => ({
 /** Neon: the same tables the bot's store lives beside; the schema is applied once per instance. */
 export class NeonBotLinkStore implements BotLinkStore {
   #ready: Promise<void> | undefined;
+  #claims = 0;
   constructor(private readonly sql: LinkSql) {}
   #init(): Promise<void> {
     return (this.#ready ??= (async () => { for (const s of LINK_SCHEMA) await this.sql.query(s); })().catch((e) => { this.#ready = undefined; throw e; }));
@@ -151,5 +168,14 @@ export class NeonBotLinkStore implements BotLinkStore {
   async linksTo(account: Address) {
     await this.#init();
     return (await this.sql.query(`SELECT * FROM bot_links WHERE account = $1`, [getAddress(account)])).map(rowLink);
+  }
+  async claimUpdate(updateId: number, now: Date) {
+    await this.#init();
+    const rows = await this.sql.query(`INSERT INTO bot_link_updates (update_id, seen_at) VALUES ($1, $2) ON CONFLICT (update_id) DO NOTHING RETURNING update_id`, [updateId, now.toISOString()]);
+    // Telegram never redelivers after a day; the table is kept small in passing.
+    if (++this.#claims % 200 === 0) {
+      await this.sql.query(`DELETE FROM bot_link_updates WHERE seen_at < $1`, [new Date(now.getTime() - 2 * 86_400_000).toISOString()]).catch(() => undefined);
+    }
+    return rows.length === 1;
   }
 }

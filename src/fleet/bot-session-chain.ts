@@ -8,7 +8,11 @@
  * flag on for the bot's key, whether the account's token is already
  * approved through Permit2 for the router, and `approveForSell`, the one-time
  * approval the account makes when it is not. The sale itself is an
- * ordinary `execute` with value zero.
+ * ordinary `execute` with value zero. The approval the contract makes today
+ * is unlimited and does not expire, so once a token is approved the bot's
+ * key can sell it from the account for as long as the session is live; the
+ * bot says so before the owner turns the flag on, and pause or revoke is
+ * the off switch.
  */
 
 import { type Address, type Hex, type PublicClient, type Transport, type WalletClient, createPublicClient, createWalletClient, defineChain, http, parseAbi } from "viem";
@@ -35,9 +39,18 @@ export type SessionChain = {
   tokenAllowanceReady(account: Address, token: Address, spender: Address): Promise<boolean>;
 };
 
-export type SessionChainConfig = { chainId: number; rpcUrl: string; signerKey: Hex; transport?: Transport };
+/** `receiptWaitMs`: how long one send waits for its receipt before answering with the hash alone; see RECEIPT_WAIT_MS. */
+export type SessionChainConfig = { chainId: number; rpcUrl: string; signerKey: Hex; transport?: Transport; receiptWaitMs?: number };
 
-const RECEIPT_WAIT_MS = 90_000;
+/**
+ * The webhook that runs these sends is a function the host stops at sixty
+ * seconds (vercel.json, api/bot.js), and a send that outlives it is a trade
+ * with no reply and a request Telegram delivers again. So one send waits
+ * for its receipt well inside that budget, and the bot makes at most one
+ * send per request; a receipt that takes longer is reported as sent, not
+ * confirmed, with the explorer link.
+ */
+export const RECEIPT_WAIT_MS = 40_000;
 const EXECUTE_GAS = 700_000n;
 const APPROVE_GAS = 200_000n;
 const ERC20_ALLOWANCE_ABI = parseAbi(["function allowance(address owner, address spender) view returns (uint256)"]);
@@ -54,11 +67,12 @@ export const createSessionChain = (config: SessionChainConfig): SessionChain => 
   const pub = createPublicClient({ chain, transport }) as unknown as PublicClient;
   const account = privateKeyToAccount(config.signerKey);
   const wallet: WalletClient = createWalletClient({ account, chain, transport });
+  const receiptWaitMs = config.receiptWaitMs ?? RECEIPT_WAIT_MS;
   /** One send from the bot's key to the account, then the receipt; a wait that runs out is a hash without a verdict. */
   const send = async (a: Address, data: Hex, gas: bigint): Promise<{ hash: Hex; landed: boolean }> => {
     const hash = await wallet.sendTransaction({ account, chain, to: a, data, gas });
     try {
-      const receipt = await pub.waitForTransactionReceipt({ hash, timeout: RECEIPT_WAIT_MS });
+      const receipt = await pub.waitForTransactionReceipt({ hash, timeout: receiptWaitMs });
       return { hash, landed: receipt.status === "success" };
     } catch {
       return { hash, landed: false };

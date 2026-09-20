@@ -107,7 +107,13 @@ export const encodeWithdraw = (to: Address, amount: bigint): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "withdraw", args: [to, amount] });
 export const encodeWithdrawToken = (token: Address, to: Address, amount: bigint): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "withdrawToken", args: [token, to, amount] });
-/** The sell flag on a key's session: with it, the key may approve the account's tokens for a router its rules name. Off by default. */
+/**
+ * The sell flag on a key's session: with it, the key may approve the
+ * account's tokens for a router its rules name. Off by default. Turning it
+ * off stops new approvals and undoes none already made (they are the
+ * account's, unlimited, without an expiry); pause or revoke is what stops
+ * the key from using them.
+ */
 export const encodeSetSellAllowed = (key: Address, allowed: boolean): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "setSellAllowed", args: [key, allowed] });
 
@@ -120,7 +126,11 @@ export const encodeSessionExecute = (target: Address, value: bigint, data: Hex):
 /**
  * The approval before a sale, once per token: the account approves the token
  * to Permit2 and Permit2 to `spender` (a router one of the key's rules
- * names). Only a key with an active session and the sell flag may send it.
+ * names), both without a limit and without an expiry. Only a key with an
+ * active session and the sell flag may send it; from then on that key can
+ * move the token through the router in any `execute` the rules allow, until
+ * the session is paused or revoked. Anything a bot says to an owner about
+ * this call says that.
  */
 export const encodeApproveForSell = (token: Address, spender: Address): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "approveForSell", args: [token, spender] });

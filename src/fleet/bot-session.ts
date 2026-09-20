@@ -12,9 +12,29 @@
  * the bot's key (`setSellAllowed` on the account, from the Sessions page).
  * The first sale of a token asks the account to approve Permit2 and the
  * router once (`approveForSell`, from the bot's key, inside the session's
- * rules); the sale itself is an `execute` with value zero, so the caps are
- * untouched and the amount is bounded by what the account holds. The ETH
- * lands in the account; only the owner can move it out.
+ * rules); the sale itself is an `execute` with value zero, so the ETH caps
+ * are untouched and the amount is bounded by what the account holds. The
+ * bot's own calldata sends the ETH back to the account, and `withdraw` is
+ * the owner's alone.
+ *
+ * What that approval is, said plainly because the bot says it to the owner
+ * too: the account approves the token to Permit2 and Permit2 to the router
+ * without a limit and without an expiry, and the session's rule is the
+ * router's `execute` with the calldata unconstrained. So from the moment a
+ * token is approved, the bot's key (and so whoever holds it) can sell that
+ * token from the account, or route it and the ETH of a sale through the
+ * router to any address, at any time the session is live; the ETH caps do
+ * not count a call with value zero, and turning the flag off stops new
+ * approvals but undoes none. Pause or revoke is the off switch. The bound
+ * that would make this a real cap, an approval per sale for the sale's
+ * amount and deadline, is the contract's to add; until it does, no copy
+ * here says that only the owner can move the tokens.
+ *
+ * Each webhook request makes at most one send and waits for at most one
+ * receipt, inside the host's budget for the function: the first sale of a
+ * token is two taps, the approval on one and the sale on the next. Every
+ * update is claimed by id before it is acted on, so a request the host
+ * killed mid-trade is not acted on again when Telegram redelivers it.
  *
  * What this handler never does: hold a key of the owner's, withdraw, or
  * trade from an account that was not linked with the owner's signature.
@@ -92,6 +112,8 @@ export class SessionBot {
   #cfg<K extends keyof typeof DEFAULTS>(k: K): (typeof DEFAULTS)[K] { return (this.#d[k] as (typeof DEFAULTS)[K] | undefined) ?? DEFAULTS[k]; }
 
   async handle(u: Update): Promise<void> {
+    // The same update delivered twice (a request the host killed, then Telegram's retry) is acted on once.
+    if (u.update_id !== undefined && !(await this.#d.links.claimUpdate(u.update_id, this.#now))) return;
     if (u.message?.text && u.message.from) {
       const chatId = String(u.message.chat.id), tgId = String(u.message.from.id), text = u.message.text.trim();
       if (u.message.chat.type !== "private") return;
@@ -219,7 +241,7 @@ export class SessionBot {
     await this.#say(chatId, [
       "<b>chit bot on mainnet</b>",
       "the key stays with you. link a session account once, then paste any token's address and buy from your account in one tap.",
-      "sell from the token card too, once you turn on let it sell next to the bot's key on the Sessions page. withdrawals and fleets are yours to do from the app in this beta.",
+      "sell from the token card too, once you turn on let it sell next to the bot's key on the Sessions page. know what that is: the first sale of a token approves it for the bot's key without a limit, and the approval stays until you pause or revoke the session; turning let it sell off does not undo it. withdrawals and fleets are yours to do from the app in this beta.",
       "/link to connect or re-link. /start for your card.",
     ].join("\n"), kb([btn("← Back", "home")]));
   }
@@ -295,8 +317,10 @@ export class SessionBot {
    * A share of the account's position, sold through the router as one
    * execute with value zero. The order of the checks is the cheap and the
    * reversible first: the share, today's limits, the flag the owner set, the
-   * quote, the contract's own answer; only then the one-time approval and
-   * the sale, each a transaction the bot's key pays the gas for.
+   * quote, the contract's own answer; only then a transaction the bot's key
+   * pays the gas for. One per request: a token not yet approved gets the
+   * approval now and a button that sells on the next tap, so no request
+   * waits for two receipts and outlives the webhook's budget.
    */
   async #sell(chatId: string, tgId: string, token: Address, share: string): Promise<void> {
     const link = await this.#d.links.getLink(tgId);
@@ -311,17 +335,20 @@ export class SessionBot {
     const amount = (held * BigInt(percent)) / 100n;
     if (amount === 0n) return this.#say(chatId, `nothing to sell: your account holds no ${esc(info.symbol)}.`, kb([btn("← Back", `token:${token}`)]));
     // The flag is the owner's to set, from the wallet; the bot cannot give it to itself.
-    if (!allowed) return this.#say(chatId, "your session does not allow sells yet. on the Sessions page, next to the bot's key, turn on let it sell (one transaction), then try again.", kb([url("🔑 Sessions page", sessions), btn("← Back", `token:${token}`)]));
+    if (!allowed) return this.#say(chatId, "your session does not allow sells yet. on the Sessions page, next to the bot's key, turn on let it sell (one transaction), then try again. know before you do: the first sale of a token approves it for the bot's key without a limit, and that approval stays until you pause or revoke the session; turning let it sell off later does not undo it.", kb([url("🔑 Sessions page", sessions), btn("← Back", `token:${token}`)]));
     const quote = info.hasPool ? await this.#d.reads.quoteSell(token, amount) : null;
     if (quote === null) return this.#say(chatId, "no ETH pool on the venue for this token.", kb([btn("← Back", "home")]));
     // The contract's own answer first: a paused, expired or revoked session refuses here, before any gas.
     const can = await this.#d.session.canExecute(link.account, this.#d.reads.router, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, 0n);
     if (!can.ok) return this.#say(chatId, `your session says no: <b>${esc(can.why)}</b>. manage it on the Sessions page.`, kb([url("🔑 Sessions page", sessions), btn("← Back", `token:${token}`)]));
     if (!(await this.#d.session.tokenAllowanceReady(link.account, token, this.#d.reads.router))) {
-      await this.#say(chatId, `first sale of <b>${esc(info.symbol)}</b> from your account: approving the router once, then selling…`);
+      // The approval is this request's one send; the sale is the next tap's, so a slow receipt never leaves a sale half told.
+      await this.#say(chatId, `first sale of <b>${esc(info.symbol)}</b> from your account: approving it for the router once. the approval is your account's, without a limit, and stays until you pause or revoke the session; turning let it sell off does not undo it…`);
       count.gasWei += APPROVE_GAS_WEI;
       const approval = await this.#d.session.approveForSell(link.account, token, this.#d.reads.router);
-      if (!approval.landed) return this.#say(chatId, `the approval did not land: <a href="https://robinhoodchain.blockscout.com/tx/${approval.hash}">${short(approval.hash)}</a>. nothing was sold; try again in a moment.`, kb([btn("↻ Card", `token:${token}`), btn("← Back", "home")]));
+      const explorer = `https://robinhoodchain.blockscout.com/tx/${approval.hash}`;
+      if (!approval.landed) return this.#say(chatId, `the approval is sent, not confirmed as landed: <a href="${explorer}">${short(approval.hash)}</a>. nothing was sold; check the explorer, then tap Sell again.`, kb([btn(`Sell ${percent}%`, `s:${token}:${percent}`), btn("↻ Card", `token:${token}`)]));
+      return this.#say(chatId, `approved: <a href="${explorer}">${short(approval.hash)}</a>. tap to sell ${percent}% of your <b>${esc(info.symbol)}</b> now.`, kb([btn(`Sell ${percent}%`, `s:${token}:${percent}`), btn("↻ Card", `token:${token}`)]));
     }
     const minOut = minOutFor(quote, this.#cfg("sellSlippageBps"));
     const deadline = BigInt(Math.floor(this.#now.getTime() / 1000) + 3600);

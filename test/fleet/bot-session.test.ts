@@ -2,8 +2,10 @@
  * The mainnet bot: no link, no trade; a link is a nonce and a signed
  * message; a buy asks the account first and is refused in its words; a buy
  * that passes is one execute from the bot's key with the bot's floor; the
- * daily limits stop a loop; a sell needs the owner's flag, approves once,
- * then is one execute with value zero; withdrawals are never offered.
+ * daily limits stop a loop; a sell needs the owner's flag, approves once
+ * (its own tap, with the honest words about what the approval is), then is
+ * one execute with value zero; an update delivered twice is acted on once;
+ * withdrawals are never offered.
  */
 
 import assert from "node:assert/strict";
@@ -38,7 +40,7 @@ const fakeSession = () => {
   let state = { exists: true, paused: false, revoked: false, expiry: Math.floor(clock.getTime() / 1000) + 86400, maxValuePerCall: parseEther("0.05").toString(), totalValueCap: parseEther("0.5").toString(), spentValue: "0", calls: 0 };
   let refuse: string | null = null;
   // The sell side: the owner's flag, the approval the account has (the first approveForSell puts it in place), and each approval sent.
-  let sell = false, ready = false;
+  let sell = false, ready = false, approvalLands = true;
   const approvals: { account: Address; token: Address; spender: Address }[] = [];
   const s: SessionChain = {
     chainId: 4663, signer: SIGNER,
@@ -48,14 +50,14 @@ const fakeSession = () => {
     async execute(account, target, value, data) { calls.push({ account, target, value, data }); return { hash: ("0x" + "ab".repeat(32)) as Hex, landed: true }; },
     async signerBalance() { return parseEther("1"); },
     async sellAllowed() { return sell; },
-    async approveForSell(account, token, spender) { approvals.push({ account, token, spender }); ready = true; return { hash: ("0x" + "cd".repeat(32)) as Hex, landed: true }; },
+    async approveForSell(account, token, spender) { approvals.push({ account, token, spender }); ready = approvalLands; return { hash: ("0x" + "cd".repeat(32)) as Hex, landed: approvalLands }; },
     async tokenAllowanceReady() { return ready; },
   };
-  return { s, calls, approvals, set: (p: Partial<typeof state>) => { state = { ...state, ...p }; }, refuseWith: (why: string | null) => { refuse = why; }, allowSell: (v: boolean) => { sell = v; }, allowanceReady: (v: boolean) => { ready = v; } };
+  return { s, calls, approvals, set: (p: Partial<typeof state>) => { state = { ...state, ...p }; }, refuseWith: (why: string | null) => { refuse = why; }, allowSell: (v: boolean) => { sell = v; }, allowanceReady: (v: boolean) => { ready = v; }, approvalLands: (v: boolean) => { approvalLands = v; } };
 };
 
 const dm = (text: string, replyTo?: string): Update => ({ message: { message_id: 1, text, chat: { id: 7, type: "private" }, from: { id: 7 }, ...(replyTo ? { reply_to_message: { text: replyTo } } : {}) } });
-const tap = (data: string, photo = false): Update => ({ callback_query: { id: "cb", data, from: { id: 7 }, message: { message_id: 9, chat: { id: 7, type: "private" }, ...(photo ? { photo: [{}] } : {}) } } });
+const tap = (data: string, photo = false, updateId?: number): Update => ({ ...(updateId !== undefined ? { update_id: updateId } : {}), callback_query: { id: "cb", data, from: { id: 7 }, message: { message_id: 9, chat: { id: 7, type: "private" }, ...(photo ? { photo: [{}] } : {}) } } });
 
 type Deps = ConstructorParameters<typeof SessionBot>[0];
 const setup = (opts: Partial<Deps> = {}) => {
@@ -163,23 +165,29 @@ test("sell buttons are on the token card only when the account holds the token",
   assert.ok(b.includes(`asks:${PEPE}`), "Sell custom asks for a share");
 });
 
-test("a sell without the owner's flag says what to do, with the Sessions page, and sends nothing", async () => {
+test("a sell without the owner's flag says what to do, with the Sessions page, what the approval will be and that only pause or revoke undoes it, and sends nothing", async () => {
   const { bot, links, session, telegram, buttons } = setup();
   await linked(links);
   await bot.handle(tap(`s:${PEPE}:50`));
   assert.match(telegram.last(), /your session does not allow sells yet\. on the Sessions page, next to the bot's key, turn on let it sell \(one transaction\), then try again\./);
+  assert.match(telegram.last(), /approves it for the bot's key without a limit, and that approval stays until you pause or revoke the session; turning let it sell off later does not undo it/, "the flag is not sold as a reversible bound");
   assert.ok(buttons().includes("https://chit.tools/app/sessions.html"), "the Sessions page is the button");
   assert.equal(session.approvals.length, 0, "no approval");
   assert.equal(session.calls.length, 0, "no execute");
 });
 
-test("with the flag and no allowance the first sale approves the router once, then sells as one execute with value zero; the next sale approves nothing", async () => {
-  const { bot, links, session, telegram, textAt } = setup();
+test("with the flag and no allowance the first tap approves the router once, says what the approval is, and offers the sale as the next tap; that tap sells as one execute with value zero; the next sale approves nothing", async () => {
+  const { bot, links, session, telegram, textAt, buttons } = setup();
   await linked(links);
   session.allowSell(true);
   await bot.handle(tap(`s:${PEPE}:50`));
   assert.deepEqual(session.approvals, [{ account: ACCOUNT, token: PEPE, spender: ROUTER }]);
-  assert.match(textAt(-3), /first sale of <b>PEPE<\/b> from your account: approving the router once/);
+  assert.match(textAt(-2), /first sale of <b>PEPE<\/b> from your account: approving it for the router once\. the approval is your account's, without a limit, and stays until you pause or revoke the session; turning let it sell off does not undo it/);
+  assert.match(telegram.last(), /approved: <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xcdcd.*tap to sell 50% of your <b>PEPE<\/b> now/);
+  assert.equal(session.calls.length, 0, "the approval is this request's one send; no sale yet");
+  assert.equal(buttons()[0], `s:${PEPE}:50`, "the sale is the next tap, with the same share");
+  await bot.handle(tap(`s:${PEPE}:50`));
+  assert.equal(session.approvals.length, 1, "no second approval");
   assert.match(textAt(-2), /selling <code>21 PEPE<\/code> \(50%\) from your account/);
   assert.equal(session.calls.length, 1, "one execute");
   assert.equal(session.calls[0]!.account, ACCOUNT);
@@ -190,6 +198,35 @@ test("with the flag and no allowance the first sale approves the router once, th
   await bot.handle(tap(`s:${PEPE}:100`));
   assert.equal(session.approvals.length, 1, "the allowance is in place, no second approval");
   assert.equal(session.calls.length, 2);
+});
+
+test("an approval not confirmed as landed is reported with its hash, sells nothing, and leaves the sale to a tap after the explorer", async () => {
+  const { bot, links, session, telegram, buttons } = setup();
+  await linked(links);
+  session.allowSell(true);
+  session.approvalLands(false);
+  await bot.handle(tap(`s:${PEPE}:25`));
+  assert.equal(session.approvals.length, 1);
+  assert.match(telegram.last(), /the approval is sent, not confirmed as landed: <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xcdcd.*nothing was sold; check the explorer, then tap Sell again/);
+  assert.equal(session.calls.length, 0, "no sale on an unconfirmed approval");
+  assert.equal(buttons()[0], `s:${PEPE}:25`);
+});
+
+test("an update delivered twice is acted on once: the redelivery of a Sell callback sells nothing more and says nothing", async () => {
+  const { bot, links, session, telegram } = setup();
+  await linked(links);
+  session.allowSell(true);
+  session.allowanceReady(true);
+  await bot.handle(tap(`s:${PEPE}:50`, false, 1001));
+  assert.equal(session.calls.length, 1);
+  const said = telegram.sent.length;
+  await bot.handle(tap(`s:${PEPE}:50`, false, 1001));
+  assert.equal(session.calls.length, 1, "the same update id sells no second share");
+  assert.equal(telegram.sent.length, said, "not even an answer to the callback: the first delivery had it");
+  await bot.handle(tap(`s:${PEPE}:50`, false, 1002));
+  assert.equal(session.calls.length, 2, "a new update id is a new tap");
+  await bot.handle(tap(`s:${PEPE}:50`));
+  assert.equal(session.calls.length, 3, "an update without an id (the dual bot's floor switch, a test) is not claimed");
 });
 
 test("the share is a whole percent of the position: 25% of 42 PEPE is 10.5, in the token's six decimals, with the sell floor", async () => {
