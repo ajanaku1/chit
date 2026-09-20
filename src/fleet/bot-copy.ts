@@ -99,6 +99,7 @@ import { NONCE_TTL_MS, issueNonce, type BotLinkStore } from "./bot-link.js";
 import { orusLine, type OrusScan, type OrusScanner } from "./bot-orus.js";
 import type { SessionChain } from "./bot-session-chain.js";
 import { esc, type Keyboard } from "./bot-telegram.js";
+import type { VenueBuy } from "./bot-watch.js";
 import { poolIdOf } from "./pool-registry.js";
 import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4EthBuy, minOutFor, venuePoolKey } from "./v4-swap.js";
 
@@ -119,11 +120,10 @@ export type Mirror = { leaderTgId: string; followerTgId: string; token: Address;
 
 /**
  * One ETH buy on the venue, as the watcher reads it from the PoolManager's
- * Swap logs (bot-watch.ts exports the same shape; the desk names it here so
- * the two modules build apart, and the import can point there once they
- * meet). `buyer` is the transaction's sender; `ethInWei` what they paid.
+ * Swap logs (bot-watch.ts); `buyer` is the transaction's sender, `ethInWei`
+ * what they paid. The watcher's runtime hands each one to `onVenueBuy`.
  */
-export type VenueBuy = { block: bigint; txHash: Hex; buyer: Address; token: Address; ethInWei: bigint; tokensOut: bigint; poolId: Hex };
+export type { VenueBuy };
 
 export interface CopyStore {
   putLeader(l: Leader): Promise<void>;
@@ -549,19 +549,6 @@ export class CopyDesk {
     return m.outcome === "landed" ? `copied ${who}: <code>${eth(m.ethWei)} ETH</code> into <code>${m.token}</code>, landed ${link}.` : `copied ${who}: <code>${eth(m.ethWei)} ETH</code> sent ${link}, not confirmed as landed; the floor protects the fill.`;
   }
 }
-
-/**
- * Puts the desk's venue handler into the watcher's registry, so every ETH
- * buy the watcher reads is offered to the desk. The registry is the watcher
- * runtime's (bot-watch-runtime.ts, built on its own branch); the bot
- * runtime looks it up and calls this when it is there. The handler rejects
- * only from before the desk's claim (a store or a chain read that failed),
- * when nothing was done and a delivery again is right; after the claim the
- * desk catches its own steps.
- */
-export const registerCopyWatch = (desk: CopyDesk, registry: { push(handler: (b: VenueBuy) => Promise<void>): void }): void => {
-  registry.push(async (b) => { await desk.onVenueBuy(b); });
-};
 
 /** One instance's memory. */
 export class MemoryCopyStore implements CopyStore {

@@ -29,7 +29,7 @@ import { test } from "node:test";
 import { type Address, type Hex, parseEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { BotChain, TokenInfo } from "../../src/fleet/bot-chain.js";
-import { CopyDesk, LeadError, MAX_FOLLOW_CAP_WEI, MIRROR_SEND_MS, MemoryCopyStore, VENUE_BUYS_PER_DAY, VENUE_MIN_ETH_WEI, leadMessage, registerCopyWatch, type VenueBuy } from "../../src/fleet/bot-copy.js";
+import { CopyDesk, LeadError, MAX_FOLLOW_CAP_WEI, MIRROR_SEND_MS, MemoryCopyStore, VENUE_BUYS_PER_DAY, VENUE_MIN_ETH_WEI, leadMessage, type VenueBuy } from "../../src/fleet/bot-copy.js";
 import { MemoryBotLinkStore, NONCE_TTL_MS } from "../../src/fleet/bot-link.js";
 import type { OrusScan } from "../../src/fleet/bot-orus.js";
 import type { SessionChain } from "../../src/fleet/bot-session-chain.js";
@@ -601,15 +601,4 @@ test("onVenueBuy: a chain read that fails before the claim rejects with nothing 
   const out = await s.desk.onVenueBuy(venueBuy({ txHash: hash("e3") }));
   assert.equal(out!.length, 1);
   assert.equal(s.posted.length, 3);
-});
-
-test("registerCopyWatch puts the desk's handler in the watcher's registry, and the handler is onVenueBuy", async () => {
-  const s = setup();
-  await walletLeaderWithFollowers(s, ["0.01"]);
-  const registry: ((b: VenueBuy) => Promise<void>)[] = [];
-  registerCopyWatch(s.desk, registry);
-  assert.equal(registry.length, 1);
-  await registry[0]!(venueBuy());
-  assert.equal(s.calls.length, 1);
-  assert.equal(s.posted.length, 1);
 });

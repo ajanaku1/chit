@@ -5,12 +5,20 @@
  * watcher and the alerts from the environment, runs one pass over the
  * blocks since the last and answers { from, to, buys, delivered }.
  *
- * Every buy the pass finds goes to the alerts (bot-alerts.ts) and then to
- * each handler in `watchHandlers`, the small registry another feature adds
- * its own to (the leaders' watch mirrors a leader's outside buy from here).
- * Each handler is called on its own and caught on its own, so the alerts
- * still post when a mirror breaks and the mirrors still run when Telegram
- * is down.
+ * Every buy the pass finds has two readers, in this order: the alerts
+ * (bot-alerts.ts, the group's line and each subscriber's own) and the copy
+ * desk (bot-copy.ts, `onVenueBuy`: a buy by a wallet leader is mirrored
+ * into their followers' accounts and posted to the group, anyone else's is
+ * nothing to it). The desk is the same one the session bot's webhook
+ * holds, built by the same factory (bot-copy-runtime.ts) over this
+ * function's own chain, signer and stores, because the cron and the
+ * webhook are separate functions on the host and share nothing but the
+ * store and the environment. Each reader is called on its own and caught
+ * on its own, so the alerts still post when a mirror breaks and the
+ * mirrors still run when Telegram is down; the watcher claims each hash
+ * once before the readers run, so a buy reaches both once and neither
+ * twice, and a reader that throws before its own work is done has lost
+ * that one buy, logged, not a pass.
  *
  * The variables, beside the session bot's own (bot-runtime.ts):
  *   CRON_SECRET                 who may be the clock; without it the route
@@ -42,12 +50,18 @@
  *                               46630): their pools are named through the
  *                               registry before the first log is read, and
  *                               a swap in any other pool is not a buy
- *   BOT_SIGNER_PRIVATE_KEY      session mode's signer; only its address is
- *                               taken here, so a transaction the bot itself
- *                               sent (a leader's tapped buy the desk posted,
- *                               a mirror, an order's fill, a user's own buy)
- *                               is not announced again or as the signer's.
- *                               Unset, nothing is skipped
+ *   BOT_SIGNER_PRIVATE_KEY      session mode's signer, the one owners
+ *                               granted sessions to: the desk sends a wallet
+ *                               leader's mirrors with it, so the route
+ *                               refuses without it, as the orders' does.
+ *                               Its address is also the watcher's own
+ *                               sender: a transaction the bot itself sent
+ *                               (an account leader's tapped buy the webhook's
+ *                               desk posted, a mirror, an order's fill, a
+ *                               user's own buy) is not announced again or as
+ *                               the signer's
+ *   BOT_DAILY_EXECUTES,         the followers' daily allowance, the same
+ *   BOT_DAILY_GAS_ETH           ledger the webhook's taps and mirrors write
  *
  * One pass at a time in this instance; across instances the store's claims
  * (bot-watch.ts, one statement per hash and per hourly mark) keep a buy
@@ -63,8 +77,12 @@ import { isAddress, type Address } from "./types.js";
 import { Alerts, MemoryAlertStore, NeonAlertStore, type AlertStore } from "./bot-alerts.js";
 import { CHIT_MAINNET } from "./bot-bridge.js";
 import { createBotChain, type BotChain } from "./bot-chain.js";
+import type { CopyStore } from "./bot-copy.js";
+import { createCopyDesk, dailyLimitsFromEnv, groupChatIdFromEnv } from "./bot-copy-runtime.js";
 import { createHeyScanner } from "./bot-hey.js";
-import { createOrusScanner } from "./bot-orus.js";
+import { MemoryBotLinkStore, NeonBotLinkStore, type BotLinkStore } from "./bot-link.js";
+import { createOrusScanner, type OrusScanner } from "./bot-orus.js";
+import { createSessionChain, type SessionChain } from "./bot-session-chain.js";
 import { createTelegram, type Telegram } from "./bot-telegram.js";
 import { createWatchPort, MemoryWatchStore, NeonWatchStore, Watcher, type VenueBuy, type WatchPort, type WatchStore } from "./bot-watch.js";
 import { sweepTriggerAllowed } from "./sweep-trigger.js";
@@ -93,14 +111,23 @@ export const ownSendersFromEnv = (): Address[] => {
   return [privateKeyToAccount(key as Hex).address];
 };
 
-/**
- * Handlers another feature adds for every buy the watcher hands on; the
- * runtime calls each after the alerts, each caught on its own. Register at
- * module load (import this module and push), before the first pass builds.
- */
-export const watchHandlers: ((b: VenueBuy) => Promise<void>)[] = [];
+/** One reader of a buy, named for the log line when it throws. */
+export type Reader = { name: string; read(b: VenueBuy): Promise<unknown> };
 
-export type WatchRuntimeOverrides = { port?: WatchPort; store?: WatchStore; alertStore?: AlertStore; telegram?: Telegram; reads?: BotChain };
+/**
+ * The composed handler: each reader in turn, each caught on its own, so
+ * one reader's failure is one log line and the next reader still runs; the
+ * buy is handed to every reader exactly once, since the watcher claims the
+ * hash before calling this.
+ */
+export const readInTurn = (readers: Reader[]) => async (b: VenueBuy): Promise<void> => {
+  for (const r of readers) {
+    await r.read(b).catch((e: unknown) => console.error(`bot watch: ${r.name} for ${b.txHash}: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`));
+  }
+};
+
+/** For tests: the parts a pass would otherwise build from the environment and the chain; orus from outside stands in for the partner (the readers gate on its answer). */
+export type WatchRuntimeOverrides = { port?: WatchPort; store?: WatchStore; alertStore?: AlertStore; copyStore?: CopyStore; links?: BotLinkStore; session?: SessionChain; telegram?: Telegram; reads?: BotChain; orus?: OrusScanner };
 
 let watcher: { run(): Promise<{ from: bigint; to: bigint; buys: number; delivered: number }>; alerts: Alerts } | undefined;
 let overrides: WatchRuntimeOverrides = {};
@@ -134,13 +161,15 @@ const build = () => {
   if (perRun !== undefined && !(Number.isInteger(perRun) && perRun > 0)) refuse("BOT_WATCH_BLOCKS_PER_RUN must be a whole number");
   const groupMin = process.env.BOT_ALERT_GROUP_MIN_ETH?.trim();
   if (groupMin && !/^\d+(\.\d{1,18})?$/.test(groupMin)) refuse("BOT_ALERT_GROUP_MIN_ETH is not an amount in ETH");
-  const groupChatId = process.env.BOT_GROUP_CHAT_ID?.trim();
-  if (groupChatId !== undefined && groupChatId !== "" && !/^-?\d+$/.test(groupChatId)) refuse("BOT_GROUP_CHAT_ID must be a Telegram chat id (a number, -100… for a supergroup)");
-  const sql = overrides.store && overrides.alertStore ? undefined : sqlFromEnv();
+  const groupChatId = groupChatIdFromEnv(refuse);
+  const signerKey = process.env.BOT_SIGNER_PRIVATE_KEY;
+  if (!overrides.session && (!signerKey || !isHex(signerKey) || signerKey.length !== 66)) refuse("BOT_SIGNER_PRIVATE_KEY must be the bot's 32-byte hex key (the one owners grant sessions to)");
+  const daily = dailyLimitsFromEnv(refuse);
+  const sql = overrides.store && overrides.alertStore && overrides.copyStore && overrides.links ? undefined : sqlFromEnv();
   const tokens = watchTokens(chainId, allowlist);
   const reads = overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: tokens[0]!, router: ROUTER, poolManager: POOL_MANAGER });
   const telegram = overrides.telegram ?? createTelegram(token!);
-  const orus = process.env.ORUS_PARTNER_API_KEY ? createOrusScanner({ apiKey: process.env.ORUS_PARTNER_API_KEY, chainId, ...(process.env.ORUS_API_BASE ? { baseUrl: process.env.ORUS_API_BASE } : {}) }) : undefined;
+  const orus = overrides.orus ?? (process.env.ORUS_PARTNER_API_KEY ? createOrusScanner({ apiKey: process.env.ORUS_PARTNER_API_KEY, chainId, ...(process.env.ORUS_API_BASE ? { baseUrl: process.env.ORUS_API_BASE } : {}) }) : undefined);
   const hey = process.env.BOT_HEY_OFF === "1" ? undefined : createHeyScanner({ chainId, ...(process.env.HEY_API_KEY ? { apiKey: process.env.HEY_API_KEY } : {}), ...(process.env.HEY_API_BASE ? { baseUrl: process.env.HEY_API_BASE } : {}) });
   const alerts = new Alerts({
     store: overrides.alertStore ?? (sql ? new NeonAlertStore(sql) : new MemoryAlertStore()),
@@ -152,18 +181,29 @@ const build = () => {
     ...(groupChatId ? { feed: { chatId: groupChatId, post: (text, keyboard) => telegram.deliver({ kind: "send", chatId: groupChatId, text, keyboard }) } } : {}),
     ...(groupMin ? { groupMinWei: parseEther(groupMin) } : {}),
   });
+  // The copy desk over this function's own parts, the way the webhook builds its own (bot-copy-runtime.ts): a wallet leader's buy is mirrored from here.
+  const copy = createCopyDesk({
+    links: overrides.links ?? (sql ? new NeonBotLinkStore(sql) : new MemoryBotLinkStore()),
+    reads,
+    session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as Hex }),
+    telegram,
+    ...(orus ? { orus } : {}),
+    ...(hey ? { hey } : {}),
+    ...daily,
+    ...(overrides.copyStore ? { store: overrides.copyStore } : {}),
+    botUsername: username!,
+    refuse,
+  });
   const inner = new Watcher({
     port: overrides.port ?? createWatchPort({ chainId, rpcUrl, poolManager: POOL_MANAGER, tokens, ownSenders: ownSendersFromEnv() }),
     store: overrides.store ?? (sql ? new NeonWatchStore(sql) : new MemoryWatchStore()),
     chainId,
     ...(perRun !== undefined ? { maxBlocksPerRun: perRun } : {}),
-    // The alerts first, then every handler another feature registered; each caught on its own, so one failure is one failure.
-    onBuy: async (b) => {
-      await alerts.onBuy(b).catch((e: unknown) => console.error(`bot watch: alerts for ${b.txHash}: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`));
-      for (const handler of watchHandlers) {
-        await handler(b).catch((e: unknown) => console.error(`bot watch: handler for ${b.txHash}: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`));
-      }
-    },
+    // The alerts first, then the desk; each caught on its own, so one failure is one failure.
+    onBuy: readInTurn([
+      { name: "alerts", read: (b) => alerts.onBuy(b) },
+      { name: "copy desk", read: (b) => copy.onVenueBuy(b) },
+    ]),
   });
   return { alerts, run: () => { alerts.beginRun(); return inner.run(); } };
 };

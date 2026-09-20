@@ -55,19 +55,21 @@
  *                                doors into the bot (buy this, follow them).
  *                                Unset: no feed; leaders and followers still
  *                                work, the mirrors are told in private.
- *                                A leader who trades from their own wallet
- *                                is posted and mirrored from the venue's
- *                                swap logs by the watcher (bot-watch.ts),
- *                                once its runtime is wired in below
+ *                                The watcher's cron posts to the same group:
+ *                                a wallet leader's venue buy (mirrored from
+ *                                the swap logs by the cron's own desk,
+ *                                bot-watch-runtime.ts) and the big buys
+ *                                (bot-alerts.ts)
  *   BOT_ORDERS_OFF               1 hides the limit buy and DCA buttons in
  *                                session mode and stops the cron at
  *                                api/bot/orders.js; otherwise the orders live
  *                                in the store beside the links and the cron
  *                                fires them (bot-orders.ts)
  *   CRON_SECRET                  the bearer Vercel's cron sends to
- *                                /api/bot/orders (and the buyback keeper);
- *                                without it the route refuses every pass,
- *                                because a pass sends executes
+ *                                /api/bot/orders and /api/bot/watch (and
+ *                                the buyback keeper); without it either
+ *                                route refuses every pass, because a pass
+ *                                sends executes and posts to the group
  *   BOT_ORDERS_PER_RUN           at most this many executes one pass of the
  *                                orders' cron sends; default 20
  *   BOT_ORDERS_CHAIN_ID          4663 (default) or 46630: the runner fires
@@ -77,10 +79,15 @@
  *                                mode and stops the chain watcher's cron at
  *                                api/bot/watch.js; otherwise the watcher
  *                                reads the venue's swap logs every five
- *                                minutes (bot-watch.ts) and posts the big
- *                                buys to the group and to the users who
- *                                asked (bot-alerts.ts), and hands every buy
- *                                to the handlers other features register
+ *                                minutes (bot-watch.ts) and hands each ETH
+ *                                buy of $CHIT or an allowlisted token to two
+ *                                readers, each caught on its own: the
+ *                                alerts (bot-alerts.ts, the group and the
+ *                                users who asked) and the copy desk (a
+ *                                wallet leader's buy mirrored and posted).
+ *                                The cron's function reads the session
+ *                                bot's own variables for that: the signer,
+ *                                the daily limits, orus, HEY, the group
  *   BOT_WATCH_CHAIN_ID           4663 (default) or 46630: the chain the
  *                                watcher reads; its cursor is per chain
  *   BOT_WATCH_BLOCKS_PER_RUN     how far the watcher's cursor moves in one
@@ -90,6 +97,12 @@
  *                                default 0.5. Each user sets their own line
  *                                on the Alerts card (bot-watch-runtime.ts
  *                                has the rest)
+ *   /api/bot/lead                no variable of its own: the Sessions page
+ *                                posts a wallet leader's signed claim there
+ *                                (bot-lead-runtime.ts), session mode only,
+ *                                answered to FLEET_ORIGIN, the nonce from
+ *                                the links' store and the leader into the
+ *                                copy store, both on DATABASE_URL
  *   BOT_ASSET_DIR                where the share card's plate and fonts are
  *                                (default landing/public/bot, shipped with
  *                                the function)
@@ -142,7 +155,8 @@ import { MemoryBotLinkStore, NeonBotLinkStore, type BotLinkStore } from "./bot-l
 import { MemoryOrderStore, NeonOrderStore, type OrderStore } from "./bot-orders.js";
 import { createSessionChain } from "./bot-session-chain.js";
 import { SessionBot, type SessionBotDeps } from "./bot-session.js";
-import { CopyDesk, MemoryCopyStore, NeonCopyStore, registerCopyWatch, type CopyStore } from "./bot-copy.js";
+import type { CopyStore } from "./bot-copy.js";
+import { createCopyDesk, dailyLimitsFromEnv } from "./bot-copy-runtime.js";
 import { MemoryAlertStore, NeonAlertStore, type AlertStore } from "./bot-alerts.js";
 import { MemoryUpdateClaims, NeonUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { DualBot, MemoryFloorStore, NeonFloorStore, type FloorStore } from "./bot-dual.js";
@@ -212,17 +226,6 @@ const updateClaimsFromEnv = (): UpdateClaims => {
   return new MemoryUpdateClaims();
 };
 
-const copyStoreFromEnv = (): CopyStore => {
-  const url = process.env.DATABASE_URL;
-  if (url) {
-    const sql = neon(url);
-    return new NeonCopyStore({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
-  }
-  if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
-  warnOnce("copy", "BOT_MEMORY_STORE=1: leaders and follows live in this instance's memory only");
-  return new MemoryCopyStore();
-};
-
 /** Session mode's standing orders (limit buys, DCA); the same store rule as the links. BOT_ORDERS_OFF=1 offers none. */
 const ordersFromEnv = (): OrderStore | undefined => {
   if (process.env.BOT_ORDERS_OFF === "1") return undefined;
@@ -263,9 +266,8 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     : process.env.FLEET_RPC_URL || process.env.ROBINHOOD_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com";
   const site = process.env.FLEET_ORIGIN || "https://chit.tools";
   const allowlist = (process.env.FLEET_TOKEN_ALLOWLIST ?? "").split(",").map((t) => t.trim()).filter(isAddress);
-  const dailyExecutes = process.env.BOT_DAILY_EXECUTES ? Number(process.env.BOT_DAILY_EXECUTES) : undefined;
-  if (dailyExecutes !== undefined && !(Number.isInteger(dailyExecutes) && dailyExecutes > 0)) refuse("BOT_DAILY_EXECUTES must be a whole number");
-  const dailyGasWei = ethFromEnv("BOT_DAILY_GAS_ETH");
+  // The daily limits are read once here and handed to the bot and its desk; the watcher's cron reads them the same way (bot-copy-runtime.ts).
+  const { dailyExecutes, dailyGasWei } = dailyLimitsFromEnv(refuse);
   const orders = overrides.orders ?? ordersFromEnv();
   // alerts: the 🔔 card writes a line per user; the watcher's cron (api/bot/watch.js) reads it.
   const alerts = overrides.alertStore ?? alertsFromEnv();
@@ -286,27 +288,17 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
   };
-  // Leaders and followers: the same reads, session and links; a follower is told in their private chat (its id is their Telegram id); the feed only with BOT_GROUP_CHAT_ID.
-  // Without orus the desk still opens but every mirror is skipped (unknown is not safe), so the operator is told once at build.
-  if (!deps.orus) warnOnce("copy-orus", "ORUS_PARTNER_API_KEY is not set: leaders and followers work, but every mirrored buy is skipped until it is");
-  const groupChatId = process.env.BOT_GROUP_CHAT_ID?.trim();
-  if (groupChatId !== undefined && groupChatId !== "" && !/^-?\d+$/.test(groupChatId)) refuse("BOT_GROUP_CHAT_ID must be a Telegram chat id (a number, -100… for a supergroup)");
-  const copy = new CopyDesk({
-    store: overrides.copyStore ?? copyStoreFromEnv(),
-    links: deps.links, reads: deps.reads, session: deps.session,
+  // Leaders and followers: the desk over the same reads, session and links (bot-copy-runtime.ts, the one factory this webhook and the watcher's cron share).
+  // This one mirrors an account leader's tapped buys; a wallet leader's venue buys reach the cron's own desk from the swap logs (bot-watch-runtime.ts).
+  const copy = createCopyDesk({
+    links: deps.links, reads: deps.reads, session: deps.session, telegram: deps.telegram,
     ...(deps.orus ? { orus: deps.orus } : {}),
     ...(deps.hey ? { hey: deps.hey } : {}),
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
-    botUsername: username!,
-    tell: (followerTgId, text) => deps.telegram.deliver({ kind: "send", chatId: followerTgId, text }),
-    ...(groupChatId ? { feed: { chatId: groupChatId, post: (text, keyboard) => deps.telegram.deliver({ kind: "send", chatId: groupChatId, text, keyboard }) } } : {}),
+    ...(overrides.copyStore ? { store: overrides.copyStore } : {}),
+    botUsername: username!, refuse,
   });
-  // Wallet leaders: the venue's ETH buys reach the desk through the watcher's handler registry (bot-watch-runtime.ts, built on a
-  // sibling branch, so it is looked up rather than imported; a build without it wires nothing). The integrator wires this
-  // directly, `registerCopyWatch(copy, watchHandlers)`, once both branches meet.
-  const watchRuntime = "./bot-watch-runtime.js";
-  void import(watchRuntime).then((m: { watchHandlers?: Parameters<typeof registerCopyWatch>[1] }) => { if (m.watchHandlers) registerCopyWatch(copy, m.watchHandlers); }).catch(() => undefined);
   return new SessionBot({ ...deps, copy });
 };
 

@@ -219,11 +219,16 @@ a pool whose opening cannot be found is skipped rather than guessed, a
 transaction the bot's own signer sent (a leader's tapped buy the desk
 already posted, a mirror, an order's fill, a user's own buy) is not
 handed on, and each hash is claimed in the store in one statement before
-its handlers run, so a pass the host kills, or two passes over one window
+its readers run, so a pass the host kills, or two passes over one window
 at once, is never a buy announced twice. What is handed on is a
-`VenueBuy`; the alerts are its first reader, and other features register
-theirs in `watchHandlers` (`src/fleet/bot-watch-runtime.ts`), each caught
-on its own. `src/fleet/bot-watch.ts`.
+`VenueBuy`, and it has two readers in turn, each caught on its own so one
+that breaks costs nothing but its own work on that buy: the alerts below,
+and the copy desk, which mirrors and posts a wallet leader's buy (the
+paragraph above). The cron's function builds its own desk over its own
+signer and stores, the same way the webhook builds the one that mirrors a
+tapped buy (`src/fleet/bot-copy-runtime.ts` is the one factory), so a
+mirror is sized, gated and posted the same whichever path brought the buy.
+`src/fleet/bot-watch.ts`, `src/fleet/bot-watch-runtime.ts`.
 
 **🔔 Alerts** on the home card, linked or not: a buy of at least the
 group's line (`BOT_ALERT_GROUP_MIN_ETH`, 0.5 by default) is posted once to
