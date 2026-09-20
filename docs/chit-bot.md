@@ -177,6 +177,23 @@ one owner cannot drain the signer's gas. Orders carry the chain they were
 placed on; `BOT_ORDERS_OFF=1` stops the cron with the buttons.
 `src/fleet/bot-orders.ts`.
 
+Leaders ride on the same session too, two ways. **⭐ Become a leader → from
+my session account** opens your tapped buys to followers: when one lands,
+the same token is bought on each follower's own session account, sized to
+the smaller of your amount and their cap, behind orus's read, inside their
+session's caps and their daily allowance, in the order they followed, then
+posted once to the group (`BOT_GROUP_CHAT_ID`) with the hash and two doors
+(buy this, follow them, by your account and never your Telegram id). **From
+my own wallet** is for someone who trades outside the bot and will not move
+into it: the bot mints a one-time code and opens the Sessions page with
+`?lead=`, the wallet you trade from signs one message (no account, no
+session, nothing moves), and the watcher reads that wallet's ETH buys from
+the venue's swap logs and mirrors and posts them the same way, telling you
+in private how many followed; the list marks you "trades from their own
+wallet". Either way your sells and your standing orders are never mirrored,
+so a follower's exit is their own, and close leader stops it any time.
+`src/fleet/bot-copy.ts`, `bot-copy-cards.ts`, `bot-lead-runtime.ts`.
+
 ## What is built, what is next
 
 Built (branch `feat/chit-bot`): the playground, end to end, buttons and

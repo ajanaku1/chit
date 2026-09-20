@@ -54,7 +54,11 @@
  *                                the second it lands, with the hash and two
  *                                doors into the bot (buy this, follow them).
  *                                Unset: no feed; leaders and followers still
- *                                work, the mirrors are told in private
+ *                                work, the mirrors are told in private.
+ *                                A leader who trades from their own wallet
+ *                                is posted and mirrored from the venue's
+ *                                swap logs by the watcher (bot-watch.ts),
+ *                                once its runtime is wired in below
  *   BOT_ORDERS_OFF               1 hides the limit buy and DCA buttons in
  *                                session mode and stops the cron at
  *                                api/bot/orders.js; otherwise the orders live
@@ -121,7 +125,7 @@ import { MemoryBotLinkStore, NeonBotLinkStore, type BotLinkStore } from "./bot-l
 import { MemoryOrderStore, NeonOrderStore, type OrderStore } from "./bot-orders.js";
 import { createSessionChain } from "./bot-session-chain.js";
 import { SessionBot, type SessionBotDeps } from "./bot-session.js";
-import { CopyDesk, MemoryCopyStore, NeonCopyStore, type CopyStore } from "./bot-copy.js";
+import { CopyDesk, MemoryCopyStore, NeonCopyStore, registerCopyWatch, type CopyStore } from "./bot-copy.js";
 import { MemoryUpdateClaims, NeonUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { DualBot, MemoryFloorStore, NeonFloorStore, type FloorStore } from "./bot-dual.js";
 
@@ -258,10 +262,18 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     store: overrides.copyStore ?? copyStoreFromEnv(),
     links: deps.links, reads: deps.reads, session: deps.session,
     ...(deps.orus ? { orus: deps.orus } : {}),
+    ...(deps.hey ? { hey: deps.hey } : {}),
+    ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
+    ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
     botUsername: username!,
     tell: (followerTgId, text) => deps.telegram.deliver({ kind: "send", chatId: followerTgId, text }),
     ...(groupChatId ? { feed: { chatId: groupChatId, post: (text, keyboard) => deps.telegram.deliver({ kind: "send", chatId: groupChatId, text, keyboard }) } } : {}),
   });
+  // Wallet leaders: the venue's ETH buys reach the desk through the watcher's handler registry (bot-watch-runtime.ts, built on a
+  // sibling branch, so it is looked up rather than imported; a build without it wires nothing). The integrator wires this
+  // directly, `registerCopyWatch(copy, watchHandlers)`, once both branches meet.
+  const watchRuntime = "./bot-watch-runtime.js";
+  void import(watchRuntime).then((m: { watchHandlers?: Parameters<typeof registerCopyWatch>[1] }) => { if (m.watchHandlers) registerCopyWatch(copy, m.watchHandlers); }).catch(() => undefined);
   return new SessionBot({ ...deps, copy });
 };
 

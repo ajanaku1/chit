@@ -11,7 +11,10 @@
  * offers it. The copy desk's cards promise only what the desk does: tapped
  * buys mirrored, orders and sells not; the feed's follow door names the
  * leader's account, never their Telegram id; a leader's mirrors are given
- * what is left of the request's sixty seconds, receipts included.
+ * what is left of the request's sixty seconds, receipts included. Become a
+ * leader asks from where, the account or the wallet; the wallet choice
+ * mints a nonce and sends the Sessions page's lead link, and a wallet
+ * leader's cards say the wallet and what is copied from it.
  */
 
 import assert from "node:assert/strict";
@@ -234,10 +237,17 @@ test("without a copy desk the home card has no leader buttons; with one, a linke
   assert.deepEqual(buttons().filter((b) => /leaders|follows|lead:/.test(b)), ["leaders", "follows", "lead:on"]);
 });
 
-test("become a leader takes the Telegram username as the handle; the card then offers close leader; the list shows the leader with a short account and the count, without a follow button for yourself", async () => {
+test("⭐ Become a leader asks from where, the account or the wallet, and says what each means; the account choice takes the Telegram username as the handle; the card then offers close leader; the list shows the leader with a short account and the count, without a follow button for yourself", async () => {
   const { bot, buttons, links, telegram, copy } = withCopy();
   await linked(links);
   await bot.handle(asUser(7, "lead:on", { username: "ogle", first_name: "O" }));
+  assert.match(telegram.last(), /<b>become a leader<\/b>\nwhere do you trade from\?/);
+  assert.match(telegram.last(), /<b>my session account<\/b>: every buy you tap in this bot that lands is posted to the feed and mirrored/);
+  assert.match(telegram.last(), /<b>my own wallet<\/b>: you sign one message on the Sessions page with the wallet you trade from \(no account, no session, no key handed over\), and every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted and mirrored the same way/);
+  assert.match(telegram.last(), /either way your sells and your standing orders are never mirrored/);
+  assert.deepEqual(buttons(), ["lead:acct", "lead:wallet", "home"]);
+  assert.equal(await copy.leader("7"), undefined, "asking opens nobody");
+  await bot.handle(asUser(7, "lead:acct", { username: "ogle", first_name: "O" }));
   assert.match(telegram.last(), /you are a leader as <b>@ogle<\/b>/);
   assert.match(telegram.last(), new RegExp(`<code>${ACCOUNT}</code> is public on the leaders list and on the feed's follow button now \\(your telegram id never is\\)`));
   assert.match(telegram.last(), /every buy you tap here that lands is posted to the feed and mirrored/);
@@ -259,7 +269,7 @@ test("become a leader takes the Telegram username as the handle; the card then o
 test("a leader with no username and no first name is asked once for a name, and the reply opens them", async () => {
   const { bot, links, telegram, copy } = withCopy();
   await linked(links);
-  await bot.handle(asUser(7, "lead:on"));
+  await bot.handle(asUser(7, "lead:acct"));
   assert.match(telegram.last(), /what should followers call you/);
   await bot.handle(dm("lucian", "what should"));
   assert.equal((await copy.leader("7"))!.handle, "lucian");
@@ -269,16 +279,16 @@ test("a first name that starts with @ or reads as the project is not a handle: t
   const { bot, links, telegram, copy } = withCopy();
   await linked(links);
   await followerLinked(links);
-  await bot.handle(asUser(7, "lead:on", { first_name: "@lucian" }));
+  await bot.handle(asUser(7, "lead:acct", { first_name: "@lucian" }));
   assert.match(telegram.last(), /what should followers call you/, "a first name is any text; one wearing an @ is not taken as a handle");
   await bot.handle(dm("@lucian", "what should"));
   assert.match(telegram.last(), /that name will not do: .*no @/);
   assert.equal(await copy.leader("7"), undefined);
-  await bot.handle(asUser(7, "lead:on", { first_name: "chit support" }));
+  await bot.handle(asUser(7, "lead:acct", { first_name: "chit support" }));
   assert.match(telegram.last(), /what should followers call you/);
   await bot.handle(dm("lucian", "what should"));
   assert.equal((await copy.leader("7"))!.handle, "lucian");
-  await bot.handle(asUser(8, "lead:on", { first_name: "Lucian" }));
+  await bot.handle(asUser(8, "lead:acct", { first_name: "Lucian" }));
   assert.match(telegram.last(), /not a leader yet: that name is already on the leaders list\. tap ⭐ Become a leader again and reply with another\./);
   assert.equal(await copy.leader("8"), undefined);
 });
@@ -287,7 +297,7 @@ test("following: the list's button opens the leader's card, set a cap asks by re
   const { bot, buttons, links, telegram, copy } = withCopy();
   await linked(links);
   await followerLinked(links);
-  await bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
   await bot.handle(asUser(8, "leaders"));
   assert.ok(buttons().includes("fl:7"));
   await bot.handle(asUser(8, "fl:7"));
@@ -326,7 +336,7 @@ test("a leader's landed buy is mirrored into the follower's account at the small
   const { bot, links, telegram, session, posted } = withCopy();
   await linked(links);
   await followerLinked(links);
-  await bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
   await bot.handle(asUser(8, "askf:7"));
   await bot.handle(says(8, "0.005", "how much"));
   await bot.handle(tap(`b:${PEPE}:0.01`));
@@ -344,7 +354,7 @@ test("a leader's landed buy is mirrored into the follower's account at the small
   const quiet = withCopy({ session: { ...session.s, execute: async () => ({ hash: ("0x" + "cd".repeat(32)) as Hex, landed: false }) } });
   await linked(quiet.links);
   await followerLinked(quiet.links);
-  await quiet.bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await quiet.bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
   await quiet.bot.handle(asUser(8, "askf:7"));
   await quiet.bot.handle(says(8, "0.005", "how much"));
   await quiet.bot.handle(tap(`b:${PEPE}:0.01`));
@@ -356,7 +366,7 @@ test("a mirrored buy spends the follower's own daily allowance, the same one the
   const { bot, links, telegram, session } = withCopy({ dailyExecutes: 1 });
   await linked(links);
   await followerLinked(links);
-  await bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
   await bot.handle(asUser(8, "askf:7"));
   await bot.handle(says(8, "0.005", "how much"));
   // The leader's first buy mirrors once into the follower: that is the follower's one execute today.
@@ -370,7 +380,7 @@ test("a mirrored buy spends the follower's own daily allowance, the same one the
   const fresh = withCopy({ dailyExecutes: 2 });
   await linked(fresh.links);
   await followerLinked(fresh.links);
-  await fresh.bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await fresh.bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
   await fresh.bot.handle(asUser(8, "askf:7"));
   await fresh.bot.handle(says(8, "0.005", "how much"));
   await fresh.bot.handle({ callback_query: { id: "cb", data: `b:${PEPE}:0.01`, from: { id: 8 }, message: { message_id: 9, chat: { id: 8, type: "private" } } } });
@@ -386,7 +396,7 @@ test("a failure in the feed or the mirrors after the leader's buy landed is caug
   const { bot, links, telegram, session } = withCopy({}, { post: async () => { throw new Error("telegram: 429"); } });
   await linked(links);
   await followerLinked(links);
-  await bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
   await bot.handle(asUser(8, "askf:7"));
   await bot.handle(says(8, "0.005", "how much"));
   await bot.handle(tap(`b:${PEPE}:0.01`, false, 77));
@@ -509,7 +519,7 @@ test("a leader's mirrors are given what is left of the request's budget: after a
   await linked(links);
   await followerLinked(links);
   await links.putLink({ tgId: "9", account: "0x00000000000000000000000000000000000000cc", owner: OWNER, chainId: 4663, nonce: "n", signature: "0x00", linkedAt: clock.toISOString() });
-  await bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
   await bot.handle(asUser(8, "askf:7"));
   await bot.handle(says(8, "0.005", "how much"));
   await bot.handle(asUser(9, "askf:7"));
@@ -529,7 +539,7 @@ test("a leader's mirrors are given what is left of the request's budget: after a
   const quick = withCopy();
   await linked(quick.links);
   await followerLinked(quick.links);
-  await quick.bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await quick.bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
   await quick.bot.handle(asUser(8, "askf:7"));
   await quick.bot.handle(says(8, "0.005", "how much"));
   await quick.bot.handle(tap(`b:${PEPE}:0.01`));
@@ -542,7 +552,7 @@ test("a leader's dca fired by the orders' cron is neither posted nor mirrored, a
   const { bot, links, session, telegram, posted, store } = withCopy({ orders });
   await linked(links);
   await followerLinked(links);
-  await bot.handle(asUser(7, "lead:on", { username: "ogle" }));
+  await bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
   await bot.handle(asUser(8, "askf:7"));
   await bot.handle(says(8, "0.005", "how much"));
   await bot.handle(tap(`dca:${PEPE}`));
@@ -706,4 +716,53 @@ test("the daily execute and gas limits count sells with buys, a sale at its own 
   await tight.bot.handle(tap(`s:${PEPE}:50`));
   assert.equal(tight.session.sales.length, 1, "the second sale is over the day's gas");
   assert.match(tight.telegram.last(), /fronted its daily gas/);
+});
+
+test("the wallet choice mints a nonce of this telegram's and sends the Sessions page's lead link with the name Telegram gave as a hint, without the @; the card says one signature, no transaction, what is copied and what never is", async () => {
+  const { bot, buttons, links, telegram, copy } = withCopy();
+  await linked(links);
+  await bot.handle(asUser(7, "lead:wallet", { username: "ogle" }));
+  assert.match(telegram.last(), /<b>lead from your own wallet<\/b>/);
+  assert.match(telegram.last(), /press <b>Lead from this wallet<\/b>: one signature, no transaction, nothing moves\. the link is good for 15 minutes/);
+  assert.match(telegram.last(), /every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted to the feed with the hash and mirrored into your followers' accounts/);
+  assert.match(telegram.last(), /your sells are never mirrored, and the wallet's own trades are never touched\. close leader on your card stops the feed and the mirrors, any time/);
+  const [href, back] = buttons();
+  assert.ok(href!.startsWith("https://chit.tools/app/sessions.html?lead=") && /lead=[0-9a-f]{32}&handle=ogle$/.test(href!), href);
+  assert.equal(back, "home");
+  const nonce = href!.split("lead=")[1]!.split("&")[0]!;
+  assert.equal((await links.getNonce(nonce))!.tgId, "7", "the nonce is this telegram's, in the link store");
+  assert.equal(await copy.leader("7"), undefined, "nobody leads until the wallet signs");
+  // No name from Telegram: no hint, the page asks.
+  await bot.handle(asUser(7, "lead:wallet", { first_name: "@x" }));
+  assert.match(buttons()[0]!, /lead=[0-9a-f]{32}$/);
+});
+
+test("a wallet leader's cards: the list marks them and says what is copied from a wallet, the card shows the wallet and the words for it, the follow confirmation too; the feed's door opens their card by the wallet", async () => {
+  const { bot, buttons, links, telegram, copy } = withCopy();
+  await linked(links);
+  await followerLinked(links);
+  const { privateKeyToAccount } = await import("viem/accounts");
+  const { leadMessage } = await import("../../src/fleet/bot-copy.js");
+  const whale = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
+  const nonce = await copy.leadNonce("7");
+  await copy.claimWallet("7", "whale", whale.address, await whale.signMessage({ message: leadMessage(4663, whale.address, nonce) }), nonce, 4663, clock);
+  await bot.handle(dm("/start"));
+  assert.ok(buttons().includes("lead:off"), "a wallet leader closes from the same button");
+  await bot.handle(asUser(8, "leaders"));
+  assert.match(telegram.last(), /one marked "trades from their own wallet" is copied from the chain instead: every ETH buy that wallet makes on the venue/);
+  assert.match(telegram.last(), new RegExp(`<b>whale</b> · <code>${whale.address.slice(0, 6)}…${whale.address.slice(-4)}</code> · trades from their own wallet · 0 followers`));
+  await bot.handle(asUser(8, "fl:7"));
+  assert.match(telegram.last(), new RegExp(`wallet <code>${whale.address}</code> · trades from their own wallet · 0 followers`));
+  assert.match(telegram.last(), /when that wallet buys a token with ETH on the venue, the same token is bought on your session account within a few minutes, sized to the smaller of their amount and your cap/);
+  assert.match(telegram.last(), /they trade from their own wallet: every ETH buy that wallet makes on the venue is mirrored, read from the chain within a few minutes of landing, and their sells are never mirrored, so getting out of a mirrored position is yours alone/);
+  assert.doesNotMatch(telegram.last(), /only a buy they tap in this bot/, "the account words are not on a wallet leader's card");
+  assert.match(telegram.last(), /orus's read first/);
+  await bot.handle(asUser(8, "askf:7"));
+  await bot.handle(says(8, "0.02", "how much"));
+  assert.match(telegram.last(), /following <b>whale<\/b> at <code>0.02 ETH<\/code> a buy\.\ntheir next ETH buy from their wallet on the venue is mirrored on your account within a few minutes, inside your session's caps and behind orus's read; their sells are not, so the exit is yours/);
+  await bot.handle(says(8, `/start f-${whale.address}`));
+  assert.match(telegram.last(), /<b>follow whale<\/b>/, "the feed's door is the wallet they proved");
+  await bot.handle(asUser(7, "lead:off"));
+  assert.match(telegram.last(), /leader closed/);
+  assert.equal(await copy.leader("7"), undefined);
 });

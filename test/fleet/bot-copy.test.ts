@@ -11,15 +11,20 @@
  * session bot hands one in; the feed gets one message per landed buy,
  * after the mirrors, with the two doors into the bot (the follow door by
  * the leader's account, never their Telegram id), and nothing for a closed
- * leader or without a feed.
+ * leader or without a feed. A wallet leader's claim needs a fresh nonce
+ * and the wallet's own signature (a stranger's is refused, a nonce is one
+ * claim, a wallet is one leader's), and a venue buy by a claimed open
+ * leader's wallet is mirrored and announced like a bot buy, told to the
+ * leader, once per hash; anyone else's is ignored.
  */
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { type Address, type Hex, parseEther } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import type { BotChain, TokenInfo } from "../../src/fleet/bot-chain.js";
-import { CopyDesk, MAX_FOLLOW_CAP_WEI, MIRROR_SEND_MS, MemoryCopyStore } from "../../src/fleet/bot-copy.js";
-import { MemoryBotLinkStore } from "../../src/fleet/bot-link.js";
+import { CopyDesk, LeadError, MAX_FOLLOW_CAP_WEI, MIRROR_SEND_MS, MemoryCopyStore, leadMessage, registerCopyWatch, type VenueBuy } from "../../src/fleet/bot-copy.js";
+import { MemoryBotLinkStore, NONCE_TTL_MS } from "../../src/fleet/bot-link.js";
 import type { OrusScan } from "../../src/fleet/bot-orus.js";
 import type { SessionChain } from "../../src/fleet/bot-session-chain.js";
 import type { Keyboard } from "../../src/fleet/bot-telegram.js";
@@ -39,7 +44,7 @@ const reads = {
 } as unknown as BotChain;
 const safe: OrusScan = { symbol: "PEPE", honeypot: false, buyTaxPct: 0, sellTaxPct: 0, bundlersPct: null, top10Pct: null, holders: 100, liquidityUsd: 50_000, lpBurnedPct: null, marketCapUsd: null, deployerLaunches: 1, checkedAt: clock.toISOString() };
 
-const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; mirrorBudgetMs?: number; feed?: boolean } = {}) => {
+const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; mirrorBudgetMs?: number; feed?: boolean; dailyExecutes?: number } = {}) => {
   const store = new MemoryCopyStore();
   const links = new MemoryBotLinkStore();
   const calls: { account: Address; value: bigint }[] = [];
@@ -69,6 +74,7 @@ const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; 
     ...(orus ? { orus } : {}),
     ...(opts.tokenDayCapWei !== undefined ? { tokenDayCapWei: opts.tokenDayCapWei } : {}),
     ...(opts.mirrorBudgetMs !== undefined ? { mirrorBudgetMs: opts.mirrorBudgetMs } : {}),
+    ...(opts.dailyExecutes !== undefined ? { dailyExecutes: opts.dailyExecutes } : {}),
     tell: async (to, text) => { told.push({ to, text }); },
     botUsername: "usechit_bot",
     ...(opts.feed === false ? {} : { feed: { chatId: "-100", post: async (text, keyboard) => { posted.push({ text, keyboard }); } } }),
@@ -284,7 +290,7 @@ test("announce: a handle is escaped even when the store holds markup, and withou
   const s = setup({ orus: "off" });
   await s.link("1", 1);
   // The desk refuses such a name; a row written some other way is still drawn safely.
-  await s.store.putLeader({ tgId: "1", account: acct(1), handle: "<b>x</b>", since: clock.toISOString(), open: true });
+  await s.store.putLeader({ tgId: "1", account: acct(1), handle: "<b>x</b>", since: clock.toISOString(), open: true, kind: "account" });
   await s.desk.announce("1", PEPE, parseEther("0.01"), HASH, info, undefined, undefined);
   assert.match(s.posted[0]!.text, /^<b>&lt;b&gt;x&lt;\/b&gt;<\/b> bought/);
   assert.equal(s.posted[0]!.text.split("\n").length, 1);
@@ -297,4 +303,168 @@ test("announce: given the mirrors it says how many follower accounts the buy rea
   const mirrors = await s.desk.mirror("1", PEPE, parseEther("0.05"));
   await s.desk.announce("1", PEPE, parseEther("0.05"), HASH, info, safe, undefined, mirrors);
   assert.match(s.posted[0]!.text, /\nmirrored into 1 of 2 follower accounts, already landed or sent$/);
+});
+
+// ---------- leaders from their own wallet ----------
+
+const WHALE = privateKeyToAccount("0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");
+const STRANGER = privateKeyToAccount("0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e872092edffba");
+const CHAIN = 4663;
+const signedBy = (who: typeof WHALE, nonce: string, wallet: Address = WHALE.address, chainId = CHAIN) => who.signMessage({ message: leadMessage(chainId, wallet, nonce) });
+const refused = (p: Promise<unknown>, status: number, why: RegExp) => assert.rejects(p, (e: unknown) => e instanceof LeadError && e.status === status && why.test(e.message), `${status} ${why}`);
+const venueBuy = (over: Partial<VenueBuy> = {}): VenueBuy => ({ block: 100n, txHash: ("0x" + "cd".repeat(32)) as Hex, buyer: WHALE.address, token: PEPE, ethInWei: parseEther("0.05"), tokensOut: 1n, poolId: ("0x" + "11".repeat(32)) as Hex, ...over });
+
+test("claim: a fresh nonce of this telegram's and the wallet's own signature make a wallet leader, no link needed; the wallet is the public address and the nonce is spent; a stranger's signature, another chain's, a foreign or expired nonce and junk are refused by name without spending the nonce", async () => {
+  const s = setup();
+  const nonce = await s.desk.leadNonce("9");
+  assert.match(nonce, /^[0-9a-f]{32}$/);
+  assert.equal((await s.links.getNonce(nonce))!.tgId, "9", "the link store's nonce table, the same one the link uses");
+  await refused(s.desk.claimWallet("9", "whale", WHALE.address, await signedBy(STRANGER, nonce), nonce, CHAIN, clock), 403, /not this wallet's/);
+  await refused(s.desk.claimWallet("9", "whale", WHALE.address, await signedBy(WHALE, nonce, WHALE.address, 46630), nonce, CHAIN, clock), 403, /not this wallet's/);
+  await refused(s.desk.claimWallet("8", "whale", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock), 404, /nonce unknown/);
+  await refused(s.desk.claimWallet("9", "@whale", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock), 400, /no @/);
+  await refused(s.desk.claimWallet("9", "chit team", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock), 400, /that name will not do/);
+  await refused(s.desk.claimWallet("9", "", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock), 400, /needs a name/);
+  await refused(s.desk.claimWallet("9", "whale", "nope", "0x00", nonce, CHAIN, clock), 400, /wallet must be/);
+  await refused(s.desk.claimWallet("9", "whale", WHALE.address, "0x1234", nonce, CHAIN, clock), 400, /signature must be/);
+  await refused(s.desk.claimWallet("9", "whale", WHALE.address, await signedBy(WHALE, nonce), "zz", CHAIN, clock), 400, /nonce is not one of ours/);
+  await refused(s.desk.claimWallet("9", "whale", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, new Date(clock.getTime() + NONCE_TTL_MS + 1)), 410, /expired/);
+  assert.equal((await s.links.getNonce(nonce))!.usedAt, null, "no refusal spent the nonce");
+  const l = await s.desk.claimWallet("9", "whale", WHALE.address.toLowerCase(), await signedBy(WHALE, nonce), nonce, CHAIN, clock);
+  assert.equal(l.kind, "wallet");
+  assert.equal(l.wallet, WHALE.address, "checksummed, whatever case the page sent");
+  assert.equal(l.account, WHALE.address, "the wallet is what the list and the feed's follow door show");
+  assert.equal(l.handle, "whale");
+  assert.ok(l.open);
+  assert.deepEqual((await s.desk.leaders()).map((x) => x.tgId), ["9"]);
+  assert.equal((await s.desk.leaderByWallet(WHALE.address.toLowerCase() as Address))!.tgId, "9");
+  assert.equal((await s.desk.leaderAt(WHALE.address))!.tgId, "9", "the feed's door finds them by the wallet");
+  // The proof is spent: the same claim again is a replay.
+  await refused(s.desk.claimWallet("9", "whale", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock), 409, /already used/);
+});
+
+test("claim: one wallet, one leader; the same telegram may claim it again (a renewal keeps their since and reopens them), another's is refused even when the holder is closed; a name another open leader has is refused; an empty name keeps the one they had", async () => {
+  const s = setup();
+  await s.link("1", 1);
+  await s.desk.becomeLeader("1", "@ogle");
+  let nonce = await s.desk.leadNonce("9");
+  await refused(s.desk.claimWallet("9", "@OGLE", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock), 400, /no @/);
+  const first = await s.desk.claimWallet("9", "whale", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock);
+  nonce = await s.desk.leadNonce("8");
+  await refused(s.desk.claimWallet("8", "Whale", STRANGER.address, await signedBy(STRANGER, nonce, STRANGER.address), nonce, CHAIN, clock), 409, /already on the leaders list/);
+  await refused(s.desk.claimWallet("8", "other", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock), 409, /already leads for another telegram/);
+  assert.equal(await s.desk.leader("8"), undefined);
+  await s.desk.closeLeader("9");
+  await refused(s.desk.claimWallet("8", "other", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock), 409, /already leads for another telegram/);
+  nonce = await s.desk.leadNonce("9");
+  const later = new Date(clock.getTime() + 60_000);
+  const again = await s.desk.claimWallet("9", "", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, later);
+  assert.equal(again.handle, "whale", "an empty name keeps the one they had");
+  assert.equal(again.since, first.since, "a renewal, not a new leader");
+  assert.ok(again.open, "and it reopens them");
+});
+
+test("claim then becomeLeader: a wallet leader who opens from their account again is an account leader with the wallet kept, so their venue buys are no longer mirrored and nobody else can claim the wallet", async () => {
+  const s = setup();
+  await s.link("9", 9);
+  const nonce = await s.desk.leadNonce("9");
+  await s.desk.claimWallet("9", "whale", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock);
+  const l = await s.desk.becomeLeader("9", "whale");
+  assert.equal(l.kind, "account");
+  assert.equal(l.account, acct(9));
+  assert.equal(l.wallet, WHALE.address);
+  assert.equal(await s.desk.onVenueBuy(venueBuy()), undefined, "an account leader's own wallet buys are theirs alone");
+  assert.equal(s.posted.length, 0);
+  const other = await s.desk.leadNonce("8");
+  await refused(s.desk.claimWallet("8", "other", WHALE.address, await signedBy(WHALE, other), other, CHAIN, clock), 409, /already leads for another telegram/);
+});
+
+const walletLeaderWithFollowers = async (s: ReturnType<typeof setup>, caps: string[]) => {
+  const nonce = await s.desk.leadNonce("9");
+  await s.desk.claimWallet("9", "whale", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock);
+  for (const [i, cap] of caps.entries()) { await s.link(String(i + 2), i + 2); await s.desk.follow(String(i + 2), "9", parseEther(cap)); }
+};
+
+test("onVenueBuy: a buy by a claimed open leader's wallet is mirrored in the fixed order at the smaller of the amounts, posted once to the feed after the mirrors with the follow door on the wallet, and the leader is told how many followed; anyone else's buy, and a closed leader's, is nothing", async () => {
+  const s = setup();
+  await walletLeaderWithFollowers(s, ["0.01", "0.5"]);
+  assert.equal(await s.desk.onVenueBuy(venueBuy({ buyer: STRANGER.address })), undefined, "a wallet nobody claimed");
+  assert.equal(s.calls.length, 0);
+  assert.equal(s.posted.length, 0);
+  const out = await s.desk.onVenueBuy(venueBuy({ buyer: WHALE.address.toLowerCase() as Address }));
+  assert.deepEqual(out!.map((m) => [m.followerTgId, m.outcome, m.ethWei]), [["2", "landed", parseEther("0.01")], ["3", "landed", parseEther("0.05")]]);
+  assert.deepEqual(s.calls, [{ account: acct(2), value: parseEther("0.01") }, { account: acct(3), value: parseEther("0.05") }]);
+  assert.equal(s.posted.length, 1);
+  assert.match(s.posted[0]!.text, /^<b>whale<\/b> bought <code>0.05 ETH<\/code> of <b>PEPE<\/b> · <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xcdcd/);
+  assert.match(s.posted[0]!.text, /\nmirrored into 2 of 2 follower accounts, already landed or sent$/);
+  assert.deepEqual(s.posted[0]!.keyboard[0]![1], { text: "follow whale", url: `https://t.me/usechit_bot?start=f-${WHALE.address}` }, "the follow door carries the wallet they proved, never their Telegram id");
+  assert.ok(!JSON.stringify(s.posted[0]).includes("f-9"));
+  const toLeader = s.told.filter((t) => t.to === "9");
+  assert.equal(toLeader.length, 1);
+  assert.match(toLeader[0]!.text, /^your buy of <code>0.05 ETH<\/code> of <b>PEPE<\/b> from your wallet \(<a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0xcdcd[0-9a-f]+">0xcdcdcdcd…<\/a>\) was posted to the feed and mirrored to 2 of 2 followers\.$/);
+  assert.deepEqual(s.told.filter((t) => t.to !== "9").map((t) => t.to), ["2", "3"], "each follower was told too");
+  assert.equal((await s.store.recent("9", 5)).length, 2, "the log has both");
+  await s.desk.closeLeader("9");
+  assert.equal(await s.desk.onVenueBuy(venueBuy({ txHash: ("0x" + "ee".repeat(32)) as Hex })), undefined, "closed: nothing");
+  assert.equal(s.calls.length, 2);
+  assert.equal(s.posted.length, 1);
+});
+
+test("onVenueBuy: without followers the leader is still posted and told that nobody follows yet; without a feed the leader is told the buy was seen", async () => {
+  const s = setup();
+  await walletLeaderWithFollowers(s, []);
+  assert.deepEqual(await s.desk.onVenueBuy(venueBuy()), []);
+  assert.equal(s.posted.length, 1, "the feed's message needs no follower");
+  assert.match(s.told[0]!.text, /was posted to the feed; nobody follows you yet\.$/);
+  const quiet = setup({ feed: false });
+  await walletLeaderWithFollowers(quiet, ["0.01"]);
+  await quiet.desk.onVenueBuy(venueBuy());
+  assert.match(quiet.told.find((t) => t.to === "9")!.text, /from your wallet \(.*\) was mirrored to 1 of 1 follower\.$/);
+});
+
+test("onVenueBuy: the same transaction hash is not mirrored twice, whichever path saw it first; a different hash from the same wallet is", async () => {
+  const s = setup();
+  await walletLeaderWithFollowers(s, ["0.01"]);
+  const first = await s.desk.onVenueBuy(venueBuy());
+  assert.equal(first!.length, 1);
+  assert.equal(await s.desk.onVenueBuy(venueBuy()), undefined, "delivered again: nothing");
+  assert.equal(await s.desk.onVenueBuy(venueBuy({ txHash: ("0x" + "CD".repeat(32)) as Hex })), undefined, "the same hash in another case is the same hash");
+  assert.equal(s.calls.length, 1);
+  assert.equal(s.posted.length, 1);
+  assert.equal(s.told.filter((t) => t.to === "9").length, 1);
+  // A hash the feed already posted from the bot's own path is remembered the same way.
+  await s.desk.announce("9", PEPE, parseEther("0.01"), HASH, info, safe, undefined);
+  assert.equal(await s.desk.onVenueBuy(venueBuy({ txHash: HASH })), undefined);
+  assert.equal(s.calls.length, 1);
+  const second = await s.desk.onVenueBuy(venueBuy({ txHash: ("0x" + "ef".repeat(32)) as Hex, ethInWei: parseEther("0.02") }));
+  assert.equal(second!.length, 1);
+  assert.equal(s.calls.length, 2);
+});
+
+test("onVenueBuy: the gate holds and the leader hears the skips; the follower's daily allowance is counted from the mirrors' log, so the venue path cannot run past what the session bot would allow", async () => {
+  const hp = setup({ orus: { ...safe, honeypot: true } });
+  await walletLeaderWithFollowers(hp, ["0.01"]);
+  const out = await hp.desk.onVenueBuy(venueBuy());
+  assert.deepEqual(out!.map((m) => [m.outcome, m.why]), [["skipped", "orus says honeypot"]]);
+  assert.equal(hp.calls.length, 0);
+  assert.match(hp.told.find((t) => t.to === "9")!.text, /mirrored to 0 of 1 follower, 1 skipped \(each was told why\)\.$/);
+  assert.match(hp.posted[0]!.text, /mirrored into 0 of 1 follower account/);
+  const tight = setup({ dailyExecutes: 3 });
+  await walletLeaderWithFollowers(tight, ["0.01"]);
+  // Two mirrors already landed today for this follower, from an earlier run of the watcher; a third was skipped and counts for nothing.
+  for (const [h, outcome] of [["aa", "landed"], ["bb", "sent"], ["cc", "skipped"]] as const) await tight.store.log({ leaderTgId: "9", followerTgId: "2", token: PEPE, ethWei: parseEther("0.01"), hash: ("0x" + h.repeat(32)) as Hex, outcome, why: "", at: clock.toISOString() });
+  assert.deepEqual((await tight.desk.onVenueBuy(venueBuy()))!.map((m) => m.outcome), ["landed"], "two so far, the cap is three: the third runs");
+  assert.deepEqual((await tight.desk.onVenueBuy(venueBuy({ txHash: ("0x" + "ef".repeat(32)) as Hex })))!.map((m) => [m.outcome, m.why]), [["skipped", "that is 3 buys today from your account; again tomorrow"]]);
+  assert.equal(tight.calls.length, 1);
+});
+
+test("registerCopyWatch puts the desk's handler in the watcher's registry, and the handler is onVenueBuy", async () => {
+  const s = setup();
+  await walletLeaderWithFollowers(s, ["0.01"]);
+  const registry: ((b: VenueBuy) => Promise<void>)[] = [];
+  registerCopyWatch(s.desk, registry);
+  assert.equal(registry.length, 1);
+  await registry[0]!(venueBuy());
+  assert.equal(s.calls.length, 1);
+  assert.equal(s.posted.length, 1);
 });

@@ -78,6 +78,18 @@ signed.
 Why not the Telegram deep link for step 3: a signature is 130 hex characters
 and `start=` carries 64. Why not skip the signature: see the paragraph above.
 
+The same shape proves a leader's own wallet. A leader who trades outside the
+bot (a whale does not move a fleet into a session account to be followed)
+taps **⭐ Become a leader → from my own wallet**; the bot mints a nonce from
+the link's store and opens `sessions.html?lead=<nonce>`, where the wallet
+signs `chit-bot-lead|4663|<wallet>|<nonce>` and the page POSTs `{nonce,
+wallet, signature, handle}` to `/api/bot/lead`. No account, no session, no
+chain read: the signature is the proof, the nonce is one claim, a wallet is
+one leader's. From then on the watcher (`bot-watch.ts`, its own cron) reads
+that wallet's ETH buys from the venue's swap logs and the desk mirrors and
+posts them as it does a tapped buy; sells are never mirrored. The name is a
+plain one, because a page cannot prove a Telegram username.
+
 ## Defaults the page suggests
 
 The grant is the owner's; the page only fills the form. Recommended defaults
