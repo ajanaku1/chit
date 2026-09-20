@@ -42,6 +42,7 @@ import {
   type BotSettings, type BotWallet, type BotWalletStore, type FleetRecordLike,
 } from "./bot-wallets.js";
 import type { HeyScanner } from "./bot-hey.js";
+import type { TokenPlateRenderer } from "./bot-token-card.js";
 import { heyLine } from "./bot-hey.js";
 import type { OrusScanner } from "./bot-orus.js";
 import { orusLine } from "./bot-orus.js";
@@ -63,6 +64,8 @@ export type BotDeps = {
   orus?: OrusScanner;
   /** HEY, the builder line on the token card; absent means the card has no such line. */
   hey?: HeyScanner;
+  /** Draws the token card as a plate with the partners' marks on it; absent means the card is text. */
+  plate?: TokenPlateRenderer;
   /** Seals the playground keys at rest and keys the referral codes. */
   keySecret: string;
   /** The bot's @username, for links. */
@@ -281,8 +284,8 @@ export class ChitBot {
    * text message cannot become a photo nor a photo a text, so those cross
    * the line as a fresh message; a caption that would not fit goes as text.
    */
-  async #out(chatId: string, messageId: number | undefined, text: string, keyboard?: Keyboard, banner?: BannerKey): Promise<void> {
-    const photo = banner ? this.#d.banners?.[banner] : undefined;
+  async #out(chatId: string, messageId: number | undefined, text: string, keyboard?: Keyboard, banner?: BannerKey | { png: Uint8Array }): Promise<void> {
+    const photo = banner === undefined ? undefined : typeof banner === "string" ? this.#d.banners?.[banner] : banner.png;
     const overBanner = messageId !== undefined && this.#bannerMessages.has(`${chatId}:${messageId}`);
     const kbd = keyboard ? { keyboard } : {};
     let out: Outgoing;
@@ -610,6 +613,14 @@ export class ChitBot {
         ? `<i>hooked pool (a launchpad's): the hook's own fee is not in the quote, your guard is the limit. buys guarded at ${pct(s.buySlippageBps)}, sells at ${pct(s.sellSlippageBps)}${s.confirmTrades ? "; every trade asks first" : ""}. the reply carries the hash.</i>`
         : `<i>quotes from the pool with fee and impact; buys guarded at ${pct(s.buySlippageBps)}, sells at ${pct(s.sellSlippageBps)}${s.confirmTrades ? "; every trade asks first" : ""}. the reply carries the hash.</i>`,
     ].join("\n");
+    // The plate carries the partners' marks; the caption carries the same facts as words. A draw that fails leaves a text card, never no card.
+    const plate = this.#d.plate
+      ? await this.#d.plate({
+          symbol: info.symbol, address: token, perEth: fmt(info.perEth, info.decimals, 2), poolEth: eth(info.poolEth, 4), hooked: info.hooked,
+          chainLabel: "robinhood chain", testnet: this.#d.chain.chainId !== 4663,
+          ...(this.#d.orus ? { orus: scan ?? null } : {}), ...(this.#d.hey ? { hey: hey ?? null } : {}),
+        }).then((png) => ({ png })).catch((e: unknown) => { console.warn(`token plate not drawn: ${e instanceof Error ? e.message : String(e)}`); return undefined; })
+      : undefined;
     // The buttons always carry the plain verb: confirm trades and sell protection are applied by the handler, never skipped by a button.
     await this.#out(chatId, messageId, text, kb(
       s.buyPresets.map((p) => this.#buyButton(token, p)),
@@ -617,7 +628,7 @@ export class ChitBot {
       s.sellPresets.map((p) => btn(`Sell ${p}%`, `s:${token}:${p}`)),
       [btn("Sell custom", `ask:sell:${token}`)],
       [btn("↻ Refresh", `token:${token}`), btn("← Back", "home")],
-    ));
+    ), plate);
   }
 
   // ---------- buy ----------

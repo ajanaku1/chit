@@ -23,7 +23,7 @@ export type Outgoing =
   /** A banner card: the photo on top, the text as its caption (at most 1024 characters), the buttons under it. */
   | { kind: "photo"; chatId: string; photo: string | Uint8Array; text: string; keyboard?: Keyboard }
   /** The same, in place of an earlier banner card: the photo and the caption change together. */
-  | { kind: "editPhoto"; chatId: string; messageId: number; photo: string; text: string; keyboard?: Keyboard }
+  | { kind: "editPhoto"; chatId: string; messageId: number; photo: string | Uint8Array; text: string; keyboard?: Keyboard }
   | { kind: "answer"; callbackId: string; text?: string };
 
 export interface Telegram {

@@ -8,6 +8,7 @@ import { BRIDGE_ORIGINS, createRelayBridge, type BotBridge } from "../../src/fle
 import { fleetPhase, type FleetApi } from "../../src/fleet/bot-fleet.js";
 import { ChitBot, type Update } from "../../src/fleet/bot-handlers.js";
 import { CARD_HEIGHT, CARD_WIDTH, createShareRenderer, shareCardSvg, type ShareCard, type ShareRenderer } from "../../src/fleet/bot-share.js";
+import type { TokenPlate, TokenPlateRenderer } from "../../src/fleet/bot-token-card.js";
 import { RecordingTelegram, type Keyboard, type Outgoing } from "../../src/fleet/bot-telegram.js";
 import { MemoryBotWalletStore, RefCodeTaken, SealError, checkCanary, open, openKey, refCodeOf, seal, sealCanary, sealKey, walletAad, type BotWallet, type BotWalletStore } from "../../src/fleet/bot-wallets.js";
 import { payloadHash } from "../../src/fleet/campaign-service.js";
@@ -821,4 +822,44 @@ test("the bridge card shows only the routes Relay quotes right now, as links int
   // A second look inside the cache window asks Relay nothing.
   await bot.handle(tap("bridge"));
   assert.equal(calls.length, BRIDGE_ORIGINS.length * 2);
+});
+
+test("with a plate renderer the token card is a picture with the caption's facts, drawn from the bot's reads; refresh redraws it in place; a failed draw leaves the text card", async () => {
+  const drawn: TokenPlate[] = [];
+  let fail = false;
+  const plate: TokenPlateRenderer = async (card) => { if (fail) throw new Error("no fonts"); drawn.push(card); return new Uint8Array([0x89, 0x50, 0x4e, 0x47]); };
+  const store = new MemoryBotWalletStore();
+  const chain = fakeChain();
+  const telegram = new RecordingTelegram();
+  const bot = new ChitBot({ store, chain, telegram, keySecret: SECRET, botUsername: "b", plate, now: () => clock });
+  await bot.handle(dm("/start"));
+  await bot.handle(dm(PEPE));
+  const card = telegram.sent.at(-1) as Extract<Outgoing, { kind: "photo" }>;
+  assert.equal(card.kind, "photo");
+  assert.ok(card.photo instanceof Uint8Array, "the plate is uploaded from its bytes");
+  assert.match(card.text, /<b>PEPE<\/b>/, "the caption is the card's text");
+  assert.match(card.text, /1000000 PEPE<\/code> per ETH/);
+  assert.equal(drawn.length, 1);
+  assert.equal(drawn[0]!.symbol, "PEPE");
+  assert.equal(drawn[0]!.perEth, "1000000");
+  assert.equal(drawn[0]!.poolEth, "5");
+  assert.equal(drawn[0]!.testnet, true);
+  assert.equal(drawn[0]!.orus, undefined, "no scanner configured, no row");
+  // Refresh under the plate: redrawn and edited in place.
+  const underPlate: Update = { callback_query: { id: "cb", data: `token:${PEPE}`, from: { id: 7 }, message: { message_id: 42, chat: { id: 7, type: "private" }, photo: [{}] } } };
+  await bot.handle(underPlate);
+  const again = telegram.sent.at(-1) as Extract<Outgoing, { kind: "editPhoto" }>;
+  assert.equal(again.kind, "editPhoto");
+  assert.equal(again.messageId, 42);
+  assert.ok(again.photo instanceof Uint8Array);
+  assert.equal(drawn.length, 2);
+  // No pool: no plate is drawn for a card that offers nothing to buy.
+  await bot.handle(dm(NOPOOL));
+  assert.match(telegram.last(), /no ETH pool/);
+  assert.equal(drawn.length, 2);
+  // A renderer that throws leaves the text card, with the same buttons.
+  fail = true;
+  await bot.handle(dm(PEPE));
+  assert.equal(telegram.sent.at(-1)!.kind, "send");
+  assert.match(telegram.last(), /<b>PEPE<\/b>/);
 });
