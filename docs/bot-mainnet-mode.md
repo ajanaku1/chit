@@ -126,6 +126,14 @@ Three ways out, in order of preference:
 
 Recommendation: A now, B in the audit scope, C never.
 
+B is built (`feat/session-sell-flag`): `setSellAllowed(key, bool)` by the
+owner, `approveForSell(token, spender)` by a live key with the flag, spender
+required to be a target of that key's rules; the account approves Permit2
+on the token and Permit2 approves the spender, both unlimited, once per token.
+The sale is then a plain `execute(router, 0, sell)` inside the existing rules
+and caps; the Sessions page has the toggle per key, and the flag is an item
+in `docs/audit/2026-09-scope.md`.
+
 ## Gas, and who pays it
 
 The bot's signer pays gas for every `execute`: about 250k gas at Robinhood

@@ -6,6 +6,20 @@ import {SessionAccount} from "../../contracts/fleet/SessionAccount.sol";
 import {SessionAccountFactory} from "../../contracts/fleet/SessionAccountFactory.sol";
 import {FleetTestSink} from "../../contracts/fleet/FleetTestSink.sol";
 import {FleetSponsorProbe} from "../../contracts/fleet/FleetSponsorProbe.sol";
+import {FleetVenueToken} from "../../contracts/fleet/FleetVenueToken.sol";
+
+/// A Permit2 that only remembers: etched over the real address for the sell
+/// tests, since the flag's whole promise is which (token, spender) pairs the
+/// account ever approved there.
+contract RecordingPermit2 {
+    mapping(address owner => mapping(address token => mapping(address spender => uint160))) public amount;
+    mapping(address owner => mapping(address token => mapping(address spender => uint48))) public expiration;
+
+    function approve(address token, address spender, uint160 amount_, uint48 expiration_) external {
+        amount[msg.sender][token][spender] = amount_;
+        expiration[msg.sender][token][spender] = expiration_;
+    }
+}
 
 /// The session account's promise, one test per clause: a key does only what
 /// the owner said, to whom, for how much, until when; pause holds it, revoke
@@ -22,11 +36,17 @@ contract SessionAccountTest is Test {
     address internal constant BOT = address(0xB07);
     address internal constant STRANGER = address(0x5717);
 
+    FleetVenueToken internal token;
+    RecordingPermit2 internal permit2;
+
     function setUp() public {
         factory = new SessionAccountFactory();
         account = factory.createAccount(OWNER, bytes32("one"));
         sink = new FleetTestSink();
         probe = new FleetSponsorProbe();
+        token = new FleetVenueToken(1_000_000 ether);
+        vm.etch(account.PERMIT2(), address(new RecordingPermit2()).code);
+        permit2 = RecordingPermit2(account.PERMIT2());
         vm.deal(OWNER, 10 ether);
         vm.deal(BOT, 1 ether);
         vm.deal(STRANGER, 1 ether);
@@ -217,6 +237,101 @@ contract SessionAccountTest is Test {
         (, , , , , , uint128 spent, uint32 calls) = account.sessionOf(BOT);
         assertEq(spent, 0);
         assertEq(calls, 0);
+    }
+
+    // --- selling: one flag, not one rule per token ---------------------------
+
+    function test_owner_toggles_sell_flag() public {
+        _grantBuy(0.1 ether, 0.3 ether, uint48(block.timestamp + 1 days));
+        assertFalse(account.sellAllowed(BOT), "off until the owner says");
+        vm.prank(OWNER);
+        vm.expectEmit(true, false, false, true);
+        emit SessionAccount.SellAllowed(BOT, true);
+        account.setSellAllowed(BOT, true);
+        assertTrue(account.sellAllowed(BOT));
+        vm.prank(OWNER);
+        account.setSellAllowed(BOT, false);
+        assertFalse(account.sellAllowed(BOT));
+        // only the owner, only for a session that exists
+        vm.prank(BOT);
+        vm.expectRevert(SessionAccount.NotOwner.selector);
+        account.setSellAllowed(BOT, true);
+        vm.prank(OWNER);
+        vm.expectRevert(SessionAccount.SessionUnknown.selector);
+        account.setSellAllowed(STRANGER, true);
+    }
+
+    function test_key_without_the_flag_cannot_approve_for_sell() public {
+        _grantBuy(0.1 ether, 0.3 ether, uint48(block.timestamp + 1 days));
+        vm.prank(BOT);
+        vm.expectRevert(SessionAccount.SellNotAllowed.selector);
+        account.approveForSell(address(token), address(sink));
+        assertEq(token.allowance(address(account), account.PERMIT2()), 0);
+        // a stranger has no session at all
+        vm.prank(STRANGER);
+        vm.expectRevert(SessionAccount.NotAuthorized.selector);
+        account.approveForSell(address(token), address(sink));
+    }
+
+    function test_key_with_the_flag_approves_permit2_and_the_spender() public {
+        _grantBuy(0.1 ether, 0.3 ether, uint48(block.timestamp + 1 days));
+        vm.prank(OWNER);
+        account.setSellAllowed(BOT, true);
+        vm.prank(BOT);
+        vm.expectEmit(true, true, true, true);
+        emit SessionAccount.SellApproved(BOT, address(token), address(sink));
+        account.approveForSell(address(token), address(sink));
+        assertEq(token.allowance(address(account), account.PERMIT2()), type(uint256).max, "the token lets Permit2 pull");
+        assertEq(permit2.amount(address(account), address(token), address(sink)), type(uint160).max, "Permit2 lets the spender pull");
+        assertEq(permit2.expiration(address(account), address(token), address(sink)), type(uint48).max);
+        // approving is not spending: the caps are untouched
+        (, , , , , , uint128 spent, uint32 calls) = account.sessionOf(BOT);
+        assertEq(spent, 0);
+        assertEq(calls, 0);
+        // and the flag never lets the key move the token itself
+        vm.prank(BOT);
+        vm.expectRevert(SessionAccount.RuleNotAllowed.selector);
+        account.execute(address(token), 0, abi.encodeCall(FleetVenueToken.transfer, (BOT, 1)));
+    }
+
+    function test_spender_outside_the_rules_is_refused() public {
+        _grantBuy(0.1 ether, 0.3 ether, uint48(block.timestamp + 1 days));
+        vm.prank(OWNER);
+        account.setSellAllowed(BOT, true);
+        vm.prank(BOT);
+        vm.expectRevert(SessionAccount.SpenderNotAllowed.selector);
+        account.approveForSell(address(token), address(probe));
+        vm.prank(BOT);
+        vm.expectRevert(SessionAccount.SpenderNotAllowed.selector);
+        account.approveForSell(address(token), BOT);
+        assertEq(token.allowance(address(account), account.PERMIT2()), 0, "nothing approved");
+    }
+
+    function test_paused_revoked_or_expired_key_cannot_approve_for_sell() public {
+        _grantBuy(0.1 ether, 0.3 ether, uint48(block.timestamp + 1 hours));
+        vm.prank(OWNER);
+        account.setSellAllowed(BOT, true);
+        vm.prank(OWNER);
+        account.pause(BOT);
+        vm.prank(BOT);
+        vm.expectRevert(SessionAccount.SessionPausedError.selector);
+        account.approveForSell(address(token), address(sink));
+        vm.prank(OWNER);
+        account.resume(BOT);
+        vm.warp(block.timestamp + 1 hours);
+        vm.prank(BOT);
+        vm.expectRevert(SessionAccount.SessionExpired.selector);
+        account.approveForSell(address(token), address(sink));
+        vm.warp(block.timestamp - 1 hours);
+        vm.prank(OWNER);
+        account.revoke(BOT);
+        vm.prank(BOT);
+        vm.expectRevert(SessionAccount.SessionRevokedError.selector);
+        account.approveForSell(address(token), address(sink));
+        // revoke also ends the owner's ability to flag that key again
+        vm.prank(OWNER);
+        vm.expectRevert(SessionAccount.SessionRevokedError.selector);
+        account.setSellAllowed(BOT, true);
     }
 
     /// Fuzz: whatever the ceilings, spend never passes the cap and never a call passes the per-call limit.

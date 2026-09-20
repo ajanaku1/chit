@@ -60,6 +60,9 @@
 .budget-grid dd { margin: 0.25rem 0 0; font-family: var(--font-metric); font-size: 1.15rem; }
 .returned { margin: 0.75rem 0 0; color: var(--soft-paper); }
 .control-list { display: grid; gap: 0.5rem; }
+.sell-toggle { display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer; }
+.sell-toggle input { margin: 0.2rem 0 0; accent-color: var(--paper); }
+.sell-toggle input:disabled { cursor: default; }
 .control-list button { display: grid; gap: 0.2rem; padding: 0.9rem 1rem; border: 1px solid rgba(245, 239, 229, 0.1); border-radius: var(--radius-inner); background: rgba(0, 0, 0, 0.25); color: var(--paper); text-align: left; }
 .control-list button span { color: var(--text-muted); font-size: 0.85rem; }
 .control-list button[data-action="revoke"] { border-color: rgba(122, 36, 21, 0.9); }

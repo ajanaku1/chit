@@ -4,6 +4,12 @@ pragma solidity ^0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
+/// @dev The one Permit2 call a sell needs: the account lets `spender` pull
+///      `token` through Permit2. Uniswap's router settles ERC-20 input this way.
+interface IPermit2 {
+    function approve(address token, address spender, uint160 amount, uint48 expiration) external;
+}
+
 /// @title Session account
 /// @notice A smart account with a kill switch. Anyone running a bot today
 ///         gives it their wallet key. This is the opposite: the owner keeps
@@ -22,6 +28,19 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 ///      key is a new session. The owner's own path (`execute` by the owner,
 ///      `withdraw`, token rescue) is not gated, since the owner acting
 ///      directly is the whole point of keeping the wallet.
+///
+///      Selling is a rule too far. A rule is (target, selector) and a sell
+///      through the router first needs the account to approve Permit2 on the
+///      token, so the token would be the target, one rule per token, and the
+///      owner cannot grant rules for tokens that do not exist yet. So the
+///      owner sets one flag per key instead, `sellAllowed`: with it the key
+///      may make the account approve any token to Permit2 and Permit2 to a
+///      spender, but only a spender that is already a target of the key's
+///      rules. Permit2 moves a token only for that spender, and the spender
+///      (the router) moves it only when the account itself calls it, which
+///      is an `execute` inside the same rules and caps. The sale is then an
+///      ordinary `execute` with zero value; what it can sell is bounded by
+///      what the account holds, and the ETH comes back to the account.
 contract SessionAccount {
     using SafeERC20 for IERC20;
 
@@ -44,6 +63,9 @@ contract SessionAccount {
 
     uint256 public constant MAX_RULES = 8;
 
+    /// @notice Permit2, the same address on every chain it is deployed to.
+    address public constant PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
     address public immutable owner;
 
     mapping(address key => Session) private _sessions;
@@ -56,6 +78,8 @@ contract SessionAccount {
     event Withdrawn(address indexed to, uint256 amount);
     event TokenWithdrawn(address indexed token, address indexed to, uint256 amount);
     event Received(address indexed from, uint256 amount);
+    event SellAllowed(address indexed key, bool allowed);
+    event SellApproved(address indexed key, address indexed token, address indexed spender);
 
     error NotOwner();
     error NotAuthorized();
@@ -77,8 +101,13 @@ contract SessionAccount {
     error ZeroRecipient();
     error WithdrawFailed();
     error Reentered();
+    error SellNotAllowed();
+    error SpenderNotAllowed();
 
     bool private _executing;
+
+    /// @dev Appended after the original layout: which keys may approve tokens for a sell.
+    mapping(address key => bool) private _sellAllowed;
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -138,6 +167,15 @@ contract SessionAccount {
         emit SessionRevoked(key);
     }
 
+    /// @notice Lets `key` set up sells (see the contract notes), or takes that
+    ///         back. The session has to exist and not be revoked; revoke ends
+    ///         the flag with everything else.
+    function setSellAllowed(address key, bool allowed) external onlyOwner {
+        _live(key);
+        _sellAllowed[key] = allowed;
+        emit SellAllowed(key, allowed);
+    }
+
     // --- the bot acts, within its session ----------------------------------
 
     /// @notice One call. The owner may make any call; a session key only one
@@ -180,6 +218,37 @@ contract SessionAccount {
         s.calls += 1;
     }
 
+    /// @notice The two approvals a sell needs, made by a key the owner let
+    ///         sell: the account approves `token` to Permit2 and Permit2
+    ///         approves `spender` for it, both without limit so it is done
+    ///         once per token. The session must be live and `spender` must
+    ///         be a target of one of the key's rules, so the only contract
+    ///         that can ever pull the token is one the key was already allowed
+    ///         to call, and it pulls only when the account calls it.
+    function approveForSell(address token, address spender) external {
+        if (_executing) revert Reentered();
+        Session storage s = _sessions[msg.sender];
+        if (!s.exists) revert NotAuthorized();
+        if (s.revoked) revert SessionRevokedError();
+        if (s.paused) revert SessionPausedError();
+        if (block.timestamp >= s.expiry) revert SessionExpired();
+        if (!_sellAllowed[msg.sender]) revert SellNotAllowed();
+        bool isTarget;
+        uint256 n = s.rules.length;
+        for (uint256 i = 0; i < n; ++i) {
+            if (s.rules[i].target == spender) {
+                isTarget = true;
+                break;
+            }
+        }
+        if (!isTarget) revert SpenderNotAllowed();
+        _executing = true;
+        IERC20(token).forceApprove(PERMIT2, type(uint256).max);
+        IPermit2(PERMIT2).approve(token, spender, type(uint160).max, type(uint48).max);
+        _executing = false;
+        emit SellApproved(msg.sender, token, spender);
+    }
+
     // --- the owner's own money ----------------------------------------------
 
     function withdraw(address payable to, uint256 amount) external onlyOwner {
@@ -208,6 +277,10 @@ contract SessionAccount {
 
     function rulesOf(address key) external view returns (Rule[] memory) {
         return _sessions[key].rules;
+    }
+
+    function sellAllowed(address key) external view returns (bool) {
+        return _sellAllowed[key];
     }
 
     /// @notice Whether `key` could make this call right now, and why not if not.

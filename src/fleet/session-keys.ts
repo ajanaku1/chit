@@ -11,11 +11,21 @@
  * This module is the ABI and the encoders, shared by the app page, the fork
  * test and any bot that wants to be a good citizen and ask `canExecute`
  * before spending gas on a refusal.
+ *
+ * Selling rides on one flag per key rather than a rule per token: the owner
+ * sets `sellAllowed`, the key calls `approveForSell(token, spender)` once per
+ * token (the account approves Permit2, Permit2 approves the spender, which
+ * must already be a target of the key's rules), and the sale itself is an
+ * ordinary `execute` with zero value.
  */
 
 import { encodeFunctionData, keccak256, parseAbi, stringToHex, type Hex } from "viem";
 
 import type { Address, Uint } from "./types.js";
+import { PERMIT2 } from "./v4-swap.js";
+
+/** The Permit2 the account approves through; the same constant the swap encoders use. */
+export { PERMIT2 };
 
 export const SESSION_ACCOUNT_ABI = parseAbi([
   "struct Rule { address target; bytes4 selector; }",
@@ -30,11 +40,16 @@ export const SESSION_ACCOUNT_ABI = parseAbi([
   "function sessionOf(address key) view returns (bool exists, bool paused, bool revoked, uint48 expiry, uint128 maxValuePerCall, uint128 totalValueCap, uint128 spentValue, uint32 calls)",
   "function rulesOf(address key) view returns (Rule[])",
   "function canExecute(address key, address target, bytes4 selector, uint256 value) view returns (bool, string)",
+  "function setSellAllowed(address key, bool allowed)",
+  "function sellAllowed(address key) view returns (bool)",
+  "function approveForSell(address token, address spender)",
   "event SessionGranted(address indexed key, uint128 maxValuePerCall, uint128 totalValueCap, uint48 expiry, uint256 rules)",
   "event SessionPaused(address indexed key)",
   "event SessionResumed(address indexed key)",
   "event SessionRevoked(address indexed key)",
   "event Executed(address indexed by, address indexed target, bytes4 indexed selector, uint256 value)",
+  "event SellAllowed(address indexed key, bool allowed)",
+  "event SellApproved(address indexed key, address indexed token, address indexed spender)",
 ]);
 
 export const SESSION_FACTORY_ABI = parseAbi([
@@ -102,12 +117,19 @@ export const encodeWithdraw = (to: Address, amount: bigint): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "withdraw", args: [to, amount] });
 export const encodeWithdrawToken = (token: Address, to: Address, amount: bigint): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "withdrawToken", args: [token, to, amount] });
+/** Lets `key` set up sells, or takes it back; the sale itself stays inside the key's rules and caps. */
+export const encodeSetSellAllowed = (key: Address, allowed: boolean): Hex =>
+  encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "setSellAllowed", args: [key, allowed] });
 
 // --- calldata the bot's key sends ------------------------------------------------
 
 /** The one call a bot makes: the account executes `data` on `target` with `value` of the account's ETH. */
 export const encodeSessionExecute = (target: Address, value: bigint, data: Hex): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "execute", args: [target, value, data] });
+
+/** Once per token before its first sale: the account approves Permit2 for `token` and Permit2 approves `spender`, which must be a rule target. */
+export const encodeApproveForSell = (token: Address, spender: Address): Hex =>
+  encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "approveForSell", args: [token, spender] });
 
 /** The selector a call carries, for `canExecute` and for writing rules. */
 export const selectorOf = (data: Hex): Hex => (data.length >= 10 ? (data.slice(0, 10).toLowerCase() as Hex) : ANY_FUNCTION);
