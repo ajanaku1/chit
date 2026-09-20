@@ -186,7 +186,7 @@ const renderSessions = async (): Promise<void> => {
       <p class="lead small">${spent}</p>
       <p class="fineprint">${rules.map((r) => `${r.target}${r.selector === ANY_FUNCTION ? " · any function" : ` · ${r.selector}`}`).join("<br>")}</p>
       <p class="fineprint">until ${until}</p>
-      <label class="fineprint sell-toggle"><input type="checkbox" data-act="sell" ${sells ? "checked" : ""} ${state === "revoked" ? "disabled" : ""} /> let it sell: the key may approve tokens to Permit2 for its own targets; a sale is still a call inside its rules</label>
+      <label class="fineprint sell-toggle"><input type="checkbox" data-act="sell" ${sells ? "checked" : ""} ${state === "revoked" ? "disabled" : ""} /> let it sell: the key may sell tokens the account holds, through its router, with the ETH landing here and nothing approved afterwards; the pool and the floor are the key's, so this trusts it with the position, not only the caps</label>
       <div class="wnav">
         <button type="button" class="ghost" data-act="pause" ${state === "active" ? "" : "disabled"}>Pause</button>
         <button type="button" class="ghost" data-act="resume" ${state === "paused" ? "" : "disabled"}>Resume</button>

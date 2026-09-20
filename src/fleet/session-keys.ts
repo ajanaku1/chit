@@ -13,22 +13,24 @@
  * before spending gas on a refusal.
  *
  * Selling rides on one flag per key rather than a rule per token: the owner
- * sets `sellAllowed`, the key calls `approveForSell(token, spender)` once per
- * token (the account approves Permit2, Permit2 approves the spender, which
- * must already be a target of the key's rules), and the sale itself is an
- * ordinary `execute` with zero value.
+ * sets `sellAllowed`, and the key calls `sell(router, poolKey, amountIn,
+ * minOut, deadline)`. The account writes the router calldata itself (the
+ * same bytes `encodeV4TokenSell` writes), so the ETH can only land in the
+ * account; the Permit2 approvals live inside that one call and are cleared
+ * before it returns. The router has to be a rule target for `execute`.
  */
 
 import { encodeFunctionData, keccak256, parseAbi, stringToHex, type Hex } from "viem";
 
 import type { Address, Uint } from "./types.js";
-import { PERMIT2 } from "./v4-swap.js";
+import { PERMIT2, venuePoolKey, type PoolKey } from "./v4-swap.js";
 
 /** The Permit2 the account approves through; the same constant the swap encoders use. */
 export { PERMIT2 };
 
 export const SESSION_ACCOUNT_ABI = parseAbi([
   "struct Rule { address target; bytes4 selector; }",
+  "struct PoolKey { address currency0; address currency1; uint24 fee; int24 tickSpacing; address hooks; }",
   "function owner() view returns (address)",
   "function grant(address key, Rule[] rules, uint128 maxValuePerCall, uint128 totalValueCap, uint48 expiry)",
   "function pause(address key)",
@@ -42,14 +44,15 @@ export const SESSION_ACCOUNT_ABI = parseAbi([
   "function canExecute(address key, address target, bytes4 selector, uint256 value) view returns (bool, string)",
   "function setSellAllowed(address key, bool allowed)",
   "function sellAllowed(address key) view returns (bool)",
-  "function approveForSell(address token, address spender)",
+  "function canSell(address key, address router) view returns (bool, string)",
+  "function sell(address router, PoolKey poolKey, uint128 amountIn, uint128 minOut, uint256 deadline)",
   "event SessionGranted(address indexed key, uint128 maxValuePerCall, uint128 totalValueCap, uint48 expiry, uint256 rules)",
   "event SessionPaused(address indexed key)",
   "event SessionResumed(address indexed key)",
   "event SessionRevoked(address indexed key)",
   "event Executed(address indexed by, address indexed target, bytes4 indexed selector, uint256 value)",
   "event SellAllowed(address indexed key, bool allowed)",
-  "event SellApproved(address indexed key, address indexed token, address indexed spender)",
+  "event Sold(address indexed key, address indexed token, address indexed router, uint256 amountIn, uint256 ethOut)",
 ]);
 
 export const SESSION_FACTORY_ABI = parseAbi([
@@ -117,7 +120,7 @@ export const encodeWithdraw = (to: Address, amount: bigint): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "withdraw", args: [to, amount] });
 export const encodeWithdrawToken = (token: Address, to: Address, amount: bigint): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "withdrawToken", args: [token, to, amount] });
-/** Lets `key` set up sells, or takes it back; the sale itself stays inside the key's rules and caps. */
+/** Lets `key` sell through `sell`, or takes it back; nothing of a sale outlives the call, so taking it back is complete. */
 export const encodeSetSellAllowed = (key: Address, allowed: boolean): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "setSellAllowed", args: [key, allowed] });
 
@@ -127,9 +130,12 @@ export const encodeSetSellAllowed = (key: Address, allowed: boolean): Hex =>
 export const encodeSessionExecute = (target: Address, value: bigint, data: Hex): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "execute", args: [target, value, data] });
 
-/** Once per token before its first sale: the account approves Permit2 for `token` and Permit2 approves `spender`, which must be a rule target. */
-export const encodeApproveForSell = (token: Address, spender: Address): Hex =>
-  encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "approveForSell", args: [token, spender] });
+/** One sale: `amountIn` of `token` for at least `minOut` ETH into the account, through `router`, on the venue pool unless `poolKey` names another. */
+export type SessionSell = { router: Address; token: Address; amountIn: bigint; minOut: bigint; deadline: bigint; poolKey?: PoolKey };
+
+/** The sale, sent by the bot's key: the account writes the router calldata, so the bot only names the amount, the floor and the pool. */
+export const encodeSell = ({ router, token, amountIn, minOut, deadline, poolKey }: SessionSell): Hex =>
+  encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "sell", args: [router, poolKey ?? venuePoolKey(token), amountIn, minOut, deadline] });
 
 /** The selector a call carries, for `canExecute` and for writing rules. */
 export const selectorOf = (data: Hex): Hex => (data.length >= 10 ? (data.slice(0, 10).toLowerCase() as Hex) : ANY_FUNCTION);

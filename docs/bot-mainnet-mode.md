@@ -126,13 +126,22 @@ Three ways out, in order of preference:
 
 Recommendation: A now, B in the audit scope, C never.
 
-B is built (`feat/session-sell-flag`): `setSellAllowed(key, bool)` by the
-owner, `approveForSell(token, spender)` by a live key with the flag, spender
-required to be a target of that key's rules; the account approves Permit2
-on the token and Permit2 approves the spender, both unlimited, once per token.
-The sale is then a plain `execute(router, 0, sell)` inside the existing rules
-and caps; the Sessions page has the toggle per key, and the flag is an item
-in `docs/audit/2026-09-scope.md`.
+B is built (`feat/session-sell-flag`), in a stricter shape than the sketch
+above: a standing approval plus an open `execute` on the router was no sale,
+since the router's calldata names who receives and a key could have moved
+the position to itself. So `setSellAllowed(key, bool)` by the owner, and
+`sell(router, poolKey, amountIn, minOut, deadline)` by a live key with the
+flag: the account writes the router calldata itself (the same bytes as
+`encodeV4TokenSell`, so the router pays the account), makes the two Permit2
+approvals for `amountIn` and that block only, calls the router, clears the
+approvals, and reverts unless at most `amountIn` of the token left and at
+least `minOut` of ETH arrived. The router has to be a rule target for
+`execute`; a sale counts as a call and spends none of the caps. Nothing of a
+sale outlives it, so "stop selling" is complete and no other key inherits an
+allowance. What the flag does not bound is the price: the pool and the floor
+are the key's, so a hostile key can sell into a thin pool of its own; the
+owner is told this on the page where the flag is set. The Sessions page has
+the toggle per key, and the flag is an item in `docs/audit/2026-09-scope.md`.
 
 ## Gas, and who pays it
 
@@ -175,12 +184,19 @@ named in words on every card, never inferred from a colour.
 
 ## Risks, named
 
-- **Bot signer compromise.** An attacker can trade from every linked account
-  within each owner's caps, into those owners' own accounts. No theft, but
-  unwanted positions. Response: revoke is the owner's, in one transaction;
-  the bot's key rotates (new address announced, every user grants a new
-  session; the card walks them through it). The key lives in Vercel like the
-  bot token; no human copies it.
+- **Bot signer compromise.** An attacker holds a key with a session on every
+  linked account. What the caps bound is ETH: at most the per-trade cap per
+  call and the total cap in all, sent only to the router. What they do not
+  bound is where the router's output goes, since the key writes the calldata
+  and a v4 `TAKE` names its recipient: the attacker can spend each account's
+  remaining cap on tokens paid to itself. So the loss is up to the unspent
+  cap of every linked account, not "unwanted positions". With the sell flag
+  on, the attacker can also sell what an account holds, into the account
+  only, but at the price of a pool it names, so the position is exposed
+  too; the flag is off by default for that reason. Response: revoke is the
+  owner's, in one transaction; the bot's key rotates (new address announced,
+  every user grants a new session; the card walks them through it). The key
+  lives in Vercel like the bot token; no human copies it.
 - **Link phishing.** The only URL the bot ever sends is `chit.tools/…`; the
   Sessions page shows the bot's signer address in full and names it; the
   daily post names it too, so a wrong address is noticed.

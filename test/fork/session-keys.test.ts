@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { maxUint160, maxUint256, parseAbi, parseEther, type Address, type Hex } from "viem";
+import { encodeAbiParameters, encodeFunctionData, parseAbi, parseEther, type Address, type Hex } from "viem";
 
 import { ROBINHOOD_TESTNET_ROUTER } from "../../src/fleet/deploy.js";
 import {
@@ -9,7 +9,7 @@ import {
   SESSION_ACCOUNT_ABI,
   SESSION_FACTORY_ABI,
   decodeSessionView,
-  encodeApproveForSell,
+  encodeSell,
   encodeSessionExecute,
   sessionState,
 } from "../../src/fleet/session-keys.js";
@@ -22,6 +22,10 @@ const FULL_RANGE = { lower: -887_220, upper: 887_220 };
 const isqrt = (n: bigint): bigint => { let x = n, y = (n + 1n) / 2n; while (y < x) { x = y; y = (x + n / x) / 2n; } return x; };
 const SQRT_PRICE_1000 = isqrt(1000n * 2n ** 192n);
 const PERMIT2_ALLOWANCE_ABI = parseAbi(["function allowance(address user, address token, address spender) view returns (uint160 amount, uint48 expiration, uint48 nonce)"]);
+const ROUTER_EXECUTE_ABI = parseAbi(["function execute(bytes commands, bytes[] inputs, uint256 deadline) payable"]);
+/** The router's PERMIT2_TRANSFER_FROM command: move `amount` of `token` from the caller to `to`, the calldata a hostile key would write. */
+const encodePermit2TransferFrom = (token: Address, to: Address, amount: bigint, deadline: bigint): Hex =>
+  encodeFunctionData({ abi: ROUTER_EXECUTE_ABI, functionName: "execute", args: ["0x02", [encodeAbiParameters([{ type: "address" }, { type: "address" }, { type: "uint160" }], [token, to, amount])], deadline] });
 
 /**
  * Session keys, the product, on a fork of 46630: a trader keeps the wallet,
@@ -29,12 +33,14 @@ const PERMIT2_ALLOWANCE_ABI = parseAbi(["function allowance(address user, addres
  * call the Universal Router, for at most 0.001 ETH a trade and 0.003 in all,
  * for a day. The bot buys through the real Uniswap v4 router from its own
  * key; the tokens land in the account, not with the bot. Outside the rules
- * the bot is refused. With the owner's sell flag the bot sets up the two
- * Permit2 approvals through the account and sells part of the position back
- * through the same router, ETH landing in the account; without the flag, for
- * a spender outside its rules, or while paused it cannot. After the owner's
- * revoke it is refused for good; the owner takes the tokens and the ETH back.
- * Chit is nowhere in it.
+ * the bot is refused. With the owner's sell flag the bot sells part of the
+ * position back through the same router with one `sell`, the account writing
+ * the router calldata and making the Permit2 approvals for that call only,
+ * the ETH landing in the account and nothing approved afterwards; without the
+ * flag, under its floor, or while paused it cannot, and with the router's own
+ * calldata through `execute` it can move no token, since no allowance stands.
+ * After the owner's revoke it is refused for good; the owner takes the tokens
+ * and the ETH back. Chit is nowhere in it.
  */
 describe("Session keys on Uniswap v4 (46630 fork)", () => {
   it("a bot trades through a bounded key with a kill switch", async () => {
@@ -100,48 +106,49 @@ describe("Session keys on Uniswap v4 (46630 fork)", () => {
     await refused(botWallet, ROBINHOOD_TESTNET_ROUTER, parseEther("0.002"), buy(parseEther("0.002")), "value over call");
     await refused(stranger, ROBINHOOD_TESTNET_ROUTER, amount, buy(amount), "unknown");
 
-    // Selling. Without the flag the bot cannot set up the approvals; the owner flips it from the wallet.
-    const approve = (from: typeof botWallet, spender: Address) =>
-      from!.sendTransaction({ to: account, data: encodeApproveForSell(token.address, spender), gas: 300_000n });
+    // Selling. Without the flag the bot cannot sell; the owner flips it from the wallet.
+    const sellAmount = bought / 2n;
+    const sell = (from: typeof botWallet, amountIn: bigint, minOut: bigint) =>
+      from!.sendTransaction({ to: account, data: encodeSell({ router: ROBINHOOD_TESTNET_ROUTER, token: token.address, amountIn, minOut, deadline: block.timestamp + 3600n }), gas: 1_000_000n });
+    const permit2Allowance = () => publicClient.readContract({ address: PERMIT2, abi: PERMIT2_ALLOWANCE_ABI, functionName: "allowance", args: [account, token.address, ROBINHOOD_TESTNET_ROUTER] });
     assert.equal(await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "sellAllowed", args: [bot.address] }), false);
-    await expectRevert(() => approve(botWallet, ROBINHOOD_TESTNET_ROUTER));
+    assert.deepEqual(await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "canSell", args: [bot.address, ROBINHOOD_TESTNET_ROUTER] }), [false, "sell not allowed"]);
+    await expectRevert(() => sell(botWallet, sellAmount, 1n));
     await owner!.writeContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "setSellAllowed", args: [bot.address, true] });
     assert.equal(await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "sellAllowed", args: [bot.address] }), true);
-    // A spender that is not in the rules (the token itself, a stranger) is refused even with the flag.
-    await expectRevert(() => approve(botWallet, token.address));
-    await expectRevert(() => approve(botWallet, stranger!.account.address));
-    // The router is a rule target: the account approves Permit2, and Permit2 the router, on the live Permit2.
-    const approvedHash = await approve(botWallet, ROBINHOOD_TESTNET_ROUTER);
-    assert.equal((await publicClient.waitForTransactionReceipt({ hash: approvedHash })).status, "success", "the approvals landed");
-    assert.equal(await token.read.allowance([account, PERMIT2]), maxUint256, "the token lets Permit2 pull from the account");
-    const [p2Amount, p2Expiry] = await publicClient.readContract({ address: PERMIT2, abi: PERMIT2_ALLOWANCE_ABI, functionName: "allowance", args: [account, token.address, ROBINHOOD_TESTNET_ROUTER] });
-    assert.equal(p2Amount, maxUint160, "Permit2 lets the router pull the token");
-    assert.equal(p2Expiry, 2 ** 48 - 1);
-    // The sale is an ordinary execute with zero value: the caps do not move, the ETH lands in the account.
-    const sellAmount = bought / 2n;
+    assert.deepEqual(await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "canSell", args: [bot.address, ROBINHOOD_TESTNET_ROUTER] }), [true, ""]);
+    // The router's own calldata through a plain execute moves nothing: no allowance stands, with or without the flag.
+    await expectRevert(() => botWallet!.sendTransaction({ to: account, data: encodeSessionExecute(ROBINHOOD_TESTNET_ROUTER, 0n, encodePermit2TransferFrom(token.address, bot.address, bought, block.timestamp + 3600n)), gas: 1_000_000n }));
+    await expectRevert(() => botWallet!.sendTransaction({ to: account, data: encodeSessionExecute(ROBINHOOD_TESTNET_ROUTER, 0n, encodeV4TokenSell({ token: token.address, amountIn: sellAmount, deadline: block.timestamp + 3600n })), gas: 1_000_000n }));
+    assert.equal(await token.read.balanceOf([account]), bought, "nothing moved");
+    // A floor the pool cannot meet is refused, and the sale unwinds whole.
+    await expectRevert(() => sell(botWallet, sellAmount, parseEther("1")));
+    assert.equal(await token.read.balanceOf([account]), bought);
+    // The sale: the account writes the swap, the live Permit2 and router move the token, the ETH lands in the account, the caps do not move.
     const ethBeforeSell = await publicClient.getBalance({ address: account });
-    const sellHash = await botWallet!.sendTransaction({
-      to: account, gas: 1_000_000n,
-      data: encodeSessionExecute(ROBINHOOD_TESTNET_ROUTER, 0n, encodeV4TokenSell({ token: token.address, amountIn: sellAmount, deadline: block.timestamp + 3600n })),
-    });
+    const sellHash = await sell(botWallet, sellAmount, 1n);
     assert.equal((await publicClient.waitForTransactionReceipt({ hash: sellHash })).status, "success", "the bot's sell landed");
     const held = await token.read.balanceOf([account]);
     assert.equal(held, bought - sellAmount, "half the position left the account");
     const ethAfterSell = await publicClient.getBalance({ address: account });
     assert.ok(ethAfterSell > ethBeforeSell, "the ETH came back to the account, not to the bot");
     assert.equal(await token.read.balanceOf([bot.address]), 0n);
+    assert.equal(await token.read.allowance([account, PERMIT2]), 0n, "nothing approved to Permit2 after the sale");
+    const [p2Amount, p2Expiry] = await permit2Allowance();
+    assert.equal(p2Amount, 0n, "nothing approved to the router after the sale");
+    assert.ok(p2Expiry <= Number((await publicClient.getBlock()).timestamp), "and what was approved expired with the sale's block (Permit2 stores a zero expiry as that block)");
     view = decodeSessionView(await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "sessionOf", args: [bot.address] }) as never);
     assert.equal(view.spentValue, amount.toString(), "a sell spends none of the cap");
     assert.equal(view.calls, 2);
     // Paused, the flag is no help.
     await owner!.writeContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "pause", args: [bot.address] });
-    await expectRevert(() => approve(botWallet, ROBINHOOD_TESTNET_ROUTER));
+    await expectRevert(() => sell(botWallet, 1n, 1n));
     await owner!.writeContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "resume", args: [bot.address] });
 
     // The kill switch, from the wallet. Then the owner takes everything back.
     await owner!.writeContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "revoke", args: [bot.address] });
     await refused(botWallet, ROBINHOOD_TESTNET_ROUTER, amount, buy(amount), "revoked");
-    await expectRevert(() => approve(botWallet, ROBINHOOD_TESTNET_ROUTER));
+    await expectRevert(() => sell(botWallet, 1n, 1n));
     view = decodeSessionView(await publicClient.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "sessionOf", args: [bot.address] }) as never);
     assert.equal(sessionState(view, Number(block.timestamp)), "revoked");
     await owner!.writeContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "withdrawToken", args: [token.address, owner!.account.address, held] });

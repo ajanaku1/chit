@@ -4,10 +4,17 @@ pragma solidity ^0.8.28;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
-/// @dev The one Permit2 call a sell needs: the account lets `spender` pull
-///      `token` through Permit2. Uniswap's router settles ERC-20 input this way.
+import {PoolKey} from "./FleetPoolSeeder.sol";
+
+/// @dev The one Permit2 call a sell needs: the account lets the router pull
+///      the token through Permit2. Uniswap's router settles ERC-20 input this way.
 interface IPermit2 {
     function approve(address token, address spender, uint160 amount, uint48 expiration) external;
+}
+
+/// @dev The Universal Router's one entry point; the account writes its calldata itself for a sale.
+interface IUniversalRouterMinimal {
+    function execute(bytes calldata commands, bytes[] calldata inputs, uint256 deadline) external payable;
 }
 
 /// @title Session account
@@ -32,15 +39,26 @@ interface IPermit2 {
 ///      Selling is a rule too far. A rule is (target, selector) and a sell
 ///      through the router first needs the account to approve Permit2 on the
 ///      token, so the token would be the target, one rule per token, and the
-///      owner cannot grant rules for tokens that do not exist yet. So the
-///      owner sets one flag per key instead, `sellAllowed`: with it the key
-///      may make the account approve any token to Permit2 and Permit2 to a
-///      spender, but only a spender that is already a target of the key's
-///      rules. Permit2 moves a token only for that spender, and the spender
-///      (the router) moves it only when the account itself calls it, which
-///      is an `execute` inside the same rules and caps. The sale is then an
-///      ordinary `execute` with zero value; what it can sell is bounded by
-///      what the account holds, and the ETH comes back to the account.
+///      owner cannot grant rules for tokens that do not exist yet. And an
+///      open `execute` on the router is no sale either: the router's calldata
+///      names who receives, so a key holding a standing approval could hand
+///      the tokens, or the ETH they fetch, to anyone it likes. So the owner
+///      sets one flag per key, `sellAllowed`, and with it the key calls
+///      `sell`, where the account writes the router calldata itself: one
+///      exact-in swap of `amountIn` of the token for ETH on the pool the key
+///      names, the ETH paid to the account because the router pays its
+///      caller and nobody else. The two Permit2 approvals exist only inside
+///      that call, for `amountIn` and for this block, and are cleared before
+///      it returns, so no approval outlives a sale and no other key inherits
+///      one. The router has to be a target of the key's rules with the
+///      `execute` selector; the sale is a call under the same expiry, pause
+///      and revoke, spends none of the ETH caps, and before returning the
+///      account checks that no more than `amountIn` of the token left and
+///      that at least `minOut` of ETH arrived. What the flag cannot bound is
+///      the price: the key names the pool and the floor, so a hostile key
+///      can sell into a thin pool of its own with a floor of dust. With the
+///      flag the owner trusts the key with the position, not only the caps,
+///      and the page says so where the flag is set.
 contract SessionAccount {
     using SafeERC20 for IERC20;
 
@@ -79,7 +97,7 @@ contract SessionAccount {
     event TokenWithdrawn(address indexed token, address indexed to, uint256 amount);
     event Received(address indexed from, uint256 amount);
     event SellAllowed(address indexed key, bool allowed);
-    event SellApproved(address indexed key, address indexed token, address indexed spender);
+    event Sold(address indexed key, address indexed token, address indexed router, uint256 amountIn, uint256 ethOut);
 
     error NotOwner();
     error NotAuthorized();
@@ -102,12 +120,29 @@ contract SessionAccount {
     error WithdrawFailed();
     error Reentered();
     error SellNotAllowed();
-    error SpenderNotAllowed();
+    error NotEthPool();
+    error NoFloor();
+    error SoldTooMuch();
+    error ProceedsShort();
 
     bool private _executing;
 
-    /// @dev Appended after the original layout: which keys may approve tokens for a sell.
+    /// @dev Appended after the original layout: which keys may sell through `sell`.
     mapping(address key => bool) private _sellAllowed;
+
+    /// @dev The Universal Router's `execute(bytes,bytes[],uint256)`; a sale is only ever that call.
+    bytes4 private constant ROUTER_EXECUTE = IUniversalRouterMinimal.execute.selector;
+    bytes1 private constant COMMAND_V4_SWAP = 0x10;
+    bytes private constant SELL_ACTIONS = hex"060c0f"; // SWAP_EXACT_IN_SINGLE, SETTLE_ALL, TAKE_ALL
+
+    /// @dev v4-periphery's parameters for one exact-in swap on one pool.
+    struct ExactInputSingleParams {
+        PoolKey poolKey;
+        bool zeroForOne;
+        uint128 amountIn;
+        uint128 amountOutMinimum;
+        bytes hookData;
+    }
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -167,9 +202,10 @@ contract SessionAccount {
         emit SessionRevoked(key);
     }
 
-    /// @notice Lets `key` set up sells (see the contract notes), or takes that
-    ///         back. The session has to exist and not be revoked; revoke ends
-    ///         the flag with everything else.
+    /// @notice Lets `key` call `sell` (see the contract notes), or takes that
+    ///         back, and since nothing of a sale outlives the call, taking it
+    ///         back is complete. The session has to exist and not be revoked;
+    ///         revoke ends the flag with everything else.
     function setSellAllowed(address key, bool allowed) external onlyOwner {
         _live(key);
         _sellAllowed[key] = allowed;
@@ -218,35 +254,52 @@ contract SessionAccount {
         s.calls += 1;
     }
 
-    /// @notice The two approvals a sell needs, made by a key the owner let
-    ///         sell: the account approves `token` to Permit2 and Permit2
-    ///         approves `spender` for it, both without limit so it is done
-    ///         once per token. The session must be live and `spender` must
-    ///         be a target of one of the key's rules, so the only contract
-    ///         that can ever pull the token is one the key was already allowed
-    ///         to call, and it pulls only when the account calls it.
-    function approveForSell(address token, address spender) external {
+    /// @notice One sale, by a key the owner let sell: `amountIn` of the pool's
+    ///         token for at least `minOut` of ETH, into this account. The
+    ///         account writes the router's calldata, so the router pays the
+    ///         account and nobody else; the two Permit2 approvals are made
+    ///         for `amountIn` and this block only and cleared before the
+    ///         call returns. `router` has to be a rule target for `execute`,
+    ///         and the call counts like any other but spends none of the
+    ///         caps. `poolKey` is the pool the sale goes through, which has
+    ///         to be an ETH pool of the token; the price is the pool's.
+    function sell(address router, PoolKey calldata poolKey, uint128 amountIn, uint128 minOut, uint256 deadline) external {
         if (_executing) revert Reentered();
-        Session storage s = _sessions[msg.sender];
-        if (!s.exists) revert NotAuthorized();
-        if (s.revoked) revert SessionRevokedError();
-        if (s.paused) revert SessionPausedError();
-        if (block.timestamp >= s.expiry) revert SessionExpired();
         if (!_sellAllowed[msg.sender]) revert SellNotAllowed();
-        bool isTarget;
-        uint256 n = s.rules.length;
-        for (uint256 i = 0; i < n; ++i) {
-            if (s.rules[i].target == spender) {
-                isTarget = true;
-                break;
-            }
-        }
-        if (!isTarget) revert SpenderNotAllowed();
+        if (poolKey.currency0 != address(0) || poolKey.currency1 == address(0)) revert NotEthPool();
+        if (minOut == 0) revert NoFloor();
+        _authorize(msg.sender, router, ROUTER_EXECUTE, 0);
+        address token = poolKey.currency1;
+        uint256 tokenBefore = IERC20(token).balanceOf(address(this));
+        uint256 ethBefore = address(this).balance;
+
+        bytes[] memory params = new bytes[](3);
+        params[0] = abi.encode(ExactInputSingleParams({
+            poolKey: poolKey,
+            zeroForOne: false,
+            amountIn: amountIn,
+            amountOutMinimum: minOut,
+            hookData: ""
+        }));
+        params[1] = abi.encode(token, uint256(amountIn));
+        params[2] = abi.encode(address(0), uint256(minOut));
+        bytes[] memory inputs = new bytes[](1);
+        inputs[0] = abi.encode(SELL_ACTIONS, params);
+
         _executing = true;
-        IERC20(token).forceApprove(PERMIT2, type(uint256).max);
-        IPermit2(PERMIT2).approve(token, spender, type(uint160).max, type(uint48).max);
+        IERC20(token).forceApprove(PERMIT2, amountIn);
+        IPermit2(PERMIT2).approve(token, router, amountIn, uint48(block.timestamp));
+        (bool ok, ) = router.call(abi.encodeCall(IUniversalRouterMinimal.execute, (abi.encodePacked(COMMAND_V4_SWAP), inputs, deadline)));
+        IPermit2(PERMIT2).approve(token, router, 0, 0);
+        IERC20(token).forceApprove(PERMIT2, 0);
         _executing = false;
-        emit SellApproved(msg.sender, token, spender);
+        if (!ok) revert CallFailed();
+
+        uint256 tokenAfter = IERC20(token).balanceOf(address(this));
+        if (tokenAfter + amountIn < tokenBefore) revert SoldTooMuch();
+        uint256 ethAfter = address(this).balance;
+        if (ethAfter < ethBefore + minOut) revert ProceedsShort();
+        emit Sold(msg.sender, token, router, tokenBefore - tokenAfter, ethAfter - ethBefore);
     }
 
     // --- the owner's own money ----------------------------------------------
@@ -281,6 +334,12 @@ contract SessionAccount {
 
     function sellAllowed(address key) external view returns (bool) {
         return _sellAllowed[key];
+    }
+
+    /// @notice Whether `key` could sell through `router` right now, and why not if not.
+    function canSell(address key, address router) external view returns (bool, string memory) {
+        if (!_sellAllowed[key]) return (false, "sell not allowed");
+        return this.canExecute(key, router, ROUTER_EXECUTE, 0);
     }
 
     /// @notice Whether `key` could make this call right now, and why not if not.
