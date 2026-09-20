@@ -1,5 +1,41 @@
 # Chit implementation record
 
+## 2026-09-20 — the mainnet beta, written down before it is built
+
+The capped mainnet beta now has a specification, a task list and machine checks: 43 requirements, 94 tasks, and eight new predicates in verify.sh that all start red and cannot be passed by anything but the work itself.
+
+The rest of this entry is the record of what was reconciled, for whoever picks
+this up next. `build-prompt reconcile` after the Spec Kit pass for
+`specs/003-mainnet-beta`; Goal.md, prompt.md, plan.md and verify.sh updated, only
+stale clauses touched.
+
+**One predicate was wrong and was fixed deliberately.** `phase-4 "scaffolding
+files are gitignored"` asserted that Goal.md, plan.md and prompt.md are ignored.
+Commit 6072f7d deliberately tracks them, with the reason recorded there: they are
+the source of truth for the product and the autonomy rules, and a second
+developer cannot work without them. The predicate asserted the opposite of the
+project's decision, so it had been failing since that commit. It now asserts what
+the project actually requires: that all four artifacts are tracked. This is a
+corrected predicate, not a weakened one.
+
+**Clauses reconciled as stale**, each contradicted by the decision of 2026-09-19
+to open a capped beta before a firm audit:
+
+- Goal.md: the current build, the audit-before-real-funds gate, "mainnet 4663 is
+  out of scope", and "testnet and test token only".
+- plan.md: the stage boundary, which authorized testnet only. Mainnet writes
+  remain stop-and-ask every time; the beta relaxes the opening gate, not the
+  judgement.
+- prompt.md: the choreography gained the beta's nine phases and lost "testnet and
+  test token only"; the line saying nothing may claim "no trail" until Stage 2 is
+  live was stale, since Stage 2 is live.
+
+**Eight new `beta-*` predicates**, all red on a tree where none of the work
+exists. They assert shape rather than file presence, so none of them can be
+satisfied by creating an empty file, and each maps to a phase in
+`specs/003-mainnet-beta/tasks.md`. The detail of what each one asserts lives
+there and in `verify.sh`, both of which stay in the private repository.
+
 ## Selected direction
 
 The user selected UI Option A, **Public Docket**. This is separate from the

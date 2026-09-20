@@ -1,8 +1,52 @@
 # Chit Fleet build choreography
 
-Source of truth: [Goal.md](Goal.md). Stage 1 (Fleet Mission) is reconciled from approved `design.md` and `specs/001-fleet-mission/`; Stage 2 (Private Funding Pool) from approved `design-stage2.md` and `specs/002-private-funding-pool/` (reconciled 2026-09-07). Each `specs/<feature>/plan.md` remains that stage's technical plan.
+Source of truth: [Goal.md](Goal.md). Stage 1 (Fleet Mission) is reconciled from approved `design.md` and `specs/001-fleet-mission/`; Stage 2 (Private Funding Pool) from approved `design-stage2.md` and `specs/002-private-funding-pool/` (reconciled 2026-09-07); the capped mainnet beta from approved `design-mainnet-beta.md` and `specs/003-mainnet-beta/` (reconciled 2026-09-20). Each `specs/<feature>/plan.md` remains that stage's technical plan.
 
-## Stage 2 — Private Funding Pool (current build)
+## The capped mainnet beta (current build)
+
+Open Stage 2 to real ETH on 4663, capped at 1 ETH, holders only, labelled a beta
+and labelled as unaudited. The order matters more than the size: the caps branch
+rebases first because it rewrites the files the contract change touches, and no
+real ETH moves until every money-path reproduction from the 2026-09-19 readiness
+review has flipped.
+
+### Preflight
+
+| Skill | Project-specific use | Status | Fallback |
+|---|---|---|---|
+| blockchain-developer | The pool's counters, `claimable()` as surplus, `postQueuedBatch`, `donate()` | installed | Follow the existing Solidity conventions in `contracts/fleet`. |
+| solidity-security | The surplus invariant, the batch's skip-and-report, `donate()` while paused | installed | Manual review against `specs/003-mainnet-beta/contracts/pool.md`. |
+| test-driven-development | Every reproduction is replaced by a sibling that fails first | installed | Keep red-green order visible in commits. |
+| backend-architect | The durable write lifecycle, the operator lock, reconciliation by chain state | installed | Follow `specs/003-mainnet-beta/contracts/chain-adapter.md` exactly. |
+| code-reviewer | Diff review after each phase | installed | Review the diff against FR/SC and the failure paths. |
+| simplify | Simplify reviewed passing code | installed | Consolidate duplication without behaviour change. |
+
+### Phases
+
+| Phase | Spec Kit tasks | done_when |
+|---|---|---|
+| Setup and the CI gate | T001–T006 | `./verify.sh beta-gate` |
+| The caps branch, first | T007–T012 | `./verify.sh beta-caps` |
+| The money path | T013–T029 | `./verify.sh beta-money` |
+| The contract | T030–T040 | `./verify.sh beta-contract` |
+| The sweep and the rails | T041–T053 | `./verify.sh beta-rails` |
+| US1 deposit and exit | T054–T061 | `./verify.sh beta-surfaces` |
+| US2 trade a listed token | T062–T076 | `./verify.sh beta-venue` |
+| US3 and US4 | T077–T082 | `./verify.sh beta-surfaces` |
+| Launch gate | T083–T094 | `./verify.sh beta-launch` (T088, T089, T090 and T094 are outward, recorded after) |
+
+Traceability: `design-mainnet-beta.md` -> FR-001–043 / SC-001–016 (specs/003) ->
+`specs/003-mainnet-beta/plan.md` -> T001–T094 -> `verify.sh beta-*`.
+
+Hard constraints: no new dependency; the rebase precedes every contract change;
+an exception is never read as proof a transaction did not happen; no transaction,
+event, log or response may name both a depositor and a campaign; the caps are
+enforced by the pool, not the app; nothing published may claim an audit precedes
+mainnet once the beta is open; sells and sponsored gas stay out of the beta; every
+`fleet-*` and `pool-*` gate stays green. Outward actions follow `plan.md`.
+Goal.md wins on conflict.
+
+## Stage 2 — Private Funding Pool (live on testnet, kept green)
 
 Build the core journey in order: hold a Chit balance (deposit, headroom, withdraw, exit) → fund a fleet from the balance and trade (draw, delayed funding, just-in-time buy) → control and recover privately (close-to-balance, top-up, operator pause) → claims and live evidence.
 
@@ -29,13 +73,13 @@ Build the core journey in order: hold a Chit balance (deposit, headroom, withdra
 | US3 control and recovery | T028–T033 | `./verify.sh pool-control` |
 | Claims, observer, live | T034–T040 | `./verify.sh pool-acceptance` (T040 outward, recorded after) |
 
-Traceability: approved design-stage2.md → FR-001–017 / SC-001–010 (specs/002) → COMP-101–106 → T001–T040 → `verify.sh pool-*`. File layout per `specs/002-private-funding-pool/plan.md`. Hard constraints: no new dependency; no transaction, event, log, or response may name both a depositor and a campaign; ciphertexts and the ledger key never appear in logs; caps and the exit are contract-enforced; no claim beyond FR-015; testnet and test token only; every `fleet-*` gate stays green. Upstream reports (Vercel, Robinhood RPC, Uniswap) are drafted with minimal repro, environment, expected, actual; posting follows `plan.md`. Goal.md wins on conflict.
+Traceability: approved design-stage2.md → FR-001–017 / SC-001–010 (specs/002) → COMP-101–106 → T001–T040 → `verify.sh pool-*`. File layout per `specs/002-private-funding-pool/plan.md`. Hard constraints: no new dependency; no transaction, event, log, or response may name both a depositor and a campaign; ciphertexts and the ledger key never appear in logs; caps and the exit are contract-enforced; no claim beyond FR-015; every `fleet-*` gate stays green. Upstream reports (Vercel, Robinhood RPC, Uniswap) are drafted with minimal repro, environment, expected, actual; posting follows `plan.md`. Goal.md wins on conflict.
 
 ## Stage 1 — Fleet Mission (live, kept green)
 
 ## Product stages
 
-Fleet Mission is **Stage 1** (private gas) and is live; its choreography below is kept for regression. Stage 2 is choreographed above. Stage 3 (trustless shielded pool) has no build choreography here and earns its own `spec-dialogue` → Spec Kit → `build-prompt reconcile` flow when built. The honest constraint from Goal.md holds throughout: until Stage 2 is live, nothing may claim "no trail back to you".
+Fleet Mission is **Stage 1** (private gas) and is live; its choreography below is kept for regression. Stage 2 is live on testnet and is choreographed above, with its capped mainnet beta as the current build. Stage 3 (trustless shielded pool) has no build choreography here and earns its own `spec-dialogue` → Spec Kit → `build-prompt reconcile` flow when built. The honest constraint from Goal.md holds throughout: the claim is only ever what FR-015 permits, on either chain, and the pool being small on mainnet makes amounts guessable rather than hidden.
 
 Build the core journey in order: eligible connect and fee review → local vault confirmation → ETH-funded activation → bounded five-account testnet buy → Control Room pause/revoke/Close.
 

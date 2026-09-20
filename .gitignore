@@ -36,11 +36,12 @@ app/evidence/*
 # The poll runner's on-disk store (BOT_PGLITE_DIR)
 .bot-data/
 
-# Confidential review material: never tracked, never mirrored. The public
-# mirror force-pushes from main, so anything committed here is published.
-/chit-review.zip
-/chit-review/
-/chit-fleet-audit.pdf
-/chit-deck.pdf
-/chit-fleet-*.pdf
-/chit-wallet-reconnect-fix.md
+# Documents dropped at the repository root are never tracked. The public mirror
+# force-pushes from main, so anything committed here is published, and the
+# things that land here are drafts, decks and material shared in confidence.
+# Keep them here, or in an ignored folder; never in a commit.
+/*.pdf
+/*.zip
+/*.docx
+/*.key
+/review/

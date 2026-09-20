@@ -2,7 +2,7 @@
 
 **Product**: A private funding layer for trading fleets. A trader runs many wallets; Chit funds them so the chain never shows the trader's main wallet funding the fleet. Delivered in three stages. This repository is the private build (`ajanaku1/chit-fleet`); the public `ajanaku1/chit` is the hackathon submission only.
 
-**Goal (current build = Stage 2)**: Ship the Private Funding Pool: a trader holds one ETH balance in a shared, unkeyed pool and Chit funds both gas and trade principal for the trader's fleet from it, so no transaction on chain joins the trader's main wallet to a fleet account. Stage 1 (Fleet Mission, private gas) is live on Robinhood Chain testnet 46630 at chit.tools and stays green.
+**Goal (current build = the capped mainnet beta of Stage 2)**: Open the Private Funding Pool to real ETH on Robinhood Chain mainnet 4663, capped at 1 ETH, to CHIT holders, labelled a beta and labelled as not audited by a firm. Stage 2 is live and ungated on testnet 46630 and stays green there; Stage 1 (Fleet Mission, private gas) is live and stays green. Specified 2026-09-20: [design-mainnet-beta.md](design-mainnet-beta.md), [specs/003-mainnet-beta](specs/003-mainnet-beta/spec.md).
 
 **Why**: The trader can coordinate a bounded five-account sponsored-buy campaign without publishing the primary-wallet-to-fleet gas-funding edge, and prove the paymaster and fleet plumbing on a live chain before any real capital is held.
 
@@ -13,7 +13,7 @@ Gas sponsorship alone does **not** hide the funding trail. To trade, each fleet 
 ## Product stages (the roadmap)
 
 - **Stage 1 — private gas (live).** Chit's operator pays the fleet's gas and settles it against the trader's ETH escrow (operator-executes; no paymaster in this stage). Live on Robinhood testnet 46630 at chit.tools; first sponsored buy landed 2026-09-06. Operator-trusted mapping.
-- **Stage 2 — private funding pool (current build).** Chit funds the fleet's trade principal too, from one pooled, unkeyed deposit, so the main wallet never funds the fleet directly. This is where "no trail" becomes true. Semi-custodial (Chit briefly holds pooled capital), so it requires contract-enforced caps, a self-serve exit that works without Chit, a professional security audit before real funds, and the accountable-privacy (selective-disclosure) model. Specified 2026-09-06/07: [design-stage2.md](design-stage2.md), [specs/002-private-funding-pool](specs/002-private-funding-pool/spec.md).
+- **Stage 2 — private funding pool (current build).** Chit funds the fleet's trade principal too, from one pooled, unkeyed deposit, so the main wallet never funds the fleet directly. This is where "no trail" becomes true. Semi-custodial (Chit briefly holds pooled capital), so it requires contract-enforced caps, a self-serve exit that works without Chit, and the accountable-privacy (selective-disclosure) model. A professional audit was originally a gate before any real funds; that was changed on 2026-09-20 to a capped, labelled beta first, bounded at 1 ETH so the most an unaudited contract can cost is the cap. The audit remains the gate for holding meaningful funds and for raising the caps. Specified 2026-09-06/07: [design-stage2.md](design-stage2.md), [specs/002-private-funding-pool](specs/002-private-funding-pool/spec.md).
 - **Stage 3 — trustless shielded pool (final product).** A ZK privacy pool where nobody, not even the operator, links deposit to fleet, with user-held view keys for auditability. Needs privacy infrastructure not available on Robinhood today. North star, not near-term.
 
 ## Stage 1 core journey
@@ -30,7 +30,7 @@ Connect the primary wallet; deposit a fixed size into the pool with headroom sho
 
 ## Stage 2 scope
 
-The pool contract on 46630 (fixed-size unkeyed deposits; caps 0.5/0.2/5 ETH; pause; draws with operator-encrypted owner reference and due time; just-in-time principal; queued spend posting with a random delay; operator claim; 24 hour self-serve exit); the ledger service (balance from chain, sweep by per-minute cron and every request, withdrawal payout from the operator wallet); the Balance page, wizard and Control Room changes; the FR-015 claim across app, landing, and marketing; and a live pooled buy on chit.tools. Testnet and test token only.
+The pool contract (fixed-size unkeyed deposits; caps 0.5/0.2/5 ETH on testnet and 0.1/0.05/1 ETH on the mainnet beta; pause; draws with operator-encrypted owner reference and due time; just-in-time principal; queued spend posting with a random delay; operator claim; 24 hour self-serve exit); the ledger service (balance from chain, sweep by cron and every request, withdrawal payout from the operator wallet); the Balance page, wizard and Control Room changes; the FR-015 claim across app, landing, and marketing; and a live pooled buy. Testnet carries the test token only; the mainnet beta carries CHIT plus at most three hand-checked memes.
 
 ## Stage 1 scope
 
@@ -44,11 +44,24 @@ Responsive dashboard, small TypeScript SDK, read-only mainnet CHIT eligibility/d
 
 ## Constraints
 
-Target chain is Robinhood Chain testnet 46630; mainnet 4663 is out of scope for this MVP. CHIT is read-only eligibility and discount data; the sponsorship budget is ETH. No constants, deployments, venue, endpoint, or credential is invented — verified addresses are recorded in [research.md](specs/001-fleet-mission/research.md) and [deployments/fleet-46630.json](deployments/fleet-46630.json). Revoked is terminal for sponsorship; Close is its sole remaining action. Stage 1 follows [FR-001–018](specs/001-fleet-mission/spec.md) and [SC-001–010](specs/001-fleet-mission/spec.md); Stage 2 follows [FR-001–017](specs/002-private-funding-pool/spec.md) and [SC-001–010](specs/002-private-funding-pool/spec.md). No dependency is added; the ledger key and challenge secret derive from the operator key already in the environment.
+Target chains are Robinhood Chain testnet 46630, ungated, and mainnet 4663 for the capped beta. Each runs its own deployment: one chain per service, one chain per app host. CHIT is read-only eligibility and discount data; the sponsorship budget is ETH. No constants, deployments, venue, endpoint, or credential is invented — verified addresses are recorded in [research.md](specs/001-fleet-mission/research.md) and [deployments/fleet-46630.json](deployments/fleet-46630.json). Revoked is terminal for sponsorship; Close is its sole remaining action. Stage 1 follows [FR-001–018](specs/001-fleet-mission/spec.md) and [SC-001–010](specs/001-fleet-mission/spec.md); Stage 2 follows [FR-001–017](specs/002-private-funding-pool/spec.md) and [SC-001–010](specs/002-private-funding-pool/spec.md), except its FR-016, which excluded mainnet and is superseded for the beta by [specs/003-mainnet-beta](specs/003-mainnet-beta/spec.md) FR-001–043 and SC-001–016. No dependency is added; the ledger key and challenge secret derive from the operator key already in the environment.
 
 ## Definition of done (Stage 2)
 
 All Stage 2 FR/SC outcomes pass through the `pool-*` verification family in `verify.sh`: pool contract, ledger, and ABI separation proven on the 46630 fork (`pool-foundation`); balance, headroom, withdrawal, and exit (`pool-balance`); delayed funding from a fresh instance and just-in-time buys (`pool-fund`); close-to-balance, top-up, and operator pause (`pool-control`); observer unlinkability over events, FR-015 copy, and every Stage 1 `fleet-*` gate still green (`pool-acceptance`). The live pooled buy on chit.tools (T040) is outward and recorded in the deployment file.
+
+## Definition of done (the capped mainnet beta)
+
+All 003 FR/SC outcomes pass through the `beta-*` family in `verify.sh`: the caps
+branch rebased and the caps read back from deployed bytecode (`beta-caps`); every
+money-moving write durable and every reproduction flipped (`beta-money`); the
+pool reimbursing fronted withdrawals with the monitor identity assertable
+(`beta-contract`); the gate, the beta note and the refusal state
+(`beta-surfaces`); the token registry pinned, checked and quoted against real
+pools (`beta-venue`); and the launch gate, which includes the published-promise
+correction and a clean forty-eight hour soak (`beta-launch`). Three things are
+outward and are the user's to run, recorded after: the testnet redeploy, the fork
+rehearsal, and the mainnet deploy itself.
 
 ## Definition of done (Stage 1, kept green)
 

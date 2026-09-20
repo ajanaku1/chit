@@ -1,50 +1,60 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Chit Constitution
+
+These are not new principles. They record what the project already enforces
+through `CLAUDE.md`, so that Spec Kit's gates and the repository's rules are the
+same rules. Where this file and `CLAUDE.md` differ, `CLAUDE.md` wins and this
+file is wrong.
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Done means the check passed
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+A task is done when its machine-checkable predicate passes, never on anyone's
+assessment that it looks finished. Every task carries a `done_when` before work
+starts. `loop/guardrails/verify.sh` has the final vote.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### II. Tests are evidence, never an obstacle (NON-NEGOTIABLE)
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+A test is never edited or deleted to make it pass. A test that asserts broken
+behaviour is replaced by one asserting the fixed behaviour, and the replacement
+is written before the fix is called done. A deleted test is a failure, always.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### III. Claims must hold
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Nothing published may claim more than the product does. A privacy claim carries
+its qualification wherever it appears. A promise that turns out to be wrong is
+corrected in public, in its own change, before the behaviour that contradicts it
+ships.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### IV. Small, reversible changes
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+No commit exceeds 200 changed lines without asking first. No dependency is added
+without proposing it and stopping. No secret, endpoint or convention is invented:
+where the answer is not known, the work stops and asks.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### V. Money paths are guilty until proven innocent
+
+Anything that moves user funds is assumed broken until a test says otherwise. An
+exception is never read as proof that nothing happened. Where an outcome is
+unobserved, it is resolved by reading the chain, not by inference.
+
+## Additional Constraints
+
+Deployed contract addresses, `.env*` files and submission artifacts are never
+touched unattended. Private keys are never committed, testnet burn keys included.
+Where a deviation from the plan is necessary, the conservative option is taken,
+logged in `IMPLEMENTATION.md`, and work continues.
+
+## Development Workflow
+
+Decisions route to a read-only planning pass before implementation. A fresh
+context verifies the project's `done_when` once, after the last phase, having
+seen neither the plan nor the draft. Where maker and checker disagree twice, work
+stops and queues for a human.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+This constitution records existing practice and does not supersede `CLAUDE.md`.
+Amendments happen by amending `CLAUDE.md` first and reflecting the change here.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-09-20 | **Last Amended**: 2026-09-20
