@@ -177,7 +177,7 @@ export class SessionBot {
 
   async #connect(chatId: string, tgId: string): Promise<void> {
     const nonce = await issueNonce(this.#d.links, tgId, this.#now);
-    const href = `${this.#d.siteUrl}/app/sessions.html?link=${nonce}`;
+    const href = `${this.#d.siteUrl}/app/sessions.html?link=${nonce}&key=${this.#d.session.signer}`;
     await this.#say(chatId, [
       "<b>connect your wallet</b>",
       "",

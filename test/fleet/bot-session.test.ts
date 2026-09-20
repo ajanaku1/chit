@@ -76,8 +76,8 @@ test("unlinked: the card names the signer and offers Connect only; a pasted toke
   assert.match(telegram.last(), /never holds your key/, "no link, no token card");
   await bot.handle(tap("connect"));
   const href = buttons()[0]!;
-  assert.match(href, /^https:\/\/chit\.tools\/app\/sessions\.html\?link=[0-9a-f]{32}$/);
-  const nonce = href.split("link=")[1]!;
+  assert.ok(href.startsWith("https://chit.tools/app/sessions.html?link=") && href.endsWith(`&key=${SIGNER}`) && /link=[0-9a-f]{32}&/.test(href), href);
+  const nonce = href.split("link=")[1]!.split("&")[0]!;
   assert.equal((await links.getNonce(nonce))!.tgId, "7", "the nonce is this telegram's");
   assert.match(telegram.last(), /15 minutes/);
 });

@@ -124,6 +124,14 @@
           <p id="list-empty" class="fineprint">No sessions yet on this device. A session granted elsewhere shows up once you paste its key above and press Refresh.</p>
         </section>
 
+        <section class="wstep card-glass" aria-labelledby="link-h" data-reveal id="link-section" hidden>
+          <h2 id="link-h">Link to the bot</h2>
+          <p class="lead small">You came from Chit Bot. Create and fund your account above, grant the bot's key a session (its key and the beta's caps are filled in), then sign one message so the bot knows which account is yours. The bot never sees your key; the signature is the only proof it gets.</p>
+          <p class="fineprint">The bot's key: <code id="link-key">…</code>. The message you sign names this chain, your account and a one-time code; it is good for 15 minutes.</p>
+          <p id="link-note" class="fineprint" role="status" aria-live="polite"></p>
+          <button id="link-submit" type="button" class="primary" disabled>Link to the bot</button>
+        </section>
+
         <section class="wstep card-warm" aria-labelledby="bot-h" data-reveal>
           <h2 id="bot-h">For your bot</h2>
           <p class="lead small">One call. The account executes it with its own ETH; the bot's key only signs.</p>

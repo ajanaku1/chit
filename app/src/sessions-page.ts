@@ -258,6 +258,67 @@ el("grant-form").addEventListener("submit", (event) => {
   });
 });
 
+// ---- the bot's link ----
+// `?link=<nonce>&key=<signer>` comes from Chit Bot's Connect button. The nonce is the bot's; the key is the
+// bot's signer, filled into the grant form with the beta's caps. Linking is a signature, not a transaction.
+
+const linkParams = new URLSearchParams(location.search);
+const linkNonce = linkParams.get("link");
+const linkKey = linkParams.get("key");
+const LINK_API = "/api/bot/link";
+const BETA_GRANT = { perCall: "0.05", cap: "0.5", hours: "168" };
+
+const linkMessage = (chainId: number, acct: Hex, nonce: string): string => `chit-bot-link|${chainId}|${acct}|${nonce}`;
+
+const initLink = async (): Promise<void> => {
+  if (!linkNonce || !/^[0-9a-f]{32}$/.test(linkNonce)) return;
+  el("link-section").hidden = false;
+  if (linkKey && isAddress(linkKey)) {
+    el("link-key").textContent = linkKey;
+    input("grant-key").value ||= linkKey;
+    input("grant-per-call").value = BETA_GRANT.perCall;
+    input("grant-cap").value = BETA_GRANT.cap;
+    input("grant-hours").value = BETA_GRANT.hours;
+  } else {
+    el("link-key").textContent = "not in the link; paste it from the bot's card";
+  }
+  const note = el("link-note");
+  try {
+    const r = await (await fetch(`${LINK_API}?nonce=${linkNonce}`)).json() as { ok: boolean; why?: string };
+    if (!r.ok) { note.textContent = r.why === "used" ? "This link was already used. Ask the bot for a new one (/link)." : "This link expired. Ask the bot for a new one (/link)."; return; }
+  } catch { note.textContent = "Could not reach the bot's link service right now."; return; }
+  button("link-submit").disabled = false;
+};
+
+button("link-submit").addEventListener("click", async () => {
+  const note = el("link-note");
+  if (!linkNonce) return;
+  if (!wallet || !account) { note.textContent = "Connect your wallet first."; return; }
+  if (!deployed) { note.textContent = "Create your account first (step 1)."; return; }
+  const eth = ethereum();
+  if (!(await ensureRobinhoodTestnet(eth))) { note.textContent = "Switch your wallet to Robinhood Chain first."; return; }
+  const message = linkMessage(Number(ROBINHOOD_TESTNET.chainId), account, linkNonce);
+  note.textContent = "Sign the message in your wallet…";
+  let signature: string;
+  try {
+    signature = (await eth.request({ method: "personal_sign", params: [message, wallet] })) as string;
+  } catch (error) {
+    note.textContent = (error as { message?: string }).message?.split("\n")[0] ?? "The wallet refused.";
+    return;
+  }
+  button("link-submit").disabled = true;
+  try {
+    const r = await fetch(LINK_API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ nonce: linkNonce, account, signature }) });
+    const j = (await r.json()) as { ok?: boolean; error?: string; account?: string };
+    if (!r.ok || !j.ok) { note.textContent = j.error ?? `The bot said ${r.status}.`; button("link-submit").disabled = true; return; }
+    note.textContent = `Linked: the bot trades from ${j.account} within the session you granted. Go back to Telegram and press "I linked it".`;
+    banner("Linked to the bot.", "ok");
+  } catch {
+    note.textContent = "Could not reach the bot's link service; try again.";
+    button("link-submit").disabled = false;
+  }
+});
+
 el("account-refresh").addEventListener("click", () => {
   const typed = input("grant-key").value.trim();
   if (account && isAddress(typed)) rememberKey(account, typed as Hex);
@@ -265,4 +326,4 @@ el("account-refresh").addEventListener("click", () => {
 });
 window.addEventListener("chit-wallet-changed", () => void refreshAccount());
 
-void loadTarget().then(() => refreshAccount());
+void loadTarget().then(() => refreshAccount()).then(() => initLink());
