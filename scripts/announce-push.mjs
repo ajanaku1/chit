@@ -42,18 +42,7 @@ const MAX_LINES = 12;
 
 /** Telegram's HTML mode needs exactly these three escaped. */
 const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-/** A subject line the group can read on a phone. Some commit subjects in this
- *  repo are whole paragraphs; one of them alone can fill a Telegram message,
- *  so a long one is cut at a word boundary rather than allowed to crowd out
- *  every other change in the push. */
-const SUBJECT_MAX = 140;
-const subject = (message) => {
-  const first = String(message).split("\n")[0].trim();
-  if (first.length <= SUBJECT_MAX) return first;
-  const cut = first.slice(0, SUBJECT_MAX);
-  const space = cut.lastIndexOf(" ");
-  return `${(space > SUBJECT_MAX / 2 ? cut.slice(0, space) : cut).trimEnd()} …`;
-};
+const subject = (message) => String(message).split("\n")[0].trim();
 const git = (...args) => execFileSync("git", args, { encoding: "utf8" });
 
 /* ---------- the push ---------- */
@@ -256,35 +245,14 @@ function chainMessage({ chainId, groups }) {
 
 /* ---------- send ---------- */
 
-/** Telegram refuses a message over 4096 characters with a 400. A push of many
- *  commits can pass that even with subjects trimmed, and a failed announcement
- *  is a push the group never hears about, so a long message is split on line
- *  boundaries instead of being sent whole and rejected. Splitting on lines
- *  keeps every HTML tag inside one part, since no tag in this file spans one. */
-const TELEGRAM_MAX = 4096;
-const parts = (text) => {
-  if (text.length <= TELEGRAM_MAX) return [text];
-  const out = [];
-  let current = "";
-  for (const line of text.split("\n")) {
-    const piece = line.length > TELEGRAM_MAX ? `${line.slice(0, TELEGRAM_MAX - 2)} …` : line;
-    if (current && current.length + piece.length + 1 > TELEGRAM_MAX) { out.push(current); current = piece; }
-    else current = current ? `${current}\n${piece}` : piece;
-  }
-  if (current) out.push(current);
-  return out;
-};
-
 async function send(text) {
   if (!token || !chat) { console.log("would send:\n" + text + "\n"); return; }
-  for (const part of parts(text)) {
-    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ chat_id: chat, text: part, parse_mode: "HTML", disable_web_page_preview: true }),
-    });
-    if (!response.ok) throw new Error(`telegram answered ${response.status}: ${(await response.text()).slice(0, 200)}`);
-  }
+  const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ chat_id: chat, text, parse_mode: "HTML", disable_web_page_preview: true }),
+  });
+  if (!response.ok) throw new Error(`telegram answered ${response.status}: ${(await response.text()).slice(0, 200)}`);
 }
 
 const event = eventPath ? JSON.parse(await readFile(eventPath, "utf8")) : null;
