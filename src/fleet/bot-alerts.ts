@@ -4,15 +4,20 @@
  * and one private message to each user whose own line it clears. The
  * message says what the chain says and nothing more: who paid how much ETH
  * for which token, the hash, and the partners' lines as the token card
- * shows them. Orus's line is the only word on the token; when orus has no
- * read, or is not wired into this bot, the line says unknown, because a
- * missing read printed as nothing would read as clean. HEY the same.
+ * shows them. "Who" is the sender of the transaction, and the message says
+ * so: a contract, a bundler or an aggregator in between shows as itself,
+ * not as whoever is behind it. Orus's line is the only word on the token;
+ * when orus has no read, or is not wired into this bot, the line says
+ * unknown, because a missing read printed as nothing would read as clean.
+ * HEY the same.
  *
  * The bounds, because a group fed from a public chain can be flooded by
  * anyone with ETH to spend: at most twenty group posts a run (the rest of
  * the window's buys are still handed to the other handlers, only the group
  * is spared), and one private message per user per token an hour, kept in
- * the store so every instance keeps the same count. A user's line is
+ * the store so every instance keeps the same count: the hour is claimed in
+ * one statement, so two passes told of the same buy at once cannot both
+ * send it. A user's line is
  * theirs: on or off, and the ETH per buy under which nothing is sent
  * (bot-alert-cards.ts is the card). The group's line is the operator's,
  * BOT_ALERT_GROUP_MIN_ETH, half an ETH by default.
@@ -37,7 +42,13 @@ export interface AlertStore {
   active(): Promise<AlertSub[]>;
   /** When this user was last told about this token, for the hourly bound. */
   lastTold(tgId: string, token: Address): Promise<Date | undefined>;
-  markTold(tgId: string, token: Address, at: Date): Promise<void>;
+  /**
+   * Marks the user told about this token at `at` and says whether this call
+   * was the one that did: false when a mark newer than `since` was already
+   * there, another pass having told them. One statement, never a read and
+   * then a write, so two passes cannot both get true.
+   */
+  claimTold(tgId: string, token: Address, at: Date, since: Date): Promise<boolean>;
 }
 
 export type AlertsDeps = {
@@ -102,7 +113,7 @@ export class Alerts {
       `<code>${short(b.buyer)}</code> bought <code>${eth(b.ethInWei)} ETH</code> of ${what} · <a href="https://robinhoodchain.blockscout.com/tx/${b.txHash}">${b.txHash.slice(0, 10)}…</a>`,
       `orus: ${scan && this.#d.orus ? orusLine(scan, this.#d.orus.link(b.token)) : "unknown, no read on this token right now. unknown is not safe."}`,
       `hey research lab: ${hey ? heyLine(hey) : "unknown, no page for this token."}`,
-      `<i>read from the chain (the pool manager's swap log), not from us. the address is <code>${b.token}</code>.</i>`,
+      `<i>read from the chain (the pool manager's swap log), not from us. the buyer is the sender of the transaction. the address is <code>${b.token}</code>.</i>`,
     ];
     return { text: lines.join("\n"), symbol: symbol || short(b.token) };
   }
@@ -136,10 +147,9 @@ export class Alerts {
     const told: string[] = [];
     const every = this.#d.dmEveryMs ?? DEFAULT_DM_EVERY_MS;
     for (const s of subs) {
-      const last = await this.#d.store.lastTold(s.tgId, b.token);
-      if (last && this.#now.getTime() - last.getTime() < every) continue;
-      // Marked before the send: a run cut off between the two loses one alert instead of sending it twice.
-      await this.#d.store.markTold(s.tgId, b.token, this.#now);
+      // Claimed before the send, in one statement: a run cut off between the two loses one alert instead of sending it twice, and a second pass on this buy loses the claim and sends nothing.
+      const now = this.#now;
+      if (!(await this.#d.store.claimTold(s.tgId, b.token, now, new Date(now.getTime() - every)))) continue;
       try {
         await this.#d.tell(s.tgId, `${text}\n<i>your line is ${eth(s.minEthWei)} ETH a buy; 🔔 Alerts on your card changes it or turns this off. one message per token an hour at most.</i>`, this.#door(b.token));
         told.push(s.tgId);
@@ -161,7 +171,14 @@ export class MemoryAlertStore implements AlertStore {
   async put(sub: AlertSub) { this.subs.set(sub.tgId, { ...sub }); }
   async active() { return [...this.subs.values()].filter((s) => s.on).map((s) => ({ ...s })); }
   async lastTold(tgId: string, token: Address) { const at = this.told.get(`${tgId}|${token.toLowerCase()}`); return at ? new Date(at) : undefined; }
-  async markTold(tgId: string, token: Address, at: Date) { this.told.set(`${tgId}|${token.toLowerCase()}`, at.toISOString()); }
+  async claimTold(tgId: string, token: Address, at: Date, since: Date) {
+    // The check and the write in one turn, nothing awaited between them: the memory store's one statement.
+    const key = `${tgId}|${token.toLowerCase()}`;
+    const have = this.told.get(key);
+    if (have && new Date(have).getTime() > since.getTime()) return false;
+    this.told.set(key, at.toISOString());
+    return true;
+  }
 }
 
 type Row = Record<string, unknown>;
@@ -189,10 +206,15 @@ export class NeonAlertStore implements AlertStore {
     const [r] = await this.sql.query(`SELECT at FROM bot_alert_told WHERE tg_id = $1 AND token = $2`, [tgId, token.toLowerCase()]);
     return r ? new Date(String(r.at)) : undefined;
   }
-  async markTold(tgId: string, token: Address, at: Date) {
+  async claimTold(tgId: string, token: Address, at: Date, since: Date) {
     await this.#init();
-    await this.sql.query(`INSERT INTO bot_alert_told (tg_id, token, at) VALUES ($1, $2, $3) ON CONFLICT (tg_id, token) DO UPDATE SET at = EXCLUDED.at`, [tgId, token.toLowerCase(), at.toISOString()]);
+    // One upsert: a fresh row is inserted, a row at or before `since` is moved to `at`, a newer row is left as it is and nothing comes back. RETURNING is the answer.
+    const rows = await this.sql.query(
+      `INSERT INTO bot_alert_told (tg_id, token, at) VALUES ($1, $2, $3) ON CONFLICT (tg_id, token) DO UPDATE SET at = EXCLUDED.at WHERE bot_alert_told.at <= $4 RETURNING tg_id`,
+      [tgId, token.toLowerCase(), at.toISOString(), since.toISOString()],
+    );
     // The hourly bound needs nothing older than a day; the rest goes in passing.
     if (++this.#writes % 100 === 0) await this.sql.query(`DELETE FROM bot_alert_told WHERE at < NOW() - INTERVAL '1 day'`).catch(() => undefined);
+    return rows.length === 1;
   }
 }

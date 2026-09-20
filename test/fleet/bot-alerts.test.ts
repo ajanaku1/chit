@@ -2,11 +2,13 @@
  * The alerts: the group is told of a buy at or over its line and not
  * under; each subscriber at or over their own line; twenty group posts a
  * run and no more, a new run starts the count over; one private message
- * per user per token an hour, kept in the store; the words are the chain's
- * facts with the hash, the cashtag, orus's line or unknown (never nothing),
- * HEY's line or unknown, "read from the chain", and a "buy this" door into
- * the bot by the token; one failed message is one, not the run; the Neon
- * store's statements.
+ * per user per token an hour, kept in the store and claimed in one
+ * statement, so two passes on one buy tell a user once; the words are the
+ * chain's facts with the hash, the cashtag, orus's line or unknown (never
+ * nothing), HEY's line or unknown, "read from the chain", that the buyer
+ * is the transaction's sender, and a "buy this" door into the bot by the
+ * token; one failed message is one, not the run; the Neon store's
+ * statements.
  */
 
 import assert from "node:assert/strict";
@@ -60,7 +62,7 @@ test("the group's line: a buy under it posts nothing and reads nothing; at it, o
   const { text, keyboard } = posted[0]!;
   assert.match(text, /^<code>0x0000…0b01<\/code> bought <code>0.5 ETH<\/code> of <b>\$PEPE<\/b> · <a href="https:\/\/robinhoodchain\.blockscout\.com\/tx\/0x0{63}2">0x00000000…<\/a>/);
   assert.match(text, /orus: no honeypot · tax 0\/0 · 100 holders · liq \$50k · deployer 1 launch · <a href="https:\/\/www\.orusagent\.xyz\/token\/4663\/0x[0-9a-f]{40}">checked by orus<\/a>/);
-  assert.match(text, /read from the chain \(the pool manager's swap log\), not from us/);
+  assert.match(text, /read from the chain \(the pool manager's swap log\), not from us\. the buyer is the sender of the transaction\./, "who is the sender, and the message says so: a contract or a bundler in between shows as itself");
   assert.match(text, new RegExp(`the address is <code>${PEPE}</code>`));
   assert.deepEqual(keyboard, [[{ text: "buy this", url: `https://t.me/usechit_bot?start=t-${PEPE}` }]]);
   assert.equal(DEFAULT_GROUP_MIN_WEI, parseEther("0.5"));
@@ -135,6 +137,16 @@ test("rate limits: twenty group posts a run and no more, the count starts over w
   assert.equal(only.posted.length, 20);
 });
 
+test("two passes on one buy at the same time tell a subscriber once: the hour is claimed in one statement, not read and then written", async () => {
+  const store = new MemoryAlertStore();
+  await store.put({ tgId: "7", minEthWei: parseEther("0.1"), on: true });
+  const told: string[] = [];
+  const mk = () => new Alerts({ store, reads, botUsername: "usechit_bot", now: () => clock, tell: async (to) => { await new Promise((r) => setTimeout(r, 1)); told.push(to); } });
+  const [a, b] = await Promise.all([mk().onBuy(buy(1, "1")), mk().onBuy(buy(1, "1"))]);
+  assert.deepEqual(told, ["7"], "one message, whichever pass won the claim");
+  assert.equal(a.told.length + b.told.length, 1);
+});
+
 test("one failed message is one: a blocked user or a group that refuses is logged, the others are told, the buy is reported", async () => {
   const { alerts, store, told } = setup({ failTell: (to) => to === "7" });
   await store.put({ tgId: "7", minEthWei: parseEther("0.1"), on: true });
@@ -161,13 +173,19 @@ const fakeSql = (answer: (query: string, params: unknown[]) => readonly Record<s
   return sql;
 };
 
-test("neon: a subscription is one upsert per user; active reads the ones that are on; the hourly mark is one upsert per user and token, lowercase", async () => {
+test("neon: a subscription is one upsert per user; active reads the ones that are on; the hourly mark is one upsert per user and token, lowercase, that moves a mark at or before the cut-off and leaves a newer one, RETURNING saying which", async () => {
+  let toldAt: string | undefined;
   const sql = fakeSql((query, params) => {
     if (query.includes("INSERT INTO bot_alert_subs")) return [];
     if (query.includes("SELECT * FROM bot_alert_subs WHERE tg_id")) return params[0] === "7" ? [{ tg_id: "7", min_eth_wei: "100000000000000000", on: true }] : [];
     if (query.includes(`SELECT * FROM bot_alert_subs WHERE "on"`)) return [{ tg_id: "7", min_eth_wei: "100000000000000000", on: true }];
     if (query.includes("SELECT at FROM bot_alert_told")) return params[0] === "7" ? [{ at: clock.toISOString() }] : [];
-    if (query.includes("INSERT INTO bot_alert_told")) return [];
+    // As Postgres answers the upsert: a row when it inserted or its WHERE let it update, nothing when the mark there is newer than the cut-off.
+    if (query.includes("INSERT INTO bot_alert_told")) {
+      if (toldAt !== undefined && new Date(toldAt).getTime() > new Date(String(params[3])).getTime()) return [];
+      toldAt = String(params[2]);
+      return [{ tg_id: params[0] }];
+    }
     return undefined;
   });
   const store = new NeonAlertStore(sql);
@@ -180,10 +198,13 @@ test("neon: a subscription is one upsert per user; active reads the ones that ar
   assert.deepEqual(await store.active(), [{ tgId: "7", minEthWei: parseEther("0.1"), on: true }]);
   assert.equal((await store.lastTold("7", PEPE))!.toISOString(), clock.toISOString());
   assert.equal(await store.lastTold("8", PEPE), undefined);
-  await store.markTold("7", PEPE.toUpperCase().replace("0X", "0x") as Address, clock);
+  const since = new Date(clock.getTime() - 3_600_000);
+  assert.equal(await store.claimTold("7", PEPE.toUpperCase().replace("0X", "0x") as Address, clock, since), true, "a fresh row: this call's mark");
   const mark = sql.calls.at(-1)!;
-  assert.match(mark.query, /INSERT INTO bot_alert_told \(tg_id, token, at\) VALUES \(\$1, \$2, \$3\) ON CONFLICT \(tg_id, token\) DO UPDATE SET at = EXCLUDED.at/);
-  assert.deepEqual(mark.params, ["7", PEPE, clock.toISOString()]);
+  assert.match(mark.query, /INSERT INTO bot_alert_told \(tg_id, token, at\) VALUES \(\$1, \$2, \$3\) ON CONFLICT \(tg_id, token\) DO UPDATE SET at = EXCLUDED.at WHERE bot_alert_told.at <= \$4 RETURNING tg_id/);
+  assert.deepEqual(mark.params, ["7", PEPE, clock.toISOString(), since.toISOString()]);
+  assert.equal(await store.claimTold("7", PEPE, clock, since), false, "the mark is newer than the cut-off: no row back, not this call's to send");
+  assert.equal(await store.claimTold("7", PEPE, new Date(clock.getTime() + 3_600_000), clock), true, "an hour on, the mark is at the cut-off and moves");
   const schema = sql.calls.filter((c) => /^\s*CREATE/.test(c.query)).map((c) => c.query);
   assert.ok(schema.some((q) => q.includes("bot_alert_subs")) && schema.some((q) => q.includes("bot_alert_told")));
 });

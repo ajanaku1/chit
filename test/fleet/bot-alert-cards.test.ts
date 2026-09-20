@@ -66,7 +66,8 @@ test("the button: on the home card linked or not when a store is wired, absent w
   await bot.handle(tap("alerts"));
   const card = telegram.last();
   assert.match(card, /<b>🔔 alerts<\/b>/);
-  assert.match(card, /read from the chain \(the pool manager's swap log\), not from us/);
+  assert.match(card, /big buys of \$CHIT and the tokens this bot lists, read from the chain \(the pool manager's swap log\), not from us/);
+  assert.match(card, /any other pool on the chain is not watched, so nobody can open one and post through it/);
   assert.match(card, /the orus line under each is the only word on the token; unknown is not safe/);
   assert.match(card, /one message per token an hour at most/);
   assert.match(card, /alerts are <b>off<\/b>\. turn it on to be told here\./);
@@ -79,7 +80,7 @@ test("Turn on writes the subscription at the default line and says so; the card 
   const { bot, telegram, alerts, buttons } = setup();
   await bot.handle(tap("al:on"));
   assert.deepEqual(await alerts.get("7"), { tgId: "7", minEthWei: parseEther("0.5"), on: true });
-  assert.match(telegram.last(), /alerts on: a buy of <code>0.5 ETH<\/code> or more on the venue is told here, one per token an hour at most, read from the chain\. Set the line changes the amount\./);
+  assert.match(telegram.last(), /alerts on: a buy of <code>0.5 ETH<\/code> or more of \$CHIT or a listed token is told here, one per token an hour at most, read from the chain\. Set the line changes the amount\./);
   assert.deepEqual(buttons(), ["alerts", "home"]);
   await bot.handle(tap("alerts"));
   assert.match(telegram.last(), /alerts are <b>on<\/b>: buys of <code>0.5 ETH<\/code> and up, in this chat\./);

@@ -6,10 +6,11 @@
  * session bot routes the taps and the reply and nothing else.
  *
  * What the card says, because it is the whole promise: a buy is read from
- * the chain (the pool manager's swap log), not from us; the message names
- * who paid how much ETH for which token and carries the hash; the orus
- * line under it is the only word on the token, and unknown is not safe;
- * one message per token an hour at most. No link is needed: the alert
+ * the chain (the pool manager's swap log), not from us, and only in the
+ * pools of $CHIT and the tokens this bot lists, never in a pool a stranger
+ * opened; the message names who sent how much ETH for which token and
+ * carries the hash; the orus line under it is the only word on the token,
+ * and unknown is not safe; one message per token an hour at most. No link is needed: the alert
  * goes to the Telegram chat that turned it on.
  *
  * Callbacks owned here (all under Telegram's 64 bytes):
@@ -33,7 +34,7 @@ const toWei = (s: string): bigint | null => {
 export const MAX_LINE_WEI = 1_000n * 10n ** 18n;
 const btn = (text: string, data: string) => ({ text, callback_data: data });
 
-const ABOUT = "big buys on the venue, read from the chain (the pool manager's swap log), not from us: who paid how much ETH for which token, with the hash. the orus line under each is the only word on the token; unknown is not safe. one message per token an hour at most.";
+const ABOUT = "big buys of $CHIT and the tokens this bot lists, read from the chain (the pool manager's swap log), not from us: who sent how much ETH for which token, with the hash. any other pool on the chain is not watched, so nobody can open one and post through it. the orus line under each is the only word on the token; unknown is not safe. one message per token an hour at most.";
 
 export class AlertCards {
   readonly #d: AlertCardsDeps;
@@ -83,7 +84,7 @@ export class AlertCards {
     const minEthWei = sub?.minEthWei ?? DEFAULT_USER_MIN_WEI;
     await this.#d.store.put({ tgId, minEthWei, on });
     await this.#say(chatId, on
-      ? `alerts on: a buy of <code>${eth(minEthWei)} ETH</code> or more on the venue is told here, one per token an hour at most, read from the chain. Set the line changes the amount.`
+      ? `alerts on: a buy of <code>${eth(minEthWei)} ETH</code> or more of $CHIT or a listed token is told here, one per token an hour at most, read from the chain. Set the line changes the amount.`
       : "alerts off. nothing more is sent here; Turn on brings them back at your line.",
       [[btn("🔔 Alerts", "alerts"), btn("← Back", "home")]]);
   }

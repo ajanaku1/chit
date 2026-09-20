@@ -3,7 +3,10 @@
  * one pass answers with the window and what got through, posts the big
  * buys to the group and to the subscribers, and hands every buy to the
  * handlers other features registered, each caught on its own;
- * BOT_WATCH_OFF stops the clock; the chain must be one of ours.
+ * BOT_WATCH_OFF stops the clock; the chain must be one of ours; the
+ * watched tokens are the chain's venue token ($CHIT on 4663) and the
+ * allowlist, and the bot's own sender is the signer's address when its key
+ * is set.
  */
 
 import assert from "node:assert/strict";
@@ -13,7 +16,8 @@ import { MemoryAlertStore } from "../../src/fleet/bot-alerts.js";
 import type { BotChain } from "../../src/fleet/bot-chain.js";
 import { RecordingTelegram } from "../../src/fleet/bot-telegram.js";
 import { MemoryWatchStore, type VenueBuy, type WatchPort } from "../../src/fleet/bot-watch.js";
-import { handleWatchRequest, setWatchDepsForTests, watchHandlers } from "../../src/fleet/bot-watch-runtime.js";
+import { CHIT_MAINNET } from "../../src/fleet/bot-bridge.js";
+import { handleWatchRequest, ownSendersFromEnv, setWatchDepsForTests, watchHandlers, watchTokens } from "../../src/fleet/bot-watch-runtime.js";
 
 const PEPE = "0x00000000000000000000000000000000000000ce" as Address;
 const WOJAK = "0x00000000000000000000000000000000000000dd" as Address;
@@ -22,7 +26,7 @@ const hash = (n: number): Hex => `0x${n.toString(16).padStart(64, "0")}` as Hex;
 const req = (auth?: string) => new Request("https://chit.tools/api/bot/watch", { headers: auth ? { authorization: auth } : {} });
 const reads = { async tokenInfo() { return { symbol: "PEPE", decimals: 18, hasPool: true }; } } as unknown as BotChain;
 
-const ENV = ["CRON_SECRET", "BOT_WATCH_OFF", "BOT_WATCH_CHAIN_ID", "BOT_GROUP_CHAT_ID", "BOT_USERNAME", "BOT_ALERT_GROUP_MIN_ETH", "TELEGRAM_BOT_TOKEN", "BOT_HEY_OFF", "ORUS_PARTNER_API_KEY"] as const;
+const ENV = ["CRON_SECRET", "BOT_WATCH_OFF", "BOT_WATCH_CHAIN_ID", "BOT_GROUP_CHAT_ID", "BOT_USERNAME", "BOT_ALERT_GROUP_MIN_ETH", "TELEGRAM_BOT_TOKEN", "BOT_HEY_OFF", "ORUS_PARTNER_API_KEY", "BOT_SIGNER_PRIVATE_KEY"] as const;
 const withEnv = async (values: Partial<Record<(typeof ENV)[number], string>>, run: () => Promise<void>) => {
   const saved = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
   for (const k of ENV) { if (values[k] === undefined) delete process.env[k]; else process.env[k] = values[k]; }
@@ -97,5 +101,19 @@ test("BOT_WATCH_OFF=1 stops the clock: the route answers off and reads nothing; 
     const ok = await handleWatchRequest(req("Bearer s3cret-s3cret-s3cret"));
     assert.deepEqual(await ok.json(), { state: "ran", from: "5", to: "5", buys: 0, delivered: 0 });
     assert.equal(await store.cursor(46630), 5n, "the cursor is the rehearsal chain's");
+  });
+});
+
+test("the watched tokens: $CHIT on mainnet and the testnet token on 46630, first, then the allowlist, each once; the bot's own sender is the signer's address when its key is set, and nothing when it is not", async () => {
+  const TESTNET_TOKEN = "0x13283ab8e1f2bc4297e9ec6480c80c59674af554" as Address;
+  assert.deepEqual(watchTokens(4663, []), [CHIT_MAINNET], "the default chain watches the venue token that is actually on it, never the testnet's");
+  assert.deepEqual(watchTokens(4663, [PEPE, CHIT_MAINNET.toUpperCase().replace("0X", "0x") as Address]), [CHIT_MAINNET, PEPE], "the allowlist adds to the venue token; a repeat is one");
+  assert.deepEqual(watchTokens(46630, [WOJAK]), [TESTNET_TOKEN, WOJAK]);
+  await withEnv({}, async () => {
+    assert.deepEqual(ownSendersFromEnv(), [], "no signer key, nothing skipped");
+    process.env.BOT_SIGNER_PRIVATE_KEY = "0x" + "11".repeat(32);
+    assert.deepEqual(ownSendersFromEnv(), ["0x19E7E376E7C213B7E7e7e46cc70A5dD086DAff2A"], "the key's address, the key itself never held here");
+    process.env.BOT_SIGNER_PRIVATE_KEY = "not a key";
+    assert.deepEqual(ownSendersFromEnv(), [], "a malformed key is the session bot's to refuse; the watcher skips nothing rather than guess");
   });
 });

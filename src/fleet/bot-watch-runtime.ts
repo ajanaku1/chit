@@ -37,17 +37,31 @@
  *   ORUS_PARTNER_API_KEY,       the partners' lines under each alert, as
  *   HEY_API_KEY, BOT_HEY_OFF    the token card reads them; without orus the
  *                               line says unknown, never nothing
- *   FLEET_TOKEN_ALLOWLIST       tokens whose pools are named before the
- *                               first log is read
+ *   FLEET_TOKEN_ALLOWLIST       the tokens watched beside the venue token
+ *                               ($CHIT on 4663, the testnet token on
+ *                               46630): their pools are named through the
+ *                               registry before the first log is read, and
+ *                               a swap in any other pool is not a buy
+ *   BOT_SIGNER_PRIVATE_KEY      session mode's signer; only its address is
+ *                               taken here, so a transaction the bot itself
+ *                               sent (a leader's tapped buy the desk posted,
+ *                               a mirror, an order's fill, a user's own buy)
+ *                               is not announced again or as the signer's.
+ *                               Unset, nothing is skipped
  *
- * One pass at a time in this instance; across instances the store's seen
- * marks (bot-watch.ts) keep a buy from being announced twice.
+ * One pass at a time in this instance; across instances the store's claims
+ * (bot-watch.ts, one statement per hash and per hourly mark) keep a buy
+ * from being announced twice when two passes overlap. The twenty group
+ * posts are a pass's own count, so two overlapping passes may post up to
+ * forty between them, each buy once.
  */
 
 import { neon } from "@neondatabase/serverless";
-import { parseEther } from "viem";
+import { isHex, parseEther, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { isAddress, type Address } from "./types.js";
 import { Alerts, MemoryAlertStore, NeonAlertStore, type AlertStore } from "./bot-alerts.js";
+import { CHIT_MAINNET } from "./bot-bridge.js";
 import { createBotChain, type BotChain } from "./bot-chain.js";
 import { createHeyScanner } from "./bot-hey.js";
 import { createOrusScanner } from "./bot-orus.js";
@@ -58,10 +72,26 @@ import { sweepTriggerAllowed } from "./sweep-trigger.js";
 /** Uniswap v4 on Robinhood Chain, as bot-runtime has them (specs/001-fleet-mission/research.md). */
 const ROUTER: Address = "0x8876789976decbfcbbbe364623c63652db8c0904";
 const POOL_MANAGER: Address = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
-/** The reads want a default token (the playground's first card); the watcher never shows one, so the venue token stands in. */
-const VENUE_TOKEN: Address = "0x13283ab8e1f2bc4297e9ec6480c80c59674af554";
+/** The testnet venue token, as bot-runtime.ts has it; on mainnet the venue token is $CHIT (bot-bridge.ts, deployments/buyback-4663.json). */
+const TESTNET_VENUE_TOKEN: Address = "0x13283ab8e1f2bc4297e9ec6480c80c59674af554";
 const MAINNET = 4663;
 const TESTNET = 46630;
+
+/** The tokens the watcher is for: the chain's venue token first, then the allowlist, each once. A swap in any other pool is not a buy. */
+export const watchTokens = (chainId: number, allowlist: Address[]): Address[] => {
+  const out: Address[] = [];
+  for (const t of [chainId === MAINNET ? CHIT_MAINNET : TESTNET_VENUE_TOKEN, ...allowlist]) {
+    if (!out.some((have) => have.toLowerCase() === t.toLowerCase())) out.push(t);
+  }
+  return out;
+};
+
+/** The bot's own sender, from the session signer's key when it is set: the address alone, the key is never held here. */
+export const ownSendersFromEnv = (): Address[] => {
+  const key = process.env.BOT_SIGNER_PRIVATE_KEY;
+  if (!key || !isHex(key) || key.length !== 66) return [];
+  return [privateKeyToAccount(key as Hex).address];
+};
 
 /**
  * Handlers another feature adds for every buy the watcher hands on; the
@@ -107,7 +137,8 @@ const build = () => {
   const groupChatId = process.env.BOT_GROUP_CHAT_ID?.trim();
   if (groupChatId !== undefined && groupChatId !== "" && !/^-?\d+$/.test(groupChatId)) refuse("BOT_GROUP_CHAT_ID must be a Telegram chat id (a number, -100… for a supergroup)");
   const sql = overrides.store && overrides.alertStore ? undefined : sqlFromEnv();
-  const reads = overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER });
+  const tokens = watchTokens(chainId, allowlist);
+  const reads = overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: tokens[0]!, router: ROUTER, poolManager: POOL_MANAGER });
   const telegram = overrides.telegram ?? createTelegram(token!);
   const orus = process.env.ORUS_PARTNER_API_KEY ? createOrusScanner({ apiKey: process.env.ORUS_PARTNER_API_KEY, chainId, ...(process.env.ORUS_API_BASE ? { baseUrl: process.env.ORUS_API_BASE } : {}) }) : undefined;
   const hey = process.env.BOT_HEY_OFF === "1" ? undefined : createHeyScanner({ chainId, ...(process.env.HEY_API_KEY ? { apiKey: process.env.HEY_API_KEY } : {}), ...(process.env.HEY_API_BASE ? { baseUrl: process.env.HEY_API_BASE } : {}) });
@@ -122,7 +153,7 @@ const build = () => {
     ...(groupMin ? { groupMinWei: parseEther(groupMin) } : {}),
   });
   const inner = new Watcher({
-    port: overrides.port ?? createWatchPort({ chainId, rpcUrl, poolManager: POOL_MANAGER, tokens: allowlist.length ? allowlist : [VENUE_TOKEN] }),
+    port: overrides.port ?? createWatchPort({ chainId, rpcUrl, poolManager: POOL_MANAGER, tokens, ownSenders: ownSendersFromEnv() }),
     store: overrides.store ?? (sql ? new NeonWatchStore(sql) : new MemoryWatchStore()),
     chainId,
     ...(perRun !== undefined ? { maxBlocksPerRun: perRun } : {}),

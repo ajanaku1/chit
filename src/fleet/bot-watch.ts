@@ -1,39 +1,56 @@
 /**
- * The chain watcher: every ETH buy on the venue, read from the pool
- * manager's own Swap logs, handed on once each. Nothing here trusts a feed,
- * a partner or a user: a buy is a log the chain wrote, the buyer is the
- * sender of the transaction that wrote it, the token is the pool's other
- * side as the Initialize event named it. What the watcher hands on (a
- * `VenueBuy`) is what the alerts post (bot-alerts.ts) and what a leader
- * watch may act on (the leaders' own handler, through
+ * The chain watcher: every ETH buy of the tokens this bot names, read from
+ * the pool manager's own Swap logs, handed on once each. Nothing here
+ * trusts a feed, a partner or a user: a buy is a log the chain wrote, the
+ * buyer is the sender of the transaction that wrote it, the token is the
+ * pool's other side as the Initialize event named it. What the watcher
+ * hands on (a `VenueBuy`) is what the alerts post (bot-alerts.ts) and what
+ * a leader watch may act on (the leaders' own handler, through
  * bot-watch-runtime.ts); the watcher itself sends nothing anywhere.
+ *
+ * Which pools count: the pool manager is one contract for every pool on
+ * the chain, and anyone can open an ETH pool on it, seed it and swap into
+ * it every block for the price of gas. A watcher that took every ETH pool
+ * for the venue would be that person's channel into the group. So the
+ * port is given the tokens it watches (the venue token and the allowlist)
+ * and names their pools up front through the bot's own registry (the
+ * deepest pool of each, however old); a pool of any other token, opened in
+ * the window or found by the id lookup, is remembered as not ours and its
+ * swaps are never a buy. A transaction the bot's own signer sent is not a
+ * buy either: the copy desk already posted a leader's tapped buy when it
+ * happened, a mirror or an order's fill is the bot's own doing, and a
+ * user's buy through the bot is theirs, not the feed's.
  *
  * A cursor per chain says up to which block every buy has been handed on.
  * One run moves it by at most `maxBlocksPerRun` (600 by default, about
  * what the chain writes between two five-minute crons at its quiet pace),
  * so a watcher that fell behind catches up in steps the public RPC will
- * answer rather than one query it refuses. Each transaction hash is marked
- * seen before its handler is called, and the cursor is written after the
- * whole window: a run the host kills mid-way scans the same window again
- * and finds the marks, so a buy is never announced twice, and one that was
- * marked but whose handler was cut off is lost rather than repeated. A
- * handler that throws is caught and logged; the run goes on to the next
- * buy, because one odd token must not stop the feed.
+ * answer rather than one query it refuses. Each transaction hash is claimed
+ * in the store before its handler is called, in one statement that says
+ * whether this run was the first to mark it, and the cursor is written
+ * after the whole window: a run the host kills mid-way scans the same
+ * window again and finds the marks, and two runs over one window at the
+ * same time (a slow pass still going when the next cron lands on another
+ * instance) split the buys between them instead of each announcing all of
+ * them. A buy is never announced twice; one that was marked but whose
+ * handler was cut off is lost rather than repeated. A handler that throws
+ * is caught and logged; the run goes on to the next buy, because one odd
+ * token must not stop the feed.
  *
  * What counts as a buy: a Swap in a pool whose currency0 is native ETH,
  * where amount0 is negative (the swapper paid ETH; v4 deltas are from the
- * swapper's side) and amount1 positive (tokens came out). A sell in the
- * same pool has the signs the other way and is ignored. A pool whose key
- * the watcher cannot name (no Initialize event found for its id) is
- * skipped, never guessed; two swaps of one transaction in one pool are one
- * buy, summed.
+ * swapper's side) and amount1 positive (tokens came out), and whose other
+ * side is a token this watcher was given. A sell in the same pool has the
+ * signs the other way and is ignored. A pool whose key the watcher cannot
+ * name (no Initialize event found for its id) is skipped, never guessed;
+ * two swaps of one transaction in one pool are one buy, summed.
  *
  * The public RPC is treated as api/burn.js treats it: one call at a time,
  * log queries in spans it tolerates, a 429 waited out and tried again.
  */
 
 import { createPublicClient, defineChain, http, parseAbiItem, type Address, type Hex, type PublicClient, type Transport } from "viem";
-import type { PoolRegistry } from "./pool-registry.js";
+import { createPoolRegistry, type PoolRegistry } from "./pool-registry.js";
 
 export type VenueBuy = { block: bigint; txHash: Hex; buyer: Address; token: Address; ethInWei: bigint; tokensOut: bigint; poolId: Hex };
 
@@ -41,7 +58,12 @@ export interface WatchStore {
   cursor(chainId: number): Promise<bigint | undefined>;
   setCursor(chainId: number, block: bigint): Promise<void>;
   seen(txHash: Hex): Promise<boolean>;
-  markSeen(txHash: Hex, at: Date): Promise<void>;
+  /**
+   * Marks the hash seen and says whether this call was the one that did:
+   * false when it was already marked. One statement, never a read and then
+   * a write, so two runs over the same window cannot both get true.
+   */
+  claim(txHash: Hex, at: Date): Promise<boolean>;
 }
 
 export type WatchPort = {
@@ -70,9 +92,9 @@ export class Watcher {
 
   /**
    * One pass: the window after the cursor, at most `maxBlocksPerRun` wide;
-   * the buys in it, each unseen hash marked and handed on once; then the
-   * cursor. A first run with no cursor starts at the head, so turning the
-   * watcher on never replays the chain's past into the group.
+   * the buys in it, each hash claimed and handed on once; then the cursor.
+   * A first run with no cursor starts at the head, so turning the watcher
+   * on never replays the chain's past into the group.
    */
   async run(): Promise<WatchRun> {
     const max = BigInt(this.#d.maxBlocksPerRun ?? DEFAULT_BLOCKS_PER_RUN);
@@ -84,9 +106,8 @@ export class Watcher {
     const buys = await this.#d.port.buysBetween(from, to);
     let delivered = 0;
     for (const b of onePerTransaction(buys)) {
-      if (await this.#d.store.seen(b.txHash)) continue;
-      // Marked before the handler runs: a run killed inside the handler loses this one buy instead of announcing it twice on the next pass.
-      await this.#d.store.markSeen(b.txHash, this.#d.now ? this.#d.now() : new Date());
+      // Claimed before the handler runs, in one statement: a run killed inside the handler loses this one buy instead of announcing it twice on the next pass, and a second run over the same window on another instance loses the claim and skips it.
+      if (!(await this.#d.store.claim(b.txHash, this.#d.now ? this.#d.now() : new Date()))) continue;
       try {
         await this.#d.onBuy(b);
         delivered += 1;
@@ -118,7 +139,13 @@ export class MemoryWatchStore implements WatchStore {
   async cursor(chainId: number) { return this.cursors.get(chainId); }
   async setCursor(chainId: number, block: bigint) { this.cursors.set(chainId, block); }
   async seen(txHash: Hex) { return this.seenAt.has(txHash.toLowerCase()); }
-  async markSeen(txHash: Hex, at: Date) { this.seenAt.set(txHash.toLowerCase(), at.toISOString()); }
+  async claim(txHash: Hex, at: Date) {
+    // The check and the write in one turn, nothing awaited between them: the memory store's one statement.
+    const key = txHash.toLowerCase();
+    if (this.seenAt.has(key)) return false;
+    this.seenAt.set(key, at.toISOString());
+    return true;
+  }
 }
 
 type Row = Record<string, unknown>;
@@ -129,7 +156,7 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS bot_watch_seen (tx_hash TEXT PRIMARY KEY, seen_at TIMESTAMPTZ NOT NULL)`,
 ];
 
-/** Neon, shared by every instance; a hash is seen by all of them once one marked it. Rows older than seven days go each time the cursor is written, once a run. */
+/** Neon, shared by every instance; a hash is seen by all of them once one claimed it, and the claim is the insert itself, so two instances cannot both win it. Rows older than seven days go each time the cursor is written, once a run. */
 export class NeonWatchStore implements WatchStore {
   #ready: Promise<void> | undefined;
   constructor(private readonly sql: WatchSql) {}
@@ -150,9 +177,11 @@ export class NeonWatchStore implements WatchStore {
     const rows = await this.sql.query(`SELECT 1 FROM bot_watch_seen WHERE tx_hash = $1`, [txHash.toLowerCase()]);
     return rows.length > 0;
   }
-  async markSeen(txHash: Hex, at: Date) {
+  async claim(txHash: Hex, at: Date) {
     await this.#init();
-    await this.sql.query(`INSERT INTO bot_watch_seen (tx_hash, seen_at) VALUES ($1, $2) ON CONFLICT (tx_hash) DO NOTHING`, [txHash.toLowerCase(), at.toISOString()]);
+    // RETURNING is the answer: a row back is this call's mark, none means another run's insert got there first and this one changed nothing.
+    const rows = await this.sql.query(`INSERT INTO bot_watch_seen (tx_hash, seen_at) VALUES ($1, $2) ON CONFLICT (tx_hash) DO NOTHING RETURNING tx_hash`, [txHash.toLowerCase(), at.toISOString()]);
+    return rows.length === 1;
   }
 }
 
@@ -171,10 +200,12 @@ export type WatchPortConfig = {
   chainId: number;
   rpcUrl: string;
   poolManager: Address;
-  /** The bot's registry (bot-chain.ts, pool-registry.ts): names the pools of `tokens` before any log is read. */
+  /** The tokens whose pools are watched: the venue token and the allowlist. A swap in any other pool is not a buy here, whoever made it. */
+  tokens: Address[];
+  /** Names the deepest pool of each token before any log is read, however old the pool is (pool-registry.ts); default is a registry over this port's own client. */
   registry?: PoolRegistry;
-  /** Tokens whose pools are worth knowing from the start: the venue token, the allowlist. */
-  tokens?: Address[];
+  /** Addresses whose transactions are the bot's own (its signer): a swap they sent is not handed on. */
+  ownSenders?: Address[];
   /** A transport of the caller's own (a scripted one in tests); default is HTTP to rpcUrl with a 429 waited out. */
   transport?: Transport;
   /** Blocks searched backwards for the Initialize event of a pool the watcher meets for the first time. */
@@ -195,22 +226,35 @@ export const createWatchPort = (config: WatchPortConfig): WatchPort => {
   const transport = config.transport ?? http(config.rpcUrl, { retryCount: 4, retryDelay: 600, timeout: 20_000 });
   const client = createPublicClient({ chain, transport }) as unknown as PublicClient;
   const lookback = config.initLookbackBlocks ?? DEFAULT_LOOKBACK;
-  /** Pool id to token (lowercase, as the bot keys everything); null is a pool looked for and not found, or one that is not an ETH pool, and is not asked again. */
-  const pools = new Map<string, Address | null>();
   const lower = (a: Address): Address => a.toLowerCase() as Address;
+  /** The tokens this port is for; a pool of any other is remembered as not ours. */
+  const watched = new Set<string>(config.tokens.map(lower));
+  /** The bot's own senders; a buy they sent is the bot's doing and is not a buy here. */
+  const own = new Set<string>((config.ownSenders ?? []).map(lower));
+  const registry = config.registry ?? createPoolRegistry(client, config.poolManager);
+  /** Pool id to token (lowercase, as the bot keys everything); null is a pool looked for and not found, one that is not an ETH pool, or one of a token not watched, and is not asked again. */
+  const pools = new Map<string, Address | null>();
+  /** What an Initialize log names, as this port keeps it: the token when it is an ETH pool of a watched token, else nothing. */
+  const ours = (currency0: Address, currency1: Address): Address | null => (lower(currency0) === NATIVE && watched.has(lower(currency1)) ? lower(currency1) : null);
   /** The sender of a transaction never changes; remembered for the instance, bounded. */
   const senders = new Map<string, Address>();
-  let seeded = false;
+  let seeded: Promise<void> | undefined;
 
-  const seed = async (): Promise<void> => {
-    if (seeded) return;
-    seeded = true;
-    if (!config.registry || !config.tokens?.length) return;
+  /**
+   * The watched tokens' pools, named through the registry before the first
+   * log is read: the deepest pool of each, found by the registry's storage
+   * reads or its own scan, so a pool older than the lookback below (the
+   * venue's own is) is known from the start. A token the registry cannot
+   * place gets its pools from the lookback when its first swap is met, or
+   * stays unknown; a registry that throws fails the pass, and the next one
+   * seeds again.
+   */
+  const seed = (): Promise<void> => (seeded ??= (async () => {
     for (const token of config.tokens) {
-      const found = await config.registry.find(token).catch(() => null);
+      const found = await registry.find(token);
       if (found) pools.set(found.id.toLowerCase(), lower(token));
     }
-  };
+  })().catch((e) => { seeded = undefined; throw e; }));
 
   const spans = (from: bigint, to: bigint): Array<[bigint, bigint]> => {
     const out: Array<[bigint, bigint]> = [];
@@ -218,11 +262,11 @@ export const createWatchPort = (config: WatchPortConfig): WatchPort => {
     return out;
   };
 
-  /** Pools opened in the window are known before their first swap is read. */
+  /** Pools opened in the window are known before their first swap is read: a watched token's by name, any other as not ours, so it is never looked up. */
   const learnOpened = async (from: bigint, to: bigint): Promise<void> => {
     for (const [a, b] of spans(from, to)) {
       const logs = await client.getLogs({ address: config.poolManager, event: INITIALIZE, args: { currency0: NATIVE }, fromBlock: a, toBlock: b });
-      for (const l of logs) if (l.args.id && l.args.currency1) pools.set(l.args.id.toLowerCase(), lower(l.args.currency1 as Address));
+      for (const l of logs) if (l.args.id && l.args.currency1) pools.set(l.args.id.toLowerCase(), ours(NATIVE, l.args.currency1 as Address));
     }
   };
 
@@ -237,8 +281,8 @@ export const createWatchPort = (config: WatchPortConfig): WatchPort => {
       for (const l of logs) {
         if (!l.args.id) continue;
         const id = l.args.id.toLowerCase();
-        // Not an ETH pool: named, so it is not asked again, and never a buy.
-        pools.set(id, lower(l.args.currency0 as Address) === NATIVE ? lower(l.args.currency1 as Address) : null);
+        // Not an ETH pool, or not a watched token's: named as not ours, so it is not asked again, and never a buy.
+        pools.set(id, ours(l.args.currency0 as Address, l.args.currency1 as Address));
         missing.delete(id);
       }
       if (from === 0n) break;
@@ -282,7 +326,10 @@ export const createWatchPort = (config: WatchPortConfig): WatchPort => {
       for (const f of found.values()) {
         const token = pools.get(f.poolId.toLowerCase());
         if (!token) continue;
-        buys.push({ block: f.block, txHash: f.txHash, buyer: await senderOf(f.txHash), token, ethInWei: f.ethInWei, tokensOut: f.tokensOut, poolId: f.poolId });
+        const buyer = await senderOf(f.txHash);
+        // The bot's own transaction: a leader's tapped buy the desk already posted, a mirror, an order's fill, or a user's buy that is theirs alone.
+        if (own.has(lower(buyer))) continue;
+        buys.push({ block: f.block, txHash: f.txHash, buyer, token, ethInWei: f.ethInWei, tokensOut: f.tokensOut, poolId: f.poolId });
       }
       return buys;
     },

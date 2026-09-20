@@ -207,12 +207,16 @@ named in words on every card, never inferred from a colour.
   refuses a mismatch between `BOT_MODE`, `FLEET_CHAIN_ID` and the deployment
   file, with the reason in the log.
 - **A flooded feed.** The watcher's alerts (`bot-watch.ts`, `bot-alerts.ts`)
-  post what the chain wrote, and anyone with ETH can write a big buy. The
-  group gets at most twenty posts a pass, a user one message per token an
-  hour, a first pass starts at the head and replays nothing, and the words
-  never go past the orus line: a buy is a fact, not a recommendation, and
-  a missing read is "unknown", never a clean line. `BOT_WATCH_OFF=1` is
-  the switch.
+  post what the chain wrote, and anyone with ETH can write a big buy. Only
+  the pools of $CHIT and the allowlist are watched, so a pool a stranger
+  opens on the pool manager and washes is not a door into the feed; a
+  buy the bot's own signer sent is not posted again or as the signer's.
+  The group gets at most twenty posts a pass, a user one message per token
+  an hour, each claimed in the store in one statement so two overlapping
+  passes announce nothing twice, a first pass starts at the head and
+  replays nothing, and the words never go past the orus line: a buy is a
+  fact, not a recommendation, and a missing read is "unknown", never a
+  clean line. `BOT_WATCH_OFF=1` is the switch.
 
 ## Rollout
 
