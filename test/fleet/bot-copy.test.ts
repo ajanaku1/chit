@@ -19,9 +19,14 @@
  * instances cannot both mirror it; anyone else's is ignored, and so is
  * dust, a buy through a pool that is not the token's, a day already full,
  * while a token orus will not clear is neither posted nor mirrored and only
- * the leader hears. The reads come before the claim and each step after it
- * is caught, so a failure loses nothing that was not already told. The
- * followers' daily allowance is one ledger for taps and both paths' mirrors.
+ * the leader hears. A read that fails before the claim keeps the buy for the
+ * next pass (read again, mirrored late or dropped after the window, the
+ * leader told either way) and each step after the claim is caught, so a
+ * failure loses nothing that was not already told. A mirror of either path
+ * goes only through a pool on the bot's record; a token whose pool was
+ * discovered is skipped with the reason and, on the venue path, not posted.
+ * The followers' daily allowance is one ledger for taps and both paths'
+ * mirrors.
  */
 
 import assert from "node:assert/strict";
@@ -29,7 +34,7 @@ import { test } from "node:test";
 import { type Address, type Hex, parseEther } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import type { BotChain, TokenInfo } from "../../src/fleet/bot-chain.js";
-import { CopyDesk, LeadError, MAX_FOLLOW_CAP_WEI, MIRROR_SEND_MS, MemoryCopyStore, VENUE_BUYS_PER_DAY, VENUE_MIN_ETH_WEI, leadMessage, type VenueBuy } from "../../src/fleet/bot-copy.js";
+import { CopyDesk, LeadError, MAX_FOLLOW_CAP_WEI, MIRROR_SEND_MS, MemoryCopyStore, NeonCopyStore, VENUE_BUYS_PER_DAY, VENUE_MIN_ETH_WEI, VENUE_RETRY_MS, leadMessage, type CopySql, type VenueBuy } from "../../src/fleet/bot-copy.js";
 import { MemoryBotLinkStore, NONCE_TTL_MS } from "../../src/fleet/bot-link.js";
 import type { OrusScan } from "../../src/fleet/bot-orus.js";
 import type { SessionChain } from "../../src/fleet/bot-session-chain.js";
@@ -44,7 +49,8 @@ const HASH = ("0x" + "ab".repeat(32)) as Hex;
 const acct = (n: number): Address => ("0x" + n.toString(16).padStart(40, "0")) as Address;
 const clock = new Date("2026-09-20T12:00:00Z");
 
-const info: TokenInfo = { address: PEPE, symbol: "PEPE", decimals: 6, hasPool: true, perEth: 1_000_000_000_000n, poolEth: parseEther("5"), hooked: false, fee: 3000 };
+/** PEPE's pool is on the bot's record, as $CHIT's is on mainnet: the only kind a mirror goes through. */
+const info: TokenInfo = { address: PEPE, symbol: "PEPE", decimals: 6, hasPool: true, perEth: 1_000_000_000_000n, poolEth: parseEther("5"), hooked: false, fee: 3000, poolOnRecord: true };
 const reads = {
   chainId: 4663, router: ROUTER,
   async tokenInfo(token: Address) { return { ...info, address: token, hasPool: token === PEPE }; },
@@ -52,7 +58,7 @@ const reads = {
 } as unknown as BotChain;
 const safe: OrusScan = { symbol: "PEPE", honeypot: false, buyTaxPct: 0, sellTaxPct: 0, bundlersPct: null, top10Pct: null, holders: 100, liquidityUsd: 50_000, lpBurnedPct: null, marketCapUsd: null, deployerLaunches: 1, checkedAt: clock.toISOString() };
 
-const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; mirrorBudgetMs?: number; feed?: boolean; dailyExecutes?: number; venueMinEthWei?: bigint; venueBuysPerDay?: number; store?: MemoryCopyStore; links?: MemoryBotLinkStore } = {}) => {
+const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; mirrorBudgetMs?: number; feed?: boolean; dailyExecutes?: number; venueMinEthWei?: bigint; venueBuysPerDay?: number; venueRetryMs?: number; store?: MemoryCopyStore; links?: MemoryBotLinkStore } = {}) => {
   const store = opts.store ?? new MemoryCopyStore();
   const links = opts.links ?? new MemoryBotLinkStore();
   /** Faults the test switches on: the chain read, the log line, the feed and the wallet leader's line each throw once when armed. */
@@ -91,6 +97,7 @@ const setup = (opts: { orus?: OrusScan | null | "off"; tokenDayCapWei?: bigint; 
     ...(opts.dailyExecutes !== undefined ? { dailyExecutes: opts.dailyExecutes } : {}),
     ...(opts.venueMinEthWei !== undefined ? { venueMinEthWei: opts.venueMinEthWei } : {}),
     ...(opts.venueBuysPerDay !== undefined ? { venueBuysPerDay: opts.venueBuysPerDay } : {}),
+    ...(opts.venueRetryMs !== undefined ? { venueRetryMs: opts.venueRetryMs } : {}),
     tell: async (to, text) => { if (to === "9") once("tell", "telegram 429"); told.push({ to, text }); },
     botUsername: "usechit_bot",
     ...(opts.feed === false ? {} : { feed: { chatId: "-100", post: async (text, keyboard) => { once("feed", "telegram 429"); posted.push({ text, keyboard }); } } }),
@@ -575,14 +582,63 @@ test("onVenueBuy: the transaction is claimed in the store before the first send,
   assert.equal(await one.store.claimVenueBuy(hash("CD"), "9", clock), false, "whatever the case of the hash");
 });
 
-test("onVenueBuy: a chain read that fails before the claim rejects with nothing claimed, so the delivery again is read again; after the claim a mirror run that throws, a feed that refuses and a leader who cannot be reached are each caught, the claim stands and the leader hears what happened", async () => {
+test("onVenueBuy: a chain read that fails before the claim keeps the buy with nothing claimed and tells the leader once; retryVenueBuys reads it again and mirrors it as if it had just arrived; a read that fails again keeps the first time and says nothing more; past the retry window the buy is dropped and the leader told; a buy the store cannot keep either is the one rejection, naming both", async () => {
+  const s = setup({ venueRetryMs: 15 * 60_000 });
+  await walletLeaderWithFollowers(s, ["0.01"]);
+  assert.equal(VENUE_RETRY_MS, 15 * 60_000);
+  const quiet = console.warn;
+  console.warn = () => undefined;
+  try {
+    s.faults.tokenInfo = true;
+    assert.equal(await s.desk.onVenueBuy(venueBuy()), undefined, "not read: nothing mirrored, nothing posted");
+    assert.equal(await s.store.venueBuysSince("9", new Date(0)), 0, "nothing claimed");
+    assert.equal(s.calls.length, 0);
+    assert.deepEqual((await s.store.deferredVenueBuys()).map((d) => [d.buy.txHash, d.since]), [[venueBuy().txHash, clock.toISOString()]], "kept, with the time it was first kept");
+    assert.deepEqual(s.told.map((t) => t.to), ["9"], "the leader hears the buy was seen and will be read again; the followers hear nothing");
+    assert.match(s.told[0]!.text, /^your buy of <code>0.05 ETH<\/code> of <code>0x[0-9a-f]+<\/code> from your wallet \(<a href=".*0xcdcd[0-9a-f]+">0xcdcdcdcd…<\/a>\) was seen but could not be read yet \(the chain or a partner did not answer\)\. it is read again on the next pass, for up to 15 minutes, then dropped; you hear either way\.$/);
+    // The next pass: the chain still fails, the buy stays kept with its first time, and the leader is not told again.
+    s.advance(5 * 60_000);
+    s.faults.tokenInfo = true;
+    assert.deepEqual(await s.desk.retryVenueBuys(), { read: 0, dropped: 0 });
+    assert.deepEqual((await s.store.deferredVenueBuys()).map((d) => d.since), [clock.toISOString()], "the first keeping's time stands");
+    assert.equal(s.told.length, 1, "told once");
+    // The pass after: the chain answers, the buy is mirrored and posted as if it had just arrived, and it is kept no more.
+    s.advance(5 * 60_000);
+    assert.deepEqual(await s.desk.retryVenueBuys(), { read: 1, dropped: 0 });
+    assert.equal(s.calls.length, 1, "mirrored");
+    assert.equal(s.posted.length, 1, "posted");
+    assert.match(s.told.at(-1)!.text, /was posted to the feed and mirrored to 1 of 1 follower\.$/);
+    assert.deepEqual(await s.store.deferredVenueBuys(), []);
+    assert.equal(await s.desk.onVenueBuy(venueBuy()), undefined, "the hash is claimed now: delivered again it is nothing");
+    // A buy kept longer than the window is dropped, the leader told, and nothing is mirrored for it: a mirror that late is not a copy.
+    s.faults.tokenInfo = true;
+    await s.desk.onVenueBuy(venueBuy({ txHash: hash("d1") }));
+    s.advance(15 * 60_000 + 1);
+    assert.deepEqual(await s.desk.retryVenueBuys(), { read: 0, dropped: 1 });
+    assert.deepEqual(await s.store.deferredVenueBuys(), []);
+    assert.equal(s.calls.length, 1, "not mirrored");
+    assert.match(s.told.at(-1)!.text, /from your wallet \(.*0xd1d1[0-9a-f]+".*\) could not be read for 15 minutes \(the chain or a partner did not answer\), so it was dropped: not posted, not mirrored\. your next buy is read fresh\.$/);
+    // A kept buy that turns out to be nothing (the leader closed meanwhile) is read and dropped, not kept forever.
+    s.faults.tokenInfo = true;
+    await s.desk.onVenueBuy(venueBuy({ txHash: hash("d2") }));
+    await s.desk.closeLeader("9");
+    assert.deepEqual(await s.desk.retryVenueBuys(), { read: 1, dropped: 0 });
+    assert.deepEqual(await s.store.deferredVenueBuys(), []);
+    assert.equal(s.calls.length, 1);
+    // The store itself is down before the claim: nothing can be kept, and the rejection says the buy was neither read nor kept.
+    const down = setup();
+    await walletLeaderWithFollowers(down, ["0.01"]);
+    down.store.leaderByWallet = async () => { throw new Error("store is away"); };
+    down.store.deferVenueBuy = async () => { throw new Error("store is away"); };
+    await assert.rejects(down.desk.onVenueBuy(venueBuy()), /^Error: venue buy not read \(store is away\) and not kept \(store is away\): it will not be mirrored or posted$/);
+    assert.equal(down.told.length, 0);
+  } finally { console.warn = quiet; }
+});
+
+test("onVenueBuy: after the claim a mirror run that throws, a feed that refuses and a leader who cannot be reached are each caught, the claim stands and the leader hears what happened", async () => {
   const s = setup();
   await walletLeaderWithFollowers(s, ["0.01"]);
-  s.faults.tokenInfo = true;
-  await assert.rejects(s.desk.onVenueBuy(venueBuy()), /rpc timed out/);
-  assert.equal(await s.store.venueBuysSince("9", new Date(0)), 0, "nothing claimed, nothing told");
-  assert.equal(s.told.length, 0);
-  assert.equal((await s.desk.onVenueBuy(venueBuy()))!.length, 1, "delivered again: mirrored");
+  assert.equal((await s.desk.onVenueBuy(venueBuy()))!.length, 1);
   // The log line after the follower's send throws: the send happened, so the claim stands; the leader is told the mirror broke; the feed is still posted.
   s.faults.log = true;
   assert.deepEqual(await s.desk.onVenueBuy(venueBuy({ txHash: hash("e1") })), []);
@@ -591,6 +647,7 @@ test("onVenueBuy: a chain read that fails before the claim rejects with nothing 
   assert.match(s.told.at(-1)!.text, /was posted to the feed; a mirror broke on our side, every follower who was reached was told and the rest were not mirrored this time\.$/);
   assert.equal(await s.desk.onVenueBuy(venueBuy({ txHash: hash("e1") })), undefined, "not mirrored again: money moves at most once");
   assert.equal(s.calls.length, 2);
+  assert.deepEqual(await s.store.deferredVenueBuys(), [], "a failure after the claim is never kept for another read");
   // The feed refuses: the mirrors stand, the leader hears the feed broke.
   s.faults.feed = true;
   assert.equal((await s.desk.onVenueBuy(venueBuy({ txHash: hash("e2") })))!.length, 1);
@@ -601,4 +658,69 @@ test("onVenueBuy: a chain read that fails before the claim rejects with nothing 
   const out = await s.desk.onVenueBuy(venueBuy({ txHash: hash("e3") }));
   assert.equal(out!.length, 1);
   assert.equal(s.posted.length, 3);
+});
+
+test("the record: a mirror of either path goes only through a pool on the bot's record; a leader's buy of a token whose pool was discovered is skipped for every follower with the reason and nothing is sent, and on the venue path it is claimed, not posted, and the leader is told what buy would be", async () => {
+  const found = { ...info, poolOnRecord: false };
+  const s = setup();
+  const discovered = new CopyDesk({
+    store: s.store, links: s.links, session: { chainId: 4663, async canExecute() { return { ok: true, why: "" }; }, async execute() { throw new Error("must not be sent"); } } as unknown as SessionChain, now: () => clock,
+    reads: { ...reads, async tokenInfo(token: Address) { return { ...found, address: token }; } } as unknown as BotChain, orus: { scan: async () => safe, link: () => "" },
+    tell: async (to, text) => { s.told.push({ to, text }); }, botUsername: "usechit_bot", feed: { chatId: "-100", post: async (text, keyboard) => { s.posted.push({ text, keyboard }); } },
+  });
+  // The account path: the leader tapped a buy of a token the registry found a pool for.
+  await s.link("1", 1);
+  await discovered.becomeLeader("1", "@ogle");
+  await s.link("2", 2);
+  await discovered.follow("2", "1", parseEther("0.01"));
+  const mirrors = await discovered.mirror("1", PEPE, parseEther("0.05"));
+  assert.deepEqual(mirrors.map((m) => [m.followerTgId, m.outcome, m.ethWei]), [["2", "skipped", 0n]]);
+  assert.equal(mirrors[0]!.why, "PEPE's pool is not on the bot's record, so a mirror cannot vouch for the pool it would buy through; nothing was sent for you. only a token the bot's record names is mirrored ($CHIT on mainnet); buy this one yourself from its token card if you want it");
+  assert.match(s.told.at(-1)!.text, /^copy from <b>@ogle<\/b>: skipped\. PEPE's pool is not on the bot's record/);
+  // The venue path: the same token bought from a wallet leader's wallet through the very pool the registry found.
+  const nonce = await discovered.leadNonce("9");
+  await discovered.claimWallet("9", "whale", WHALE.address, await signedBy(WHALE, nonce), nonce, CHAIN, clock);
+  await s.link("3", 3);
+  await discovered.follow("3", "9", parseEther("0.01"));
+  assert.deepEqual(await discovered.onVenueBuy(venueBuy()), [], "the leader's, but not for the feed");
+  assert.equal(s.posted.length, 0, "not advertised: the desk would not mirror it");
+  assert.equal(await s.store.venueBuysSince("9", new Date(0)), 1, "claimed and counted against the day");
+  assert.match(s.told.at(-1)!.text, /from your wallet \(.*\) is of a token whose pool is not on the bot's record, so it was not posted or mirrored: a pool found on the chain is anyone's to open at any price, and the desk moves your followers' money only through a recorded pool\. a buy of a token the record names \(\$CHIT on mainnet\) is\.$/);
+  assert.deepEqual(s.told.filter((t) => t.to === "3"), [], "the follower is not messaged for it");
+  assert.equal(await discovered.onVenueBuy(venueBuy()), undefined, "answered once");
+});
+
+test("neon: a kept venue buy is one insert whose RETURNING says whether this was the first keeping (a repeat changes nothing, so the first time stands), the kept buys come back whole and oldest first, and a drop is one delete; hashes, tokens and pool ids are stored lowercase", async () => {
+  const rows = new Map<string, Record<string, unknown>>();
+  const calls: { query: string; params: unknown[] }[] = [];
+  const sql: CopySql = {
+    async query(query, params = []) {
+      calls.push({ query, params });
+      if (/^\s*(CREATE|ALTER)/.test(query)) return [];
+      if (query.includes("INSERT INTO bot_venue_deferred")) {
+        const [tx_hash, block, buyer, token, eth_in_wei, tokens_out, pool_id, since] = params as string[];
+        if (rows.has(tx_hash!)) return [];
+        rows.set(tx_hash!, { tx_hash, block, buyer, token, eth_in_wei, tokens_out, pool_id, since });
+        return [{ tx_hash }];
+      }
+      if (query.includes("SELECT * FROM bot_venue_deferred")) return [...rows.values()].sort((a, b) => String(a.since).localeCompare(String(b.since)));
+      if (query.includes("DELETE FROM bot_venue_deferred")) { rows.delete(String(params[0])); return []; }
+      throw new Error(`unexpected sql: ${query}`);
+    },
+  };
+  const store = new NeonCopyStore(sql);
+  const b = venueBuy({ txHash: ("0x" + "AB".repeat(32)) as Hex, token: PEPE.toUpperCase().replace("0X", "0x") as Address });
+  assert.equal(await store.deferVenueBuy(b, clock), true, "the first keeping");
+  const insert = calls.find((c) => c.query.includes("INSERT INTO bot_venue_deferred"))!;
+  assert.match(insert.query, /ON CONFLICT \(tx_hash\) DO NOTHING RETURNING tx_hash$/);
+  assert.deepEqual(insert.params, ["0x" + "ab".repeat(32), "100", WHALE.address, PEPE, parseEther("0.05").toString(), "1", PEPE_POOL.toLowerCase(), clock.toISOString()]);
+  assert.equal(await store.deferVenueBuy(b, new Date(clock.getTime() + 60_000)), false, "a repeat: no row back, the first time stands");
+  await store.deferVenueBuy(venueBuy({ txHash: hash("01") }), new Date(clock.getTime() - 60_000));
+  const kept = await store.deferredVenueBuys();
+  assert.deepEqual(kept.map((d) => [d.buy.txHash, d.since]), [[hash("01"), new Date(clock.getTime() - 60_000).toISOString()], ["0x" + "ab".repeat(32), clock.toISOString()]], "oldest first");
+  assert.deepEqual(kept[1]!.buy, { ...b, txHash: ("0x" + "ab".repeat(32)) as Hex, token: PEPE, poolId: PEPE_POOL.toLowerCase() as Hex }, "whole, as the watcher handed it");
+  await store.dropVenueBuy(("0x" + "AB".repeat(32)) as Hex);
+  assert.deepEqual(calls.at(-1), { query: "DELETE FROM bot_venue_deferred WHERE tx_hash = $1", params: ["0x" + "ab".repeat(32)] });
+  assert.deepEqual((await store.deferredVenueBuys()).map((d) => d.buy.txHash), [hash("01")]);
+  assert.ok(calls.some((c) => c.query.includes("CREATE TABLE IF NOT EXISTS bot_venue_deferred")), "the table is in the schema");
 });

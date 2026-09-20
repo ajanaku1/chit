@@ -60,6 +60,14 @@
  *                                the swap logs by the cron's own desk,
  *                                bot-watch-runtime.ts) and the big buys
  *                                (bot-alerts.ts)
+ *   BOT_POOL_KEYS                session mode: the operator's record of pools
+ *                                beside the chain's own ($CHIT's on 4663),
+ *                                token:fee:tickSpacing:hooks each, comma
+ *                                separated (pool-registry.ts). A mirror goes
+ *                                only through a recorded pool, so a token
+ *                                whose buys leaders should have mirrored is
+ *                                recorded here; the orders' and the
+ *                                watcher's crons read the same variable
  *   BOT_ORDERS_OFF               1 hides the limit buy and DCA buttons in
  *                                session mode and stops the cron at
  *                                api/bot/orders.js; otherwise the orders live
@@ -157,6 +165,7 @@ import { createSessionChain } from "./bot-session-chain.js";
 import { SessionBot, type SessionBotDeps } from "./bot-session.js";
 import type { CopyStore } from "./bot-copy.js";
 import { createCopyDesk, dailyLimitsFromEnv } from "./bot-copy-runtime.js";
+import { recordedPoolsFromEnv } from "./pool-registry.js";
 import { MemoryAlertStore, NeonAlertStore, type AlertStore } from "./bot-alerts.js";
 import { MemoryUpdateClaims, NeonUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { DualBot, MemoryFloorStore, NeonFloorStore, type FloorStore } from "./bot-dual.js";
@@ -272,7 +281,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
   // alerts: the 🔔 card writes a line per user; the watcher's cron (api/bot/watch.js) reads it.
   const alerts = overrides.alertStore ?? alertsFromEnv();
   const deps: SessionBotDeps = {
-    reads: createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER }),
+    reads: createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) }),
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as `0x${string}` }),
     links: overrides.links ?? linksFromEnv(),
     updates: overrides.updates ?? updateClaimsFromEnv(),

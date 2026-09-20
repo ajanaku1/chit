@@ -6,18 +6,21 @@
  * calls `afterBuy` once a leader's buy has landed.
  *
  * What every card says, because it is the whole promise: a mirrored buy is
- * sized to the smaller of the leader's amount and the follower's cap, runs
- * on the follower's own session account inside the caps the follower
- * granted (the contract refuses past them, with no gas spent), passes
- * orus's read first (a honeypot or no read at all is skipped), spends the
- * follower's own daily allowance from the bot like a tap of theirs would,
- * unfollow is one tap here and revoke is one transaction on the Sessions
- * page. And what is not mirrored, said just as plainly: only a buy the
- * leader taps in this bot is; their limit buys and DCA fire from the
- * orders' cron without the desk (bot-orders.ts) and are neither posted nor
- * mirrored, and their sells are never mirrored, so the exit from a
- * mirrored position is the follower's own. The leader hears the same when
- * they open, so nobody is promised a feed of buys the desk never sees. A
+ * of a token whose pool is on the bot's record ($CHIT's; a pool found on
+ * the chain is anyone's to open at any price, so such a token is skipped
+ * with the reason, bot-copy.ts), is sized to the smaller of the leader's
+ * amount and the follower's cap, runs on the follower's own session
+ * account inside the caps the follower granted (the contract refuses past
+ * them, with no gas spent), passes orus's read first (a honeypot or no read
+ * at all is skipped), spends the follower's own daily allowance from the
+ * bot like a tap of theirs would, unfollow is one tap here and revoke is
+ * one transaction on the Sessions page. And what is not mirrored, said just
+ * as plainly: only a buy the leader taps in this bot is; their limit buys
+ * and DCA fire from the orders' cron without the desk (bot-orders.ts) and
+ * are neither posted nor mirrored, and their sells are never mirrored, so
+ * the exit from a mirrored position is the follower's own. The leader hears
+ * the same when they open, so nobody is promised a feed of buys the desk
+ * never sees. A
  * leader may lead from their own wallet instead: "⭐ Become a leader" asks
  * which, and the wallet choice mints a nonce and sends the Sessions page
  * with `?lead=`, where the wallet signs one message (bot-copy.ts,
@@ -100,7 +103,7 @@ export const handleOf = (t: Tapper): string | undefined => {
   return plainHandleOk(name) ? name : undefined;
 };
 
-const GUARDS = "every mirrored buy passes orus's read first (a honeypot, or no read at all, is skipped and you are told), then your own session's caps (the contract refuses past them, no gas spent), and spends your own daily allowance of buys from the bot like a tap of yours would.";
+const GUARDS = "every mirrored buy is of a token whose pool is on the bot's record ($CHIT's on mainnet; a pool found on the chain is anyone's to open at any price, so a buy of such a token is skipped and you are told), passes orus's read first (a honeypot, or no read at all, is skipped and you are told), then your own session's caps (the contract refuses past them, no gas spent), and spends your own daily allowance of buys from the bot like a tap of yours would.";
 /** The venue path's own bounds, in the cards' words: the smallest buy that is read and how many a day. */
 const VENUE_BOUNDS = `a buy of ${eth(VENUE_MIN_ETH_WEI)} ETH or more through the token's own pool on the venue, up to ${VENUE_BUYS_PER_DAY} a day, for a token orus clears`;
 /** What is mirrored, by the kind of leader: the words must match what the desk does for each. */

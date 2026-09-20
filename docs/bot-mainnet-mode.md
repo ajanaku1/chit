@@ -88,15 +88,36 @@ chain read: the signature is the proof, the nonce is one claim, a wallet is
 one leader's. From then on the watcher (`bot-watch.ts`, its own cron) reads
 that wallet's ETH buys from the venue's swap logs and the desk mirrors and
 posts them as it does a tapped buy, inside the venue path's own bounds: from
-0.01 ETH, through the token's own pool on the venue (the pool id the watcher
-read against the registry's key for the token), up to twenty buys a day per
-leader, a token orus clears only (else nothing is posted, the followers are
-not messaged, the leader is told), the transaction claimed in
-`bot_venue_buys` before the first send so two runs cannot both mirror it,
-and the followers' daily allowance from `bot_copy_user_days`, the ledger
-the session bot's taps write too. Sells, and a wallet leader's own taps in
-the bot, are never mirrored. The name is a plain one, because a page cannot
-prove a Telegram username.
+0.01 ETH of what the transaction left bought (the watcher nets a buy and a
+sell in one transaction), of a token whose pool is on the bot's record,
+through that pool (the pool id the watcher read against the record's key),
+up to twenty buys a day per leader, a token orus clears only (else nothing
+is posted, the followers are not messaged, the leader is told), the
+transaction claimed in `bot_venue_buys` before the first send so two runs
+cannot both mirror it, a read that fails before that claim kept in
+`bot_venue_deferred` and read again at the start of the next passes for a
+quarter of an hour (the watcher's own claim will not hand the buy on
+again), and the followers' daily allowance from `bot_copy_user_days`, the
+ledger the session bot's taps write too. Sells, and a wallet leader's own
+taps in the bot, are never mirrored. The name is a plain one, because a
+page cannot prove a Telegram username.
+
+**The pool a mirror buys through is on record, never discovered.** The pool
+manager is one contract for every pool on the chain; anyone opens an ETH
+pool for any token at any price for one transaction, and a narrow position
+makes it the deepest for very little. $CHIT alone has twenty ETH pools on
+mainnet, one of them the launchpad's and the rest strangers' traps. So the
+registry (`pool-registry.ts`) has a record: $CHIT's pool on 4663 from
+`deployments/buyback-4663.json`, plus `BOT_POOL_KEYS` (token:fee:
+tickSpacing:hooks, comma separated) for whatever else the operator vouches
+for; a recorded token's pool is that one, whatever else exists. A mirror of
+either path goes only through a recorded pool (`TokenInfo.poolOnRecord`),
+so a leader cannot open a pool of their own, price it as they like and have
+the followers' ETH bought through it; a buy of any other token is skipped
+for every follower with the reason, and on the venue path not posted. Taps,
+limit buys and DCA of an unrecorded token still trade through the deepest
+discovered pool, the user's own choice, with the card's price and the
+floor as their guard.
 
 ## Defaults the page suggests
 
@@ -229,8 +250,10 @@ named in words on every card, never inferred from a colour.
 - **A flooded feed.** The watcher's alerts (`bot-watch.ts`, `bot-alerts.ts`)
   post what the chain wrote, and anyone with ETH can write a big buy. Only
   the pools of $CHIT and the allowlist are watched, so a pool a stranger
-  opens on the pool manager and washes is not a door into the feed; a
-  buy the bot's own signer sent is not posted again or as the signer's.
+  opens on the pool manager and washes is not a door into the feed; a buy
+  and a sell in one transaction net, so a round trip through a contract is
+  not a buy at all; a buy the bot's own signer sent is not posted again or
+  as the signer's.
   The group gets at most twenty posts a pass, a user one message per token
   an hour, each claimed in the store in one statement so two overlapping
   passes announce nothing twice, a first pass starts at the head and

@@ -24,6 +24,10 @@
  *   BOT_ORDERS_PER_RUN          at most this many executes a pass; default 20
  *   BOT_DAILY_EXECUTES,         per owner per day, the same budget a tapped
  *   BOT_DAILY_GAS_ETH           Buy has; over it their orders wait for tomorrow
+ *   BOT_POOL_KEYS               the operator's record of pools beside the
+ *                               chain's own ($CHIT's), so an order's route
+ *                               and quote are the recorded pool's, as the
+ *                               session bot's are (pool-registry.ts)
  *
  * One pass at a time in this instance, and across instances the store's
  * claim (bot-orders.ts): two pingers landing together, or a run the platform
@@ -34,6 +38,7 @@ import { neon } from "@neondatabase/serverless";
 import { isHex, parseEther, type Hex } from "viem";
 import { isAddress, type Address } from "./types.js";
 import { createBotChain } from "./bot-chain.js";
+import { recordedPoolsFromEnv } from "./pool-registry.js";
 import { MemoryBotLinkStore, NeonBotLinkStore, type BotLinkStore } from "./bot-link.js";
 import { MemoryOrderStore, NeonOrderStore, OrderRunner, type OrderStore } from "./bot-orders.js";
 import { createSessionChain, type SessionChain } from "./bot-session-chain.js";
@@ -88,7 +93,7 @@ const build = (): OrderRunner => {
   return new OrderRunner({
     orders: overrides.orders ?? (sql ? new NeonOrderStore(sql) : new MemoryOrderStore()),
     links: overrides.links ?? (sql ? new NeonBotLinkStore(sql) : new MemoryBotLinkStore()),
-    reads: overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER }),
+    reads: overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) }),
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as Hex }),
     telegram: overrides.telegram ?? createTelegram(token!),
     ...(perRun !== undefined ? { maxPerRun: perRun } : {}),

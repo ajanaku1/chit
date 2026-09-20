@@ -37,13 +37,17 @@
  * is caught and logged; the run goes on to the next buy, because one odd
  * token must not stop the feed.
  *
- * What counts as a buy: a Swap in a pool whose currency0 is native ETH,
- * where amount0 is negative (the swapper paid ETH; v4 deltas are from the
- * swapper's side) and amount1 positive (tokens came out), and whose other
- * side is a token this watcher was given. A sell in the same pool has the
- * signs the other way and is ignored. A pool whose key the watcher cannot
- * name (no Initialize event found for its id) is skipped, never guessed;
- * two swaps of one transaction in one pool are one buy, summed.
+ * What counts as a buy: what a transaction left bought. Every Swap of one
+ * transaction in the pools of one watched token is summed with its sign
+ * (v4 deltas are from the swapper's side: amount0 negative is ETH paid,
+ * positive is ETH taken back; amount1 the other way for the token), and
+ * the transaction is a buy of that token when the sum paid ETH and took
+ * tokens. A sell alone has the signs the other way and is nothing; a buy
+ * and a sell in one transaction net to what stayed bought, so a round trip
+ * through a contract is not a buy at all, and one that sold part of what
+ * it bought is a buy of the rest. The buy's pool is the one the most ETH
+ * went into. A pool whose key the watcher cannot name (no Initialize event
+ * found for its id) is skipped, never guessed.
  *
  * The public RPC is treated as api/burn.js treats it: one call at a time,
  * log queries in spans it tolerates, a 429 waited out and tried again.
@@ -51,6 +55,7 @@
 
 import { createPublicClient, defineChain, http, parseAbiItem, type Address, type Hex, type PublicClient, type Transport } from "viem";
 import { createPoolRegistry, type PoolRegistry } from "./pool-registry.js";
+import type { PoolKey } from "./v4-swap.js";
 
 export type VenueBuy = { block: bigint; txHash: Hex; buyer: Address; token: Address; ethInWei: bigint; tokensOut: bigint; poolId: Hex };
 
@@ -202,8 +207,10 @@ export type WatchPortConfig = {
   poolManager: Address;
   /** The tokens whose pools are watched: the venue token and the allowlist. A swap in any other pool is not a buy here, whoever made it. */
   tokens: Address[];
-  /** Names the deepest pool of each token before any log is read, however old the pool is (pool-registry.ts); default is a registry over this port's own client. */
+  /** Names each token's pool before any log is read, however old the pool is (pool-registry.ts: the record's, else the deepest); default is a registry over this port's own client. */
   registry?: PoolRegistry;
+  /** The operator's recorded pools (BOT_POOL_KEYS), for the default registry beside the chain's own record. */
+  recordedPools?: PoolKey[];
   /** Addresses whose transactions are the bot's own (its signer): a swap they sent is not handed on. */
   ownSenders?: Address[];
   /** A transport of the caller's own (a scripted one in tests); default is HTTP to rpcUrl with a 429 waited out. */
@@ -212,7 +219,7 @@ export type WatchPortConfig = {
   initLookbackBlocks?: bigint;
 };
 
-/** The one decision a Swap log leaves: an ETH-in buy (the swapper paid ETH, tokens came out) or not. */
+/** The one decision a transaction's summed deltas leave: an ETH-in buy (the swapper paid ETH, tokens came out) or not. One Swap log alone reads the same way. */
 export const isEthInBuy = (amount0: bigint, amount1: bigint): boolean => amount0 < 0n && amount1 > 0n;
 
 export const createWatchPort = (config: WatchPortConfig): WatchPort => {
@@ -231,7 +238,7 @@ export const createWatchPort = (config: WatchPortConfig): WatchPort => {
   const watched = new Set<string>(config.tokens.map(lower));
   /** The bot's own senders; a buy they sent is the bot's doing and is not a buy here. */
   const own = new Set<string>((config.ownSenders ?? []).map(lower));
-  const registry = config.registry ?? createPoolRegistry(client, config.poolManager);
+  const registry = config.registry ?? createPoolRegistry(client, config.poolManager, { chainId: config.chainId, ...(config.recordedPools ? { recorded: config.recordedPools } : {}) });
   /** Pool id to token (lowercase, as the bot keys everything); null is a pool looked for and not found, one that is not an ETH pool, or one of a token not watched, and is not asked again. */
   const pools = new Map<string, Address | null>();
   /** What an Initialize log names, as this port keeps it: the token when it is an ETH pool of a watched token, else nothing. */
@@ -305,14 +312,13 @@ export const createWatchPort = (config: WatchPortConfig): WatchPort => {
     async buysBetween(from, to) {
       await seed();
       await learnOpened(from, to);
-      // One entry per transaction and pool, the amounts summed; the order is the chain's.
+      // One entry per transaction and pool, every swap's deltas summed with their signs (ETH paid is positive here, ETH taken back negative); the order is the chain's.
       const found = new Map<string, { block: bigint; txHash: Hex; poolId: Hex; ethInWei: bigint; tokensOut: bigint }>();
       for (const [a, b] of spans(from, to)) {
         const logs = await client.getLogs({ address: config.poolManager, event: SWAP, fromBlock: a, toBlock: b });
         for (const l of logs) {
           const { id, amount0, amount1 } = l.args;
           if (!id || amount0 === undefined || amount1 === undefined || !l.transactionHash || l.blockNumber === null) continue;
-          if (!isEthInBuy(amount0, amount1)) continue;
           const key = `${l.transactionHash.toLowerCase()}|${id.toLowerCase()}`;
           const have = found.get(key);
           if (have) { have.ethInWei += -amount0; have.tokensOut += amount1; }
@@ -322,14 +328,26 @@ export const createWatchPort = (config: WatchPortConfig): WatchPort => {
       if (!found.size) return [];
       const unknown = [...new Set([...found.values()].map((f) => f.poolId.toLowerCase()))].filter((id) => !pools.has(id)) as Hex[];
       await learnUnknown(unknown, from > 0n ? from - 1n : 0n);
-      const buys: VenueBuy[] = [];
+      // Then one entry per transaction and watched token, its pools' sums added: what the transaction left bought of the token, and the pool most of the ETH went into.
+      const net = new Map<string, { block: bigint; txHash: Hex; token: Address; ethInWei: bigint; tokensOut: bigint; poolId: Hex; poolEth: bigint }>();
       for (const f of found.values()) {
         const token = pools.get(f.poolId.toLowerCase());
         if (!token) continue;
-        const buyer = await senderOf(f.txHash);
+        const key = `${f.txHash.toLowerCase()}|${token}`;
+        const have = net.get(key);
+        if (!have) { net.set(key, { block: f.block, txHash: f.txHash, token, ethInWei: f.ethInWei, tokensOut: f.tokensOut, poolId: f.poolId, poolEth: f.ethInWei }); continue; }
+        have.ethInWei += f.ethInWei;
+        have.tokensOut += f.tokensOut;
+        if (f.ethInWei > have.poolEth) { have.poolId = f.poolId; have.poolEth = f.ethInWei; }
+      }
+      const buys: VenueBuy[] = [];
+      for (const n of net.values()) {
+        // A sell, or a buy and a sell that net to nothing, is not a buy: the leader-buys-follower-buys premise needs something to have stayed bought.
+        if (!isEthInBuy(-n.ethInWei, n.tokensOut)) continue;
+        const buyer = await senderOf(n.txHash);
         // The bot's own transaction: a leader's tapped buy the desk already posted, a mirror, an order's fill, or a user's buy that is theirs alone.
         if (own.has(lower(buyer))) continue;
-        buys.push({ block: f.block, txHash: f.txHash, buyer, token, ethInWei: f.ethInWei, tokensOut: f.tokensOut, poolId: f.poolId });
+        buys.push({ block: n.block, txHash: n.txHash, buyer, token: n.token, ethInWei: n.ethInWei, tokensOut: n.tokensOut, poolId: n.poolId });
       }
       return buys;
     },

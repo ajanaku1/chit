@@ -17,8 +17,13 @@
  * on its own, so the alerts still post when a mirror breaks and the
  * mirrors still run when Telegram is down; the watcher claims each hash
  * once before the readers run, so a buy reaches both once and neither
- * twice, and a reader that throws before its own work is done has lost
- * that one buy, logged, not a pass.
+ * twice. The alerts read what they can and post it (a partner that does
+ * not answer is a line saying so); the desk keeps a buy it could not read
+ * before its own claim and reads it again at the start of the next pass
+ * (`retryVenueBuys`, called here before the window), for a quarter of an
+ * hour, so a chain or a store that blinked is a mirror five minutes late,
+ * not a mirror lost; only a buy the desk can neither read nor keep is
+ * lost, logged, not a pass.
  *
  * The variables, beside the session bot's own (bot-runtime.ts):
  *   CRON_SECRET                 who may be the clock; without it the route
@@ -50,6 +55,12 @@
  *                               46630): their pools are named through the
  *                               registry before the first log is read, and
  *                               a swap in any other pool is not a buy
+ *   BOT_POOL_KEYS               the operator's record of pools beside the
+ *                               chain's own ($CHIT's), token:fee:tickSpacing
+ *                               :hooks each (pool-registry.ts): the desk
+ *                               mirrors a token only through a recorded
+ *                               pool, so an allowlisted token whose buys
+ *                               should be mirrored is recorded here
  *   BOT_SIGNER_PRIVATE_KEY      session mode's signer, the one owners
  *                               granted sessions to: the desk sends a wallet
  *                               leader's mirrors with it, so the route
@@ -85,6 +96,7 @@ import { createOrusScanner, type OrusScanner } from "./bot-orus.js";
 import { createSessionChain, type SessionChain } from "./bot-session-chain.js";
 import { createTelegram, type Telegram } from "./bot-telegram.js";
 import { createWatchPort, MemoryWatchStore, NeonWatchStore, Watcher, type VenueBuy, type WatchPort, type WatchStore } from "./bot-watch.js";
+import { recordedPoolsFromEnv } from "./pool-registry.js";
 import { sweepTriggerAllowed } from "./sweep-trigger.js";
 
 /** Uniswap v4 on Robinhood Chain, as bot-runtime has them (specs/001-fleet-mission/research.md). */
@@ -167,7 +179,9 @@ const build = () => {
   const daily = dailyLimitsFromEnv(refuse);
   const sql = overrides.store && overrides.alertStore && overrides.copyStore && overrides.links ? undefined : sqlFromEnv();
   const tokens = watchTokens(chainId, allowlist);
-  const reads = overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: tokens[0]!, router: ROUTER, poolManager: POOL_MANAGER });
+  // The operator's recorded pools go to both the reads (the desk's routes and quotes) and the port (which pool of a watched token is watched).
+  const recordedPools = recordedPoolsFromEnv(refuse);
+  const reads = overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: tokens[0]!, router: ROUTER, poolManager: POOL_MANAGER, recordedPools });
   const telegram = overrides.telegram ?? createTelegram(token!);
   const orus = overrides.orus ?? (process.env.ORUS_PARTNER_API_KEY ? createOrusScanner({ apiKey: process.env.ORUS_PARTNER_API_KEY, chainId, ...(process.env.ORUS_API_BASE ? { baseUrl: process.env.ORUS_API_BASE } : {}) }) : undefined);
   const hey = process.env.BOT_HEY_OFF === "1" ? undefined : createHeyScanner({ chainId, ...(process.env.HEY_API_KEY ? { apiKey: process.env.HEY_API_KEY } : {}), ...(process.env.HEY_API_BASE ? { baseUrl: process.env.HEY_API_BASE } : {}) });
@@ -195,7 +209,7 @@ const build = () => {
     refuse,
   });
   const inner = new Watcher({
-    port: overrides.port ?? createWatchPort({ chainId, rpcUrl, poolManager: POOL_MANAGER, tokens, ownSenders: ownSendersFromEnv() }),
+    port: overrides.port ?? createWatchPort({ chainId, rpcUrl, poolManager: POOL_MANAGER, tokens, ownSenders: ownSendersFromEnv(), recordedPools }),
     store: overrides.store ?? (sql ? new NeonWatchStore(sql) : new MemoryWatchStore()),
     chainId,
     ...(perRun !== undefined ? { maxBlocksPerRun: perRun } : {}),
@@ -205,7 +219,15 @@ const build = () => {
       { name: "copy desk", read: (b) => copy.onVenueBuy(b) },
     ]),
   });
-  return { alerts, run: () => { alerts.beginRun(); return inner.run(); } };
+  return {
+    alerts,
+    async run() {
+      alerts.beginRun();
+      // The desk's kept buys first, oldest first, so a buy a read failed on last pass is mirrored before this pass's are; the desk's store being down is a line, not a pass lost.
+      await copy.retryVenueBuys().catch((e: unknown) => console.error(`bot watch: kept venue buys not read: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`));
+      return inner.run();
+    },
+  };
 };
 
 /** For tests: the watcher's parts from outside, and a fresh build on the next request. */

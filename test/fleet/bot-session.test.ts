@@ -44,7 +44,7 @@ const clock = new Date("2026-09-20T12:00:00Z");
 
 const reads = {
   chainId: 4663, router: ROUTER,
-  async tokenInfo(token: Address) { return { address: token, symbol: token === PEPE ? "PEPE" : "NOPE", decimals: 6, hasPool: token === PEPE, perEth: 1_000_000_000_000n, poolEth: parseEther("5"), hooked: false, fee: 3000 }; },
+  async tokenInfo(token: Address) { return { address: token, symbol: token === PEPE ? "PEPE" : "NOPE", decimals: 6, hasPool: token === PEPE, perEth: 1_000_000_000_000n, poolEth: parseEther("5"), hooked: false, fee: 3000, poolOnRecord: token === PEPE }; },
   async tokenBalance() { return 42_000_000n; },
   async ethBalance() { return parseEther("0.4"); },
   async quoteBuy(token: Address, ethIn: bigint) { return token === PEPE ? (ethIn * 1_000_000_000_000n) / 10n ** 18n : null; },

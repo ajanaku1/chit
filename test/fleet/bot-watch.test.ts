@@ -5,8 +5,9 @@
  * time, because the claim is one statement; a handler that throws costs
  * one buy, not the run; a Swap log with ETH paid and tokens out is a buy,
  * a sell in the same pool is not, a pool whose Initialize the watcher
- * cannot find is skipped, a pool that is not an ETH pool is skipped, two
- * swaps of one transaction in one pool are one buy summed, and the buyer
+ * cannot find is skipped, a pool that is not an ETH pool is skipped, every
+ * swap of one transaction in the token's pools is summed with its sign (a
+ * round trip is not a buy, a buy and a partial sell is a buy of the rest), and the buyer
  * is the transaction's sender, asked for once per hash; the watched
  * tokens' pools are named through the registry however old they are, a
  * stranger's pool is never a buy, and the bot's own transactions are not
@@ -376,4 +377,38 @@ test("neon: the cursor is one row per chain, written with an upsert that also pr
   assert.equal(await store.claim(("0x" + "ab".repeat(32)) as Hex, clock), false, "no row back: another run's insert got there first, this one is no claim");
   const schema = sql.calls.filter((c) => /^\s*CREATE/.test(c.query)).map((c) => c.query);
   assert.ok(schema.some((q) => q.includes("bot_watch_cursor")) && schema.some((q) => q.includes("bot_watch_seen")));
+});
+
+test("what a transaction left bought: a buy and a sell of the token in one transaction net, so a round trip through a contract is not a buy, one that sold part of what it bought is a buy of the rest, a sell across two pools of the token nets with the buy in the first, and the buy's pool is the one most of the ETH went into", async () => {
+  const pepeA = poolId(1), pepeB = poolId(2), usdcPool = poolId(3);
+  const logs = [
+    initLog(pepeA, NATIVE, PEPE, 50n),
+    initLog(pepeB, NATIVE, PEPE, 60n),
+    initLog(usdcPool, NATIVE, USDC, 70n),
+    // A full round trip in one pool: 1 ETH in, 0.99 ETH back out (the pool's fee is the whole cost). Not a buy.
+    swapLog(pepeA, -parseEther("1"), 1_000n, 1_000n, hash(1)),
+    swapLog(pepeA, parseEther("0.99"), -1_000n, 1_000n, hash(1)),
+    // Bought 1 ETH worth, sold 0.4 ETH worth back: a buy of 0.6 ETH and the tokens kept.
+    swapLog(pepeA, -parseEther("1"), 1_000n, 1_001n, hash(2)),
+    swapLog(pepeA, parseEther("0.4"), -400n, 1_001n, hash(2)),
+    // Bought in the token's first pool, sold it all in its second: nothing stayed bought.
+    swapLog(pepeA, -parseEther("2"), 2_000n, 1_002n, hash(3)),
+    swapLog(pepeB, parseEther("1.98"), -2_000n, 1_002n, hash(3)),
+    // Bought in both of the token's pools: one buy, summed, in the pool that took more ETH.
+    swapLog(pepeA, -parseEther("0.1"), 100n, 1_003n, hash(4)),
+    swapLog(pepeB, -parseEther("0.7"), 700n, 1_003n, hash(4)),
+    // Sold one token to buy another in one transaction: a buy of the one bought, the sale is the other token's.
+    swapLog(usdcPool, parseEther("0.5"), -500n, 1_004n, hash(5)),
+    swapLog(pepeA, -parseEther("0.5"), 500n, 1_004n, hash(5)),
+  ];
+  const node = scriptedChain(1_004n, logs, { [hash(1)]: BUYER, [hash(2)]: BUYER, [hash(3)]: BUYER, [hash(4)]: BUYER, [hash(5)]: BUYER });
+  const port = createWatchPort({ chainId: 4663, rpcUrl: "http://fake", poolManager: POOL_MANAGER, tokens: [PEPE, USDC], registry: fakeRegistry({}).registry, transport: node.transport, initLookbackBlocks: 2_000n });
+  const buys = await port.buysBetween(1_000n, 1_004n);
+  assert.deepEqual(buys.map((b) => [b.txHash, b.token, b.ethInWei, b.tokensOut, b.poolId]), [
+    [hash(2), PEPE, parseEther("0.6"), 600n, pepeA],
+    [hash(4), PEPE, parseEther("0.8"), 800n, pepeB],
+    [hash(5), PEPE, parseEther("0.5"), 500n, pepeA],
+  ], "the round trips are nothing; the rest is what stayed bought");
+  const txAsks = node.calls.filter((c) => c.method === "eth_getTransactionByHash").map((c) => (c.params as [Hex])[0]);
+  assert.deepEqual(txAsks, [hash(2), hash(4), hash(5)], "no sender read for a transaction that bought nothing net");
 });

@@ -4,10 +4,14 @@
  * buys to the group and to the subscribers, and hands every buy to the copy
  * desk too, built here over the function's own parts, so a wallet leader's
  * venue buy is alerted and mirrored from one pass, each reader once and
- * each caught on its own; BOT_WATCH_OFF stops the clock; the chain must be
- * one of ours and the signer set; the watched tokens are the chain's venue
- * token ($CHIT on 4663) and the allowlist, and the bot's own sender is the
- * signer's address when its key is set.
+ * each caught on its own, and a desk read that fails before its claim is a
+ * mirror one pass late (kept by the desk, read again first thing next
+ * pass), lost only when nothing could be kept and said so; BOT_WATCH_OFF
+ * stops the clock; the chain must be one of ours and the signer set; the
+ * watched tokens are the chain's venue token ($CHIT on 4663) and the
+ * allowlist, the operator's recorded pools are read by the same rule as
+ * every variable, and the bot's own sender is the signer's address when
+ * its key is set.
  */
 
 import assert from "node:assert/strict";
@@ -35,7 +39,7 @@ const WHALE = "0x0000000000000000000000000000000000000ea7" as Address;
 const FOLLOWER = "0x0000000000000000000000000000000000000f05" as Address;
 const ROUTER = "0x8876789976decbfcbbbe364623c63652db8c0904" as Address;
 const HASH = ("0x" + "ab".repeat(32)) as Hex;
-const info: TokenInfo = { address: PEPE, symbol: "PEPE", decimals: 18, hasPool: true, perEth: 10n ** 18n, poolEth: parseEther("5"), hooked: false, fee: 3000 };
+const info: TokenInfo = { address: PEPE, symbol: "PEPE", decimals: 18, hasPool: true, perEth: 10n ** 18n, poolEth: parseEther("5"), hooked: false, fee: 3000, poolOnRecord: true };
 const reads = {
   chainId: 4663, router: ROUTER,
   async tokenInfo(token: Address) { return { ...info, address: token }; },
@@ -65,7 +69,7 @@ const deskParts = async () => {
   return { copyStore, links, session, sent };
 };
 
-const ENV = ["CRON_SECRET", "BOT_WATCH_OFF", "BOT_WATCH_CHAIN_ID", "BOT_GROUP_CHAT_ID", "BOT_USERNAME", "BOT_ALERT_GROUP_MIN_ETH", "TELEGRAM_BOT_TOKEN", "BOT_HEY_OFF", "ORUS_PARTNER_API_KEY", "BOT_SIGNER_PRIVATE_KEY", "BOT_DAILY_EXECUTES", "BOT_DAILY_GAS_ETH", "DATABASE_URL", "BOT_MEMORY_STORE"] as const;
+const ENV = ["CRON_SECRET", "BOT_WATCH_OFF", "BOT_WATCH_CHAIN_ID", "BOT_GROUP_CHAT_ID", "BOT_USERNAME", "BOT_ALERT_GROUP_MIN_ETH", "TELEGRAM_BOT_TOKEN", "BOT_HEY_OFF", "ORUS_PARTNER_API_KEY", "BOT_SIGNER_PRIVATE_KEY", "BOT_DAILY_EXECUTES", "BOT_DAILY_GAS_ETH", "BOT_POOL_KEYS", "DATABASE_URL", "BOT_MEMORY_STORE"] as const;
 const withEnv = async (values: Partial<Record<(typeof ENV)[number], string>>, run: () => Promise<void>) => {
   const saved = Object.fromEntries(ENV.map((k) => [k, process.env[k]]));
   for (const k of ENV) { if (values[k] === undefined) delete process.env[k]; else process.env[k] = values[k]; }
@@ -166,21 +170,76 @@ test("the readers are each caught on their own: the desk throwing does not stop 
     assert.deepEqual(calls, ["alerts", "copy desk"]);
     assert.deepEqual(logged, [`bot watch: alerts for ${hash(4)}: telegram 429`, `bot watch: copy desk for ${hash(4)}: store is away`], "each failure is one line naming the reader and the hash");
   } finally { console.error = quiet; }
-  // Through the route: a desk whose store is down still lets the alert out, and the pass counts the buy as handed on.
+  // Through the route: a desk whose store can neither read nor keep still lets the alert out, the pass counts the buy as handed on, and the one line says the buy is lost.
   const store = new MemoryWatchStore();
   const telegram = new RecordingTelegram();
   const { copyStore, links, session } = await deskParts();
   copyStore.leaderByWallet = async () => { throw new Error("store is away"); };
+  copyStore.deferVenueBuy = async () => { throw new Error("store is away"); };
   await store.setCursor(4663, 0n);
   setWatchDepsForTests({ port: fakePort(1n, [buy]), store, alertStore: new MemoryAlertStore(), copyStore, links, session, telegram, reads });
   await withEnv({ CRON_SECRET: "s3cret-s3cret-s3cret", BOT_USERNAME: "usechit_bot", BOT_GROUP_CHAT_ID: "-100", BOT_HEY_OFF: "1" }, async () => {
-    console.error = () => undefined;
+    logged.length = 0;
+    console.error = (line: string) => { logged.push(line); };
     try {
       const r = await handleWatchRequest(req("Bearer s3cret-s3cret-s3cret"));
       assert.deepEqual(await r.json(), { state: "ran", from: "1", to: "1", buys: 1, delivered: 1 });
     } finally { console.error = quiet; }
     const sent = telegram.sent.filter((o) => o.kind === "send") as { chatId: string }[];
     assert.deepEqual(sent.map((s) => s.chatId), ["-100"], "the alert went out; the desk's failure was its own");
+    assert.deepEqual(logged, [`bot watch: copy desk for ${hash(4)}: venue buy not read (store is away) and not kept (store is away): it will not be mirrored or posted`], "the line says both: nothing could be kept, so the buy is lost");
+  });
+});
+
+test("through the route a desk read that fails before the claim is a mirror one pass late, not a mirror lost: the alert goes out, the buy is kept and the leader told, and the next pass reads it first, mirrors it, posts it and tells the leader, each once", async () => {
+  const buy: VenueBuy = { block: 2_000n, txHash: hash(6), buyer: WHALE, token: PEPE, ethInWei: parseEther("0.7"), tokensOut: 1n, poolId: poolIdOf(venuePoolKey(PEPE)) };
+  const store = new MemoryWatchStore();
+  const telegram = new RecordingTelegram();
+  const { copyStore, links, session, sent: mirrors } = await deskParts();
+  // The desk's store blinks on the leader lookup this pass; the alerts have their own store and are not touched.
+  const leaderByWallet = copyStore.leaderByWallet.bind(copyStore);
+  let blink = true;
+  copyStore.leaderByWallet = async (wallet) => { if (blink) throw new Error("neon timed out"); return leaderByWallet(wallet); };
+  await store.setCursor(4663, 1_999n);
+  const quiet = console.warn;
+  console.warn = () => undefined;
+  try {
+    setWatchDepsForTests({ port: fakePort(2_000n, [buy]), store, alertStore: new MemoryAlertStore(), copyStore, links, session, telegram, reads, orus });
+    await withEnv({ CRON_SECRET: "s3cret-s3cret-s3cret", BOT_USERNAME: "usechit_bot", BOT_GROUP_CHAT_ID: "-100", BOT_HEY_OFF: "1", BOT_SIGNER_PRIVATE_KEY: "0x" + "11".repeat(32) }, async () => {
+      const r = await handleWatchRequest(req("Bearer s3cret-s3cret-s3cret"));
+      assert.deepEqual(await r.json(), { state: "ran", from: "2000", to: "2000", buys: 1, delivered: 1 });
+      assert.equal(mirrors.length, 0, "nothing mirrored this pass");
+      assert.deepEqual(telegram.sent.filter((o) => o.kind === "send").map((o) => (o as { chatId: string }).chatId), ["-100"], "the alert went out; the leader could not be named, so nobody else is told yet");
+      assert.deepEqual((await copyStore.deferredVenueBuys()).map((d) => d.buy.txHash), [hash(6)], "kept by the desk for the next pass");
+      // The next pass, the store back: the kept buy is read before the window, and the watcher's own claim keeps the alert from posting it again.
+      blink = false;
+      const again = await handleWatchRequest(req("Bearer s3cret-s3cret-s3cret"));
+      assert.deepEqual(await again.json(), { state: "ran", from: "2001", to: "2000", buys: 0, delivered: 0 });
+      assert.deepEqual(mirrors, [{ account: FOLLOWER, value: parseEther("0.01") }], "mirrored one pass late");
+      const sent = telegram.sent.filter((o) => o.kind === "send") as { chatId: string; text: string }[];
+      assert.deepEqual(sent.map((s) => s.chatId), ["-100", "5", "-100", "9"], "then the follower's line, the feed's post, the leader's line; the alert once");
+      assert.match(sent[2]!.text, /^<b>whale<\/b> bought <code>0.7 ETH<\/code> of <b>PEPE<\/b>/);
+      assert.match(sent[3]!.text, /was posted to the feed and mirrored to 1 of 1 follower\.$/);
+      assert.deepEqual(await copyStore.deferredVenueBuys(), [], "kept no more");
+    });
+  } finally { console.warn = quiet; }
+});
+
+test("BOT_POOL_KEYS: the operator's recorded pools are read by the same rule as every variable, so a malformed entry is a configuration fault told as such, and a good one builds", async () => {
+  const store = new MemoryWatchStore();
+  const port: WatchPort = { async latestBlock() { return 5n; }, async buysBetween() { return []; } };
+  const { copyStore, links, session } = await deskParts();
+  const parts = { port, store, copyStore, links, session, alertStore: new MemoryAlertStore(), telegram: new RecordingTelegram() };
+  await withEnv({ CRON_SECRET: "s3cret-s3cret-s3cret", BOT_USERNAME: "usechit_bot" }, async () => {
+    process.env.BOT_POOL_KEYS = `${PEPE}:3000:60`;
+    setWatchDepsForTests(parts);
+    const bad = await handleWatchRequest(req("Bearer s3cret-s3cret-s3cret"));
+    assert.equal(bad.status, 503);
+    assert.deepEqual(await bad.json(), { state: "not_configured", reason: "BOT_POOL_KEYS must be token:fee:tickSpacing:hooks entries, comma separated (each an ETH pool on the pool manager)" });
+    process.env.BOT_POOL_KEYS = `${PEPE}:3000:60:0x0000000000000000000000000000000000000000, ${WOJAK}:0:200:0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044`;
+    setWatchDepsForTests(parts);
+    assert.deepEqual(await (await handleWatchRequest(req("Bearer s3cret-s3cret-s3cret"))).json(), { state: "ran", from: "5", to: "5", buys: 0, delivered: 0 });
+    delete process.env.BOT_POOL_KEYS;
   });
 });
 
