@@ -19,6 +19,7 @@ import type { CopyDesk } from "./bot-copy.js";
 import { CopyCards } from "./bot-copy-cards.js";
 import { heyLine, type HeyScanner } from "./bot-hey.js";
 import { issueNonce, type BotLinkStore } from "./bot-link.js";
+import { MAX_OPEN_ORDERS, newOrderId, type Order, type OrderStore } from "./bot-orders.js";
 import { orusLine, type OrusScanner } from "./bot-orus.js";
 import type { SessionChain } from "./bot-session-chain.js";
 import { CAPTION_MAX_CHARS, esc, type Keyboard, type Outgoing, type Telegram } from "./bot-telegram.js";
@@ -41,6 +42,8 @@ export type SessionBotDeps = {
   copy?: CopyDesk;
   /** Each update id acted on once (bot-updates.ts); absent, this instance's memory, which is enough for one machine only. */
   updates?: UpdateClaims;
+  /** Standing orders (limit buys, DCA), fired by api/bot/orders.js; absent, the card offers none. */
+  orders?: OrderStore;
   botUsername: string;
   siteUrl: string;
   /** Per user, per UTC day: how many executes and how much gas the bot fronts. */
@@ -77,7 +80,7 @@ type DayCount = { day: string; executes: number; gasWei: bigint };
 export class SessionBot {
   readonly #d: SessionBotDeps;
   readonly #days = new Map<string, DayCount>();
-  readonly #pending = new Map<string, { token: Address }>();
+  readonly #pending = new Map<string, { token: Address; order?: "limit" | "dca" }>();
   readonly #photos = new Set<string>();
   readonly #copy: CopyCards | undefined;
   readonly #updates: UpdateClaims;
@@ -129,7 +132,7 @@ export class SessionBot {
       // copy: a reply to a cap or handle prompt (bot-copy-cards.ts).
       if (this.#copy && (await this.#copy.reply(chatId, tgId, text, !!u.message.reply_to_message))) return;
       const pending = this.#pending.get(tgId);
-      if (pending && u.message.reply_to_message) { this.#pending.delete(tgId); return this.#buy(chatId, tgId, pending.token, text); }
+      if (pending && u.message.reply_to_message) { this.#pending.delete(tgId); return pending.order ? this.#placeOrder(chatId, tgId, pending.token, pending.order, text) : this.#buy(chatId, tgId, pending.token, text); }
       const pasted = text.match(/0x[0-9a-fA-F]{40}/)?.[0];
       if (pasted) return this.#tokenCard(chatId, tgId, pasted.toLowerCase() as Address);
       return this.#help(chatId);
@@ -156,6 +159,17 @@ export class SessionBot {
         return this.#d.telegram.deliver({ kind: "send", chatId, text: `how much ETH into <code>${a}</code>? reply with a number, like 0.02.`, ask: "amount in ETH" });
       }
       case "help": await ack(); return this.#help(chatId);
+      // orders: the prompts, the list, a cancel (bot-orders.ts)
+      case "lim": case "dca": {
+        await ack();
+        if (!a || !isAddress(a) || !this.#d.orders) return this.#help(chatId);
+        this.#pending.set(tgId, { token: a as Address, order: verb === "lim" ? "limit" : "dca" });
+        return this.#d.telegram.deliver(verb === "lim"
+          ? { kind: "send", chatId, text: `limit buy on <code>${a}</code>: reply with the amount in eth, then the price as tokens per eth, like <code>0.02 at 1200000</code>. it buys when one eth gets at least that many tokens (the price per token at or below that level).`, ask: "amount in eth at tokens per eth" }
+          : { kind: "send", chatId, text: `dca on <code>${a}</code>: reply with the amount, every N hours, N times, like <code>0.01 every 4 hours 6 times</code>. the first buy goes at the next check (within five minutes), the rest one interval apart.`, ask: "amount every N hours N times" });
+      }
+      case "orders": await ack(); return this.#orders(chatId, tgId, messageId);
+      case "oc": await ack(); return a ? this.#cancelOrder(chatId, tgId, a, messageId) : this.#help(chatId);
       default: await ack(); return this.#home(chatId, tgId, messageId);
     }
   }
@@ -213,6 +227,7 @@ export class SessionBot {
     ];
     return this.#out(chatId, messageId, lines.join("\n"), kb(
       [url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions.html`), btn("🔗 Re-link", "connect")],
+      ...(this.#d.orders ? [[btn("📋 Orders", "orders")]] : []),
       // copy: the leaders list, my follows, become or close leader.
       ...(this.#copy ? await this.#copy.homeRows(tgId) : []),
       [btn("❓ Help", "help"), btn("↻ Refresh", "home")],
@@ -274,6 +289,7 @@ export class SessionBot {
     await this.#out(chatId, messageId, text, kb(
       this.#cfg("buyPresetsEth").map((p) => btn(`Buy ${p} ETH`, `b:${token}:${p}`)),
       [btn("Buy custom", `ask:${token}`)],
+      ...(this.#d.orders ? [[btn("⏱ Limit buy", `lim:${token}`), btn("🔁 DCA", `dca:${token}`)]] : []),
       [btn("↻ Refresh", `token:${token}`), btn("← Back", "home")],
     ), png);
   }
@@ -333,6 +349,88 @@ export class SessionBot {
     // copy: a leader's landed buy goes to the feed and into the followers' accounts, after the leader's own fill.
     if (r.landed && this.#copy) await this.#copy.afterBuy(chatId, tgId, token, wei, r.hash, info);
   }
+
+  // ---------- orders (bot-orders.ts) ----------
+
+  /**
+   * The reply to a limit or dca prompt, parsed strictly and refused with the
+   * format when it does not fit. The account is asked `canExecute` for the
+   * amount before anything is stored, so an order the session would never
+   * allow (over the per-trade cap, paused) is refused now, in the contract's
+   * words, and not three times from the cron. An account keeps at most
+   * MAX_OPEN_ORDERS open, so orders are not an unmetered channel for the
+   * bot's gas; the order carries the chain it was placed on.
+   */
+  async #placeOrder(chatId: string, tgId: string, token: Address, kind: "limit" | "dca", text: string): Promise<void> {
+    const orders = this.#d.orders;
+    const link = await this.#d.links.getLink(tgId);
+    if (!orders || !link) return this.#home(chatId, tgId);
+    const back = kb([btn("← Back", `token:${token}`)]);
+    const t = text.trim().toLowerCase();
+    const limit = kind === "limit" ? t.match(/^(\d+(?:\.\d+)?)\s+at\s+(\d+(?:\.\d+)?)$/) : null;
+    const dca = kind === "dca" ? t.match(/^(\d+(?:\.\d+)?)\s+every\s+(\d+)\s+hours?\s+(\d+)\s+times?$/) : null;
+    if (!limit && !dca) return this.#say(chatId, kind === "limit" ? "that is not the format. amount in eth, then the price as tokens per eth, like <code>0.02 at 1200000</code>." : "that is not the format. amount, every N hours, N times, like <code>0.01 every 4 hours 6 times</code>.", back);
+    const wei = toWei((limit ?? dca)![1]!);
+    if (wei === null || wei <= 0n) return this.#say(chatId, "the amount must be a number of ETH above zero, like 0.02.", back);
+    if ((await orders.openFor(tgId, this.#d.session.chainId)).length >= MAX_OPEN_ORDERS) return this.#say(chatId, `that is ${MAX_OPEN_ORDERS} open orders, the most one account keeps in the beta; cancel one from 📋 Orders to set another.`, kb([btn("📋 Orders", "orders"), btn("← Back", `token:${token}`)]));
+    const info = await this.#d.reads.tokenInfo(token);
+    if (!info.hasPool) return this.#say(chatId, "no ETH pool on the venue for this token, so nothing to order.", kb([btn("← Back", "home")]));
+    const can = await this.#d.session.canExecute(link.account, this.#d.reads.router, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, wei);
+    if (!can.ok) return this.#say(chatId, `your session says no to a buy of that size: <b>${esc(can.why)}</b>. manage it on the Sessions page, then set the order.`, kb([url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions.html`), btn("← Back", `token:${token}`)]));
+    const now = this.#now.toISOString();
+    const base = { id: newOrderId(), tgId, account: link.account, chainId: this.#d.session.chainId, token, ethWei: wei, createdAt: now, status: "open" as const, refusals: 0 };
+    let order: Order;
+    if (limit) {
+      const trigger = toUnits(limit[2]!, info.decimals);
+      if (trigger === null || trigger <= 0n) return this.#say(chatId, `the price must be a number of ${esc(info.symbol)} per ETH above zero, like 1200000.`, back);
+      order = { ...base, kind: "limit", triggerPerEth: trigger };
+    } else {
+      const hours = Number(dca![2]), times = Number(dca![3]);
+      if (hours < 1 || hours > 720) return this.#say(chatId, "the interval must be between 1 and 720 hours.", back);
+      if (times < 1 || times > 100) return this.#say(chatId, "the count must be between 1 and 100 buys.", back);
+      order = { ...base, kind: "dca", everyMs: hours * 3_600_000, remaining: times, nextAt: now };
+    }
+    await orders.put(order);
+    await this.#say(chatId, `${this.#orderLine(order, info.symbol, info.decimals)}\nset. the bot checks every five minutes, asks your account first, and tells you here each time it buys or is refused. cancel from 📋 Orders.`, kb([btn("📋 Orders", "orders"), btn("↻ Card", `token:${token}`)]));
+  }
+
+  #orderLine(o: Order, symbol: string, decimals: number): string {
+    if (o.kind === "limit") return `⏱ limit buy <code>${eth(o.ethWei)} ETH</code> of <b>${esc(symbol)}</b> at <code>${fmt(o.triggerPerEth ?? 0n, decimals, 2)} ${esc(symbol)}</code> per ETH or better`;
+    const every = (o.everyMs ?? 0) / 3_600_000;
+    return `🔁 dca <code>${eth(o.ethWei)} ETH</code> of <b>${esc(symbol)}</b> every ${every} hour${every === 1 ? "" : "s"}, ${o.remaining ?? 0} left, next ${(o.nextAt ?? "").slice(0, 16).replace("T", " ")} UTC`;
+  }
+
+  /** The open orders, one line each, a cancel button under each; the reason of the last refusal on the line when there was one. */
+  async #orders(chatId: string, tgId: string, messageId?: number): Promise<void> {
+    const orders = this.#d.orders;
+    const link = await this.#d.links.getLink(tgId);
+    if (!orders || !link) return this.#home(chatId, tgId, messageId);
+    const open = await orders.openFor(tgId, this.#d.session.chainId);
+    if (!open.length) return this.#out(chatId, messageId, "no open orders. set a limit buy or a dca from any token's card.", kb([btn("← Back", "home")]));
+    const infos = new Map<string, { symbol: string; decimals: number }>();
+    for (const t of new Set(open.map((o) => o.token))) infos.set(t, await this.#d.reads.tokenInfo(t).then((i) => ({ symbol: i.symbol, decimals: i.decimals })).catch(() => ({ symbol: short(t), decimals: 18 })));
+    const lines = open.map((o, i) => { const info = infos.get(o.token)!; return `${i + 1}. ${this.#orderLine(o, info.symbol, info.decimals)}${o.lastError ? `\n   last try: <i>${esc(o.lastError)}</i>` : ""}`; });
+    const text = ["<b>your orders</b>", ...lines, "", "<i>each fires as one execute on your account, inside your session; pause the session and they wait.</i>"].join("\n");
+    await this.#out(chatId, messageId, text, kb(...open.map((o, i) => [btn(`✕ Cancel ${i + 1}`, `oc:${o.id}`)]), [btn("↻ Refresh", "orders"), btn("← Back", "home")]));
+  }
+
+  async #cancelOrder(chatId: string, tgId: string, id: string, messageId?: number): Promise<void> {
+    const orders = this.#d.orders;
+    if (!orders) return this.#help(chatId);
+    const o = await orders.get(id);
+    // Only the owner of an order cancels it; someone else's id is treated as unknown.
+    if (!o || o.tgId !== tgId) return this.#say(chatId, "that order is not one of yours, or it is already gone.", kb([btn("📋 Orders", "orders")]));
+    // One conditional statement in the store, so a run mid-send cannot write the order back to open over the cancel.
+    if (o.status === "open") await orders.cancel(o.id);
+    return this.#orders(chatId, tgId, messageId);
+  }
 }
+
+/** A decimal string to a token's base units; null when it is not a plain number. */
+const toUnits = (s: string, decimals: number): bigint | null => {
+  if (!/^\d+(\.\d+)?$/.test(s)) return null;
+  const [w = "0", f = ""] = s.split(".");
+  return BigInt(w) * 10n ** BigInt(decimals) + BigInt((f + "0".repeat(decimals)).slice(0, decimals) || "0");
+};
 
 export type { Hex };

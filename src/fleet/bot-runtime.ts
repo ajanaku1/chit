@@ -52,6 +52,11 @@
  *                                doors into the bot (buy this, follow them).
  *                                Unset: no feed; leaders and followers still
  *                                work, the mirrors are told in private
+ *   BOT_ORDERS_OFF               1 hides the limit buy and DCA buttons in
+ *                                session mode and stops the cron at
+ *                                api/bot/orders.js; otherwise the orders live
+ *                                in the store beside the links and the cron
+ *                                fires them (bot-orders.ts)
  *   BOT_ASSET_DIR                where the share card's plate and fonts are
  *                                (default landing/public/bot, shipped with
  *                                the function)
@@ -97,6 +102,7 @@ import { ChitBot } from "./bot-handlers.js";
 import { createTelegram } from "./bot-telegram.js";
 import { MemoryBotWalletStore, NeonBotWalletStore, secretIsStrong, type BotWalletStore } from "./bot-wallets.js";
 import { MemoryBotLinkStore, NeonBotLinkStore, type BotLinkStore } from "./bot-link.js";
+import { MemoryOrderStore, NeonOrderStore, type OrderStore } from "./bot-orders.js";
 import { createSessionChain } from "./bot-session-chain.js";
 import { SessionBot, type SessionBotDeps } from "./bot-session.js";
 import { CopyDesk, MemoryCopyStore, NeonCopyStore, type CopyStore } from "./bot-copy.js";
@@ -179,6 +185,18 @@ const copyStoreFromEnv = (): CopyStore => {
   return new MemoryCopyStore();
 };
 
+/** Session mode's standing orders (limit buys, DCA); the same store rule as the links. BOT_ORDERS_OFF=1 offers none. */
+const ordersFromEnv = (): OrderStore | undefined => {
+  if (process.env.BOT_ORDERS_OFF === "1") return undefined;
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    const sql = neon(url);
+    return new NeonOrderStore({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
+  }
+  if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
+  return new MemoryOrderStore();
+};
+
 /** Session mode: mainnet, no key of the owner's anywhere; the bot's own signer pays gas and holds nothing. */
 const buildSession = (overrides: SessionOverrides): SessionBot => {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -198,6 +216,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
   const dailyExecutes = process.env.BOT_DAILY_EXECUTES ? Number(process.env.BOT_DAILY_EXECUTES) : undefined;
   if (dailyExecutes !== undefined && !(Number.isInteger(dailyExecutes) && dailyExecutes > 0)) refuse("BOT_DAILY_EXECUTES must be a whole number");
   const dailyGasWei = ethFromEnv("BOT_DAILY_GAS_ETH");
+  const orders = overrides.orders ?? ordersFromEnv();
   const deps: SessionBotDeps = {
     reads: createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER }),
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as `0x${string}` }),
@@ -210,6 +229,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     botUsername: username!,
     siteUrl: site,
     ...(overrides.playgroundFloor ? { playgroundFloor: true } : {}),
+    ...(orders ? { orders } : {}),
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
   };
@@ -287,7 +307,7 @@ const build = (overrides: BotOverrides = {}): ChitBot => {
   });
 };
 
-export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore; updates?: UpdateClaims; floors?: FloorStore; copyStore?: CopyStore; playgroundFloor?: boolean };
+export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore; updates?: UpdateClaims; orders?: OrderStore; floors?: FloorStore; copyStore?: CopyStore; playgroundFloor?: boolean };
 
 export const botMode = (): "playground" | "session" | "dual" => {
   const m = process.env.BOT_MODE || "playground";

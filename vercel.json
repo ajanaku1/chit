@@ -11,6 +11,9 @@
     },
     "api/buyback/keeper.js": {
       "maxDuration": 180
+    },
+    "api/bot/orders.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -24,6 +27,10 @@
     },
     {
       "path": "/api/buyback/keeper",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/bot/orders",
       "schedule": "*/5 * * * *"
     }
   ],
