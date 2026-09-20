@@ -4,22 +4,34 @@
  * (the same gate as the buyback keeper); the route builds the runner from
  * the environment, runs one pass and answers { fired, landed, refused }.
  *
- * Mainnet only, and the same variables the session bot reads (bot-runtime):
+ * The same variables the session bot reads (bot-runtime), and its own chain:
  *   CRON_SECRET                 who may be the clock; without it the route
  *                               refuses, because a pass sends executes
+ *   BOT_ORDERS_OFF              1 stops the clock: the route answers
+ *                               { state: "off" } and nothing is sent, the
+ *                               same switch that hides the buttons in the bot
+ *   BOT_ORDERS_CHAIN_ID         4663 (default) or 46630 to rehearse; the
+ *                               runner reads only the orders placed on its
+ *                               chain, so a testnet bot sharing the database
+ *                               never has its orders acted on against mainnet
  *   BOT_SIGNER_PRIVATE_KEY      the bot's key, the one owners granted
- *   ROBINHOOD_MAINNET_RPC_URL   reads and sends; default the public RPC
+ *   ROBINHOOD_MAINNET_RPC_URL   reads and sends on 4663; default the public
+ *   FLEET_RPC_URL,              RPC. On 46630, the testnet's, as the session
+ *   ROBINHOOD_TESTNET_RPC_URL   bot reads them
  *   DATABASE_URL                the links and the orders (BOT_MEMORY_STORE=1
  *                               allows a memory store on one machine only)
  *   TELEGRAM_BOT_TOKEN          one line to the owner per attempt
  *   BOT_ORDERS_PER_RUN          at most this many executes a pass; default 20
+ *   BOT_DAILY_EXECUTES,         per owner per day, the same budget a tapped
+ *   BOT_DAILY_GAS_ETH           Buy has; over it their orders wait for tomorrow
  *
- * One pass at a time in this instance: two pingers landing together must
- * not both fire the same order.
+ * One pass at a time in this instance, and across instances the store's
+ * claim (bot-orders.ts): two pingers landing together, or a run the platform
+ * killed mid-send, never fire the same order twice.
  */
 
 import { neon } from "@neondatabase/serverless";
-import { isHex, type Hex } from "viem";
+import { isHex, parseEther, type Hex } from "viem";
 import { isAddress, type Address } from "./types.js";
 import { createBotChain } from "./bot-chain.js";
 import { MemoryBotLinkStore, NeonBotLinkStore, type BotLinkStore } from "./bot-link.js";
@@ -34,6 +46,7 @@ const POOL_MANAGER: Address = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
 /** The reads want a default token (the playground's first card); the runner never shows one, so the venue token stands in. */
 const VENUE_TOKEN: Address = "0x13283ab8e1f2bc4297e9ec6480c80c59674af554";
 const MAINNET = 4663;
+const TESTNET = 46630;
 
 export type OrdersRuntimeOverrides = { orders?: OrderStore; links?: BotLinkStore; session?: SessionChain; telegram?: Telegram; reads?: ReturnType<typeof createBotChain> };
 
@@ -59,18 +72,28 @@ const build = (): OrderRunner => {
   if (!token && !overrides.telegram) refuse("TELEGRAM_BOT_TOKEN is not set");
   const signerKey = process.env.BOT_SIGNER_PRIVATE_KEY;
   if (!overrides.session && (!signerKey || !isHex(signerKey) || signerKey.length !== 66)) refuse("BOT_SIGNER_PRIVATE_KEY must be the bot's 32-byte hex key (the one owners grant sessions to)");
-  const rpcUrl = process.env.ROBINHOOD_MAINNET_RPC_URL || "https://rpc.mainnet.chain.robinhood.com";
+  const chainId = process.env.BOT_ORDERS_CHAIN_ID ? Number(process.env.BOT_ORDERS_CHAIN_ID) : MAINNET;
+  if (chainId !== MAINNET && chainId !== TESTNET) refuse("BOT_ORDERS_CHAIN_ID must be 4663 (or 46630 to rehearse)");
+  const rpcUrl = chainId === MAINNET
+    ? process.env.ROBINHOOD_MAINNET_RPC_URL || "https://rpc.mainnet.chain.robinhood.com"
+    : process.env.FLEET_RPC_URL || process.env.ROBINHOOD_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com";
   const allowlist = (process.env.FLEET_TOKEN_ALLOWLIST ?? "").split(",").map((t) => t.trim()).filter(isAddress);
   const perRun = process.env.BOT_ORDERS_PER_RUN ? Number(process.env.BOT_ORDERS_PER_RUN) : undefined;
   if (perRun !== undefined && !(Number.isInteger(perRun) && perRun > 0)) refuse("BOT_ORDERS_PER_RUN must be a whole number");
+  const dailyExecutes = process.env.BOT_DAILY_EXECUTES ? Number(process.env.BOT_DAILY_EXECUTES) : undefined;
+  if (dailyExecutes !== undefined && !(Number.isInteger(dailyExecutes) && dailyExecutes > 0)) refuse("BOT_DAILY_EXECUTES must be a whole number");
+  const dailyGas = process.env.BOT_DAILY_GAS_ETH?.trim();
+  if (dailyGas && !/^\d+(\.\d{1,18})?$/.test(dailyGas)) refuse("BOT_DAILY_GAS_ETH is not an amount in ETH");
   const sql = overrides.orders && overrides.links ? undefined : sqlFromEnv();
   return new OrderRunner({
     orders: overrides.orders ?? (sql ? new NeonOrderStore(sql) : new MemoryOrderStore()),
     links: overrides.links ?? (sql ? new NeonBotLinkStore(sql) : new MemoryBotLinkStore()),
-    reads: overrides.reads ?? createBotChain({ chainId: MAINNET, rpcUrl, defaultToken: allowlist[0] ?? VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER }),
-    session: overrides.session ?? createSessionChain({ chainId: MAINNET, rpcUrl, signerKey: signerKey as Hex }),
+    reads: overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER }),
+    session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as Hex }),
     telegram: overrides.telegram ?? createTelegram(token!),
     ...(perRun !== undefined ? { maxPerRun: perRun } : {}),
+    ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
+    ...(dailyGas ? { dailyGasWei: parseEther(dailyGas) } : {}),
   });
 };
 
@@ -87,6 +110,8 @@ export const handleOrdersRequest = async (request: Request, now = new Date()): P
   if (!secret) return json({ code: "unauthorized", retryable: false, reason: "cron_secret_unset" }, 401);
   if (!sweepTriggerAllowed(request, secret)) return json({ code: "unauthorized", retryable: false, reason: "cron_secret" }, 401);
   if (request.method !== "GET" && request.method !== "POST") return json({ error: "GET runs one pass" }, 405);
+  // The switch that hides the buttons also stops the clock: while it is off, no order is acted on.
+  if (process.env.BOT_ORDERS_OFF === "1") return json({ state: "off" }, 200);
   if (inFlight) return json({ state: "in_flight" }, 200);
   inFlight = (async () => {
     try {

@@ -47,9 +47,10 @@
  *   BOT_DAILY_EXECUTES,          session mode: per user per day, how many
  *   BOT_DAILY_GAS_ETH            executes and how much gas the bot fronts
  *   BOT_ORDERS_OFF               1 hides the limit buy and DCA buttons in
- *                                session mode; otherwise the orders live in
- *                                the store beside the links and the cron at
- *                                api/bot/orders.js fires them (bot-orders.ts)
+ *                                session mode and stops the cron at
+ *                                api/bot/orders.js; otherwise the orders live
+ *                                in the store beside the links and the cron
+ *                                fires them (bot-orders.ts)
  *   BOT_ASSET_DIR                where the share card's plate and fonts are
  *                                (default landing/public/bot, shipped with
  *                                the function)

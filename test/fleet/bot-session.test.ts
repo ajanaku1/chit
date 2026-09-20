@@ -157,21 +157,22 @@ test("orders: the card offers a limit buy and a dca only with a store; the promp
   assert.match(telegram.last(), /like <code>0.02 at 1200000<\/code>/);
   await bot.handle(dm("0.02 for 1200000", "limit buy"));
   assert.match(telegram.last(), /not the format/);
-  assert.equal((await orders.openFor("7")).length, 0);
+  assert.equal((await orders.openFor("7", 4663)).length, 0);
   await bot.handle(tap(`lim:${PEPE}`));
   await bot.handle(dm("0.02 at 1200000", "limit buy"));
-  let open = await orders.openFor("7");
+  let open = await orders.openFor("7", 4663);
   assert.equal(open.length, 1);
   assert.equal(open[0]!.kind, "limit");
   assert.equal(open[0]!.ethWei, parseEther("0.02"));
   assert.equal(open[0]!.triggerPerEth, 1_200_000n * 10n ** 6n, "tokens per eth in the token's six decimals");
   assert.equal(open[0]!.account, ACCOUNT);
+  assert.equal(open[0]!.chainId, 4663, "the order carries the chain it was placed on");
   assert.match(telegram.last(), /limit buy <code>0.02 ETH<\/code> of <b>PEPE<\/b> at <code>1200000 PEPE<\/code> per ETH or better/);
   // Over the per-trade cap: the account says no before the order exists.
   await bot.handle(tap(`lim:${PEPE}`));
   await bot.handle(dm("0.06 at 1200000", "limit buy"));
   assert.match(telegram.last(), /your session says no to a buy of that size: <b>over your per-trade cap<\/b>/);
-  assert.equal((await orders.openFor("7")).length, 1);
+  assert.equal((await orders.openFor("7", 4663)).length, 1);
   // A dca: the first buy is due now, the interval in hours, the count kept.
   await bot.handle(tap(`dca:${PEPE}`));
   assert.match(telegram.last(), /like <code>0.01 every 4 hours 6 times<\/code>/);
@@ -179,7 +180,7 @@ test("orders: the card offers a limit buy and a dca only with a store; the promp
   assert.match(telegram.last(), /not the format/);
   await bot.handle(tap(`dca:${PEPE}`));
   await bot.handle(dm("0.01 every 4 hours 6 times", "dca"));
-  open = await orders.openFor("7");
+  open = await orders.openFor("7", 4663);
   assert.equal(open.length, 2);
   const d = open.find((o) => o.kind === "dca")!;
   assert.equal(d.everyMs, 4 * 3_600_000);
@@ -195,12 +196,32 @@ test("orders: the card offers a limit buy and a dca only with a store; the promp
   assert.equal(cancels.length, 2);
   const stranger: Update = { callback_query: { id: "cb", data: cancels[0]!, from: { id: 8 }, message: { message_id: 9, chat: { id: 8, type: "private" } } } };
   await bot.handle(stranger);
-  assert.equal((await orders.openFor("7")).length, 2, "someone else's tap cancels nothing");
+  assert.equal((await orders.openFor("7", 4663)).length, 2, "someone else's tap cancels nothing");
   await bot.handle(tap(cancels[0]!));
-  open = await orders.openFor("7");
+  open = await orders.openFor("7", 4663);
   assert.equal(open.length, 1);
   assert.equal(open[0]!.kind, "dca");
   assert.equal((await orders.get(cancels[0]!.slice(3)))!.status, "cancelled");
   await bot.handle(tap(cancels[1]!));
   assert.match(telegram.last(), /no open orders/);
+});
+
+test("orders: an account keeps at most ten open; the eleventh is refused with the way out, and a cancel makes room", async () => {
+  const { MAX_OPEN_ORDERS, MemoryOrderStore } = await import("../../src/fleet/bot-orders.js");
+  const orders = new MemoryOrderStore();
+  const { bot, telegram, links, session } = setup({ orders });
+  await linked(links);
+  for (let i = 0; i < MAX_OPEN_ORDERS; i++) await orders.put({ id: `o${i}`, tgId: "7", account: ACCOUNT, chainId: 4663, token: PEPE, kind: "limit", ethWei: parseEther("0.01"), triggerPerEth: 1n, createdAt: clock.toISOString(), status: "open", refusals: 0 });
+  await bot.handle(tap(`lim:${PEPE}`));
+  await bot.handle(dm("0.02 at 1200000", "limit buy"));
+  assert.match(telegram.last(), /that is 10 open orders, the most one account keeps in the beta; cancel one from \u{1F4CB} Orders to set another\./u);
+  assert.equal((await orders.openFor("7", 4663)).length, MAX_OPEN_ORDERS);
+  assert.equal(session.calls.length, 0);
+  // Orders on another chain, or closed ones, do not count against this account.
+  await orders.put({ id: "t", tgId: "7", account: ACCOUNT, chainId: 46630, token: PEPE, kind: "limit", ethWei: parseEther("0.01"), triggerPerEth: 1n, createdAt: clock.toISOString(), status: "open", refusals: 0 });
+  assert.equal(await orders.cancel("o0"), true);
+  await bot.handle(tap(`dca:${PEPE}`));
+  await bot.handle(dm("0.01 every 4 hours 6 times", "dca"));
+  assert.match(telegram.last(), /set\. the bot checks every five minutes/);
+  assert.equal((await orders.openFor("7", 4663)).length, MAX_OPEN_ORDERS);
 });

@@ -17,7 +17,7 @@ import { type Address, type Hex, isAddress } from "viem";
 import type { BotChain } from "./bot-chain.js";
 import { heyLine, type HeyScanner } from "./bot-hey.js";
 import { issueNonce, type BotLinkStore } from "./bot-link.js";
-import { newOrderId, type Order, type OrderStore } from "./bot-orders.js";
+import { MAX_OPEN_ORDERS, newOrderId, type Order, type OrderStore } from "./bot-orders.js";
 import { orusLine, type OrusScanner } from "./bot-orus.js";
 import type { SessionChain } from "./bot-session-chain.js";
 import { CAPTION_MAX_CHARS, esc, type Keyboard, type Outgoing, type Telegram } from "./bot-telegram.js";
@@ -289,7 +289,9 @@ export class SessionBot {
    * format when it does not fit. The account is asked `canExecute` for the
    * amount before anything is stored, so an order the session would never
    * allow (over the per-trade cap, paused) is refused now, in the contract's
-   * words, and not three times from the cron.
+   * words, and not three times from the cron. An account keeps at most
+   * MAX_OPEN_ORDERS open, so orders are not an unmetered channel for the
+   * bot's gas; the order carries the chain it was placed on.
    */
   async #placeOrder(chatId: string, tgId: string, token: Address, kind: "limit" | "dca", text: string): Promise<void> {
     const orders = this.#d.orders;
@@ -302,12 +304,13 @@ export class SessionBot {
     if (!limit && !dca) return this.#say(chatId, kind === "limit" ? "that is not the format. amount in eth, then the price as tokens per eth, like <code>0.02 at 1200000</code>." : "that is not the format. amount, every N hours, N times, like <code>0.01 every 4 hours 6 times</code>.", back);
     const wei = toWei((limit ?? dca)![1]!);
     if (wei === null || wei <= 0n) return this.#say(chatId, "the amount must be a number of ETH above zero, like 0.02.", back);
+    if ((await orders.openFor(tgId, this.#d.session.chainId)).length >= MAX_OPEN_ORDERS) return this.#say(chatId, `that is ${MAX_OPEN_ORDERS} open orders, the most one account keeps in the beta; cancel one from 📋 Orders to set another.`, kb([btn("📋 Orders", "orders"), btn("← Back", `token:${token}`)]));
     const info = await this.#d.reads.tokenInfo(token);
     if (!info.hasPool) return this.#say(chatId, "no ETH pool on the venue for this token, so nothing to order.", kb([btn("← Back", "home")]));
     const can = await this.#d.session.canExecute(link.account, this.#d.reads.router, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, wei);
     if (!can.ok) return this.#say(chatId, `your session says no to a buy of that size: <b>${esc(can.why)}</b>. manage it on the Sessions page, then set the order.`, kb([url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions.html`), btn("← Back", `token:${token}`)]));
     const now = this.#now.toISOString();
-    const base = { id: newOrderId(), tgId, account: link.account, token, ethWei: wei, createdAt: now, status: "open" as const, refusals: 0 };
+    const base = { id: newOrderId(), tgId, account: link.account, chainId: this.#d.session.chainId, token, ethWei: wei, createdAt: now, status: "open" as const, refusals: 0 };
     let order: Order;
     if (limit) {
       const trigger = toUnits(limit[2]!, info.decimals);
@@ -334,7 +337,7 @@ export class SessionBot {
     const orders = this.#d.orders;
     const link = await this.#d.links.getLink(tgId);
     if (!orders || !link) return this.#home(chatId, tgId, messageId);
-    const open = await orders.openFor(tgId);
+    const open = await orders.openFor(tgId, this.#d.session.chainId);
     if (!open.length) return this.#out(chatId, messageId, "no open orders. set a limit buy or a dca from any token's card.", kb([btn("← Back", "home")]));
     const infos = new Map<string, { symbol: string; decimals: number }>();
     for (const t of new Set(open.map((o) => o.token))) infos.set(t, await this.#d.reads.tokenInfo(t).then((i) => ({ symbol: i.symbol, decimals: i.decimals })).catch(() => ({ symbol: short(t), decimals: 18 })));
@@ -349,7 +352,8 @@ export class SessionBot {
     const o = await orders.get(id);
     // Only the owner of an order cancels it; someone else's id is treated as unknown.
     if (!o || o.tgId !== tgId) return this.#say(chatId, "that order is not one of yours, or it is already gone.", kb([btn("📋 Orders", "orders")]));
-    if (o.status === "open") await orders.put({ ...o, status: "cancelled" });
+    // One conditional statement in the store, so a run mid-send cannot write the order back to open over the cancel.
+    if (o.status === "open") await orders.cancel(o.id);
     return this.#orders(chatId, tgId, messageId);
   }
 }

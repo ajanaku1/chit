@@ -156,11 +156,20 @@ and **DCA** takes an amount, an interval and a count (`0.01 every 4 hours 6
 times`, the first buy at the next check). A cron (`api/bot/orders.js`, every
 five minutes, the `CRON_SECRET` bearer) fires what is due as the same one
 `execute` a tapped Buy is: the account is asked `canExecute` first, the
-quote sets the floor, the bot's key signs, the account pays. A refusal (a
-paused session, over a cap) leaves the order open with the reason on it and
-tells you; three in a row switch it off. **Orders** on the home card lists
-what is open, a cancel under each. One pass sends at most twenty executes,
-so a cron gone wrong cannot drain the signer's gas. `src/fleet/bot-orders.ts`.
+quote sets the floor (for a limit, the level itself when that is higher, so
+a fill never lands under the price you named; a pool too thin to give it
+waits), the bot's key signs, the account pays. A refusal (a paused session,
+over a cap) leaves the order open with the reason on it and tells you;
+three in a row switch it off. **Orders** on the home card lists what is
+open, a cancel under each; a cancel is one statement in the store and a run
+mid-send cannot write over it. Money moves at most once per slot: the run
+claims an order before the send and a run cut off in between is settled by
+the next as sent, never sent again. One pass sends at most twenty executes,
+one per owner in turn, each owner has the same daily budget a tapped Buy
+has, and an account keeps at most ten orders open, so a cron gone wrong or
+one owner cannot drain the signer's gas. Orders carry the chain they were
+placed on; `BOT_ORDERS_OFF=1` stops the cron with the buttons.
+`src/fleet/bot-orders.ts`.
 
 ## What is built, what is next
 
