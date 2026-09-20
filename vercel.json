@@ -14,6 +14,9 @@
     },
     "api/bot/orders.js": {
       "maxDuration": 300
+    },
+    "api/bot/watch.js": {
+      "maxDuration": 300
     }
   },
   "crons": [
@@ -31,6 +34,10 @@
     },
     {
       "path": "/api/bot/orders",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/bot/watch",
       "schedule": "*/5 * * * *"
     }
   ],
