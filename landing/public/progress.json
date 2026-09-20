@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-15T09:06:05.227Z",
-  "commit": "e41c00f",
-  "committedAt": "2026-09-14T22:10:35+03:00",
-  "commits": 223,
+  "generatedAt": "2026-09-20T22:20:39.624Z",
+  "commit": "8ede515",
+  "committedAt": "2026-09-20T23:19:47+01:00",
+  "commits": 454,
   "tasks": {
     "done": 80,
-    "total": 81,
-    "percent": 98
+    "total": 175,
+    "percent": 45
   },
   "stages": [
     {
@@ -107,6 +107,427 @@
         {
           "id": "T040",
           "text": "Live: deploy the pool, run the quickstart live validation on chit.tools, record tx hashes under `pooledBuy`"
+        }
+      ]
+    },
+    {
+      "id": "003-mainnet-beta",
+      "title": "The capped mainnet beta on Robinhood Chain",
+      "done": 0,
+      "total": 94,
+      "phases": [
+        {
+          "name": "Setup",
+          "done": 0,
+          "total": 6
+        },
+        {
+          "name": "Foundational",
+          "done": 0,
+          "total": 47
+        },
+        {
+          "name": "US1 — Put real money in and take it out",
+          "done": 0,
+          "total": 8
+        },
+        {
+          "name": "US2 — Trade a listed token",
+          "done": 0,
+          "total": 15
+        },
+        {
+          "name": "US3 — Told the truth when Chit cannot pay",
+          "done": 0,
+          "total": 3
+        },
+        {
+          "name": "US4 — Keep the free playground",
+          "done": 0,
+          "total": 3
+        },
+        {
+          "name": "Launch",
+          "done": 0,
+          "total": 12
+        }
+      ],
+      "open": [
+        {
+          "id": "T001",
+          "text": "[F] Copy the review's reproductions into `test/fleet/`"
+        },
+        {
+          "id": "T002",
+          "text": "[B] Add `.github/workflows/verify.yml` running the no-network set: fleet suite, app verify, landing verify, Solidity tests, progress check"
+        },
+        {
+          "id": "T003",
+          "text": "[B] Add a second job running the fork suites against a private RPC secret, nightly, not as a required check"
+        },
+        {
+          "id": "T004",
+          "text": "[F] Enable branch protection on `main` requiring the `verify` check, after T002 has run once"
+        },
+        {
+          "id": "T005",
+          "text": "[B] Stop `session-demo.yml` and `progress.yml` committing to `main`; generate `landing/public/progress.json` in the Vercel build instead"
+        },
+        {
+          "id": "T006",
+          "text": "[B] Prove the gate: push a deliberately broken test to a branch, confirm the check blocks the merge, revert"
+        },
+        {
+          "id": "T007",
+          "text": "[F] Rebase `feat/mainnet-beta` onto `main`, resolving against batch queueing, the Neon store, hashed queue ids and the admin split"
+        },
+        {
+          "id": "T008",
+          "text": "[F] Reconcile `scripts/fleet-redeploy-live.ts` after the rebase: `"
+        },
+        {
+          "id": "T009",
+          "text": "[F] Confirm `src/fleet/pool-caps.ts` publishes both sets and that the pool's constructor enforces them"
+        },
+        {
+          "id": "T010",
+          "text": "[F] Redeploy testnet from the rebased branch and close T040 in `specs/002-private-funding-pool/tasks.md`"
+        },
+        {
+          "id": "T011",
+          "text": "[F] Verify against the redeployed testnet pool that the caps read back from the bytecode, not from any constant in the service or the app"
+        },
+        {
+          "id": "T012",
+          "text": "[P] [F] Verify deployment refuses without a guardian, as a test rather than a rehearsal note"
+        },
+        {
+          "id": "T013",
+          "text": "[F] Add `nextNonce"
+        },
+        {
+          "id": "T014",
+          "text": "[F] Add `signAndBroadcast"
+        },
+        {
+          "id": "T015",
+          "text": "[F] Add `resolve"
+        },
+        {
+          "id": "T016",
+          "text": "[F] Extend `StorePort` in `src/fleet/store.ts` with the `sent` state, `txHash`, `nonce`, `markSent` and `resolveSent`"
+        },
+        {
+          "id": "T017",
+          "text": "[F] Implement the new store methods in `src/fleet/store-neon.ts` with its migration, and in the memory adapter"
+        },
+        {
+          "id": "T018",
+          "text": "[F] Route `queueOwed` in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against `pool.queued"
+        },
+        {
+          "id": "T019",
+          "text": "[F] Route the sponsored buy in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against the draw's `spent` before reporting rejected"
+        },
+        {
+          "id": "T020",
+          "text": "[F] Route fleet funding in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against the draw's state before skipping the headroom charge"
+        },
+        {
+          "id": "T021",
+          "text": "[F] Check the operator's balance before recording a withdrawal charge in `src/fleet/pool-buy.ts`; refuse with a retryable response and record nothing"
+        },
+        {
+          "id": "T022",
+          "text": "[F] Route the withdrawal payout through the lifecycle, storing the hash on the owed row before broadcast"
+        },
+        {
+          "id": "T023",
+          "text": "[P] [F] Replace `finding_M1` with siblings stating the fixed behaviour"
+        },
+        {
+          "id": "T024",
+          "text": "[P] [F] Replace `finding_M4a`, `finding_M4b`, `finding_M4c` with siblings stating the fixed behaviour"
+        },
+        {
+          "id": "T025",
+          "text": "[F] Add the three outcome tests beside `test/fleet/pool-sweep.test.ts:233`: mined, reverted, never-mined"
+        },
+        {
+          "id": "T026",
+          "text": "[B] Take the operator lock around each signed step in `#sweep`, `#sweepOpportunistically` and `#control` in `src/fleet/campaign-routes.ts`, not around the whole sweep"
+        },
+        {
+          "id": "T027",
+          "text": "[B] Add lease renewal and a holder check immediately before broadcast in `src/fleet/store.ts` and its adapters"
+        },
+        {
+          "id": "T028",
+          "text": "[B] Give the sponsor route its own key variable in `src/fleet/sponsor-runtime.ts`; sponsorship stays off on mainnet"
+        },
+        {
+          "id": "T029",
+          "text": "[B] Replace `finding_M5` with a two-instance test driving real nonce behaviour"
+        },
+        {
+          "id": "T030",
+          "text": "[F] Add `totalPosted` to `contracts/fleet/FleetPool.sol`, accumulated in `postQueued`, counting only the part of a charge still backed by unspent deposit"
+        },
+        {
+          "id": "T031",
+          "text": "[F] Redefine `claimable"
+        },
+        {
+          "id": "T032",
+          "text": "[F] Measure on a fork the largest `postQueuedBatch` that fits within half the block gas limit, and record the number"
+        },
+        {
+          "id": "T033",
+          "text": "[F] Add `postQueuedBatch` to `contracts/fleet/FleetPool.sol` with that cap: per-entry result of posted, expired or already posted, never reverting the batch"
+        },
+        {
+          "id": "T034",
+          "text": "[F] Add payable `donate"
+        },
+        {
+          "id": "T035",
+          "text": "[F] Add `everDeposited`, `exitsPaid` and `donated` counters with events to `contracts/fleet/FleetPool.sol`"
+        },
+        {
+          "id": "T036",
+          "text": "[F] Replace `invariant_claimableIsGasOnly` in `test/fleet/FleetPoolInvariants.t.sol` with an invariant that claimable never exceeds the pool's surplus over what it owes"
+        },
+        {
+          "id": "T037",
+          "text": "[F] Add the monitor identity as an invariant: `balance == everDeposited + donated - totalOutflow - exitsPaid - totalClaimed`"
+        },
+        {
+          "id": "T038",
+          "text": "[P] [F] Replace `test_finding_M2_aWithdrawalIsNeverReimbursed` with its fixed sibling"
+        },
+        {
+          "id": "T039",
+          "text": "[P] [F] Replace both `test_finding_M3_*` Solidity tests with siblings covering `postQueuedBatch` and `donate"
+        },
+        {
+          "id": "T040",
+          "text": "[F] Correct the comment at `src/fleet/pool-buy.ts:46`: the grain falls to the operator, not the pool"
+        },
+        {
+          "id": "T041",
+          "text": "[P] [B] Add `blockTime` to the chain definition in `src/fleet/service-runtime.ts`"
+        },
+        {
+          "id": "T042",
+          "text": "[P] [B] Add `maxDuration` for `api/fleet/*` in `vercel.json`"
+        },
+        {
+          "id": "T043",
+          "text": "[B] Read `ledgerInputs` through Multicall3 in `src/fleet/chain-pool.ts`, caching entries that can no longer change"
+        },
+        {
+          "id": "T044",
+          "text": "[B] Log and count every failed posting with its reason in `src/fleet/pool-buy.ts`, and add the field to the sweep's report"
+        },
+        {
+          "id": "T045",
+          "text": "[B] Move one Vercel cron off the twelve-hour spacing in `vercel.json`"
+        },
+        {
+          "id": "T046",
+          "text": "[P] [B] Replace `finding_M3a`, `finding_M3b`, `finding_M3c` with siblings stating the fixed behaviour"
+        },
+        {
+          "id": "T047",
+          "text": "[F] Refuse to start without `DATABASE_URL`, `CRON_SECRET` or `FLEET_TOKEN_ALLOWLIST` when the chain is mainnet, in `src/fleet/service-runtime.ts`"
+        },
+        {
+          "id": "T048",
+          "text": "[B] Add the alert sink routing to the existing Telegram bot, with FR-023's three timescales and the named operator chat"
+        },
+        {
+          "id": "T049",
+          "text": "[B] Alert on a sweep failure, a refused withdrawal, an unposted charge older than four hours, and the operator's balance reaching half the float"
+        },
+        {
+          "id": "T050",
+          "text": "[F] Pause the pool automatically on the two machine-detectable triggers: a charge passing its deadline unrecorded, and an exit transaction failing"
+        },
+        {
+          "id": "T051",
+          "text": "[F] Add the resume gate: the pool cannot be unpaused until the cause is recorded as fixed, a test covering it exists, and the pool is whole"
+        },
+        {
+          "id": "T052",
+          "text": "[P] [F] Test that an automatic pause fires within one sweep of its trigger and that resume is refused while any condition is unmet"
+        },
+        {
+          "id": "T053",
+          "text": "[B] Build the outside monitor asserting FR-027's exact identity from public views"
+        },
+        {
+          "id": "T054",
+          "text": "[P] [US1] [F] Generate `app/chain-target.json` at build time from the chain environment in `app/build.mjs`"
+        },
+        {
+          "id": "T055",
+          "text": "[US1] [F] Add the holders gate in `app/src/fleet/holders-gate.ts`: above the threshold passes silently, below shows holdings and requirement with links to buy CHIT and to the testnet host, a failed read shows retry"
+        },
+        {
+          "id": "T056",
+          "text": "[US1] [F] Add the non-dismissible beta note carrying FR-006's three facts to every page in `app/src/fleet/page-shared.ts`"
+        },
+        {
+          "id": "T057",
+          "text": "[US1] [F] Show the custody sentence in full beside the amount on the deposit form in `app/src/fleet/balance.ts`"
+        },
+        {
+          "id": "T058",
+          "text": "[US1] [F] State once, where a depositor reads it, that the gate controls the interface only and the contract accepts direct deposits within its caps"
+        },
+        {
+          "id": "T059",
+          "text": "[US1] [F] Read the caps from the deployed pool in `app/src/fleet/balance.ts` and refuse a size that would breach either"
+        },
+        {
+          "id": "T060",
+          "text": "[P] [US1] [F] Test the gate's three states, including that a failed balance read shows retry and never rejection"
+        },
+        {
+          "id": "T061",
+          "text": "[P] [US1] [F] Test that the beta note appears on every page and cannot be dismissed"
+        },
+        {
+          "id": "T062",
+          "text": "[US2] [F] Choose the launch candidates: CHIT plus at most three memes on 4663, named and recorded before any checking begins"
+        },
+        {
+          "id": "T063",
+          "text": "[US2] [F] Add `src/fleet/token-registry.ts` loading and validating the reviewed list per `contracts/token-registry.md`, failing hard when a `poolId` does not match its key"
+        },
+        {
+          "id": "T064",
+          "text": "[US2] [F] Create `deployments/token-registry-4663.json` with CHIT's real pool key, its measured bound and its checks"
+        },
+        {
+          "id": "T065",
+          "text": "[US2] [F] Wire the fleet buy path in `src/fleet/campaign-routes.ts` to the registry's pool key, replacing the hardcoded venue key"
+        },
+        {
+          "id": "T066",
+          "text": "[US2] [F] Quote through the existing `pool-registry.ts` discovery and `market.ts` arithmetic rather than the single full-range formula at `src/fleet/market.ts:118`"
+        },
+        {
+          "id": "T067",
+          "text": "[US2] [F] Refuse a buy that would land outside the token's bound, before any transaction is sent"
+        },
+        {
+          "id": "T068",
+          "text": "[US2] [F] Show the bound as the least the depositor will receive, as part of the quote they accept"
+        },
+        {
+          "id": "T069",
+          "text": "[US2] [F] Add the per-campaign failure counter to `src/fleet/store.ts` and its adapters, counting only gas-spending failures"
+        },
+        {
+          "id": "T070",
+          "text": "[US2] [F] Refuse buys on a campaign with three failures in the last hour, telling the depositor why and when it reopens"
+        },
+        {
+          "id": "T071",
+          "text": "[US2] [F] Bind the token picker to enabled registry entries only in `app/src/fleet/`"
+        },
+        {
+          "id": "T072",
+          "text": "[US2] [F] Make disabling an entry stop new buys without affecting tokens already held, and keep the owner's path to move them"
+        },
+        {
+          "id": "T073",
+          "text": "[P] [US2] [F] Replace `finding_M6` with a sibling showing the encoded buy names the real pool"
+        },
+        {
+          "id": "T074",
+          "text": "[US2] [F] Fork test on 4663 per listed token: quote and execution agree within the bound"
+        },
+        {
+          "id": "T075",
+          "text": "[US2] [F] Check and record each candidate from T062: transfer behaviour, holder restrictions, pool key, liquidity at fifty times the draw cap"
+        },
+        {
+          "id": "T076",
+          "text": "[P] [US2] [F] Test that a disabled entry is never offered, no path trades it, and holdings of it remain movable"
+        },
+        {
+          "id": "T077",
+          "text": "[US3] [F] Add the refused state to the withdrawal surface in `app/src/fleet/`: what happened, try again, and the exit beside it"
+        },
+        {
+          "id": "T078",
+          "text": "[US3] [F] Use the same state for a paused pool, keeping the exit reachable"
+        },
+        {
+          "id": "T079",
+          "text": "[P] [US3] [F] Test that a refusal records no charge and the exit remains available"
+        },
+        {
+          "id": "T080",
+          "text": "[US4] [F] Create the second Vercel deployment for 46630 with its own environment and the `testnet.chit.tools` domain"
+        },
+        {
+          "id": "T081",
+          "text": "[US4] [F] Confirm each host names its chain and neither offers the other's funds"
+        },
+        {
+          "id": "T082",
+          "text": "[US4] [B] Point the bot's playground button at the testnet host"
+        },
+        {
+          "id": "T083",
+          "text": "[F] The published-promise commit: correct Stage 2's FR-016, `README.md`, `ONBOARDING.md`, the community brief and the landing page, in one commit that says why"
+        },
+        {
+          "id": "T084",
+          "text": "[F] In the same pass, carry Stage 2's privacy wording forward verbatim and confirm no surface has strengthened it"
+        },
+        {
+          "id": "T085",
+          "text": "[F] Correct the drafted Telegram and X announcements to state holders-only access, per FR-042"
+        },
+        {
+          "id": "T086",
+          "text": "[F] State in depositor-facing copy that the caps remain until a professional audit is complete"
+        },
+        {
+          "id": "T087",
+          "text": "[F] Confirm no sell path is reachable in the mainnet build, as a test"
+        },
+        {
+          "id": "T088",
+          "text": "[F] Soak on testnet for forty-eight hours with alerting on; no charge unrecorded beyond four hours"
+        },
+        {
+          "id": "T089",
+          "text": "[F] Rehearse on a fork of 4663: caps read back, refusal without a guardian, guardian pause without the operator, exit while paused"
+        },
+        {
+          "id": "T090",
+          "text": "[F] Rehearse each of the three pause triggers on the fork, including the two that fire automatically"
+        },
+        {
+          "id": "T091",
+          "text": "[F] Re-measure every listed token's liquidity on the day of launch"
+        },
+        {
+          "id": "T092",
+          "text": "[F] Verify contract source on the explorer for every deployed contract"
+        },
+        {
+          "id": "T093",
+          "text": "[F] Record the open decision against each acceptance outcome with its evidence, per FR-040"
+        },
+        {
+          "id": "T094",
+          "text": "[F] Deploy with a guardian and open the beta"
         }
       ]
     }
