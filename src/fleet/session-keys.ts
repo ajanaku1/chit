@@ -30,6 +30,11 @@ export const SESSION_ACCOUNT_ABI = parseAbi([
   "function sessionOf(address key) view returns (bool exists, bool paused, bool revoked, uint48 expiry, uint128 maxValuePerCall, uint128 totalValueCap, uint128 spentValue, uint32 calls)",
   "function rulesOf(address key) view returns (Rule[])",
   "function canExecute(address key, address target, bytes4 selector, uint256 value) view returns (bool, string)",
+  "function setSellAllowed(address key, bool allowed)",
+  "function sellAllowed(address key) view returns (bool)",
+  "function approveForSell(address token, address spender)",
+  "event SellAllowed(address indexed key, bool allowed)",
+  "event SellApproved(address indexed key, address indexed token, address indexed spender)",
   "event SessionGranted(address indexed key, uint128 maxValuePerCall, uint128 totalValueCap, uint48 expiry, uint256 rules)",
   "event SessionPaused(address indexed key)",
   "event SessionResumed(address indexed key)",
@@ -102,12 +107,23 @@ export const encodeWithdraw = (to: Address, amount: bigint): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "withdraw", args: [to, amount] });
 export const encodeWithdrawToken = (token: Address, to: Address, amount: bigint): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "withdrawToken", args: [token, to, amount] });
+/** The sell flag on a key's session: with it, the key may approve the account's tokens for a router its rules name. Off by default. */
+export const encodeSetSellAllowed = (key: Address, allowed: boolean): Hex =>
+  encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "setSellAllowed", args: [key, allowed] });
 
 // --- calldata the bot's key sends ------------------------------------------------
 
 /** The one call a bot makes: the account executes `data` on `target` with `value` of the account's ETH. */
 export const encodeSessionExecute = (target: Address, value: bigint, data: Hex): Hex =>
   encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "execute", args: [target, value, data] });
+
+/**
+ * The approval before a sale, once per token: the account approves the token
+ * to Permit2 and Permit2 to `spender` (a router one of the key's rules
+ * names). Only a key with an active session and the sell flag may send it.
+ */
+export const encodeApproveForSell = (token: Address, spender: Address): Hex =>
+  encodeFunctionData({ abi: SESSION_ACCOUNT_ABI, functionName: "approveForSell", args: [token, spender] });
 
 /** The selector a call carries, for `canExecute` and for writing rules. */
 export const selectorOf = (data: Hex): Hex => (data.length >= 10 ? (data.slice(0, 10).toLowerCase() as Hex) : ANY_FUNCTION);
