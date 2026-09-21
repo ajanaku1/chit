@@ -46,6 +46,11 @@ jobs:
       - name: Install
         run: npm ci && npm --prefix app ci
 
+      # Two fleet tests read the compiled ABI under artifacts/, which a fresh
+      # runner does not have; solc is fetched once and cached by hardhat.
+      - name: Compile the contracts
+        run: npx hardhat compile
+
       - name: Fleet suite
         run: npm run test:fleet
 
