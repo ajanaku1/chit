@@ -153,7 +153,8 @@ describe("M4: a transaction that lands while its receipt wait fails", () => {
     assert.equal(charged, 5_000n, "one buy of 5000, posted once");
   });
 
-  it("finding_M4b: a buy that landed is reported rejected and never charged, so the pool pays for it", async () => {
+  // Replaces finding_M4b (T024): the same buy, the same dropped receipt, and the draw's spent is the evidence.
+  it("fixed_M4b: a buy whose receipt wait failed is sponsored and charged by what the draw's spent moved, never reported rejected", async () => {
     const o = opts();
     const draw = funded(1, ALICE, parseEther("0.05"));
     const { pool, knobs } = makePool([draw]);
@@ -165,9 +166,11 @@ describe("M4: a transaction that lands while its receipt wait fails", () => {
       buys: [{ account: account(1), value: parseEther("0.01").toString(), callData: "0x", maxCost: parseEther("0.0001").toString() }],
     });
 
-    assert.equal(report.results[0]?.status, "rejected");
+    assert.equal(report.results[0]?.status, "sponsored");
+    assert.equal(report.results[0]?.txHash, `0x${"e".repeat(64)}`, "the hash recorded before the broadcast");
     assert.equal(draw.spent, parseEther("0.01") + 1_000n, "the chain charged the draw");
-    assert.equal(await o.store.owedFor(ALICE), "0", "and nobody charged Alice");
+    assert.equal(await o.store.owedFor(ALICE), coarseCharge(parseEther("0.01") + 1_000n).toString(), "and Alice is charged the same, coarsely");
+    assert.ok(await o.store.idempotency.get(`fleet-tx|0x${"e".repeat(64)}`), "the transaction has a durable name");
   });
 });
 
