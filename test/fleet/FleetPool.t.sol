@@ -31,6 +31,34 @@ contract FleetPoolTest is Test {
         vm.warp(1_700_000_000);
     }
 
+    // --- the caps are the constructor's, checked at deployment (T009) ---------
+
+    function test_caps_read_back_as_deployed() public view {
+        assertEq(pool.DEPOSITOR_CAP(), 0.5 ether);
+        assertEq(pool.DRAW_CAP(), 0.2 ether);
+        assertEq(pool.POOL_CAP(), 5 ether);
+    }
+
+    function test_caps_that_cannot_work_are_refused_at_deployment() public {
+        // A depositor must be able to make one small deposit.
+        vm.expectRevert(FleetPool.BadCaps.selector);
+        new FleetPool(OPERATOR, OPERATOR, 0.009 ether, 0.2 ether, 5 ether);
+        // A draw of nothing is no draw.
+        vm.expectRevert(FleetPool.BadCaps.selector);
+        new FleetPool(OPERATOR, OPERATOR, 0.5 ether, 0, 5 ether);
+        // A draw must fit in the pool.
+        vm.expectRevert(FleetPool.BadCaps.selector);
+        new FleetPool(OPERATOR, OPERATOR, 0.5 ether, 6 ether, 5 ether);
+        // One depositor may not be the whole pool: the anonymity set would be one.
+        vm.expectRevert(FleetPool.BadCaps.selector);
+        new FleetPool(OPERATOR, OPERATOR, 5 ether, 0.2 ether, 5 ether);
+    }
+
+    function test_the_beta_set_deploys() public {
+        FleetPool beta = new FleetPool(OPERATOR, OPERATOR, 0.1 ether, 0.05 ether, 1 ether);
+        assertEq(beta.POOL_CAP(), 1 ether);
+    }
+
     // --- helpers ---------------------------------------------------------
 
     function _deposit(address who, uint256 size) internal {

@@ -46,12 +46,12 @@ The branch carries the caps into the pool's constructor and teaches the deploy
 script both chains. It rewrites `FleetPool.sol` and `fleet-redeploy-live.ts`, the
 same files the contract work below changes, so it lands before any of it.
 
-- [ ] T007 [F] Rebase `feat/mainnet-beta` onto `main`, resolving against batch queueing, the Neon store, hashed queue ids and the admin split
-- [ ] T008 [F] Reconcile `scripts/fleet-redeploy-live.ts` after the rebase: `(admin, operator)` to both constructors, `FLEET_ADMIN_ADDRESS` read, refusal without a guardian on mainnet
-- [ ] T009 [F] Confirm `src/fleet/pool-caps.ts` publishes both sets and that the pool's constructor enforces them
+- [x] T007 [F] Rebase `feat/mainnet-beta` onto `main`, resolving against batch queueing, the Neon store, hashed queue ids and the admin split
+- [x] T008 [F] Reconcile `scripts/fleet-redeploy-live.ts` after the rebase: `(admin, operator)` to both constructors, `FLEET_ADMIN_ADDRESS` read, refusal without a guardian on mainnet
+- [x] T009 [F] Confirm `src/fleet/pool-caps.ts` publishes both sets and that the pool's constructor enforces them
 - [ ] T010 [F] Redeploy testnet from the rebased branch and close T040 in `specs/002-private-funding-pool/tasks.md`
 - [ ] T011 [F] Verify against the redeployed testnet pool that the caps read back from the bytecode, not from any constant in the service or the app
-- [ ] T012 [P] [F] Verify deployment refuses without a guardian, as a test rather than a rehearsal note
+- [x] T012 [P] [F] Verify deployment refuses without a guardian, as a test rather than a rehearsal note
 
 **Checkpoint**: One bytecode lineage. Every contract change below is written once.
 

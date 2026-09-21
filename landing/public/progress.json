@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-21T07:53:02.865Z",
-  "commit": "4a72024",
-  "committedAt": "2026-09-21T08:53:02+01:00",
-  "commits": 475,
+  "generatedAt": "2026-09-21T09:37:18.170Z",
+  "commit": "232350b",
+  "committedAt": "2026-09-21T10:34:31+01:00",
+  "commits": 479,
   "tasks": {
-    "done": 84,
+    "done": 88,
     "total": 175,
-    "percent": 48
+    "percent": 50
   },
   "stages": [
     {
@@ -113,7 +113,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 4,
+      "done": 8,
       "total": 94,
       "phases": [
         {
@@ -123,7 +123,7 @@
         },
         {
           "name": "Foundational",
-          "done": 0,
+          "done": 4,
           "total": 47
         },
         {
@@ -162,28 +162,12 @@
           "text": "[B] Prove the gate: push a deliberately broken test to a branch, confirm the check blocks the merge, revert"
         },
         {
-          "id": "T007",
-          "text": "[F] Rebase `feat/mainnet-beta` onto `main`, resolving against batch queueing, the Neon store, hashed queue ids and the admin split"
-        },
-        {
-          "id": "T008",
-          "text": "[F] Reconcile `scripts/fleet-redeploy-live.ts` after the rebase: `"
-        },
-        {
-          "id": "T009",
-          "text": "[F] Confirm `src/fleet/pool-caps.ts` publishes both sets and that the pool's constructor enforces them"
-        },
-        {
           "id": "T010",
           "text": "[F] Redeploy testnet from the rebased branch and close T040 in `specs/002-private-funding-pool/tasks.md`"
         },
         {
           "id": "T011",
           "text": "[F] Verify against the redeployed testnet pool that the caps read back from the bytecode, not from any constant in the service or the app"
-        },
-        {
-          "id": "T012",
-          "text": "[P] [F] Verify deployment refuses without a guardian, as a test rather than a rehearsal note"
         },
         {
           "id": "T013",
