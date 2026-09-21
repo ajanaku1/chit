@@ -26,9 +26,9 @@ untested can reach production while the work is in flight.
 
 - [x] T001 [F] Copy the review's reproductions into `test/fleet/` (`mainnet-blockers.test.ts`, `mainnet-blockers-m4c.test.ts`, `FleetPoolMainnetBlockers.t.sol`) and confirm 10 of 10 and 3 of 3 pass on the current head
 - [x] T002 [B] Add `.github/workflows/verify.yml` running the no-network set: fleet suite, app verify, landing verify, Solidity tests, progress check
-- [ ] T003 [B] Add a second job running the fork suites against a private RPC secret, nightly, not as a required check
+- [x] T003 [B] Add a second job running the fork suites against a private RPC secret, nightly, not as a required check
 - [ ] T004 [F] Enable branch protection on `main` requiring the `verify` check, after T002 has run once
-- [ ] T005 [B] Stop `session-demo.yml` and `progress.yml` committing to `main`; generate `landing/public/progress.json` in the Vercel build instead
+- [x] T005 [B] Stop `session-demo.yml` and `progress.yml` committing to `main`; generate `landing/public/progress.json` in the Vercel build instead
 - [ ] T006 [B] Prove the gate: push a deliberately broken test to a branch, confirm the check blocks the merge, revert
 
 **Checkpoint**: No untested change can reach production.

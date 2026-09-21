@@ -1,0 +1,57 @@
+name: Verify (fork suites)
+
+# The suites that need a chain: every test under test/fork/ runs on a Hardhat
+# fork of Robinhood Chain testnet (46630) or mainnet (4663), at a block chosen
+# a short margin behind the tip (test/fork/robinhood-fork.ts). Nightly and on
+# demand, never on a push, and never a required check: a public RPC that drops
+# a request under load must not block a merge whose no-network set is green
+# (verify.yml is that set).
+#
+# Two repository secrets, both optional. Without them hardhat.config.ts reads
+# the public RPCs, which is what a developer's machine does too:
+#   ROBINHOOD_TESTNET_RPC_URL   a private 46630 endpoint
+#   ROBINHOOD_MAINNET_RPC_URL   a private 4663 endpoint (chit-buyback.test.ts)
+
+on:
+  schedule:
+    # 03:30 UTC daily, off the hour so it does not queue behind everyone else's.
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-full
+  cancel-in-progress: false
+
+jobs:
+  fork:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      ROBINHOOD_TESTNET_RPC_URL: ${{ secrets.ROBINHOOD_TESTNET_RPC_URL }}
+      ROBINHOOD_MAINNET_RPC_URL: ${{ secrets.ROBINHOOD_MAINNET_RPC_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Compile the contracts and the fork suites
+        run: npx hardhat compile && npm run build
+
+      # One file at a time: a fork per file, so one RPC failure names its suite.
+      - name: Fork suites
+        run: |
+          status=0
+          for file in dist/test/fork/*.test.js; do
+            echo "== $file"
+            node --test "$file" || { status=1; echo "FAILED $file"; }
+          done
+          exit $status
