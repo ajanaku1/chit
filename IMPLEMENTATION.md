@@ -2183,3 +2183,24 @@ with no install: three files that import no package, their own ABI coding held
 against viem and the compiled pool, run by node as TypeScript, so an hourly run
 is one billed minute and not three. Findings go to the operator chat
 (`MONITOR_CHAT_ID`), never the group's. `docs/fleet-monitor.md` is the page.
+
+## The sponsor route signs with a key of its own (2026-09-21, Boye, branch feat/sponsor-key, T028)
+
+The route that sponsors gas for other dapps signs sponsorships and sends
+bundles. It did both with the pool operator's key, read from the operator's
+variable, so two services shared one account and one nonce sequence with no
+lock between them, and the key that moves the pool sat in a function that
+never needs it. It has a variable of its own now, `FLEET_SPONSOR_PRIVATE_KEY`,
+and the operator's key under that name is refused: the point is another
+account, not another name. On mainnet the route is off for the beta and says
+so, `sponsorship_off`, whatever is configured.
+
+`sponsorSignerFrom()` in `src/fleet/sponsor-runtime.ts` is the whole rule, a
+pure function of the environment with six tests. A key that is set and
+malformed is a fault, never a reason to fall back. One fallback stands, on
+testnet only and said in the log: with no key of its own the route still signs
+with the operator's. That is not a convenience. The paymaster and the escrow
+name their operator when they are deployed, and the set on 46630 names the
+pool operator, so until it is deployed again for a sponsor account there is no
+other key the route could sign with. That redeploy is a decision and a
+transaction, not code, and is left open under T028.

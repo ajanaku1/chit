@@ -214,3 +214,12 @@ side; the budget comes back through `close` on the escrow, from your wallet.
 `FLEET_SPONSOR_FEE_BPS`) and prints the two addresses to set in the host,
 with `DATABASE_URL` for the ledger. `test/fork/sponsor-product.test.ts` is
 this whole page as a test, on a fork of 46630.
+
+The route signs with its own key, `FLEET_SPONSOR_PRIVATE_KEY`: an account that
+signs sponsorships and sends bundles and nothing else. It refuses the pool
+operator's key under that name, because the point is another account and not
+another variable. The paymaster and the escrow name their operator when they
+are deployed, so moving a running set to a sponsor account means deploying the
+set again with that account. Until then, with the variable unset, the route on
+testnet still signs with the operator's key and says so in its log. On
+mainnet the route answers `sponsorship_off`, whatever is configured.
