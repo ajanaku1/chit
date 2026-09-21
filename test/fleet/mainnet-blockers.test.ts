@@ -172,29 +172,36 @@ describe("M3: the sweep", () => {
     assert.ok(!logged.join("\n").toLowerCase().includes(ALICE.toLowerCase()), "never by the depositor: a log line with both is the link the pool withholds");
   });
 
-  it("finding_M3b: one balance read costs 2N + M + 3 reads, and each loop has one request in flight at a time", async () => {
-    const N = 20, M = 100;
-    let calls = 0, inFlight = 0, widest = 0;
-    const counting = {
-      readContract: async ({ functionName, args }: { functionName: string; args?: readonly unknown[] }) => {
-        calls += 1; inFlight += 1; widest = Math.max(widest, inFlight);
-        await new Promise((r) => setTimeout(r, 1));
-        inFlight -= 1;
+  // Replaces finding_M3b (T046): the same balance read over the same history, through the same adapter.
+  it("fixed_M3b: a balance read costs the same few round trips whatever the history, not 2N + M + 3", async () => {
+    const roundTrips = async (N: number, M: number): Promise<number> => {
+      let trips = 0;
+      const answer = (functionName: string, args: readonly unknown[] = []): unknown => {
         switch (functionName) {
+          case "POST_WINDOW": return 43_200n;
           case "campaignCount": return BigInt(N);
-          case "campaignAt": return campaign(Number(args![0]) + 1);
+          case "campaignAt": return campaign(Number(args[0]) + 1);
           case "drawOf": return { amount: 1n, spent: 0n, reserved: 0n, principalOut: 0n, dueAt: 0n, ownerRef: "0x", state: DRAW_STATE.closed };
           case "queuedSpendCount": return BigInt(M);
-          case "queuedSpendAt": return [campaign(Number(args![0]) + 1), { encDepositor: "0x", amount: 1n, dueAt: 0n, queuedAt: 1n, posted: true }];
+          case "queuedSpendAt": return [campaign(Number(args[0]) + 1), { encDepositor: "0x", amount: 1n, dueAt: 0n, queuedAt: NOW - 60n, posted: true }];
           case "depositorOf": return [0n, 0n, 0n, 0n];
           default: throw new Error(functionName);
         }
-      },
-    } as unknown as PublicClient;
-    await createFleetPool(wallet, counting, account(0x901)).ledgerInputs(ALICE);
+      };
+      const counting = {
+        chain: { id: 46630 },
+        getBlock: async () => { trips += 1; return { timestamp: NOW }; },
+        getCode: async () => { trips += 1; return "0x60"; },
+        readContract: async ({ functionName, args }: { functionName: string; args?: readonly unknown[] }) => { trips += 1; return answer(functionName, args); },
+        multicall: async ({ contracts }: { contracts: { functionName: string; args?: readonly unknown[] }[] }) => { trips += 1; return contracts.map((c) => answer(c.functionName, c.args)); },
+      } as unknown as PublicClient;
+      await createFleetPool(wallet, counting, account(0x901)).ledgerInputs(ALICE);
+      return trips;
+    };
 
-    assert.equal(calls, 2 * N + M + 3, "every closed draw and every posted spend, read again on every balance");
-    assert.equal(widest, 3, "three chains of awaited calls: batch: true on the transport has nothing to batch");
+    const small = await roundTrips(20, 100);
+    assert.equal(await roundTrips(40, 180), small, "twice the history, the same number of round trips");
+    assert.ok(small <= 10, `a handful of round trips, where it was ${2 * 20 + 100 + 3}: ${small}`);
   });
 
   // Replaces finding_M3c (T046), which built its own chain and so could not see the fix:
