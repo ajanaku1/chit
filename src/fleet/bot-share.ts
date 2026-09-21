@@ -25,9 +25,21 @@ export type ShareCard = {
   chainLabel: string;
   testnet: boolean;
   refLink: string;
+  /** The partners' lines as plain text ("orus: …", "hey research lab: …"), at most two, each cut to fit the plate; none when nothing answered. */
+  partners?: string[];
 };
 
-const INK = "#171513", PAPER = "#F5EFE5", CORAL = "#FF5A3C", MUTED = "#8C8479", GREEN = "#4BD37B";
+/** Fits a partner line to the plate: plain text, one line, the tail dropped with an ellipsis. */
+export const partnerLine = (label: string, html: string, max = 100): string => {
+  const plain = html.replace(/<[^>]+>/g, "").replace(/\s+·\s+(checked by orus|see on HEY)\s*$/i, "").replace(/\s+/g, " ").trim();
+  const line = `${label}: ${plain}`;
+  if (line.length <= max) return line;
+  // Cut at a whole segment (the " · " joins), never mid-fact.
+  const cut = line.slice(0, max - 1);
+  return cut.slice(0, cut.lastIndexOf(" · ")).trimEnd() + " …";
+};
+
+const INK = "#171513", PAPER = "#F5EFE5", CORAL = "#FF5A3C", MUTED = "#8C8479", GREEN = "#4BD37B", SOFT = "#DED6CA";
 /** The plate's own size; the card is drawn over it one to one. */
 export const CARD_WIDTH = 1344, CARD_HEIGHT = 752;
 const MID = CARD_WIDTH / 2;
@@ -44,6 +56,9 @@ export const shareCardSvg = (card: ShareCard, plate?: string): string => {
   const big = pct === null ? "free ride" : `${up ? "+" : ""}${pct.toFixed(1)}%`;
   const colour = up ? GREEN : CORAL;
   const W = CARD_WIDTH, H = CARD_HEIGHT;
+  // With partner lines under the figures, the rule and the footer move down to make room; without them the card is as it was.
+  const partners = (card.partners ?? []).slice(0, 2);
+  const rule = partners.length ? 646 + partners.length * 26 : 650;
   return `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
   <defs>
     <radialGradient id="halo" cx="0.5" cy="0.62" r="0.42"><stop offset="0" stop-color="${colour}" stop-opacity="0.16"/><stop offset="1" stop-color="${colour}" stop-opacity="0"/></radialGradient>
@@ -51,14 +66,20 @@ export const shareCardSvg = (card: ShareCard, plate?: string): string => {
   <rect width="${W}" height="${H}" fill="${INK}"/>
   ${plate ? `<image href="${plate}" x="0" y="0" width="${W}" height="${H}" preserveAspectRatio="xMidYMid slice"/>` : ""}
   <rect width="${W}" height="${H}" fill="url(#halo)"/>
-  <text x="${MID}" y="88" text-anchor="middle" font-family="IBM Plex Mono" font-size="22" letter-spacing="4"><tspan fill="${CORAL}">CHIT BOT</tspan><tspan fill="${MUTED}"> · ${esc(card.chainLabel.toUpperCase())}${card.testnet ? " · TESTNET" : ""}</tspan></text>
+  <g transform="translate(${MID - 22} 26) scale(0.6875)" aria-hidden="true">
+    <rect width="64" height="64" rx="14" fill="${INK}"/>
+    <path fill="${CORAL}" d="M14 14h36l4 4v28l-4 4H14l-4-4V18l4-4Z"/>
+    <path fill="${INK}" d="M28 14h8v9l-4 4 4 5-4 5 4 4v9h-8v-7l-4-6 4-5-4-5 4-6v-7Z"/>
+  </g>
+  <text x="${MID}" y="104" text-anchor="middle" font-family="IBM Plex Mono" font-size="22" letter-spacing="4"><tspan fill="${CORAL}">CHIT BOT</tspan><tspan fill="${MUTED}"> · ${esc(card.chainLabel.toUpperCase())}${card.testnet ? " · TESTNET" : ""}</tspan></text>
   <text x="${MID}" y="236" text-anchor="middle" font-family="IBM Plex Sans" font-weight="700" font-size="76" fill="${PAPER}">$${esc(card.symbol.slice(0, 9))}</text>
   <text x="${MID}" y="500" text-anchor="middle" font-family="IBM Plex Sans" font-weight="700" font-size="196" letter-spacing="-8" fill="${colour}">${esc(big)}</text>
   <text x="${MID}" y="574" text-anchor="middle" font-family="IBM Plex Mono" font-size="30" fill="${PAPER}">${card.costEth > 0 ? `in ${fmtEth(card.costEth)} ETH` : "cost already back out"} · now ${fmtEth(card.valueEth)} ETH · ${esc(card.held)} ${esc(card.symbol)}</text>
   <text x="${MID}" y="610" text-anchor="middle" font-family="IBM Plex Mono" font-size="19" fill="${MUTED}">value is the pool's fill for the whole position right now, fee and impact included</text>
-  <line x1="${MID - 360}" y1="650" x2="${MID + 360}" y2="650" stroke="${PAPER}" stroke-opacity="0.14"/>
-  <text x="${MID}" y="698" text-anchor="middle" font-family="IBM Plex Mono" font-size="28"><tspan fill="${PAPER}" font-family="IBM Plex Sans">trade it yourself  </tspan><tspan fill="${CORAL}">${esc(card.refLink)}</tspan></text>
-  ${card.testnet ? `<text x="${MID}" y="734" text-anchor="middle" font-family="IBM Plex Mono" font-size="17" fill="${MUTED}">test eth, test tokens, nothing real. the playground before mainnet.</text>` : ""}
+  ${partners.map((line, i) => `<text x="${MID}" y="${638 + i * 26}" text-anchor="middle" font-family="IBM Plex Mono" font-size="18"><tspan fill="${CORAL}">${esc(line.slice(0, line.indexOf(":") + 1))}</tspan><tspan fill="${SOFT}">${esc(line.slice(line.indexOf(":") + 1))}</tspan></text>`).join("")}
+  <line x1="${MID - 360}" y1="${rule}" x2="${MID + 360}" y2="${rule}" stroke="${PAPER}" stroke-opacity="0.14"/>
+  <text x="${MID}" y="${rule + (partners.length ? 36 : 48)}" text-anchor="middle" font-family="IBM Plex Mono" font-size="${partners.length ? 24 : 28}"><tspan fill="${PAPER}" font-family="IBM Plex Sans">trade it yourself  </tspan><tspan fill="${CORAL}">${esc(card.refLink)}</tspan></text>
+  ${card.testnet && !partners.length ? `<text x="${MID}" y="734" text-anchor="middle" font-family="IBM Plex Mono" font-size="17" fill="${MUTED}">test eth, test tokens, nothing real. the playground before mainnet.</text>` : ""}
 </svg>`;
 };
 

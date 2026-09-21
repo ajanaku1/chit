@@ -105,7 +105,10 @@ balance: 0.02 ETH
   testnet on the playground. Drawn on the spot from
   `landing/public/bot/share-bg.png` (the chit mark blown into shards) in
   IBM Plex from `landing/public/bot/fonts`; `BOT_SHARE_OFF=1` hides the
-  button, `BOT_ASSET_DIR` moves the assets.
+  button, `BOT_ASSET_DIR` moves the assets. The chit mark sits at the top of
+  the card, and under the figures the partners' lines when they answered
+  ("orus: …", "hey research lab: …", plain text, cut at a whole segment to
+  fit the plate); without them the card is as before.
 - **Refer**: your link, `t.me/<bot>?start=r-<code>`, and how many came
   through it. Rewards: none yet, said plainly; the roadmap's referral pays
   from the fee when the fee goes live.
