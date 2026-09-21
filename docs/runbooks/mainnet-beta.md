@@ -116,3 +116,24 @@ address, the caps, the threshold, "beta", "not audited by a firm yet", the
   beta's second key.
 - Not a fee. The gate holds CHIT; it charges nothing. A fee is a separate
   decision with legal.
+
+## Resuming after a pause
+
+The pool pauses itself on a charge that passed its deadline unrecorded or an
+exit that would fail (the scheduled sweep, `src/fleet/pool-buy.ts`), the
+guardian pauses it on anything else, and only the admin's cold key can unpause
+it. Before that transaction, every time:
+
+1. Write `incidents/<yyyy-mm-dd>-<trigger>.md` (the form is in
+   `incidents/README.md`): the trigger, the cause, the commit that fixed it,
+   the test that now covers it, where depositors were told, and the `donate()`
+   that made the pool whole if it was short.
+2. `FLEET_POOL_ADDRESS=0x… FLEET_CHAIN_ID=4663 npm run fleet-resume-check`. It
+   reads the record and the pool and refuses, with every reason, until the
+   record is complete, the test exists, the identity holds and the pool holds
+   what it owes (`src/fleet/pool-solvency.ts` says how that follows from the
+   counters).
+3. The admin sends `setPaused(false)`.
+
+A pause that fires again after a resume is a trigger the resume did not settle:
+an exit that still fails, or a charge that expired after the pool came back.
