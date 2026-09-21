@@ -8,9 +8,12 @@
  * faucet is a separate key with test ETH that tops new wallets up.
  *
  * Any token with an ETH pool on the venue is tradeable: `tokenInfo` reads
- * the pool's price and liquidity and says whether there is one. Tests hand
- * the handlers a fake of this port; the fork test runs the real one against
- * the live venue.
+ * the pool's price and liquidity and says whether there is one. The pool is
+ * the registry's answer (pool-registry.ts): the chain's record for a
+ * recorded token ($CHIT on 4663, and BOT_POOL_KEYS), which `poolOnRecord`
+ * says, else the deepest one discovered, which anyone could have opened.
+ * Tests hand the handlers a fake of this port; the fork test runs the real
+ * one against the live venue.
  */
 
 import { createPublicClient, createWalletClient, defineChain, encodeFunctionData, http, maxUint256, parseAbi, parseAbiItem, WaitForTransactionReceiptTimeoutError, type PublicClient, type Transport, type WalletClient } from "viem";
@@ -43,6 +46,8 @@ export type TokenInfo = {
   fee: number;
   /** The pool's own key when it is not the venue's default (a hooked pool); a swap built outside the bot needs it. */
   poolKey?: PoolKey;
+  /** True when the pool is the chain's or the operator's record of the token's pool; absent or false, it was discovered, and the copy desk will not move a follower's money through it. */
+  poolOnRecord?: boolean;
 };
 
 export type BotChain = {
@@ -106,6 +111,8 @@ export type BotChainConfig = {
   faucetKey?: Hex;
   /** A transport of the caller's own (a fork's in-process provider in tests); default is HTTP to rpcUrl. */
   transport?: Transport;
+  /** The operator's recorded pools (BOT_POOL_KEYS), beside the chain's own record (pool-registry.ts). */
+  recordedPools?: PoolKey[];
 };
 
 const Q96 = 1n << 96n;
@@ -121,7 +128,7 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
   const publicClient = createPublicClient({ chain, transport }) as unknown as PublicClient;
   const walletFor = (key: Hex): WalletClient => createWalletClient({ account: privateKeyToAccount(key), chain, transport });
   const meta = new Map<string, { symbol: string; decimals: number }>();
-  const registry = createPoolRegistry(publicClient, config.poolManager);
+  const registry = createPoolRegistry(publicClient, config.poolManager, { chainId: config.chainId, ...(config.recordedPools ? { recorded: config.recordedPools } : {}) });
   let faucetQueue: Promise<void> = Promise.resolve();
   /** The new-pools scan is the same for every user; one result serves a minute. */
   let poolsCache: { at: number; blocks: number; pools: NewPool[] } | undefined;
@@ -189,7 +196,7 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
         poolEth: hasPool ? (pool!.liquidity * Q96) / pool!.sqrtPriceX96 : 0n,
         hooked: hasPool ? pool!.hooked : false,
         fee: hasPool ? pool!.key.fee : VENUE_POOL.fee,
-        ...(hasPool ? { poolKey: pool!.key } : {}),
+        ...(hasPool ? { poolKey: pool!.key, poolOnRecord: pool!.onRecord } : {}),
       };
     },
     async quoteBuy(token, ethIn) {

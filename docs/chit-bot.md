@@ -27,11 +27,19 @@ balance: 0.02 ETH
 - **Paste any token's contract address** and its card appears: price per
   ETH, the pool's ETH, what you hold, and your buy and sell buttons. Any
   token with an ETH pool on uniswap v4 on the chain, a launchpad's hooked
-  pool included: the pool's key is found from the chain (`pool-registry.ts`:
-  the common keys read from storage first, then the Initialize events, the
-  deepest pool wins). A hooked pool says so on the card, since the hook's
-  own fee is not in the quote and the slippage guard is the limit. A token
-  with no pool says so.
+  pool included. The pool is the registry's answer (`pool-registry.ts`):
+  for a recorded token it is the record's pool and nothing else ($CHIT's
+  on 4663, the launchpad's pool the buyback buys through, and what the
+  operator records in `BOT_POOL_KEYS`), read from storage; for any other
+  token it is discovered, every ETH pool the chain opened for it (one query
+  over the whole chain, filtered by the token) and the common hookless keys
+  gathered before any is chosen, the deepest live one winning. Anyone can
+  open a pool for any token at any price, and $CHIT alone has twenty on
+  mainnet, so a discovered pool is a convenience for a card and a tap and
+  never something the bot vouches for: the copy desk mirrors only through a
+  recorded pool. A hooked pool says so on the card, since the hook's own
+  fee is not in the quote and the slippage guard is the limit. A token with
+  no pool says so.
 - **Checked by Orus**: with `ORUS_PARTNER_API_KEY` set, the card carries one
   more line under the price, from Orus's scan of the token (`bot-orus.ts`):
   honeypot, taxes, bundlers, top-10 share, holders, liquidity and whether the
@@ -176,6 +184,84 @@ has, and an account keeps at most ten orders open, so a cron gone wrong or
 one owner cannot drain the signer's gas. Orders carry the chain they were
 placed on; `BOT_ORDERS_OFF=1` stops the cron with the buttons.
 `src/fleet/bot-orders.ts`.
+
+Leaders ride on the same session too, two ways. **⭐ Become a leader → from
+my session account** opens your tapped buys to followers: when one lands,
+the same token is bought on each follower's own session account, sized to
+the smaller of your amount and their cap, behind orus's read, inside their
+session's caps and their daily allowance, in the order they followed, then
+posted once to the group (`BOT_GROUP_CHAT_ID`) with the hash and two doors
+(buy this, follow them, by your account and never your Telegram id). **From
+my own wallet** is for someone who trades outside the bot and will not move
+into it: the bot mints a one-time code and opens the Sessions page with
+`?lead=`, the wallet you trade from signs one message (no account, no
+session, nothing moves), and the watcher reads that wallet's ETH buys from
+the venue's swap logs and mirrors and posts them the same way, telling you
+in private how many followed; the list marks you "trades from their own
+wallet". A wallet is one signature, so the venue path keeps its own bounds:
+a buy is read from 0.01 ETH of what the transaction left bought (a buy and
+a sell in one transaction net), of a token whose pool is on the bot's
+record, through that pool (the one the bot quotes; a pool you opened for
+yourself is yours alone), up to twenty a day, and a token orus will not
+clear is neither posted nor mirrored, the followers hear nothing for it and
+you are told why in private. The transaction is claimed in the store before
+the first mirror, so two overlapping runs of the watcher cannot mirror it
+twice; a read that fails before that claim keeps the buy for the next pass
+instead of losing it (read again for a quarter of an hour, then dropped,
+you are told either way). A follower's daily allowance is one ledger for
+the taps they make here and the mirrors of both paths. Whichever way you
+lead, a mirror goes only through a pool on the bot's record ($CHIT's, and
+what the operator records): a pool found on the chain is anyone's to open
+at any price, so a buy of such a token is skipped for every follower with
+the reason. Either way your sells, your standing orders and, for a wallet
+leader, your taps in the bot are never mirrored, so a follower's exit is
+their own, and close leader stops it any time.
+`src/fleet/bot-copy.ts`, `bot-copy-cards.ts`, `bot-lead-runtime.ts`.
+
+The venue's tokens are watched. A second cron (`api/bot/watch.js`, every
+five minutes, the same `CRON_SECRET` bearer) reads the pool manager's own
+Swap logs since the block it last reached, at most 600 blocks a pass so a
+watcher that fell behind catches up in steps the public RPC answers, and
+hands on every ETH buy of a watched token once: what a transaction left
+bought of $CHIT or a token on `FLEET_TOKEN_ALLOWLIST`, every swap of the
+transaction in the token's pools summed with its sign, so that ETH was
+paid and tokens came out at the end of it, the buyer being the
+transaction's sender, the token the pool's other side as its Initialize
+event named it. The watched tokens' pools are named through the bot's
+registry before the first log is read, however old they are; the pool
+manager is one contract for every pool on the chain and anyone can open a
+pool on it, so a pool of any other token is never a buy, whoever swaps in
+it and however much. A sell is not a buy, a buy and a sell in one
+transaction net to what stayed bought (a round trip through a contract is
+nothing), a pool whose opening cannot be found is skipped rather than guessed, a
+transaction the bot's own signer sent (a leader's tapped buy the desk
+already posted, a mirror, an order's fill, a user's own buy) is not
+handed on, and each hash is claimed in the store in one statement before
+its readers run, so a pass the host kills, or two passes over one window
+at once, is never a buy announced twice. What is handed on is a
+`VenueBuy`, and it has two readers in turn, each caught on its own so one
+that breaks costs nothing but its own work on that buy: the alerts below,
+and the copy desk, which mirrors and posts a wallet leader's buy (the
+paragraph above). The cron's function builds its own desk over its own
+signer and stores, the same way the webhook builds the one that mirrors a
+tapped buy (`src/fleet/bot-copy-runtime.ts` is the one factory), so a
+mirror is sized, gated and posted the same whichever path brought the buy.
+`src/fleet/bot-watch.ts`, `src/fleet/bot-watch-runtime.ts`.
+
+**🔔 Alerts** on the home card, linked or not: a buy of at least the
+group's line (`BOT_ALERT_GROUP_MIN_ETH`, 0.5 by default) is posted once to
+the group (`BOT_GROUP_CHAT_ID`, the same feed the leaders' buys land in),
+and a buy of at least a user's own line, set on the card, is told to that
+user in private. The message is the chain's facts and nothing else: who
+sent how much ETH for which token (the transaction's sender, and the
+message says so), the hash, the orus and HEY lines as the token card shows
+them, "unknown" where a partner has no read (never a missing line, which
+would read as clean), "read from the chain, not from us", and a "buy this"
+door into the bot by the token. Bounds: twenty group posts a pass and no
+more, one private message per user per token an hour, claimed in the store
+in one statement so two passes tell nobody twice. `BOT_WATCH_OFF=1` stops
+the cron and hides the button.
+`src/fleet/bot-alerts.ts`, `src/fleet/bot-alert-cards.ts`.
 
 ## What is built, what is next
 

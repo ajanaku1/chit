@@ -35,14 +35,66 @@
  *    it), each mirror waits for its receipt only as long as is left after
  *    a send's own allowance, and none is started with less than that.
  *
- * The first slice: leaders trade through the bot, so the bot sees the buy
- * the moment it lands and mirrors it in the same request. That is a buy the
- * leader taps: a limit buy or a DCA of theirs fires from the orders' cron
- * in a function of its own (bot-orders.ts), without the desk, and is
- * neither posted nor mirrored, and a sell is never mirrored, so a follower
- * gets out of a mirrored position on their own; every card says both.
- * Watching an outside wallet, mirroring the orders' fires, and a queue of
- * mirrors that outlives one request, is the second slice.
+ * Two kinds of leader. An account leader trades through the bot, so the
+ * bot sees the buy the moment it lands and mirrors it in the same request.
+ * That is a buy the leader taps: a limit buy or a DCA of theirs fires from
+ * the orders' cron in a function of its own (bot-orders.ts), without the
+ * desk, and is neither posted nor mirrored, and a sell is never mirrored,
+ * so a follower gets out of a mirrored position on their own; every card
+ * says both. A wallet leader trades from their own wallet, outside the bot
+ * (a whale does not move their fleet into a session account to be
+ * followed): they prove the wallet once with a signature on the Sessions
+ * page (`chit-bot-lead|<chainId>|<wallet>|<nonce>`, the link's own nonce
+ * store and its fifteen minutes, one claim per nonce, one leader per
+ * wallet), and the venue's swap logs are read by the watcher (bot-watch.ts,
+ * its cron) which hands every ETH buy to `onVenueBuy`: a buy by a claimed,
+ * open wallet leader is mirrored with the same guards and posted the same
+ * way, and the leader is told in private how many followed. The buy is
+ * never the leader's session account trading through the bot (that path
+ * mirrors from the bot's own buy, and its sender is the bot's signer, not
+ * the wallet). A wallet costs one signature, and the watcher hands over
+ * whatever swapped, so the venue path has guards of its own before a buy
+ * is worth a message: it is at least VENUE_MIN_ETH_WEI of what the
+ * transaction left bought (the watcher nets a buy and a sell in one
+ * transaction; dust is not a signal, and is read as nothing); the token's
+ * pool is on the bot's record (below); it went through that pool, the one
+ * the followers buy through (a pool the leader opened and provides for
+ * themselves would otherwise trigger mirrors at no cost to them); the
+ * leader has not had VENUE_BUYS_PER_DAY buys read today (past that the day
+ * is silent and the leader was told on the last one); and orus clears the
+ * token before anything is posted, so a token the desk would refuse to
+ * mirror is not advertised either, and the followers are not messaged for
+ * it. A transaction is claimed in the store before the first send
+ * (`claimVenueBuy`, one row per hash, one statement), so two overlapping
+ * watcher runs in two instances cannot both mirror it; this instance's own
+ * seen set is only the fast answer. The reads come before the claim, and a
+ * chain, a scanner or a store that fails there does not lose the buy: the
+ * watcher has claimed the hash for its own pass and will not hand it on
+ * again, so the desk keeps the buy itself (`bot_venue_deferred`, one row
+ * per hash, the first keeping's time) and reads it again at the start of
+ * each later pass (`retryVenueBuys`, the watcher's runtime calls it) for up
+ * to VENUE_RETRY_MS, after which it is dropped and the leader is told; the
+ * leader is told at the first keeping too, when the store could name them.
+ * A buy the desk can neither read nor keep is lost, and the one line says
+ * so. After the claim each step is caught on its own (a mirror run that
+ * throws, a feed that refuses), the claim stands (money moves at most once,
+ * a lost mirror is told, not repeated) and the leader hears what happened.
+ * A follower's daily allowance is one ledger for both paths
+ * (`bot_copy_user_days`): the session bot notes each tap into it and asks
+ * it before a tap, every mirror charges it, so the watcher's function and
+ * the webhook's count the same day. Mirroring the orders' fires and a queue
+ * of mirrors that outlives one request stay for later.
+ *
+ * The pool a mirror buys through is never discovered. Anyone can open an
+ * ETH pool for any token at any price for one transaction, and a narrow
+ * position makes it the deepest for very little, so a pool the registry
+ * found on the chain (pool-registry.ts) is a pool a leader could have
+ * opened for themselves and priced as they liked, with the followers'
+ * mirrors as the buyers. A mirror of either path goes only through a pool
+ * on the bot's record (`TokenInfo.poolOnRecord`: $CHIT's on 4663, and what
+ * the operator records in BOT_POOL_KEYS); a leader's buy of any other token
+ * is skipped for every follower with that reason, and on the venue path is
+ * not posted either, since the desk advertises nothing it would not mirror.
  *
  * The feed is the group's window on the same thing: one message once a
  * leader's buy has landed and its mirrors are through, with the hash, the
@@ -59,23 +111,49 @@
  * the list. The list is what followers trust; it must not be forgeable.
  */
 
-import type { Address, Hex } from "viem";
+import { type Address, type Hex, getAddress, isAddress, isHex, recoverMessageAddress } from "viem";
 import type { BotChain, TokenInfo } from "./bot-chain.js";
-import { heyLine, type HeyScan } from "./bot-hey.js";
-import type { BotLinkStore } from "./bot-link.js";
+import { heyLine, type HeyScan, type HeyScanner } from "./bot-hey.js";
+import { NONCE_TTL_MS, issueNonce, type BotLinkStore } from "./bot-link.js";
 import { orusLine, type OrusScan, type OrusScanner } from "./bot-orus.js";
 import type { SessionChain } from "./bot-session-chain.js";
 import { esc, type Keyboard } from "./bot-telegram.js";
-import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4EthBuy, minOutFor } from "./v4-swap.js";
+import type { VenueBuy } from "./bot-watch.js";
+import { poolIdOf } from "./pool-registry.js";
+import { UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeV4EthBuy, minOutFor, venuePoolKey } from "./v4-swap.js";
 
-export type Leader = { tgId: string; account: Address; handle: string; since: string; open: boolean };
+export type Leader = {
+  tgId: string;
+  /** The address on the card and behind the feed's follow door, the one thing the leader agreed to show: the session account of an account leader, the proven wallet of a wallet leader. */
+  account: Address;
+  handle: string;
+  since: string;
+  open: boolean;
+  /** How their buys reach the desk: 'account', tapped in the bot and mirrored from the landed buy; 'wallet', made from their own wallet on the venue and mirrored from the swap logs. */
+  kind: "account" | "wallet";
+  /** The wallet they proved with its own signature; set once claimed, kept if they lead from the account again. */
+  wallet?: Address;
+};
 export type Follow = { followerTgId: string; leaderTgId: string; capWei: bigint; since: string };
 export type Mirror = { leaderTgId: string; followerTgId: string; token: Address; ethWei: bigint; hash: Hex | null; outcome: "landed" | "sent" | "skipped"; why: string; at: string };
+
+/**
+ * One ETH buy on the venue, as the watcher reads it from the PoolManager's
+ * Swap logs (bot-watch.ts); `buyer` is the transaction's sender, `ethInWei`
+ * what the transaction left paid once its buys and sells of the token are
+ * netted. The watcher's runtime hands each one to `onVenueBuy`.
+ */
+export type { VenueBuy };
+
+/** A venue buy the desk could not read before its claim, kept to be read again: the buy and the moment it was first kept. */
+export type DeferredVenueBuy = { buy: VenueBuy; since: string };
 
 export interface CopyStore {
   putLeader(l: Leader): Promise<void>;
   getLeader(tgId: string): Promise<Leader | undefined>;
   leaders(): Promise<Leader[]>;
+  /** The leader, open or closed, who claimed this wallet: a wallet is one leader's. */
+  leaderByWallet(wallet: Address): Promise<Leader | undefined>;
   putFollow(f: Follow): Promise<void>;
   removeFollow(followerTgId: string, leaderTgId: string): Promise<void>;
   followsOf(followerTgId: string): Promise<Follow[]>;
@@ -85,6 +163,21 @@ export interface CopyStore {
   addTokenDay(day: string, token: Address, wei: bigint): Promise<bigint>;
   log(m: Mirror): Promise<void>;
   recent(leaderTgId: string, n: number): Promise<Mirror[]>;
+  /**
+   * The follower's ledger of buys from the bot today, taps and mirrors of both paths alike: adds `executes` (zero reads) and
+   * returns the day's total. Atomic add, so two functions charging the same account at once both see the sum.
+   */
+  addUserDay(day: string, tgId: string, executes: number): Promise<number>;
+  /** Takes a venue transaction for this leader in one statement: true when this call was the first, false when another run has it. */
+  claimVenueBuy(txHash: Hex, leaderTgId: string, at: Date): Promise<boolean>;
+  /** Venue buys of this leader's claimed since `since`: the per-leader count for the day. */
+  venueBuysSince(leaderTgId: string, since: Date): Promise<number>;
+  /** Keeps a venue buy the desk could not read, one row per hash; `since` is the first keeping's time and a repeat keeps it. True when this call was the first. */
+  deferVenueBuy(b: VenueBuy, since: Date): Promise<boolean>;
+  /** The kept buys, oldest first. */
+  deferredVenueBuys(): Promise<DeferredVenueBuy[]>;
+  /** A kept buy read at last, or given up: gone. */
+  dropVenueBuy(txHash: Hex): Promise<void>;
 }
 
 export type CopyDeps = {
@@ -93,8 +186,19 @@ export type CopyDeps = {
   reads: BotChain;
   session: SessionChain;
   orus?: OrusScanner;
+  /** The builder line on a venue buy's feed message; the cards' path brings its own. */
+  hey?: HeyScanner;
   /** ETH into one token per UTC day across all followers; default 2 ETH. */
   tokenDayCapWei?: bigint;
+  /** A follower's daily allowance from the bot, counted from the store's ledger (`addUserDay`), which the session bot writes its taps into; the defaults are the session bot's. */
+  dailyExecutes?: number;
+  dailyGasWei?: bigint;
+  /** Below this a wallet leader's venue buy is read as nothing; default 0.01 ETH. */
+  venueMinEthWei?: bigint;
+  /** Venue buys read for one wallet leader per UTC day, posted and mirrored; past it the day is silent. Default 20. */
+  venueBuysPerDay?: number;
+  /** How long a venue buy the desk could not read is kept and read again on later passes before it is dropped; default 15 minutes. */
+  venueRetryMs?: number;
   /** How long after a mirror run starts new sends are still started; default 30 seconds. */
   mirrorBudgetMs?: number;
   buySlippageBps?: number;
@@ -112,6 +216,17 @@ export type CopyFeed = { chatId: string; post(text: string, keyboard: Keyboard):
 export const MAX_FOLLOW_CAP_WEI = 10n ** 18n;
 const DEFAULT_TOKEN_DAY_CAP = 2n * 10n ** 18n;
 const DEFAULT_MIRROR_BUDGET_MS = 30_000;
+/** The session bot's daily limits (bot-session.ts DEFAULTS) and its charge per execute, for the ledger's count. */
+const DAILY_DEFAULTS = { executes: 200, gasWei: 2_000_000_000_000_000n };
+const EXECUTE_GAS_WEI = 700_000n * 1_000_000_000n;
+/** A wallet leader's venue buy under this is dust and is read as nothing; the cards say the size. */
+export const VENUE_MIN_ETH_WEI = 10n ** 16n;
+/** Venue buys read for one wallet leader in a UTC day; a wallet is one signature, so the feed and the followers are not theirs to flood. */
+export const VENUE_BUYS_PER_DAY = 20;
+/** A venue buy the desk could not read is read again on each later pass for this long (three of the watcher's five-minute passes), then dropped: a mirror later than that is not a copy of the buy, it is a trade of its own. */
+export const VENUE_RETRY_MS = 15 * 60_000;
+/** How many transaction hashes this instance remembers as mirrored; older ones fall out, the store's claim is the guard between instances. */
+const SEEN_MAX = 2_000;
 export const HANDLE_MAX = 32;
 /** A plain name: starts with a letter or digit; letters, digits, spaces, _ . - after; never an @. */
 const PLAIN_HANDLE = /^[A-Za-z0-9][A-Za-z0-9_ .-]{0,31}$/;
@@ -124,8 +239,8 @@ export const plainHandleOk = (h: string): boolean => PLAIN_HANDLE.test(h) && !RE
 
 /** What the mirror run is handed by the session bot: the charge to each follower's daily allowance, and the request's cut-off. */
 export type MirrorOptions = {
-  /** Counts one execute against the follower's day and returns null, or the refusal in the follower's words and counts nothing. */
-  budget?: (followerTgId: string) => string | null;
+  /** Counts one execute against the follower's day and returns null, or the refusal in the follower's words and counts nothing. May read a store, so it may answer late. */
+  budget?: (followerTgId: string) => string | null | Promise<string | null>;
   /** Epoch ms by which the mirrors must be through, receipts included: the request's cut-off less what the feed and the leader's line need. Absent, `mirrorBudgetMs` from the run's start alone. */
   until?: number;
 };
@@ -137,10 +252,77 @@ const eth = (wei: bigint): string => {
   return `${w}${f ? "." + f : ""}`;
 };
 
+/** The exact text a wallet leader signs. The chain id is in it so a claim signed for the testnet never leads on mainnet; the wallet is checksummed so the page and the desk spell it the same. */
+export const leadMessage = (chainId: number, wallet: Address, nonce: string): string => `chit-bot-lead|${chainId}|${getAddress(wallet)}|${nonce}`;
+
+/** A refused claim, with the status the route answers; the message is in the leader's words and says what to do next. */
+export class LeadError extends Error {
+  constructor(readonly status: number, message: string) { super(message); }
+}
+
+export type LeadRequest = {
+  nonce: unknown; wallet: unknown; signature: unknown; handle: unknown;
+  /** When known (the desk's own call), it must be the nonce's; the route learns it from the nonce. */
+  tgId?: string;
+};
+
+/**
+ * A wallet leader's claim, verified and stored: the same shape as
+ * bot-link.ts's verifyLink, over the link store's nonces (one table, one
+ * fifteen minutes, one use) and the copy store's leaders. Cheap checks
+ * first, the signature next, the nonce consumed only once everything else
+ * holds, so a stranger's signature cannot burn a good nonce. The handle is
+ * a plain name (the @ form is Telegram's own and only the bot hands it in,
+ * from the account path); an empty one keeps the name the leader already
+ * has. One wallet leads for one Telegram id; a second claim of the same
+ * wallet by the same id is a renewal. The leader's public address is the
+ * wallet from here on.
+ */
+export const claimLeadWallet = async (store: CopyStore, links: BotLinkStore, chainId: number, req: LeadRequest, now: Date): Promise<Leader> => {
+  const { nonce, wallet, signature, handle } = req;
+  if (typeof nonce !== "string" || !/^[0-9a-f]{32}$/.test(nonce)) throw new LeadError(400, "nonce is not one of ours: open the link from the bot again");
+  if (typeof wallet !== "string" || !isAddress(wallet)) throw new LeadError(400, "wallet must be a 0x address");
+  if (typeof signature !== "string" || !isHex(signature) || signature.length !== 132) throw new LeadError(400, "signature must be 65 bytes of hex");
+  if (typeof handle !== "string") throw new LeadError(400, "handle must be text");
+  const n = await links.getNonce(nonce);
+  if (!n || (req.tgId !== undefined && n.tgId !== req.tgId)) throw new LeadError(404, "nonce unknown: open the link from the bot again");
+  if (n.usedAt) throw new LeadError(409, "this link was already used: ask the bot for a new one");
+  if (now.getTime() - Date.parse(n.issuedAt) > NONCE_TTL_MS) throw new LeadError(410, "this link expired: ask the bot for a new one");
+  const existing = await store.getLeader(n.tgId);
+  const name = handle.trim() || existing?.handle || "";
+  if (!name) throw new LeadError(400, "a leader needs a name: letters, digits, spaces, _ . - and up to 32");
+  // The @ form is refused from here whatever it says: a page cannot prove a Telegram username, the bot's account path takes it from Telegram itself.
+  if (!plainHandleOk(name)) throw new LeadError(400, "that name will not do: letters, digits, spaces, _ . - and up to 32, not the project's name, no @");
+  const taken = (await store.leaders()).some((l) => l.tgId !== n.tgId && l.handle.toLowerCase() === name.toLowerCase());
+  if (taken) throw new LeadError(409, "that name is already on the leaders list: choose another");
+  let signer: Address;
+  try { signer = await recoverMessageAddress({ message: leadMessage(chainId, wallet, nonce), signature: signature as Hex }); }
+  catch { throw new LeadError(400, "the signature does not decode"); }
+  const proven = getAddress(wallet);
+  if (getAddress(signer) !== proven) throw new LeadError(403, "the signature is not this wallet's: sign with the wallet you named");
+  const holder = await store.leaderByWallet(proven);
+  if (holder && holder.tgId !== n.tgId) throw new LeadError(409, "this wallet already leads for another telegram account");
+  if (!(await links.useNonce(nonce, now))) throw new LeadError(409, "this link was already used: ask the bot for a new one");
+  const leader: Leader = { tgId: n.tgId, account: proven, wallet: proven, kind: "wallet", handle: name, since: existing?.since ?? now.toISOString(), open: true };
+  await store.putLeader(leader);
+  return leader;
+};
+
 export class CopyDesk {
   readonly #d: CopyDeps;
+  /** Transaction hashes this instance has posted or mirrored, in the order seen; a venue buy with a hash in here is not mirrored again. */
+  readonly #seen = new Set<string>();
   constructor(d: CopyDeps) { this.#d = d; }
   get #now(): Date { return this.#d.now ? this.#d.now() : new Date(); }
+
+  /** Remembers a hash; true when it was new. Bounded, the oldest forgotten first. */
+  #see(hash: Hex): boolean {
+    const k = hash.toLowerCase();
+    if (this.#seen.has(k)) return false;
+    this.#seen.add(k);
+    if (this.#seen.size > SEEN_MAX) { const first = this.#seen.values().next().value; if (first !== undefined) this.#seen.delete(first); }
+    return true;
+  }
 
   /**
    * A linked user opens their account to followers. Their account address
@@ -155,10 +337,26 @@ export class CopyDesk {
     const taken = (await this.#d.store.leaders()).some((l) => l.tgId !== tgId && l.handle.toLowerCase() === handle.toLowerCase());
     if (taken) throw new Error("that name is already on the leaders list");
     const existing = await this.#d.store.getLeader(tgId);
-    const leader: Leader = existing ? { ...existing, open: true, account: link.account, handle } : { tgId, account: link.account, handle, since: this.#now.toISOString(), open: true };
+    // A wallet leader who opens from the account again keeps the wallet they proved, but their buys are read from the bot from here on.
+    const leader: Leader = existing ? { ...existing, open: true, account: link.account, handle, kind: "account" } : { tgId, account: link.account, handle, since: this.#now.toISOString(), open: true, kind: "account" };
     await this.#d.store.putLeader(leader);
     return leader;
   }
+
+  /**
+   * A user claims the wallet they trade from, outside the bot, as the one
+   * their followers copy: the proof is the wallet's own signature over the
+   * lead message, on a nonce the bot minted for them (`leadNonce`) and the
+   * Sessions page carried. The full check is `claimLeadWallet`; this is the
+   * desk's door to it, with the Telegram id it expects the nonce to name.
+   */
+  claimWallet(tgId: string, handle: string, wallet: unknown, signature: unknown, nonce: unknown, chainId: number, now: Date = this.#now): Promise<Leader> {
+    return claimLeadWallet(this.#d.store, this.#d.links, chainId, { nonce, wallet, signature, handle, tgId }, now);
+  }
+  /** Mints the nonce the lead link carries: the link store's own, so one table holds every one-time code the bot hands out. */
+  leadNonce(tgId: string): Promise<string> { return issueNonce(this.#d.links, tgId, this.#now); }
+  /** The leader, open or closed, who proved this wallet; undefined for a wallet nobody claimed. */
+  leaderByWallet(wallet: Address): Promise<Leader | undefined> { return this.#d.store.leaderByWallet(wallet); }
   async closeLeader(tgId: string): Promise<void> {
     const l = await this.#d.store.getLeader(tgId);
     if (l) await this.#d.store.putLeader({ ...l, open: false });
@@ -176,6 +374,32 @@ export class CopyDesk {
   followsOf(followerTgId: string): Promise<Follow[]> { return this.#d.store.followsOf(followerTgId); }
   followersOf(leaderTgId: string): Promise<Follow[]> { return this.#d.store.followersOf(leaderTgId); }
 
+  // ---------- the day's ledger ----------
+  // One count of buys from the bot into an account per UTC day, in the store, so the webhook's taps and mirrors and the
+  // watcher's mirrors are the same day: the session bot's own memory sees only its instance's requests.
+
+  get #day(): string { return this.#now.toISOString().slice(0, 10); }
+  /** The refusal for a day that holds `n` buys already, in the follower's words, or null. */
+  #dayRefusal(n: number): string | null {
+    const executes = this.#d.dailyExecutes ?? DAILY_DEFAULTS.executes;
+    if (n >= executes) return `that is ${executes} buys today from your account; again tomorrow`;
+    if (BigInt(n) * EXECUTE_GAS_WEI >= (this.#d.dailyGasWei ?? DAILY_DEFAULTS.gasWei)) return "the bot has fronted its daily gas for your account; again tomorrow";
+    return null;
+  }
+  /**
+   * Counts one execute against the account's day and returns null, or the refusal and the account is over. The add comes
+   * first, so two mirrors charging at once cannot both pass on the last slot; the count left over by a refusal only
+   * tightens the day. MirrorOptions.budget's shape, for both paths' mirrors.
+   */
+  async chargeDay(tgId: string): Promise<string | null> {
+    const n = await this.#d.store.addUserDay(this.#day, tgId, 1);
+    return this.#dayRefusal(n - 1);
+  }
+  /** The session bot's own tap, after its send: counted here so a mirror from the watcher's function sees it; never refused, the tap passed its own check. */
+  async noteDay(tgId: string): Promise<void> { await this.#d.store.addUserDay(this.#day, tgId, 1); }
+  /** What the ledger alone would refuse a tap with right now, or null: the session bot asks before a tap, for the mirrors its memory never saw. */
+  async overDay(tgId: string): Promise<string | null> { return this.#dayRefusal(await this.#d.store.addUserDay(this.#day, tgId, 0)); }
+
   /**
    * A leader's buy landed and its mirrors are through: one message to the
    * group. The hash so anyone can check it, orus's and HEY's lines so the
@@ -188,6 +412,8 @@ export class CopyDesk {
    * before them would tell the group exactly which buys are about to land.
    */
   async announce(leaderTgId: string, token: Address, ethWei: bigint, hash: Hex, info: TokenInfo, scan: OrusScan | undefined, hey: HeyScan | undefined, mirrors: Mirror[] = []): Promise<boolean> {
+    // Remembered whichever path brought it, feed or no feed: the watcher delivering this transaction later mirrors nothing.
+    this.#see(hash);
     const feed = this.#d.feed;
     if (!feed) return false;
     const leader = await this.leader(leaderTgId);
@@ -243,6 +469,8 @@ export class CopyDesk {
     const [info, scan] = await Promise.all([this.#d.reads.tokenInfo(token), this.#d.orus?.scan(token)]);
     const base = { leaderTgId, token, at: now.toISOString(), hash: null as Hex | null };
     if (!info.hasPool) { for (const f of followers) await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: "no ETH pool on the venue" }); return out; }
+    // A discovered pool is anyone's to have opened and priced; a mirror moves the follower's ETH without their tap, so it goes only through a pool on the bot's record.
+    if (!info.poolOnRecord) { for (const f of followers) await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: `${info.symbol}'s pool is not on the bot's record, so a mirror cannot vouch for the pool it would buy through; nothing was sent for you. only a token the bot's record names is mirrored ($CHIT on mainnet); buy this one yourself from its token card if you want it` }); return out; }
     // No scanner wired is the same as no read: every card promises orus is asked first, and a bot without orus cannot keep that.
     if (!scan) { for (const f of followers) await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: this.#d.orus ? "orus had no read; unknown is not safe" : "orus is not wired into this bot; unknown is not safe" }); return out; }
     if (scan.honeypot !== false) { for (const f of followers) await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: scan.honeypot ? "orus says honeypot" : "orus could not rule out a honeypot" }); return out; }
@@ -261,7 +489,7 @@ export class CopyDesk {
       const quote = await this.#d.reads.quoteBuy(token, wei);
       if (quote === null) { await this.#d.store.addTokenDay(day, token, -wei); await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: "no quote right now" }); continue; }
       // The follower's own daily allowance, last, so a skip for any other reason costs them nothing.
-      const refused = opts.budget ? opts.budget(f.followerTgId) : null;
+      const refused = opts.budget ? await opts.budget(f.followerTgId) : null;
       if (refused) { await this.#d.store.addTokenDay(day, token, -wei); await record({ ...base, followerTgId: f.followerTgId, ethWei: wei, outcome: "skipped", why: refused }); continue; }
       const minOut = minOutFor(quote, this.#d.buySlippageBps ?? 300);
       const deadline = BigInt(Math.floor(now.getTime() / 1000) + 3600);
@@ -283,6 +511,151 @@ export class CopyDesk {
     return out;
   }
 
+  /**
+   * The watcher read an ETH buy on the venue. When the buyer is the wallet
+   * an open wallet leader proved, the buy is at least the minimum, the
+   * leader has not had their day's count of buys read, it went through the
+   * token's own pool on the venue and orus clears the token, it is mirrored
+   * exactly as a landed buy from the bot is (the same gate, caps, order and
+   * log; the followers' daily allowance from the same ledger the webhook
+   * charges), then posted to the feed, then the leader is told in private
+   * how many followed. Anyone else's buy, a closed leader's, an account
+   * leader's own wallet, dust, a day already full, or a hash claimed
+   * before, here or in another instance: nothing, and undefined says so. A
+   * buy that is the leader's but not for the feed (a token whose pool is
+   * not on the record, another pool, a token orus will not clear) is
+   * claimed and counted, the leader is told why and what buy would be
+   * read, and [] says so. The reads come before the claim, and a failure
+   * there keeps the buy for the next pass (`retryVenueBuys`) instead of
+   * losing it, since the watcher will not hand it on again; after the
+   * claim, a mirror run or a feed that throws is caught, logged and told,
+   * never repeated. The mirrors get the desk's own time budget; the
+   * watcher's run bounds the whole pass.
+   */
+  async onVenueBuy(b: VenueBuy): Promise<Mirror[] | undefined> { return (await this.#venue(b)).out; }
+
+  /**
+   * The venue buys kept because a read failed before the claim, each read
+   * again now, oldest first: one that reads is mirrored and posted as if it
+   * had just arrived (or found to be nothing, and dropped); one that fails
+   * again stays kept with its first time; one kept longer than
+   * VENUE_RETRY_MS is dropped and the leader is told, because a mirror that
+   * late is not a copy of the buy. The watcher's runtime calls this at the
+   * start of every pass, so a kept buy waits one pass at most. Answers how
+   * many were read and how many dropped.
+   */
+  async retryVenueBuys(): Promise<{ read: number; dropped: number }> {
+    let read = 0, dropped = 0;
+    for (const { buy, since } of await this.#d.store.deferredVenueBuys()) {
+      if (this.#now.getTime() - Date.parse(since) > (this.#d.venueRetryMs ?? VENUE_RETRY_MS)) {
+        await this.#d.store.dropVenueBuy(buy.txHash);
+        dropped += 1;
+        const leader = await this.#d.store.leaderByWallet(buy.buyer).catch(() => undefined);
+        if (leader) await this.#tellQuietly(leader.tgId, `${this.#venueWhat(buy)} could not be read for ${Math.round((this.#d.venueRetryMs ?? VENUE_RETRY_MS) / 60_000)} minutes (the chain or a partner did not answer), so it was dropped: not posted, not mirrored. your next buy is read fresh.`);
+        continue;
+      }
+      const r = await this.#venue(buy, since);
+      if (r.deferred) continue;
+      await this.#d.store.dropVenueBuy(buy.txHash);
+      read += 1;
+    }
+    return { read, dropped };
+  }
+
+  /** The buy in the leader's words, without the symbol, for when the token could not be read. */
+  #venueWhat(b: VenueBuy): string {
+    return `your buy of <code>${eth(b.ethInWei)} ETH</code> of <code>${b.token}</code> from your wallet (<a href="https://robinhoodchain.blockscout.com/tx/${b.txHash}">${b.txHash.slice(0, 10)}…</a>)`;
+  }
+  /** A line to a leader that must not fail the caller: a leader who cannot be reached is a log line. */
+  async #tellQuietly(tgId: string, text: string): Promise<void> {
+    if (!this.#d.tell) return;
+    try { await this.#d.tell(tgId, text); } catch (error) { console.error("copy venue tell:", tgId, (error instanceof Error ? error.message : String(error)).split("\n")[0]); }
+  }
+
+  /**
+   * A read before the claim failed: the buy is kept for the next pass, with
+   * the first keeping's time when it is one already, and the leader is told
+   * once, at the first keeping, when the store could name them. A buy the
+   * store cannot keep either is lost, and the rejection says both.
+   */
+  async #defer(b: VenueBuy, leader: Leader | undefined, keptSince: string | undefined, error: unknown): Promise<void> {
+    const why = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "unknown";
+    let first: boolean;
+    try { first = await this.#d.store.deferVenueBuy(b, keptSince ? new Date(keptSince) : this.#now); }
+    catch (storeError) {
+      const kept = (storeError instanceof Error ? storeError.message : String(storeError)).split("\n")[0] ?? "unknown";
+      throw new Error(`venue buy not read (${why}) and not kept (${kept}): it will not be mirrored or posted`);
+    }
+    console.warn(`copy venue: ${b.txHash} not read (${why}); kept for the next pass`);
+    if (first && !keptSince && leader) await this.#tellQuietly(leader.tgId, `${this.#venueWhat(b)} was seen but could not be read yet (the chain or a partner did not answer). it is read again on the next pass, for up to ${Math.round((this.#d.venueRetryMs ?? VENUE_RETRY_MS) / 60_000)} minutes, then dropped; you hear either way.`);
+  }
+
+  /** `onVenueBuy` proper; `keptSince` says the buy is one kept earlier, being read again. */
+  async #venue(b: VenueBuy, keptSince?: string): Promise<{ deferred: boolean; out: Mirror[] | undefined }> {
+    const nothing = { deferred: false, out: undefined };
+    const now = this.#now, dayStart = new Date(now.toISOString().slice(0, 10));
+    const perDay = this.#d.venueBuysPerDay ?? VENUE_BUYS_PER_DAY;
+    /** The leader once the store named them, for the keeping's line to them should a later read fail. */
+    let named: Leader | undefined;
+    // The reads, before the claim: a store, a chain or a partner that fails here loses nothing, the buy is kept and read again.
+    const reads = async () => {
+      const leader = named = await this.#d.store.leaderByWallet(b.buyer);
+      if (!leader || !leader.open || leader.kind !== "wallet") return undefined;
+      if (b.ethInWei < (this.#d.venueMinEthWei ?? VENUE_MIN_ETH_WEI)) return undefined;
+      if (this.#seen.has(b.txHash.toLowerCase())) return undefined;
+      const before = await this.#d.store.venueBuysSince(leader.tgId, dayStart);
+      if (before >= perDay) return undefined;
+      const [info, scan, hey] = await Promise.all([this.#d.reads.tokenInfo(b.token), this.#d.orus?.scan(b.token), this.#d.hey?.scan(b.token)]);
+      return { leader, before, info, scan, hey };
+    };
+    let got: Awaited<ReturnType<typeof reads>>;
+    try { got = await reads(); }
+    catch (error) {
+      await this.#defer(b, named, keptSince, error);
+      return { deferred: true, out: undefined };
+    }
+    if (!got) return nothing;
+    const { leader, before, info, scan, hey } = got;
+    if (!(await this.#d.store.claimVenueBuy(b.txHash, leader.tgId, now))) return nothing;
+    this.#see(b.txHash);
+    const link = `<a href="https://robinhoodchain.blockscout.com/tx/${b.txHash}">${b.txHash.slice(0, 10)}…</a>`;
+    const what = `your buy of <code>${eth(b.ethInWei)} ETH</code> of <b>${esc(info.symbol)}</b> from your wallet (${link})`;
+    // The last buy read today says so, and the ones after it are silent until tomorrow.
+    const last = before + 1 >= perDay ? ` that is ${perDay} buys read from your wallet today; the next ones are read again tomorrow.` : "";
+    const tellLeader = (text: string) => this.#tellQuietly(leader.tgId, text + last);
+    const done = (out: Mirror[]) => ({ deferred: false, out });
+    // A mirror goes only through a pool on the bot's record; a token whose pool was discovered is not mirrored, so it is not advertised either.
+    if (!info.poolOnRecord) {
+      await tellLeader(`${what} is of a token whose pool is not on the bot's record, so it was not posted or mirrored: a pool found on the chain is anyone's to open at any price, and the desk moves your followers' money only through a recorded pool. a buy of a token the record names ($CHIT on mainnet) is.`);
+      return done([]);
+    }
+    // The pool must be the token's own on the venue, the one the followers buy through; a pool the leader opened for themselves is theirs alone.
+    const pool = poolIdOf(info.poolKey ?? venuePoolKey(b.token));
+    if (pool.toLowerCase() !== b.poolId.toLowerCase()) {
+      await tellLeader(`${what} went through a pool that is not the token's pool on the venue, so it was not posted or mirrored. a buy through the venue's own pool for the token, the one the bot quotes, is.`);
+      return done([]);
+    }
+    // The gate before the feed as before the mirrors: a token orus will not clear is advertised nowhere, and the followers are not messaged for it.
+    const gate = !scan ? (this.#d.orus ? "orus had no read; unknown is not safe" : "orus is not wired into this bot; unknown is not safe") : scan.honeypot !== false ? (scan.honeypot ? "orus says honeypot" : "orus could not rule out a honeypot") : null;
+    if (gate) {
+      await tellLeader(`${what} was not posted or mirrored: ${gate}. a token orus clears is.`);
+      return done([]);
+    }
+    let mirrors: Mirror[] = [], broke = false;
+    try { mirrors = await this.mirror(leader.tgId, b.token, b.ethInWei, { budget: (tgId) => this.chargeDay(tgId) }); }
+    catch (error) { broke = true; console.error("copy venue mirror:", leader.tgId, (error instanceof Error ? error.message : String(error)).split("\n")[0]); }
+    let posted = false, feedBroke = false;
+    try { posted = await this.announce(leader.tgId, b.token, b.ethInWei, b.txHash, info, scan, hey, mirrors); }
+    catch (error) { feedBroke = true; console.error("copy venue feed:", leader.tgId, (error instanceof Error ? error.message : String(error)).split("\n")[0]); }
+    const went = mirrors.filter((m) => m.outcome !== "skipped").length, skipped = mirrors.length - went;
+    const reach = broke ? "a mirror broke on our side, every follower who was reached was told and the rest were not mirrored this time"
+      : mirrors.length ? `mirrored to ${went} of ${mirrors.length} follower${mirrors.length === 1 ? "" : "s"}${skipped ? `, ${skipped} skipped (each was told why)` : ""}` : "nobody follows you yet";
+    const feed = posted ? "posted to the feed" : feedBroke ? "not posted, the feed broke on our side" : null;
+    const did = feed ? (mirrors.length ? `${feed} and ${reach}` : `${feed}; ${reach}`) : (mirrors.length || broke ? reach : `seen; ${reach}`);
+    await tellLeader(`${what} was ${did}.`);
+    return done(mirrors);
+  }
+
   #tellText(leader: Leader, m: Mirror): string {
     const who = `<b>${leader.handle.replace(/[<>&]/g, "")}</b>`;
     if (m.outcome === "skipped") return `copy from ${who}: skipped. ${m.why}.`;
@@ -296,10 +669,14 @@ export class MemoryCopyStore implements CopyStore {
   readonly leadersMap = new Map<string, Leader>();
   readonly follows: Follow[] = [];
   readonly days = new Map<string, bigint>();
+  readonly userDays = new Map<string, number>();
+  readonly venueBuys = new Map<string, { leaderTgId: string; at: string }>();
+  readonly deferred = new Map<string, DeferredVenueBuy>();
   readonly mirrors: Mirror[] = [];
   async putLeader(l: Leader) { this.leadersMap.set(l.tgId, { ...l }); }
   async getLeader(tgId: string) { const l = this.leadersMap.get(tgId); return l ? { ...l } : undefined; }
   async leaders() { return [...this.leadersMap.values()].filter((l) => l.open).map((l) => ({ ...l })); }
+  async leaderByWallet(wallet: Address) { const w = wallet.toLowerCase(); const l = [...this.leadersMap.values()].find((x) => x.wallet?.toLowerCase() === w); return l ? { ...l } : undefined; }
   async putFollow(f: Follow) { await this.removeFollow(f.followerTgId, f.leaderTgId); this.follows.push({ ...f }); }
   async removeFollow(a: string, b: string) { const i = this.follows.findIndex((f) => f.followerTgId === a && f.leaderTgId === b); if (i >= 0) this.follows.splice(i, 1); }
   async followsOf(a: string) { return this.follows.filter((f) => f.followerTgId === a).map((f) => ({ ...f })); }
@@ -307,6 +684,16 @@ export class MemoryCopyStore implements CopyStore {
   async addTokenDay(day: string, token: Address, wei: bigint) { const k = `${day}|${token.toLowerCase()}`; const v = (this.days.get(k) ?? 0n) + wei; this.days.set(k, v); return v; }
   async log(m: Mirror) { this.mirrors.push({ ...m }); }
   async recent(leaderTgId: string, n: number) { return this.mirrors.filter((m) => m.leaderTgId === leaderTgId).slice(-n).reverse(); }
+  async addUserDay(day: string, tgId: string, executes: number) { const k = `${day}|${tgId}`; const v = (this.userDays.get(k) ?? 0) + executes; this.userDays.set(k, v); return v; }
+  async claimVenueBuy(txHash: Hex, leaderTgId: string, at: Date) { const k = txHash.toLowerCase(); if (this.venueBuys.has(k)) return false; this.venueBuys.set(k, { leaderTgId, at: at.toISOString() }); return true; }
+  async venueBuysSince(leaderTgId: string, since: Date) { return [...this.venueBuys.values()].filter((v) => v.leaderTgId === leaderTgId && Date.parse(v.at) >= since.getTime()).length; }
+  async deferVenueBuy(b: VenueBuy, since: Date) {
+    const k = b.txHash.toLowerCase(), have = this.deferred.get(k);
+    this.deferred.set(k, { buy: { ...b }, since: have?.since ?? since.toISOString() });
+    return !have;
+  }
+  async deferredVenueBuys() { return [...this.deferred.values()].sort((a, b) => a.since.localeCompare(b.since)).map((d) => ({ buy: { ...d.buy }, since: d.since })); }
+  async dropVenueBuy(txHash: Hex) { this.deferred.delete(txHash.toLowerCase()); }
 }
 
 type Row = Record<string, unknown>;
@@ -317,8 +704,25 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS bot_follows (follower_tg_id TEXT NOT NULL, leader_tg_id TEXT NOT NULL, cap_wei NUMERIC(40,0) NOT NULL, since TIMESTAMPTZ NOT NULL, PRIMARY KEY (follower_tg_id, leader_tg_id))`,
   `CREATE TABLE IF NOT EXISTS bot_copy_days (day TEXT NOT NULL, token TEXT NOT NULL, wei NUMERIC(40,0) NOT NULL, PRIMARY KEY (day, token))`,
   `CREATE TABLE IF NOT EXISTS bot_mirrors (id BIGSERIAL PRIMARY KEY, leader_tg_id TEXT NOT NULL, follower_tg_id TEXT NOT NULL, token TEXT NOT NULL, eth_wei NUMERIC(40,0) NOT NULL, tx_hash TEXT, outcome TEXT NOT NULL, why TEXT NOT NULL, at TIMESTAMPTZ NOT NULL)`,
+  // Wallet leaders came after the table: the rows from before are account leaders.
+  `ALTER TABLE bot_leaders ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'account'`,
+  `ALTER TABLE bot_leaders ADD COLUMN IF NOT EXISTS wallet TEXT`,
+  `CREATE INDEX IF NOT EXISTS bot_leaders_wallet ON bot_leaders (wallet)`,
+  // The day's ledger of buys from the bot per account, both paths; and the venue transactions claimed, one row per hash.
+  `CREATE TABLE IF NOT EXISTS bot_copy_user_days (day TEXT NOT NULL, tg_id TEXT NOT NULL, executes INTEGER NOT NULL, PRIMARY KEY (day, tg_id))`,
+  `CREATE TABLE IF NOT EXISTS bot_venue_buys (tx_hash TEXT PRIMARY KEY, leader_tg_id TEXT NOT NULL, at TIMESTAMPTZ NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS bot_venue_buys_leader_at ON bot_venue_buys (leader_tg_id, at)`,
+  // The venue buys a read failed on before the claim, kept whole to be read again; one row per hash, gone once read or given up.
+  `CREATE TABLE IF NOT EXISTS bot_venue_deferred (tx_hash TEXT PRIMARY KEY, block NUMERIC(20,0) NOT NULL, buyer TEXT NOT NULL, token TEXT NOT NULL, eth_in_wei NUMERIC(40,0) NOT NULL, tokens_out NUMERIC(60,0) NOT NULL, pool_id TEXT NOT NULL, since TIMESTAMPTZ NOT NULL)`,
 ];
-const rowLeader = (r: Row): Leader => ({ tgId: String(r.tg_id), account: String(r.account) as Address, handle: String(r.handle), since: new Date(String(r.since)).toISOString(), open: Boolean(r.open) });
+const rowDeferred = (r: Row): DeferredVenueBuy => ({
+  buy: { block: BigInt(String(r.block)), txHash: String(r.tx_hash) as Hex, buyer: getAddress(String(r.buyer)), token: String(r.token) as Address, ethInWei: BigInt(String(r.eth_in_wei)), tokensOut: BigInt(String(r.tokens_out)), poolId: String(r.pool_id) as Hex },
+  since: new Date(String(r.since)).toISOString(),
+});
+const rowLeader = (r: Row): Leader => ({
+  tgId: String(r.tg_id), account: String(r.account) as Address, handle: String(r.handle), since: new Date(String(r.since)).toISOString(), open: Boolean(r.open),
+  kind: r.kind === "wallet" ? "wallet" : "account", ...(r.wallet ? { wallet: getAddress(String(r.wallet)) } : {}),
+});
 const rowFollow = (r: Row): Follow => ({ followerTgId: String(r.follower_tg_id), leaderTgId: String(r.leader_tg_id), capWei: BigInt(String(r.cap_wei)), since: new Date(String(r.since)).toISOString() });
 const rowMirror = (r: Row): Mirror => ({ leaderTgId: String(r.leader_tg_id), followerTgId: String(r.follower_tg_id), token: String(r.token) as Address, ethWei: BigInt(String(r.eth_wei)), hash: r.tx_hash ? (String(r.tx_hash) as Hex) : null, outcome: String(r.outcome) as Mirror["outcome"], why: String(r.why), at: new Date(String(r.at)).toISOString() });
 
@@ -326,9 +730,10 @@ export class NeonCopyStore implements CopyStore {
   #ready: Promise<void> | undefined;
   constructor(private readonly sql: CopySql) {}
   #init(): Promise<void> { return (this.#ready ??= (async () => { for (const s of SCHEMA) await this.sql.query(s); })().catch((e) => { this.#ready = undefined; throw e; })); }
-  async putLeader(l: Leader) { await this.#init(); await this.sql.query(`INSERT INTO bot_leaders (tg_id, account, handle, since, open) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (tg_id) DO UPDATE SET account = EXCLUDED.account, handle = EXCLUDED.handle, open = EXCLUDED.open`, [l.tgId, l.account, l.handle, l.since, l.open]); }
+  async putLeader(l: Leader) { await this.#init(); await this.sql.query(`INSERT INTO bot_leaders (tg_id, account, handle, since, open, kind, wallet) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (tg_id) DO UPDATE SET account = EXCLUDED.account, handle = EXCLUDED.handle, open = EXCLUDED.open, kind = EXCLUDED.kind, wallet = EXCLUDED.wallet`, [l.tgId, l.account, l.handle, l.since, l.open, l.kind, l.wallet ? getAddress(l.wallet) : null]); }
   async getLeader(tgId: string) { await this.#init(); const [r] = await this.sql.query(`SELECT * FROM bot_leaders WHERE tg_id = $1`, [tgId]); return r ? rowLeader(r) : undefined; }
   async leaders() { await this.#init(); return (await this.sql.query(`SELECT * FROM bot_leaders WHERE open ORDER BY since`)).map(rowLeader); }
+  async leaderByWallet(wallet: Address) { await this.#init(); const [r] = await this.sql.query(`SELECT * FROM bot_leaders WHERE wallet = $1`, [getAddress(wallet)]); return r ? rowLeader(r) : undefined; }
   async putFollow(f: Follow) { await this.#init(); await this.sql.query(`INSERT INTO bot_follows (follower_tg_id, leader_tg_id, cap_wei, since) VALUES ($1,$2,$3,$4) ON CONFLICT (follower_tg_id, leader_tg_id) DO UPDATE SET cap_wei = EXCLUDED.cap_wei`, [f.followerTgId, f.leaderTgId, f.capWei.toString(), f.since]); }
   async removeFollow(a: string, b: string) { await this.#init(); await this.sql.query(`DELETE FROM bot_follows WHERE follower_tg_id = $1 AND leader_tg_id = $2`, [a, b]); }
   async followsOf(a: string) { await this.#init(); return (await this.sql.query(`SELECT * FROM bot_follows WHERE follower_tg_id = $1 ORDER BY since`, [a])).map(rowFollow); }
@@ -340,4 +745,24 @@ export class NeonCopyStore implements CopyStore {
   }
   async log(m: Mirror) { await this.#init(); await this.sql.query(`INSERT INTO bot_mirrors (leader_tg_id, follower_tg_id, token, eth_wei, tx_hash, outcome, why, at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [m.leaderTgId, m.followerTgId, m.token, m.ethWei.toString(), m.hash, m.outcome, m.why, m.at]); }
   async recent(leaderTgId: string, n: number) { await this.#init(); return (await this.sql.query(`SELECT * FROM bot_mirrors WHERE leader_tg_id = $1 ORDER BY id DESC LIMIT $2`, [leaderTgId, n])).map(rowMirror); }
+  async addUserDay(day: string, tgId: string, executes: number) {
+    await this.#init();
+    const [r] = await this.sql.query(`INSERT INTO bot_copy_user_days (day, tg_id, executes) VALUES ($1,$2,$3) ON CONFLICT (day, tg_id) DO UPDATE SET executes = bot_copy_user_days.executes + EXCLUDED.executes RETURNING executes`, [day, tgId, executes]);
+    return Number(r!.executes);
+  }
+  /** One statement: the row is inserted only when no run has it; the conflict inserts nothing and returns nothing, so the second run reads false. */
+  async claimVenueBuy(txHash: Hex, leaderTgId: string, at: Date) {
+    await this.#init();
+    const rows = await this.sql.query(`INSERT INTO bot_venue_buys (tx_hash, leader_tg_id, at) VALUES ($1,$2,$3) ON CONFLICT (tx_hash) DO NOTHING RETURNING tx_hash`, [txHash.toLowerCase(), leaderTgId, at.toISOString()]);
+    return rows.length === 1;
+  }
+  async venueBuysSince(leaderTgId: string, since: Date) { await this.#init(); const [r] = await this.sql.query(`SELECT count(*) AS n FROM bot_venue_buys WHERE leader_tg_id = $1 AND at >= $2`, [leaderTgId, since.toISOString()]); return Number(r?.n ?? 0); }
+  /** One statement, as the claim: the row goes in once, a repeat changes nothing (the first time stands) and returns no row. */
+  async deferVenueBuy(b: VenueBuy, since: Date) {
+    await this.#init();
+    const rows = await this.sql.query(`INSERT INTO bot_venue_deferred (tx_hash, block, buyer, token, eth_in_wei, tokens_out, pool_id, since) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT (tx_hash) DO NOTHING RETURNING tx_hash`, [b.txHash.toLowerCase(), b.block.toString(), b.buyer, b.token.toLowerCase(), b.ethInWei.toString(), b.tokensOut.toString(), b.poolId.toLowerCase(), since.toISOString()]);
+    return rows.length === 1;
+  }
+  async deferredVenueBuys() { await this.#init(); return (await this.sql.query(`SELECT * FROM bot_venue_deferred ORDER BY since, tx_hash`)).map(rowDeferred); }
+  async dropVenueBuy(txHash: Hex) { await this.#init(); await this.sql.query(`DELETE FROM bot_venue_deferred WHERE tx_hash = $1`, [txHash.toLowerCase()]); }
 }

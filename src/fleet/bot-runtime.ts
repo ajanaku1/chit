@@ -54,21 +54,63 @@
  *                                the second it lands, with the hash and two
  *                                doors into the bot (buy this, follow them).
  *                                Unset: no feed; leaders and followers still
- *                                work, the mirrors are told in private
+ *                                work, the mirrors are told in private.
+ *                                The watcher's cron posts to the same group:
+ *                                a wallet leader's venue buy (mirrored from
+ *                                the swap logs by the cron's own desk,
+ *                                bot-watch-runtime.ts) and the big buys
+ *                                (bot-alerts.ts)
+ *   BOT_POOL_KEYS                session mode: the operator's record of pools
+ *                                beside the chain's own ($CHIT's on 4663),
+ *                                token:fee:tickSpacing:hooks each, comma
+ *                                separated (pool-registry.ts). A mirror goes
+ *                                only through a recorded pool, so a token
+ *                                whose buys leaders should have mirrored is
+ *                                recorded here; the orders' and the
+ *                                watcher's crons read the same variable
  *   BOT_ORDERS_OFF               1 hides the limit buy and DCA buttons in
  *                                session mode and stops the cron at
  *                                api/bot/orders.js; otherwise the orders live
  *                                in the store beside the links and the cron
  *                                fires them (bot-orders.ts)
  *   CRON_SECRET                  the bearer Vercel's cron sends to
- *                                /api/bot/orders (and the buyback keeper);
- *                                without it the route refuses every pass,
- *                                because a pass sends executes
+ *                                /api/bot/orders and /api/bot/watch (and
+ *                                the buyback keeper); without it either
+ *                                route refuses every pass, because a pass
+ *                                sends executes and posts to the group
  *   BOT_ORDERS_PER_RUN           at most this many executes one pass of the
  *                                orders' cron sends; default 20
  *   BOT_ORDERS_CHAIN_ID          4663 (default) or 46630: the runner fires
  *                                only the orders placed on its chain
  *                                (bot-orders-runtime.ts has the rest)
+ *   BOT_WATCH_OFF                1 hides the 🔔 Alerts button in session
+ *                                mode and stops the chain watcher's cron at
+ *                                api/bot/watch.js; otherwise the watcher
+ *                                reads the venue's swap logs every five
+ *                                minutes (bot-watch.ts) and hands each ETH
+ *                                buy of $CHIT or an allowlisted token to two
+ *                                readers, each caught on its own: the
+ *                                alerts (bot-alerts.ts, the group and the
+ *                                users who asked) and the copy desk (a
+ *                                wallet leader's buy mirrored and posted).
+ *                                The cron's function reads the session
+ *                                bot's own variables for that: the signer,
+ *                                the daily limits, orus, HEY, the group
+ *   BOT_WATCH_CHAIN_ID           4663 (default) or 46630: the chain the
+ *                                watcher reads; its cursor is per chain
+ *   BOT_WATCH_BLOCKS_PER_RUN     how far the watcher's cursor moves in one
+ *                                pass at most; default 600
+ *   BOT_ALERT_GROUP_MIN_ETH      a buy of this much ETH or more is posted
+ *                                to BOT_GROUP_CHAT_ID by the watcher;
+ *                                default 0.5. Each user sets their own line
+ *                                on the Alerts card (bot-watch-runtime.ts
+ *                                has the rest)
+ *   /api/bot/lead                no variable of its own: the Sessions page
+ *                                posts a wallet leader's signed claim there
+ *                                (bot-lead-runtime.ts), session mode only,
+ *                                answered to FLEET_ORIGIN, the nonce from
+ *                                the links' store and the leader into the
+ *                                copy store, both on DATABASE_URL
  *   BOT_ASSET_DIR                where the share card's plate and fonts are
  *                                (default landing/public/bot, shipped with
  *                                the function)
@@ -121,7 +163,10 @@ import { MemoryBotLinkStore, NeonBotLinkStore, type BotLinkStore } from "./bot-l
 import { MemoryOrderStore, NeonOrderStore, type OrderStore } from "./bot-orders.js";
 import { createSessionChain } from "./bot-session-chain.js";
 import { SessionBot, type SessionBotDeps } from "./bot-session.js";
-import { CopyDesk, MemoryCopyStore, NeonCopyStore, type CopyStore } from "./bot-copy.js";
+import type { CopyStore } from "./bot-copy.js";
+import { createCopyDesk, dailyLimitsFromEnv } from "./bot-copy-runtime.js";
+import { recordedPoolsFromEnv } from "./pool-registry.js";
+import { MemoryAlertStore, NeonAlertStore, type AlertStore } from "./bot-alerts.js";
 import { MemoryUpdateClaims, NeonUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { DualBot, MemoryFloorStore, NeonFloorStore, type FloorStore } from "./bot-dual.js";
 
@@ -190,17 +235,6 @@ const updateClaimsFromEnv = (): UpdateClaims => {
   return new MemoryUpdateClaims();
 };
 
-const copyStoreFromEnv = (): CopyStore => {
-  const url = process.env.DATABASE_URL;
-  if (url) {
-    const sql = neon(url);
-    return new NeonCopyStore({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
-  }
-  if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
-  warnOnce("copy", "BOT_MEMORY_STORE=1: leaders and follows live in this instance's memory only");
-  return new MemoryCopyStore();
-};
-
 /** Session mode's standing orders (limit buys, DCA); the same store rule as the links. BOT_ORDERS_OFF=1 offers none. */
 const ordersFromEnv = (): OrderStore | undefined => {
   if (process.env.BOT_ORDERS_OFF === "1") return undefined;
@@ -211,6 +245,18 @@ const ordersFromEnv = (): OrderStore | undefined => {
   }
   if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
   return new MemoryOrderStore();
+};
+
+/** Session mode's alert subscriptions, read by the watcher's cron; the same store rule as the links. BOT_WATCH_OFF=1 offers no button. */
+const alertsFromEnv = (): AlertStore | undefined => {
+  if (process.env.BOT_WATCH_OFF === "1") return undefined;
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    const sql = neon(url);
+    return new NeonAlertStore({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
+  }
+  if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
+  return new MemoryAlertStore();
 };
 
 /** Session mode: mainnet, no key of the owner's anywhere; the bot's own signer pays gas and holds nothing. */
@@ -229,12 +275,13 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     : process.env.FLEET_RPC_URL || process.env.ROBINHOOD_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com";
   const site = process.env.FLEET_ORIGIN || "https://chit.tools";
   const allowlist = (process.env.FLEET_TOKEN_ALLOWLIST ?? "").split(",").map((t) => t.trim()).filter(isAddress);
-  const dailyExecutes = process.env.BOT_DAILY_EXECUTES ? Number(process.env.BOT_DAILY_EXECUTES) : undefined;
-  if (dailyExecutes !== undefined && !(Number.isInteger(dailyExecutes) && dailyExecutes > 0)) refuse("BOT_DAILY_EXECUTES must be a whole number");
-  const dailyGasWei = ethFromEnv("BOT_DAILY_GAS_ETH");
+  // The daily limits are read once here and handed to the bot and its desk; the watcher's cron reads them the same way (bot-copy-runtime.ts).
+  const { dailyExecutes, dailyGasWei } = dailyLimitsFromEnv(refuse);
   const orders = overrides.orders ?? ordersFromEnv();
+  // alerts: the 🔔 card writes a line per user; the watcher's cron (api/bot/watch.js) reads it.
+  const alerts = overrides.alertStore ?? alertsFromEnv();
   const deps: SessionBotDeps = {
-    reads: createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER }),
+    reads: createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) }),
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as `0x${string}` }),
     links: overrides.links ?? linksFromEnv(),
     updates: overrides.updates ?? updateClaimsFromEnv(),
@@ -246,21 +293,20 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     siteUrl: site,
     ...(overrides.playgroundFloor ? { playgroundFloor: true } : {}),
     ...(orders ? { orders } : {}),
+    ...(alerts ? { alerts } : {}),
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
   };
-  // Leaders and followers: the same reads, session and links; a follower is told in their private chat (its id is their Telegram id); the feed only with BOT_GROUP_CHAT_ID.
-  // Without orus the desk still opens but every mirror is skipped (unknown is not safe), so the operator is told once at build.
-  if (!deps.orus) warnOnce("copy-orus", "ORUS_PARTNER_API_KEY is not set: leaders and followers work, but every mirrored buy is skipped until it is");
-  const groupChatId = process.env.BOT_GROUP_CHAT_ID?.trim();
-  if (groupChatId !== undefined && groupChatId !== "" && !/^-?\d+$/.test(groupChatId)) refuse("BOT_GROUP_CHAT_ID must be a Telegram chat id (a number, -100… for a supergroup)");
-  const copy = new CopyDesk({
-    store: overrides.copyStore ?? copyStoreFromEnv(),
-    links: deps.links, reads: deps.reads, session: deps.session,
+  // Leaders and followers: the desk over the same reads, session and links (bot-copy-runtime.ts, the one factory this webhook and the watcher's cron share).
+  // This one mirrors an account leader's tapped buys; a wallet leader's venue buys reach the cron's own desk from the swap logs (bot-watch-runtime.ts).
+  const copy = createCopyDesk({
+    links: deps.links, reads: deps.reads, session: deps.session, telegram: deps.telegram,
     ...(deps.orus ? { orus: deps.orus } : {}),
-    botUsername: username!,
-    tell: (followerTgId, text) => deps.telegram.deliver({ kind: "send", chatId: followerTgId, text }),
-    ...(groupChatId ? { feed: { chatId: groupChatId, post: (text, keyboard) => deps.telegram.deliver({ kind: "send", chatId: groupChatId, text, keyboard }) } } : {}),
+    ...(deps.hey ? { hey: deps.hey } : {}),
+    ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
+    ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
+    ...(overrides.copyStore ? { store: overrides.copyStore } : {}),
+    botUsername: username!, refuse,
   });
   return new SessionBot({ ...deps, copy });
 };
@@ -323,7 +369,7 @@ const build = (overrides: BotOverrides = {}): ChitBot => {
   });
 };
 
-export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore; updates?: UpdateClaims; orders?: OrderStore; floors?: FloorStore; copyStore?: CopyStore; playgroundFloor?: boolean };
+export type SessionOverrides = { session?: import("./bot-session-chain.js").SessionChain; links?: BotLinkStore; updates?: UpdateClaims; orders?: OrderStore; floors?: FloorStore; copyStore?: CopyStore; alertStore?: AlertStore; playgroundFloor?: boolean };
 
 export const botMode = (): "playground" | "session" | "dual" => {
   const m = process.env.BOT_MODE || "playground";
