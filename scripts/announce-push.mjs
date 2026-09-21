@@ -17,10 +17,14 @@
  *                   does, every address and transaction a link to the
  *                   explorer, a replaced contract named as replaced.
  *
- * Nothing is reworded or summarised by a model. Every line is either a commit
- * subject, a paragraph the dev wrote, or a value from the deployment record
- * under a label this file gives it. The repository is private, so nothing
- * here links to it; the explorer is where a reader can check.
+ * With ANTHROPIC_API_KEY set, the push and the diary are told as one post in
+ * the group's own voice instead: what shipped, why a holder cares, what is
+ * live and what is next (see "the voice" below). Claude is given the facts
+ * this file gathered and nothing else, and is held to them. Without the key,
+ * or when the call fails, the grouped message and the diary go out as they
+ * always did, so a push is never left unsaid. The chain message is never
+ * reworded: every address and transaction in it is a link a reader can check.
+ * The repository is private, so nothing here links to it.
  *
  * Runs from .github/workflows/announce-push.yml with a full checkout, so the
  * diary and chain diffs can read the tree before and after the push. Needs
@@ -30,6 +34,7 @@
 
 import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 const token = process.env.TELEGRAM_BOT_TOKEN;
 const chat = process.env.TELEGRAM_CHAT_ID;
@@ -254,6 +259,125 @@ function chainMessage({ chainId, groups }) {
   return lines.join("\n");
 }
 
+/* ---------- the voice ---------- */
+
+/**
+ * The group hears feature news in one voice: lowercase, no dashes, no
+ * disclaimers, hyped about the work and honest about what it is. A push used
+ * to arrive as a list of commit subjects in another register, and the
+ * subjects in this repo are often whole paragraphs written for the dev who
+ * reads the log, not for a holder on a phone. So, with a key, Claude writes
+ * the post from the facts: every commit's whole message, the diary entries
+ * the push added, the chain records it will be followed by. The system
+ * prompt is the voice and the rules; the facts are the only material. What
+ * comes back is checked once more here: only the three tags Telegram allows,
+ * balanced, the cashtag upper case, no dashes, a length Telegram accepts. An
+ * unusable answer, a failed call or a missing key all fall back to the
+ * grouped message and the diary, so the group never misses a push because
+ * the voice was unavailable.
+ */
+const VOICE_MODEL = "claude-opus-5";
+
+export const VOICE = `you write the changelog posts for CHIT Chat, the telegram group of chit (chit.tools): a private funding layer for trading fleets on robinhood chain. a trader deposits into chit, chit funds fresh wallets and pays their gas, so the main wallet never touches the fleet: private, not anonymous. $CHIT is the token; the buyback contract buys and burns $CHIT with 1% of its balance every hour. @usechit_bot is the telegram trading bot: token card with the orus and hey research lab lines, the pnl share card, the copy desk. the developer is bambam. the reader is a holder on a phone who wants to know that the project moves and exactly what moved.
+
+the voice
+- everything lowercase. the only exceptions: the cashtag is always $CHIT, and names of contracts, flags, variables and addresses are copied as they are
+- no em dashes, no en dashes. commas, full stops, colons
+- no disclaimers, no "not financial advice", no "stay tuned", no hashtags, no exclamation marks in a row. one emoji at the head of the post, at most one per bullet
+- hyped but honest: the pride is in the work itself. short lines, plain words, a line a holder can repeat to a friend
+- explain, do not list. each bullet says what changed and why it matters to a holder or a trader, in one or two lines. small related commits become one bullet. a docs, chore or test commit gets half a line, or nothing if it is only housekeeping
+
+the facts
+- say only what the facts say. never a price, a date, a launch, a listing, a partnership or an audit the facts do not name. never call anything live on mainnet unless the facts say mainnet. a test is a test, a doc is a doc, a plan is a plan
+- if a commit says the work is not finished, say what is next in one line, in the facts' own words
+- when chain records are in the facts, end with "addresses below": the script posts them with explorer links right after your post
+- no commit hashes, no file paths, no links: the repository is private
+
+the shape
+- one line at the head: an emoji, then <b>a headline under ten words</b>
+- then two to six bullets, each "· <b>two or three words</b>: the explanation"
+- optionally one closing line: what it means for the holder, or what is next
+- telegram html only: <b>, <i>, <code>. no markdown, no other tags, no headings. under 1400 characters
+- write the post and nothing else: no preface, no notes, no code fence
+
+an example of the voice, a feature post from this group:
+<b>your pnl card just got receipts.</b>
+
+tap 📸 on any position in @usechit_bot and this is what comes out: what you paid, what the pool would fill right now (fee and impact in), the number that matters biggest, your referral link on it.
+
+and now two lines nobody else on the chain has on a card:
+🔎 <b>orus</b>: honeypot, taxes, bundlers, top 10, holders, liquidity. the scan, on your bag.
+🛠 <b>hey research lab</b>: shipping or not, commits, releases, verified builder. the builder, on your bag.
+
+a screenshot of your position is now also proof you checked the token. forward it anywhere.`;
+
+/** The facts, as plain text: the whole push, in the order it was made. */
+export function voiceFacts(event, commits, diary, chain) {
+  const pusher = event.pusher?.name ?? event.sender?.login ?? "the dev";
+  const lines = [`push to main by ${pusher}: ${commits.length} commit${commits.length === 1 ? "" : "s"}`, ""];
+  lines.push("the commits, oldest first, each with its whole message:");
+  for (const c of [...commits].reverse()) lines.push("", `--- commit by ${c.author?.name ?? pusher}`, String(c.message).trim());
+  if (diary.length) {
+    lines.push("", "dev diary entries this push added (the dev's own words):");
+    for (const e of diary) lines.push("", `## ${e.title}`, e.para);
+  }
+  if (chain.groups.length) {
+    lines.push("", `chain records this push added on ${CHAIN_NAMES[chain.chainId] ?? `chain ${chain.chainId}`} (posted with explorer links after your post):`);
+    for (const g of chain.groups) {
+      const part = PARTS[g.part] ?? { label: spaced(g.part), what: "" };
+      lines.push(`- ${part.label}${part.what ? ` (${part.what})` : ""}: ${g.items.map((it) => `${fieldLabel(it.leaf)} ${looksOnChain(it.value) ? short(String(it.value)) : String(it.value)}`).join("; ")}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+/** The answer, held to Telegram's HTML and the group's voice; empty when it cannot be made safe. */
+export const tidyVoice = (raw) => {
+  let s = String(raw).replace(/^\s*```[a-z]*\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  // The dashes the voice never uses: a spaced one was a comma, a joined en dash a hyphen.
+  s = s.replace(/\s+[\u2014\u2013]\s+/g, ", ").replace(/\u2014/g, ", ").replace(/\u2013/g, "-");
+  s = s.replace(/\$chit\b/gi, "$CHIT");
+  // Only <b>, <i> and <code> survive; every other angle bracket and bare ampersand is escaped, or Telegram refuses the post.
+  const kept = [];
+  s = s.replace(/<\/?(b|i|code)>/g, (t) => { kept.push(t); return `\u0000${kept.length - 1}\u0000`; });
+  s = s.replace(/&(?!(amp|lt|gt|quot|#\d+);)/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  s = s.replace(/\u0000(\d+)\u0000/g, (_, i) => kept[Number(i)]);
+  for (const t of ["b", "i", "code"]) {
+    const open = (s.match(new RegExp(`<${t}>`, "g")) ?? []).length, close = (s.match(new RegExp(`</${t}>`, "g")) ?? []).length;
+    if (open !== close) return "";
+  }
+  return s;
+};
+
+async function voiceMessage(event, commits, diary, chain) {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return null;
+  let Anthropic;
+  try { ({ default: Anthropic } = await import("@anthropic-ai/sdk")); } catch (e) { console.log(`voice: the sdk is not installed (${e?.message ?? e}); the grouped message goes out`); return null; }
+  const facts = voiceFacts(event, commits, diary, chain);
+  try {
+    const client = new Anthropic({ apiKey: key, timeout: 120_000, maxRetries: 1 });
+    const response = await client.messages.create({
+      model: VOICE_MODEL,
+      max_tokens: 8192,
+      thinking: { type: "adaptive" },
+      output_config: { effort: "medium" },
+      system: VOICE,
+      messages: [{ role: "user", content: facts }],
+    });
+    if (response.stop_reason !== "end_turn") { console.log(`voice: the answer stopped on ${response.stop_reason}; the grouped message goes out`); return null; }
+    const post = tidyVoice(response.content.filter((b) => b.type === "text").map((b) => b.text).join(""));
+    if (post.length < 40 || post.length > TELEGRAM_MAX) { console.log(`voice: an answer of ${post.length} characters cannot be posted; the grouped message goes out`); return null; }
+    console.log(`voice: ${response.usage.input_tokens} in, ${response.usage.output_tokens} out`);
+    return post;
+  } catch (e) {
+    // Any failure is the same for the group: the plain message instead. The class is logged so the run says which it was.
+    const kind = e instanceof Anthropic.AuthenticationError ? "the key was refused" : e instanceof Anthropic.RateLimitError ? "rate limited" : e instanceof Anthropic.APIError ? `api error ${e.status}` : e instanceof Anthropic.APIConnectionError ? "no connection" : "error";
+    console.log(`voice: ${kind}: ${e?.message ?? e}; the grouped message goes out`);
+    return null;
+  }
+}
+
 /* ---------- send ---------- */
 
 /** Telegram refuses a message over 4096 characters with a 400. A push of many
@@ -313,12 +437,13 @@ if (!pushEvent || !Array.isArray(pushEvent.commits)) { console.log("no push even
 function commitsFromGit(before, after) {
   if (!before || !after || /^0+$/.test(before)) return null;
   try {
-    const out = git("log", "--no-merges", "--format=%H%x1f%s%x1f%an", `${before}..${after}`);
+    // The whole message, not only the subject: the voice reads the body, where this repo's devs say why.
+    const out = git("log", "--no-merges", "--format=%H%x1f%B%x1f%an%x1e", `${before}..${after}`);
     if (!out.trim()) return [];
     const repoUrl = `https://github.com/${process.env.GITHUB_REPOSITORY ?? ""}`;
-    return out.trim().split("\n").map((line) => {
-      const [id, message, name] = line.split("\x1f");
-      return { id, message, author: { name }, url: `${repoUrl}/commit/${id}` };
+    return out.split("\x1e").map((r) => r.trim()).filter(Boolean).map((record) => {
+      const [id, message, name] = record.split("\x1f");
+      return { id, message: message.trim(), author: { name }, url: `${repoUrl}/commit/${id}` };
     });
   } catch {
     return null;
@@ -330,12 +455,13 @@ const commits = fromGit ?? pushEvent.commits.filter((c) => c && typeof c.id === 
 if (commits.length === 0) { console.log("push carried no new commits; nothing to say"); process.exit(0); }
 
 const before = pushEvent.before, after = pushEvent.after;
-const messages = [pushMessage(pushEvent, commits)];
-if (before && after && !/^0+$/.test(before)) {
-  for (const e of diaryEntries(before, after)) messages.push(diaryMessage(e));
-  const chain = chainEntries(before, after);
-  if (chain.groups.length) messages.push(chainMessage(chain));
-}
+const ranged = Boolean(before && after && !/^0+$/.test(before));
+const diary = ranged ? diaryEntries(before, after) : [];
+const chain = ranged ? chainEntries(before, after) : { chainId: 46630, groups: [] };
+/* One post in the voice when it can be had; the grouped message and the diary otherwise. The chain message follows either. */
+const voiced = await voiceMessage(pushEvent, commits, diary, chain);
+const messages = voiced ? [voiced] : [pushMessage(pushEvent, commits), ...diary.map(diaryMessage)];
+if (chain.groups.length) messages.push(chainMessage(chain));
 
 for (const m of messages) await send(m);
 console.log(`announced: ${messages.length} message(s) for ${commits.length} commit(s)`);

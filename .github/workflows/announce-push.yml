@@ -1,17 +1,21 @@
 name: Announce pushes to Telegram
 
-# Every push to main is posted to the community group: the commits grouped as
-# new / fixed / tests, any new dev diary entry from IMPLEMENTATION.md in the
-# dev's own words, and any new address or transaction recorded under
-# deployments/. See scripts/announce-push.mjs.
+# Every push to main is posted to the community group: what shipped, told in
+# the group's voice from the commits and any new dev diary entry in
+# IMPLEMENTATION.md, then any new address or transaction recorded under
+# deployments/ with explorer links. See scripts/announce-push.mjs.
 #
-# Two repository secrets, set once under Settings > Secrets and variables >
+# Repository secrets, set once under Settings > Secrets and variables >
 # Actions:
 #   TELEGRAM_BOT_TOKEN   a bot that is a member of the group (BotFather makes
 #                        one; add it to the group and let it post)
 #   TELEGRAM_CHAT_ID     the group's @username for a public group, or its
 #                        numeric id (negative for supergroups)
-# Without them the job prints what it would have sent and passes.
+#   ANTHROPIC_API_KEY    optional: with it the post is written in the group's
+#                        voice by Claude from the push's facts; without it the
+#                        commits go out grouped as new / fixed / tests, with
+#                        the diary entry as written
+# Without the Telegram pair the job prints what it would have sent and passes.
 
 on:
   push:
@@ -39,7 +43,7 @@ concurrency:
 jobs:
   announce:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 6
     steps:
       # Full history: the diary and chain messages diff the tree before and
       # after the push, and `before` can be many commits back.
@@ -51,10 +55,19 @@ jobs:
         with:
           node-version: '22'
 
+      # Only the Anthropic SDK, into a folder of its own: the repository's tree
+      # (hardhat, playwright) is not needed to post a message. The checkout has
+      # no node_modules, so a link there is what the script's import resolves.
+      - name: Fetch the Anthropic SDK
+        run: |
+          npm install --prefix "$RUNNER_TEMP/sdk" --no-audit --no-fund --no-package-lock @anthropic-ai/sdk
+          ln -s "$RUNNER_TEMP/sdk/node_modules" node_modules
+
       - name: Post the push
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           ANNOUNCE_BEFORE: ${{ inputs.before }}
           ANNOUNCE_AFTER: ${{ inputs.after }}
         run: node scripts/announce-push.mjs
