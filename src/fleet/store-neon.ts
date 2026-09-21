@@ -51,6 +51,7 @@ const SCHEMA = [
   `ALTER TABLE fleet_owed_spend ADD COLUMN IF NOT EXISTS tx_hash TEXT`,
   `ALTER TABLE fleet_owed_spend ADD COLUMN IF NOT EXISTS nonce BIGINT`,
   `ALTER TABLE fleet_owed_spend ADD COLUMN IF NOT EXISTS voided BOOLEAN NOT NULL DEFAULT FALSE`,
+  `ALTER TABLE fleet_owed_spend ADD COLUMN IF NOT EXISTS sent_kind TEXT`,
 ];
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -159,21 +160,21 @@ export const createNeonStore = (
       );
       return String(row?.["owed"] ?? "0");
     },
-    async markSent(ids, txHash, nonce) {
+    async markSent(ids, txHash, nonce, kind) {
       if (ids.length === 0) return;
-      await sql.query("UPDATE fleet_owed_spend SET tx_hash = $1, nonce = $2 WHERE id = ANY($3::text[])", [txHash, nonce, [...ids]]);
+      await sql.query("UPDATE fleet_owed_spend SET tx_hash = $1, nonce = $2, sent_kind = $3 WHERE id = ANY($4::text[])", [txHash, nonce, kind, [...ids]]);
     },
     async sentBatches(): Promise<SentBatch[]> {
       const rows = await sql.query(
-        `SELECT tx_hash, nonce, array_agg(id ORDER BY id) AS ids FROM fleet_owed_spend
+        `SELECT tx_hash, nonce, sent_kind, array_agg(id ORDER BY id) AS ids FROM fleet_owed_spend
          WHERE tx_hash IS NOT NULL AND queued_tx IS NULL AND NOT voided
-         GROUP BY tx_hash, nonce ORDER BY nonce`,
+         GROUP BY tx_hash, nonce, sent_kind ORDER BY nonce`,
       );
-      return rows.map((row) => ({ txHash: String(row["tx_hash"]) as Hex, nonce: Number(row["nonce"]), ids: (row["ids"] as string[]).map(String) }));
+      return rows.map((row) => ({ txHash: String(row["tx_hash"]) as Hex, nonce: Number(row["nonce"]), ids: (row["ids"] as string[]).map(String), kind: row["sent_kind"] === "payout" ? "payout" : "batch" }));
     },
     async resolveSent(ids, to) {
       if (ids.length === 0) return;
-      const set = to === "confirmed" ? "queued_tx = tx_hash" : to === "void" ? "voided = TRUE" : "tx_hash = NULL, nonce = NULL, leased_until = 0";
+      const set = to === "confirmed" ? "queued_tx = tx_hash" : to === "void" ? "voided = TRUE" : "tx_hash = NULL, nonce = NULL, sent_kind = NULL, leased_until = 0";
       await sql.query(`UPDATE fleet_owed_spend SET ${set} WHERE id = ANY($1::text[])`, [[...ids]]);
     },
   };

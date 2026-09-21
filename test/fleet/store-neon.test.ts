@@ -162,14 +162,14 @@ describe("Neon store", () => {
 
   it("the sent state is three additive columns and one statement each way: mark, list by hash, resolve", async () => {
     const sql = fakeSql(({ query, params }) => {
-      if (query.includes("SET tx_hash = $1, nonce = $2")) return [];
+      if (query.includes("SET tx_hash = $1, nonce = $2, sent_kind = $3")) return [];
       if (query.includes("array_agg(id")) {
         assert.match(query, /tx_hash IS NOT NULL AND queued_tx IS NULL AND NOT voided/);
-        return [{ tx_hash: TX, nonce: 41, ids: ["o1", "o2"] }];
+        return [{ tx_hash: TX, nonce: 41, sent_kind: "payout", ids: ["o1", "o2"] }];
       }
       if (query.startsWith("UPDATE fleet_owed_spend SET queued_tx = tx_hash")) return [];
       if (query.startsWith("UPDATE fleet_owed_spend SET voided = TRUE")) return [];
-      if (query.startsWith("UPDATE fleet_owed_spend SET tx_hash = NULL, nonce = NULL, leased_until = 0")) return [];
+      if (query.startsWith("UPDATE fleet_owed_spend SET tx_hash = NULL, nonce = NULL, sent_kind = NULL, leased_until = 0")) return [];
       if (query.includes("UPDATE fleet_owed_spend SET leased_until")) {
         assert.match(query, /queued_tx IS NULL AND tx_hash IS NULL AND NOT voided/, "a sent or voided row is never leased");
         return [];
@@ -179,17 +179,17 @@ describe("Neon store", () => {
     });
     const store = createNeonStore(sql);
     await store.initialize();
-    assert.equal(sql.calls.filter((c) => c.query.includes("ADD COLUMN IF NOT EXISTS")).length, 3, "the migration is additive");
-    await store.markSent(["o1", "o2"], TX, 41);
-    assert.deepEqual(sql.calls.at(-1)!.params, [TX, 41, ["o1", "o2"]]);
-    assert.deepEqual(await store.sentBatches(), [{ txHash: TX, nonce: 41, ids: ["o1", "o2"] }]);
+    assert.equal(sql.calls.filter((c) => c.query.includes("ADD COLUMN IF NOT EXISTS")).length, 4, "the migration is additive");
+    await store.markSent(["o1", "o2"], TX, 41, "payout");
+    assert.deepEqual(sql.calls.at(-1)!.params, [TX, 41, "payout", ["o1", "o2"]]);
+    assert.deepEqual(await store.sentBatches(), [{ txHash: TX, nonce: 41, ids: ["o1", "o2"], kind: "payout" }]);
     await store.resolveSent(["o1"], "confirmed");
     await store.resolveSent(["o2"], "owed");
     await store.resolveSent(["o3"], "void");
     await store.resolveSent([], "void");
     assert.deepEqual(sql.calls.slice(-3).map((c) => c.query.split(" WHERE")[0]), [
       "UPDATE fleet_owed_spend SET queued_tx = tx_hash",
-      "UPDATE fleet_owed_spend SET tx_hash = NULL, nonce = NULL, leased_until = 0",
+      "UPDATE fleet_owed_spend SET tx_hash = NULL, nonce = NULL, sent_kind = NULL, leased_until = 0",
       "UPDATE fleet_owed_spend SET voided = TRUE",
     ]);
     await store.takeOwed(1);

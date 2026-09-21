@@ -86,8 +86,8 @@ const contract = (name: string, make: () => StorePort): void => {
       await store.recordOwed(owed("s2", DEPOSITOR, "2500"));
       await store.recordOwed(owed("s3", OTHER, "7"));
       const [a, b] = await store.takeOwed(2);
-      await store.markSent([a!.id, b!.id], TX, 41);
-      assert.deepEqual(await store.sentBatches(), [{ txHash: TX, nonce: 41, ids: [a!.id, b!.id].sort() }]);
+      await store.markSent([a!.id, b!.id], TX, 41, "batch");
+      assert.deepEqual(await store.sentBatches(), [{ txHash: TX, nonce: 41, ids: [a!.id, b!.id].sort(), kind: "batch" }]);
       assert.equal(await store.owedFor(DEPOSITOR), "3500", "sent is still owed: the balance keeps subtracting it until the chain confirms");
       assert.deepEqual((await store.takeOwed(5)).map((o) => o.id), ["s3"], "a sent row is not leased again on the strength of anything");
 

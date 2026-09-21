@@ -25,7 +25,10 @@ export type OwedSpend = { id: string; depositor: Address; amount: Uint; incurred
  * recorded before the broadcast and its fate has not been seen. The next
  * sweep resolves each by the hash, never by an exception.
  */
-export type SentBatch = { txHash: Hex; nonce: number; ids: string[] };
+export type SentBatch = { txHash: Hex; nonce: number; ids: string[]; kind: SentKind };
+
+/** What the transaction was: a queue batch (mined means the rows are the chain's) or a withdrawal payout (mined means the charge stands, to be queued later; anything else voids it). */
+export type SentKind = "batch" | "payout";
 
 /** Where a resolved `sent` row goes: the chain's (confirmed), the next batch's (owed), or nobody's (void: a charge for a payout that never happened). */
 export type SentResolution = "confirmed" | "owed" | "void";
@@ -61,7 +64,7 @@ export type StorePort = {
    * Written before the broadcast (the adapter's `record`), so a process that
    * dies next leaves rows with a name to resolve, not rows to queue again.
    */
-  markSent(ids: readonly string[], txHash: Hex, nonce: number): Promise<void>;
+  markSent(ids: readonly string[], txHash: Hex, nonce: number, kind: SentKind): Promise<void>;
   /** Every batch still `sent`, oldest nonce first, for the sweep to resolve. */
   sentBatches(): Promise<SentBatch[]>;
   /** What the hash came to. `sent --exception--> owed` is the transition that does not exist. */
@@ -71,7 +74,7 @@ export type StorePort = {
 /** Default lease on an operator lock: long enough for a five-account buy with receipts, short enough that a dead instance frees it. */
 export const LOCK_TTL_MS = 120_000;
 
-type OwedRow = OwedSpend & { leased: boolean; confirmed: boolean; voided: boolean; txHash?: Hex; nonce?: number };
+type OwedRow = OwedSpend & { leased: boolean; confirmed: boolean; voided: boolean; txHash?: Hex; nonce?: number; kind?: SentKind };
 
 export const createMemoryStore = (): StorePort => {
   const results = new Map<string, IdempotencyRecord>();
@@ -134,14 +137,14 @@ export const createMemoryStore = (): StorePort => {
       }
       return sum.toString();
     },
-    async markSent(ids, txHash, nonce) {
-      for (const id of ids) { const row = owed.get(id); if (row) { row.txHash = txHash; row.nonce = nonce; } }
+    async markSent(ids, txHash, nonce, kind) {
+      for (const id of ids) { const row = owed.get(id); if (row) { row.txHash = txHash; row.nonce = nonce; row.kind = kind; } }
     },
     async sentBatches() {
       const byHash = new Map<Hex, SentBatch>();
       for (const row of owed.values()) {
         if (row.txHash === undefined || row.confirmed || row.voided) continue;
-        const batch = byHash.get(row.txHash) ?? { txHash: row.txHash, nonce: row.nonce ?? 0, ids: [] };
+        const batch = byHash.get(row.txHash) ?? { txHash: row.txHash, nonce: row.nonce ?? 0, ids: [], kind: row.kind ?? "batch" };
         batch.ids.push(row.id);
         byHash.set(row.txHash, batch);
       }
@@ -153,7 +156,7 @@ export const createMemoryStore = (): StorePort => {
         if (!row) continue;
         if (to === "confirmed") row.confirmed = true;
         else if (to === "void") row.voided = true;
-        else { delete row.txHash; delete row.nonce; row.leased = false; }
+        else { delete row.txHash; delete row.nonce; delete row.kind; row.leased = false; }
       }
     },
   };
