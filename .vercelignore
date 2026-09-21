@@ -11,11 +11,14 @@
 /reports/
 /scripts/*
 !/scripts/assemble-site.mjs
+# the build computes the landing's progress.json: the generator, and below, the README it reads the stages from
+!/scripts/progress.mjs
 /submission/
 /test/
 /video/
 /.env*
 /*.md
+!/README.md
 /hardhat.config.ts
 /verify.sh
 

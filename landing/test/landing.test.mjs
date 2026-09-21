@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { access, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
@@ -354,4 +354,32 @@ test("progress.json matches the facts scripts/progress.mjs reads", () => {
     encoding: "utf8",
   });
   assert.equal(check.status, 0, check.stderr || check.stdout);
+});
+
+/**
+ * The build computes progress.json itself: scripts/assemble-site.mjs runs the
+ * generator. A Vercel build only has the files .vercelignore lets through,
+ * and that file dropped all of scripts/ but the assembler, and every
+ * top-level .md, so the first build after the change died on
+ * "Cannot find module '/vercel/path0/scripts/progress.mjs'" (21 September).
+ * Nothing local can see that: the files are all there on a checkout. So this
+ * asks git, which reads .vercelignore the way it reads .gitignore, which
+ * tracked files a build never sees, and holds the list against what the
+ * assembler runs and what the generator reads.
+ */
+test("the build has every file the progress generator needs", async (t) => {
+  const repo = new URL("../../", import.meta.url);
+  const specs = await readdir(new URL("specs/", repo)).catch(() => null);
+  if (!specs) return t.skip("no specs/ here: the public mirror strips it");
+  const dropped = spawnSync("git", ["ls-files", "-c", "-i", "--exclude-from=.vercelignore"], { cwd: fileURLToPath(repo), encoding: "utf8" });
+  if (dropped.status !== 0) return t.skip("not a git checkout: nothing to ask");
+  const unseen = new Set(dropped.stdout.split("\n"));
+
+  const assemble = await readFile(new URL("scripts/assemble-site.mjs", repo), "utf8");
+  const runs = [...assemble.matchAll(/["'](scripts\/[\w.-]+\.mjs)["']/g)].map((m) => m[1]);
+  assert.ok(runs.includes("scripts/progress.mjs"), "the assembler runs the progress generator");
+
+  const needed = ["scripts/assemble-site.mjs", ...runs, "README.md",
+    ...specs.filter((name) => /^\d{3}-/.test(name)).flatMap((name) => [`specs/${name}/tasks.md`, `specs/${name}/spec.md`])];
+  assert.deepEqual(needed.filter((file) => unseen.has(file)), [], "the build cannot run or read a file .vercelignore drops");
 });

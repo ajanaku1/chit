@@ -36,7 +36,9 @@ the specced work, and the sheet says so.
 specs/*/tasks.md + README.md ──▶ scripts/progress.mjs ──▶ landing/public/progress.json
                                         │
         the Vercel build runs it (scripts/assemble-site.mjs), so the
-        deployed file is computed from the deployed task lists
+        deployed file is computed from the deployed task lists; .vercelignore
+        lets the script and the README through for that, and the landing's
+        suite asks git whether it still does
                                         │
         .github/workflows/verify.yml runs --check on every push and
         pull request, so the committed copy cannot lag the lists
