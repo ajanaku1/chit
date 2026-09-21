@@ -2077,3 +2077,25 @@ with a zero fee, all env). Rehearsed on a fork of mainnet at block
 63,969,832: the beta set, the caps read back as 0.1 / 0.05 / 1, the note
 written. `docs/runbooks/mainnet-beta.md` is the sequence, with what the beta
 is not.
+
+## The build can run the progress generator it was told to run (2026-09-21, Boye, branch fix/progress-build, T005)
+
+Since T005 the build computes `progress.json` itself: `scripts/assemble-site.mjs`
+runs `scripts/progress.mjs`. But a Vercel build only has the files
+`.vercelignore` lets through, and that file dropped everything under `scripts/`
+except the assembler, and every top-level `.md`, the README the generator reads
+the stages from included. So the first build after T005 died in 33 seconds on
+"Cannot find module '/vercel/path0/scripts/progress.mjs'" (the preview of
+`feat/mainnet-beta-rebased`, the commit that is now main's tip). Production did
+not show it only because a push to main no longer deploys; the next deploy by
+hand would have failed the same way.
+
+Two lines in `.vercelignore` let the generator and the README through
+(`specs/` was never dropped). Nothing local can see this class of fault, since
+on a checkout the files are all there, so the landing's suite now asks git,
+which reads `.vercelignore` the way it reads `.gitignore`, which tracked files a
+build never sees, and holds that against every script the assembler runs and
+every file the generator reads. Rehearsed on exactly those files with no `.git`:
+the assembler exits 0 and writes 88 of 175 with the commit from
+`VERCEL_GIT_COMMIT_SHA`; the sheet already copes with a build that knows its
+commit and nothing more.
