@@ -2077,3 +2077,25 @@ with a zero fee, all env). Rehearsed on a fork of mainnet at block
 63,969,832: the beta set, the caps read back as 0.1 / 0.05 / 1, the note
 written. `docs/runbooks/mainnet-beta.md` is the sequence, with what the beta
 is not.
+
+## The sweep's clocks (2026-09-21, Boye, branch feat/sweep-clocks, T041, T042, T045)
+
+Three settings that decide whether a charge is posted inside its window, none
+of which was stated anywhere. The chain definition now gives a block time, so
+the service checks for a receipt every half second instead of every four
+(Robinhood Chain seals a block in about 286 ms on 46630 and 102 ms on 4663,
+measured over 20,000 blocks). Every function under `api/fleet/` states how long
+it may run. And posting has a clock of its own: `/api/fleet/sweep-posting`,
+every two hours, posts what is due and funds what is ready, and never queues.
+
+T045 asked for one Vercel cron to be moved off the twelve-hour spacing, and
+that cannot be done: two runs a day always leave a gap of at least twelve
+hours, wherever they are put. The second clock is what the task was after. The
+queueing schedule is left alone on purpose, because how often it ticks is the
+size of the batch a charge hides in; it does not tick faster for safety's sake.
+`test/fleet/sweep-timing.test.ts` holds all of it: the poll interval, a
+duration for every fleet function with the sweep's curl budget above it, the
+queueing schedule as it was, and the largest posting gap under a third of
+`POST_WINDOW`, read from the contract. `finding_M3c` built its own chain and so
+could never see the fix; `fixed_M3c` takes the chain the service builds its
+clients from.

@@ -147,9 +147,16 @@ memory, is the source of truth.
 | FLEET test token | `0x13283ab8e1f2bc4297e9ec6480c80c59674af554` |
 
 Site: **chit.tools** — landing at the root, app under `/app`, API functions
-under `/api/fleet/*`, on Vercel. A daily cron hits `/api/fleet/sweep` (Hobby
-plan: daily is the ceiling, so sweep also runs opportunistically on ordinary
-traffic — see §6).
+under `/api/fleet/*`, on Vercel. Two clocks drive the sweep, and they are kept
+apart on purpose. The queueing clock hits `/api/fleet/sweep`: GitHub Actions
+every four hours, and two daily Vercel crons as a fallback. How often it ticks
+is the size of the batch a charge hides in, so it does not tick faster for
+safety's sake. The posting clock hits `/api/fleet/sweep-posting` every two
+hours from `vercel.json`: it posts what is due and funds what is ready, never
+queues, and exists to beat the pool's 12-hour `POST_WINDOW`. The sweep also
+runs opportunistically on ordinary traffic (see §6). Every function under
+`api/fleet/` states its `maxDuration` in `vercel.json`;
+`test/fleet/sweep-timing.test.ts` holds the clocks and the durations.
 
 ---
 
