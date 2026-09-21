@@ -80,7 +80,8 @@ const fakeRpc = (abi: Abi, m: Model, seen: { calls: number; tags: Set<string>; s
     }
     const known = abi.filter((e): e is AbiFunction => e.type === "function").find((e) => toFunctionSelector(e) === call.callData.slice(0, 10));
     const name = known?.name ?? Object.entries(OPTIONAL_VIEWS).find(([, s]) => s === call.callData.slice(0, 10))?.[0] ?? "";
-    if (!(name in m.views) && !known) return { success: false, returnData: "0x" as Hex };
+    // An optional view the scenario does not list is a pool without it, whether or not the compiled ABI knows the name.
+    if (!(name in m.views) && (!known || name in OPTIONAL_VIEWS)) return { success: false, returnData: "0x" as Hex };
     if (name in m.views) {
       const value = m.views[name];
       const type = typeof value === "boolean" ? "bool" : typeof value === "bigint" ? "uint256" : "address";

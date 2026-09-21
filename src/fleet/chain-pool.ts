@@ -18,6 +18,8 @@ const POOL_ABI = parseAbi([
   "function setPaused(bool paused_)",
   "function queueSpendBatch(bytes[] encDepositors, uint256[] amounts, uint64[] dueAts) returns (uint256[])",
   "function postQueued(bytes32 id, address depositor)",
+  "function postQueuedBatch(bytes32[] ids, address[] depositors) returns (uint8[])",
+  "function donate() payable",
   "function claimOperator(uint256 amount)",
   "function openDraw(bytes32 campaign, uint256 amount, uint64 dueAt, bytes ownerRef)",
   "function topUpDraw(bytes32 campaign, uint256 amount)",
@@ -31,6 +33,10 @@ const POOL_ABI = parseAbi([
   "function drawOf(bytes32 campaign) view returns ((uint256 amount, uint256 spent, uint256 reserved, uint256 principalOut, uint64 dueAt, bytes ownerRef, uint8 state))",
   "function headroom(address depositor) view returns (uint256 perDepositor, uint256 perPool)",
   "function claimable() view returns (uint256)",
+  "function totalPosted() view returns (uint256)",
+  "function everDeposited() view returns (uint256)",
+  "function exitsPaid() view returns (uint256)",
+  "function donated() view returns (uint256)",
   "function paused() view returns (bool)",
   "function DEPOSITOR_CAP() view returns (uint256)",
   "function DRAW_CAP() view returns (uint256)",
@@ -120,6 +126,10 @@ export type FleetPool = {
   /** One transaction for a sweep's worth of charges; each entry on its own timer. */
   queueSpendBatch(encDepositors: readonly Hex[], amounts: readonly bigint[], dueAts: readonly bigint[]): Promise<Hex>;
   postQueued(id: Hex, depositor: Address): Promise<Hex>;
+  /** Many postings in one transaction; the contract reports per entry and reverts for none of them. */
+  postQueuedBatch(ids: readonly Hex[], depositors: readonly Address[]): Promise<Hex>;
+  /** ETH to the pool crediting nobody: how a short pool is made whole, paused or not. */
+  donate(amount: bigint): Promise<Hex>;
   claimable(): Promise<bigint>;
   claimOperator(amount: bigint): Promise<Hex>;
 };
@@ -271,6 +281,8 @@ export const createFleetPool = (
     closeDraw: (campaign) => write("closeDraw", [campaign]),
     queueSpendBatch: (encDepositors, amounts, dueAts) => write("queueSpendBatch", [encDepositors, amounts, dueAts]),
     postQueued: (id, depositor) => write("postQueued", [id, depositor]),
+    postQueuedBatch: (ids, depositors) => write("postQueuedBatch", [ids, depositors]),
+    donate: (amount) => write("donate", [], amount),
     claimable: () => read<bigint>("claimable"),
     claimOperator: (amount) => write("claimOperator", [amount]),
   };

@@ -93,6 +93,8 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
       return `0x${"c".repeat(64)}`;
     },
     postQueued: async (...args) => { calls.push({ fn: "postQueued", args }); return "0x01"; },
+    postQueuedBatch: async (...args) => { calls.push({ fn: "postQueuedBatch", args }); return "0x01"; },
+    donate: async (...args) => { calls.push({ fn: "donate", args }); return "0x01"; },
     claimable: async () => 0n,
     claimOperator: async () => "0x01",
   };

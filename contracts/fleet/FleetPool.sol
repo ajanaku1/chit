@@ -57,6 +57,21 @@ contract FleetPool is Ownable2Step {
         bool posted;
     }
 
+    /// @notice What one entry of a batch posting came to. A batch never reverts
+    ///         for one entry that cannot post; it says so per entry instead.
+    enum PostResult {
+        Posted,
+        Expired,
+        AlreadyPosted
+    }
+
+    /// @notice The most entries one postQueuedBatch takes. Measured in
+    ///         test/fleet/FleetPool.t.sol (test_aFullBatchFitsInHalfATransaction):
+    ///         the RPC reports a nominal 2^50 block gas limit on both chains, and
+    ///         the binding limit is Arbitrum's 32,000,000 per transaction; this
+    ///         many entries stay inside half of it.
+    uint256 public constant MAX_POST_BATCH = 256;
+
     /// @notice The hot key. Set by the admin; see `setOperator`.
     address public operator;
 
@@ -113,6 +128,20 @@ contract FleetPool is Ownable2Step {
     uint256 public totalDrawSpent;
     uint256 public totalOutflow;
     uint256 public totalClaimed;
+    /// @notice Charge posted to depositors, counting only the part of each
+    ///         charge still backed by unspent deposit (FR-033); the excess
+    ///         falls to the operator. What the operator may claim is measured
+    ///         against this, so a claim never reaches what is still owed.
+    uint256 public totalPosted;
+    /// @notice The monitor's counters (FR-027): everything that ever came in
+    ///         as a deposit, everything paid out in exits, everything donated.
+    ///         With totalOutflow and totalClaimed they state the identity
+    ///         balance == everDeposited + donated - totalOutflow - exitsPaid - totalClaimed,
+    ///         from public views alone. Deposited and ExitPaid fire on each
+    ///         change of the first two; Donated on the third.
+    uint256 public everDeposited;
+    uint256 public exitsPaid;
+    uint256 public donated;
 
     mapping(address depositor => Depositor) private _depositors;
     mapping(bytes32 campaign => Draw) private _draws;
@@ -129,6 +158,7 @@ contract FleetPool is Ownable2Step {
     event SpendQueued(bytes32 indexed id, uint256 amount, uint64 dueAt);
     event SpendPosted(address indexed depositor, uint256 amount);
     event OperatorClaimed(uint256 amount);
+    event Donated(address indexed from, uint256 amount);
     event PausedSet(bool paused);
     event GuardianSet(address guardian);
 
@@ -172,6 +202,7 @@ contract FleetPool is Ownable2Step {
     error CommitBelowPrincipal();
     error DueBeyondWindow();
     error EmptyBatch();
+    error BatchTooLarge();
     error LengthMismatch();
     error UnknownSpend();
     error ZeroAddress();
@@ -223,7 +254,17 @@ contract FleetPool is Ownable2Step {
 
         d.deposited += msg.value;
         totalDeposited += msg.value;
+        everDeposited += msg.value;
         emit Deposited(msg.sender, msg.value);
+    }
+
+    /// @notice Gives ETH to the pool, crediting no depositor: how a pool that is
+    ///         short is made whole (FR-036). Works while paused, because that
+    ///         is when it is needed; a deposit does not, on purpose.
+    function donate() external payable {
+        if (msg.value == 0) revert SizeNotAllowed();
+        donated += msg.value;
+        emit Donated(msg.sender, msg.value);
     }
 
     /// @notice Starts the self-serve exit. Works whether or not Chit is running.
@@ -248,6 +289,7 @@ contract FleetPool is Ownable2Step {
         uint256 payout = d.exitAmount < unspent ? d.exitAmount : unspent;
         totalDeposited -= d.deposited;
         delete _depositors[msg.sender];
+        exitsPaid += payout;
 
         emit ExitPaid(msg.sender, payout);
         if (payout != 0) _send(msg.sender, payout);
@@ -317,21 +359,55 @@ contract FleetPool is Ownable2Step {
 
     /// @notice Charges a queued spend to its depositor, inside its window.
     function postQueued(bytes32 id, address depositor) external onlyOperator {
-        QueuedSpend storage q = _queued[id];
-        if (q.queuedAt == 0) revert UnknownSpend();
-        if (q.posted) revert AlreadyPosted();
-        if (block.timestamp < q.dueAt) revert NotDue();
-        if (block.timestamp > q.queuedAt + POST_WINDOW) revert PostWindowClosed();
-
-        q.posted = true;
-        _depositors[depositor].spent += q.amount;
-        emit SpendPosted(depositor, q.amount);
+        PostResult result = _post(id, depositor);
+        if (result == PostResult.AlreadyPosted) revert AlreadyPosted();
+        if (result == PostResult.Expired) revert PostWindowClosed();
     }
 
-    /// @notice Reimburses the operator for gas it fronted, and never more. The
-    ///         bound is campaign-side accounting only, so claiming publishes no
+    /// @notice Charges many queued spends in one transaction. One entry that
+    ///         cannot post never costs the others: each reports posted,
+    ///         expired or already posted. An unknown id or one not yet due is
+    ///         a caller's error and reverts as postQueued would.
+    function postQueuedBatch(bytes32[] calldata ids, address[] calldata depositors)
+        external
+        onlyOperator
+        returns (PostResult[] memory results)
+    {
+        uint256 n = ids.length;
+        if (n == 0) revert EmptyBatch();
+        if (n > MAX_POST_BATCH) revert BatchTooLarge();
+        if (depositors.length != n) revert LengthMismatch();
+        results = new PostResult[](n);
+        for (uint256 i = 0; i < n; ++i) {
+            results[i] = _post(ids[i], depositors[i]);
+        }
+    }
+
+    /// @dev Posts what the deposit still backs and no more (FR-033): the rest of
+    ///      the charge is the operator's loss, never a depositor's debt, and
+    ///      totalPosted grows by the same figure so the claim cannot reach it.
+    function _post(bytes32 id, address depositor) private returns (PostResult) {
+        QueuedSpend storage q = _queued[id];
+        if (q.queuedAt == 0) revert UnknownSpend();
+        if (q.posted) return PostResult.AlreadyPosted;
+        if (block.timestamp < q.dueAt) revert NotDue();
+        if (block.timestamp > q.queuedAt + POST_WINDOW) return PostResult.Expired;
+
+        q.posted = true;
+        Depositor storage d = _depositors[depositor];
+        uint256 backed = _unspent(d);
+        uint256 counted = q.amount > backed ? backed : q.amount;
+        d.spent += counted;
+        totalPosted += counted;
+        emit SpendPosted(depositor, counted);
+        return PostResult.Posted;
+    }
+
+    /// @notice Reimburses the operator for what it fronted, gas and withdrawals
+    ///         alike, out of the pool's surplus and never more (FR-030). The
+    ///         bound is pool-wide accounting only, so claiming publishes no
     ///         depositor.
-    /// @dev Paid to the operator, which fronted the gas; claimed by the admin.
+    /// @dev Paid to the operator, which fronted it; claimed by the admin.
     function claimOperator(uint256 amount) external onlyOwner {
         if (paused) revert Paused();
         if (amount > claimable()) revert ClaimExceeded();
@@ -519,11 +595,14 @@ contract FleetPool is Ownable2Step {
         perPool = totalDeposited >= POOL_CAP ? 0 : POOL_CAP - totalDeposited;
     }
 
-    /// @notice Gas the operator has fronted and not yet reclaimed. Principal and
-    ///         headroom already left the pool, so only the difference is owed.
+    /// @notice The pool's surplus over what it owes depositors: charge posted
+    ///         against deposits, less what already left the pool as principal
+    ///         and headroom, less what was claimed. It covers fronted gas and
+    ///         fronted withdrawals alike, and a full claim leaves every unspent
+    ///         deposit in the pool (test/fleet/FleetPoolInvariants.t.sol).
     function claimable() public view returns (uint256) {
         uint256 owed = totalOutflow + totalClaimed;
-        return totalDrawSpent > owed ? totalDrawSpent - owed : 0;
+        return totalPosted > owed ? totalPosted - owed : 0;
     }
 
     function campaignCount() external view returns (uint256) {

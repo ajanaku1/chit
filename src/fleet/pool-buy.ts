@@ -51,8 +51,10 @@ export const MIN_GAS_CEILING = parseEther("0.00005");
  * campaign-keyed in Committed and once depositor-keyed in SpendPosted, and
  * that pair joined a fleet to its wallet across two public logs. Rounded
  * down to a grain, the two never match, and many charges land on the same
- * few values. The difference, at most one grain, is the pool's, never the
- * trader's; at today's prices a grain is a few cents.
+ * few values. The difference, at most one grain, is the operator's loss,
+ * never the trader's and never the pool's obligation (FR-031): the pool
+ * still owes the depositor what was not charged, and the operator fronted
+ * the exact cost. At today's prices a grain is a few cents.
  *
  * The other half is time. A charge used to be queued in the operator's next
  * transaction after the buy that caused it, and that adjacency was a join of
