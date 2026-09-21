@@ -99,6 +99,8 @@ src/fleet/            Operator service (Node, TypeScript, viem)
   campaign-routes.ts      The action router — every API action lands here (814 lines)
   campaign-service.ts     Campaign state machine
   chain-pool.ts           FleetPool reads/writes
+  pool-reads.ts           The two growing lists, read through Multicall3 and from a mark
+  pool-reads-neon.ts      Where that mark is kept between instances (public chain data only)
   pool-ledger.ts          Seals/opens the depositor ciphertext; recomputes balance
   pool-buy.ts             Just-in-time principal, sweep, settlement, withdrawal payout
   chain-campaign.ts       Stage 1 escrow path

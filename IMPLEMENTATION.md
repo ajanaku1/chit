@@ -2120,3 +2120,31 @@ seconds, so each loss is said once per instance and counted every time.
 `POST_WINDOW_SECONDS` mirrors the contract's constant. Eleven tests in
 `test/fleet/pool-sweep-postings.test.ts`; `finding_M3a` is replaced by
 `fixed_M3a`, the same sweep and the same failing posting, now named and counted.
+
+## The pool's lists are read in a fixed number of round trips (2026-09-21, Boye, branch feat/pool-reads, T043, T046)
+
+A balance, an activation, a withdrawal, a trade and a sweep each read every
+campaign and every charge there had ever been, one awaited call at a time, so
+every page got slower with every buy anyone had ever made. The two lists now
+come back through Multicall3, which is deployed on 46630 and 4663, and through
+viem's deployless form of it where it is not (the local chain the pool suites
+run on). Measured read-only against the live testnet pool on 20 September: 52
+requests and 10.2 seconds before, 4 requests and 0.85 seconds after, the same
+draws and the same charges.
+
+`src/fleet/pool-reads.ts` holds it; `chain-pool.ts` only hands its two list
+reads over, and `write()` is untouched. The queue is read from a mark: a charge
+whose `POST_WINDOW` has closed, plus a ten minute margin, can never change
+again, so it is read once. The window is read from the contract, not mirrored.
+Only the mark and the final charges that were never posted are kept, because
+those still count against their depositor; in memory per instance, and in Neon
+(`pool-reads-neon.ts`) where there is a database, so a cold instance does not
+start from zero. What is kept is what the chain published, the sealed depositor
+still sealed. An opened depositor beside a queue id in a table would be the
+link the pool withholds, readable without the ledger key, and sealing it again
+costs microseconds; the cache contract is tested against both adapters, Neon's
+on a real Postgres, by dumping them and looking for the address. The
+hand-written ABI is held against the compiled pool function by function, so a
+struct that gains a field fails there instead of decoding wrong. `finding_M3b`
+flipped and is replaced by `fixed_M3b`: the same balance read through the same
+adapter, the same few round trips at twice the history. That closes T046.
