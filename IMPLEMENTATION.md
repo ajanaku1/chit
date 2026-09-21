@@ -2077,3 +2077,19 @@ with a zero fee, all env). Rehearsed on a fork of mainnet at block
 63,969,832: the beta set, the caps read back as 0.1 / 0.05 / 1, the note
 written. `docs/runbooks/mainnet-beta.md` is the sequence, with what the beta
 is not.
+
+## The progress sheet scrolls, however long the list is (2026-09-21, Boye, branch fix/landing-sheet-scroll)
+
+The sheet that says how far along Chit is now lists 87 open tasks, and on a
+desktop screen it could not be read past the first few: it grew to 7,989px on
+a 900px screen, nothing scrolled, and Close sat seven thousand pixels below the
+fold. A modal sheet is capped at `max-height:100%` and its body scrolls, but
+the modal's grid row was `auto`, so the percentage capped nothing. With one
+open task, which is all the sheet ever held before, it never showed.
+
+`grid-template-rows:minmax(0,1fr)` on `.modal` gives the row the screen's
+height. Measured in Chrome at 1440×900, 1920×1080, 1024×1366 and 390×844 with
+main's own data: the end of the list and Close are reachable at all four.
+Below 768px the modal scrolls as a whole and is left as it was; a short sheet
+and the boundary sheet keep their exact boxes. The landing suite holds the
+rule and the pieces it relies on.
