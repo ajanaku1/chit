@@ -75,7 +75,11 @@ same files the contract work below changes, so it lands before any of it.
 
 - [ ] T026 [B] Take the operator lock around each signed step in `#sweep`, `#sweepOpportunistically` and `#control` in `src/fleet/campaign-routes.ts`, not around the whole sweep
 - [ ] T027 [B] Add lease renewal and a holder check immediately before broadcast in `src/fleet/store.ts` and its adapters
-- [ ] T028 [B] Give the sponsor route its own key variable in `src/fleet/sponsor-runtime.ts`; sponsorship stays off on mainnet
+- [x] T028 [B] Give the sponsor route its own key variable in `src/fleet/sponsor-runtime.ts`; sponsorship stays off on mainnet
+  - `FLEET_SPONSOR_PRIVATE_KEY`; the operator's key under that name is refused, and on 4663 the route answers
+    `sponsorship_off` whatever is set. Open, and a deploy rather than code: the sponsor set on 46630 names the pool
+    operator as its operator, so the testnet route keeps signing with the operator's key, and warns, until that set
+    is deployed again for a sponsor account.
 - [ ] T029 [B] Replace `finding_M5` with a two-instance test driving real nonce behaviour
 
 ### 2D. The contract (M2, part of M3) — FR-030, FR-031, FR-033, FR-036

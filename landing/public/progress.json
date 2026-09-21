@@ -1,11 +1,11 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-21T13:31:32.528Z",
-  "commit": "92070cd",
-  "committedAt": "2026-09-21T15:29:14+02:00",
-  "commits": 493,
+  "generatedAt": "2026-09-21T14:06:13.164Z",
+  "commit": "b0b5a6e",
+  "committedAt": "2026-09-21T15:44:21+02:00",
+  "commits": 500,
   "tasks": {
-    "done": 95,
+    "done": 96,
     "total": 175,
     "percent": 54
   },
@@ -113,7 +113,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 15,
+      "done": 16,
       "total": 94,
       "phases": [
         {
@@ -123,7 +123,7 @@
         },
         {
           "name": "Foundational",
-          "done": 11,
+          "done": 12,
           "total": 47
         },
         {
@@ -228,10 +228,6 @@
         {
           "id": "T027",
           "text": "[B] Add lease renewal and a holder check immediately before broadcast in `src/fleet/store.ts` and its adapters"
-        },
-        {
-          "id": "T028",
-          "text": "[B] Give the sponsor route its own key variable in `src/fleet/sponsor-runtime.ts`; sponsorship stays off on mainnet"
         },
         {
           "id": "T029",
