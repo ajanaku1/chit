@@ -10,7 +10,7 @@ import { CampaignService } from "../../src/fleet/campaign-service.js";
 import type { FleetPool, PoolDraw, PoolQueued } from "../../src/fleet/chain-pool.js";
 import { DRAW_STATE, createFleetPool } from "../../src/fleet/chain-pool.js";
 import { planSlices } from "../../src/fleet/order-plan.js";
-import { CHARGE_GRAIN, coarseCharge, createPoolService, type PoolPort } from "../../src/fleet/pool-buy.js";
+import { CHARGE_GRAIN, WithdrawalRefused, coarseCharge, createPoolService, type PoolPort } from "../../src/fleet/pool-buy.js";
 import { ledgerKey, openDepositor, sealDepositor } from "../../src/fleet/pool-ledger.js";
 import { fleetChain } from "../../src/fleet/service-runtime.js";
 import { createMemoryStore, type StorePort } from "../../src/fleet/store.js";
@@ -33,6 +33,7 @@ const NOW = 1_700_000_000n;
 
 const publicClient = {
   getBlock: async () => ({ timestamp: NOW }),
+  getBalance: async () => parseEther("1"),
   getGasPrice: async () => 1_000_000_000n,
   waitForTransactionReceipt: async () => ({ status: "success" }),
 } as unknown as PublicClient;
@@ -47,7 +48,7 @@ const wallet = {
 const makePool = (draws: PoolDraw[] = []) => {
   const queued: PoolQueued[] = [];
   const posted: { id: Hex; depositor: Address; amount: bigint }[] = [];
-  const knobs = { batchLandsThenReceiptFails: false, buyLandsThenReceiptFails: false, postingFails: false, resolveAs: "mined" as "mined" | "never-mined" };
+  const knobs = { batchLandsThenReceiptFails: false, buyLandsThenReceiptFails: false, postingFails: false, resolveAs: "mined" as "mined" | "never-mined", payoutOutcome: "mined" as "mined" | "unknown" };
   let n = 0;
   const pool = {
     address: account(0x901),
@@ -57,6 +58,7 @@ const makePool = (draws: PoolDraw[] = []) => {
     signAndBroadcast: async (step: { nonce: number; functionName?: string; args?: readonly unknown[]; record: (h: Hex, n: number) => Promise<void> }) => {
       const hash = `0x${"e".repeat(64)}` as Hex;
       await step.record(hash, step.nonce);
+      if (!step.functionName) return knobs.payoutOutcome === "unknown" ? { status: "unknown", hash, nonce: step.nonce } : { status: "mined", hash };
       try {
         await (pool as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[step.functionName!]!(...(step.args ?? []));
         return { status: "mined", hash };
@@ -109,22 +111,42 @@ const funded = (n: number, owner: Address, amount: bigint): PoolDraw => ({
 const opts = () => ({ delaySeconds: () => -10, store: createMemoryStore(), random: () => 0.5 });
 
 describe("M1: a withdrawal whose payout fails", () => {
-  it("finding_M1: still charges the trader, the next sweep puts the charge on chain, and the store has no way to void it", async () => {
+  // Replaces finding_M1 (T023): the same short float, and the trader is charged nothing, now or later.
+  it("fixed_M1: an operator short of the payout refuses it before recording anything, retryably", async () => {
     const o = opts();
     const { pool, posted } = makePool();
     // The operator's wallet is short: exactly what an unreimbursed float runs into (M2).
-    const broke = { ...wallet, sendTransaction: async () => { throw new Error("insufficient funds for gas * price + value"); } } as unknown as WalletClient;
-    const service = createPoolService(broke, publicClient, pool, KEY, o);
+    const short = { ...publicClient, getBalance: async () => parseEther("0.03") } as unknown as PublicClient;
+    const service = createPoolService(wallet, short, pool, KEY, o);
 
     await assert.rejects(
       service.withdraw({ depositor: ALICE, amount: parseEther("0.04").toString(), destination: BOB }),
-      /insufficient funds/,
+      (error: unknown) => error instanceof WithdrawalRefused && error.reason === "operator_float_short",
     );
-    assert.equal(await o.store.owedFor(ALICE), coarseCharge(parseEther("0.04")).toString(), "nothing was paid and the charge stands");
-
+    assert.equal(await o.store.owedFor(ALICE), "0", "nothing was paid and nothing is owed");
     await service.sweep(async () => [], { queueOwed: true });
-    assert.deepEqual(posted.map((p) => [p.depositor.toLowerCase(), p.amount]), [[ALICE, coarseCharge(parseEther("0.04"))]], "posted to Alice on chain");
-    assert.deepEqual(Object.keys(o.store).filter((k) => /void|cancel|delete|remove/i.test(k)), [], "StorePort has no cancel path");
+    await service.sweep(async () => []);
+    assert.deepEqual(posted, [], "and nothing is ever posted");
+  });
+
+  it("fixed_M1: a payout whose receipt was not seen names its charge by the hash, and a payout that never mined voids it", async () => {
+    const o = opts();
+    const { pool, posted, knobs } = makePool();
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
+
+    knobs.payoutOutcome = "unknown";
+    const receipt = await service.withdraw({ depositor: ALICE, amount: parseEther("0.04").toString(), destination: BOB });
+    assert.equal(receipt.unresolved, true);
+    assert.deepEqual((await o.store.sentBatches()).map((b) => [b.kind, b.ids]), [["payout", [receipt.chargeId]]], "the charge is sent under the payout's hash");
+    assert.equal(await o.store.owedFor(ALICE), coarseCharge(parseEther("0.04")).toString(), "and still owed while the payout may yet land");
+
+    knobs.resolveAs = "never-mined";
+    const quiet = console.error;
+    console.error = () => {};
+    await service.sweep(async () => [], { queueOwed: true }).finally(() => { console.error = quiet; });
+    assert.equal(await o.store.owedFor(ALICE), "0", "nothing was paid: the charge is void");
+    await service.sweep(async () => []);
+    assert.deepEqual(posted, [], "and never posted");
   });
 });
 
