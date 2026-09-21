@@ -54,6 +54,11 @@ jobs:
       - name: Fleet suite
         run: npm run test:fleet
 
+      # trade-prompts-browser.test.ts drives the built Trade page in Chromium;
+      # without the browser it skips, so the install is what makes it count.
+      - name: Install Chromium for the page test
+        run: npx playwright install --with-deps chromium
+
       - name: App typecheck, tests and build
         run: npm --prefix app run verify
 
