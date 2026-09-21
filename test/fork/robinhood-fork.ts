@@ -16,8 +16,8 @@ import { network } from "hardhat";
  * for as long as the RPC still serves it.
  */
 
-const RPC_URL = process.env.ROBINHOOD_TESTNET_RPC_URL ?? "https://rpc.testnet.chain.robinhood.com";
-const MAINNET_RPC_URL = process.env.ROBINHOOD_MAINNET_RPC_URL ?? "https://rpc.mainnet.chain.robinhood.com";
+const RPC_URL = process.env.ROBINHOOD_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com";
+const MAINNET_RPC_URL = process.env.ROBINHOOD_MAINNET_RPC_URL || "https://rpc.mainnet.chain.robinhood.com";
 
 /** Far enough behind the tip that the node has surely finalised the state; a few seconds of chain. */
 const MARGIN_BLOCKS = 64;

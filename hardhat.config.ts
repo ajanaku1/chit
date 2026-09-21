@@ -25,7 +25,7 @@ export default defineConfig({
       type: "http",
       chainType: "l1",
       chainId: 46630,
-      url: process.env.ROBINHOOD_TESTNET_RPC_URL ?? "https://rpc.testnet.chain.robinhood.com",
+      url: process.env.ROBINHOOD_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com",
     },
     // Fork of Robinhood Chain testnet, so Fleet tests run against the real
     // EntryPoint and Universal Router without spending testnet ETH.
