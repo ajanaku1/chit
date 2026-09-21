@@ -1,0 +1,19 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { mainnetPreflight } from "../../src/fleet/service-preflight.js";
+
+/** T047: on 4663 the service refuses to start without its three variables, naming the first one missing; testnet is unchanged. */
+
+const complete = { DATABASE_URL: "postgres://x", CRON_SECRET: "s3cret-s3cret-s3cret", FLEET_TOKEN_ALLOWLIST: "0xd523a627030509021cc39b6d7c8543417d3e50d8" };
+
+test("mainnet needs the store, the sweep's bearer and the allowlist, and says which is missing first", () => {
+  assert.equal(mainnetPreflight(4663, complete), undefined);
+  assert.match(mainnetPreflight(4663, {})!, /^FLEET_CHAIN_ID=4663 needs DATABASE_URL: /);
+  assert.match(mainnetPreflight(4663, { ...complete, CRON_SECRET: " " })!, /needs CRON_SECRET: .*sign/);
+  assert.match(mainnetPreflight(4663, { ...complete, FLEET_TOKEN_ALLOWLIST: "" })!, /needs FLEET_TOKEN_ALLOWLIST: .*any token/);
+});
+
+test("testnet starts with none of them, as before", () => {
+  assert.equal(mainnetPreflight(46630, {}), undefined);
+});

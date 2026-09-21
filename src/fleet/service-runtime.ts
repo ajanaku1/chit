@@ -20,6 +20,7 @@ import { createMarket, type MarketPort } from "./market.js";
 import { ledgerKey } from "./pool-ledger.js";
 import { createPoolService, type PoolPort } from "./pool-buy.js";
 import { createNeonReadCache } from "./pool-reads-neon.js";
+import { mainnetPreflight } from "./service-preflight.js";
 import { createMemoryStore, type StorePort } from "./store.js";
 import { createNeonStore } from "./store-neon.js";
 import { validateFeeConfig, type FeeConfig } from "./eligibility.js";
@@ -330,7 +331,7 @@ export const handleFleetRequest = async (
   const active = getFleetRouter();
   if (addressFault) {
     console.error(`fleet route refused: ${addressFault}`);
-    return Response.json({ code: "dependency_evidence_invalid", retryable: false, reason: "misconfigured_address" }, { status: 503 });
+    return Response.json({ code: "dependency_evidence_invalid", retryable: false, reason: addressFault.startsWith("FLEET_CHAIN_ID") ? "missing_configuration" : "misconfigured_address" }, { status: 503 });
   }
   try {
     const body: unknown = await request.json();
@@ -360,6 +361,13 @@ export const handleFleetRequest = async (
  */
 export const getFleetRouter = (): CampaignRouter => {
   if (router) return router;
+  // Mainnet refuses to start without its three variables (T047): the fault
+  // names the first one missing and every route answers 503 with it.
+  const missing = mainnetPreflight(FLEET_CHAIN_ID, process.env);
+  if (missing) {
+    addressFault = missing;
+    console.error(`fleet service misconfigured: ${missing}`);
+  }
   const feeConfig = feeConfigFromEnv();
   const chain = chainFromEnv();
   const nonceSecret = nonceSecretFromEnv();
