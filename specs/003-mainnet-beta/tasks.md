@@ -116,10 +116,17 @@ one deployment.
 - [ ] T047 [F] Refuse to start without `DATABASE_URL`, `CRON_SECRET` or `FLEET_TOKEN_ALLOWLIST` when the chain is mainnet, in `src/fleet/service-runtime.ts`
 - [ ] T048 [B] Add the alert sink routing to the existing Telegram bot, with FR-023's three timescales and the named operator chat
 - [ ] T049 [B] Alert on a sweep failure, a refused withdrawal, an unposted charge older than four hours, and the operator's balance reaching half the float
+  - Half of it is in the outside monitor (T053): a charge unposted for over four hours, and the operator's
+    balance at half of `FLEET_OPERATOR_FLOAT_ETH`. A sweep failure and a refused withdrawal happen where an
+    outside reader cannot look, so they are reported from the sweep's workflow and the withdrawal path; open.
 - [ ] T050 [F] Pause the pool automatically on the two machine-detectable triggers: a charge passing its deadline unrecorded, and an exit transaction failing
 - [ ] T051 [F] Add the resume gate: the pool cannot be unpaused until the cause is recorded as fixed, a test covering it exists, and the pool is whole
 - [ ] T052 [P] [F] Test that an automatic pause fires within one sweep of its trigger and that resume is refused while any condition is unmet
-- [ ] T053 [B] Build the outside monitor asserting FR-027's exact identity from public views
+- [x] T053 [B] Build the outside monitor asserting FR-027's exact identity from public views
+  - `src/fleet/monitor*.ts`, hourly from `.github/workflows/monitor.yml`, `docs/fleet-monitor.md`. It asserts the
+    exact identity of T037 by itself once the pool answers `everDeposited`, `exitsPaid` and `donated` (T035);
+    on a pool without them only the bound `balance >= totalDeposited - totalOutflow - totalClaimed` follows
+    from the views, and that is what it holds today. It needs the `MONITOR_CHAT_ID` secret to send anything.
 
 **Checkpoint**: Every money-path reproduction has flipped (`finding_M6` flips in
 Phase 4). The money path is safe enough for real ETH.
