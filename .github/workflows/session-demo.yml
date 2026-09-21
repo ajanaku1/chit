@@ -15,9 +15,10 @@ name: Session keys demo, live in the group
 # Without the Telegram pair the story is printed and the job passes. Without
 # the demo key the job fails and says so.
 #
-# The first run deploys the SessionAccountFactory (no owner; whoever deploys
-# it does not matter) and commits the record and the app's session target,
-# so the Sessions page finds it on the next deploy.
+# The SessionAccountFactory on 46630 is recorded (deployments/fleet-46630.json,
+# app/session-target.json). Nothing here commits to main: a run that would
+# change either record fails and says so, and the record is committed by hand
+# through a reviewed change.
 
 on:
   workflow_dispatch:
@@ -26,7 +27,7 @@ on:
     - cron: '0 12 * * 0'
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: session-demo
@@ -55,15 +56,14 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: node dist/scripts/session-demo-live.js
 
-      # Only the first run changes these: the factory's address, recorded once.
-      - name: Commit the factory record if the first run deployed it
+      # The factory is recorded; a demo that moved the record is a change to
+      # review, not one for a robot to push to main.
+      - name: Refuse a moved factory record
         run: |
           if git diff --quiet -- deployments/fleet-46630.json app/session-target.json; then
-            echo "nothing to record"
+            echo "the factory record is unchanged"
             exit 0
           fi
-          git config user.name "chit-demo"
-          git config user.email "demo@users.noreply.github.com"
-          git add deployments/fleet-46630.json app/session-target.json
-          git commit -m "chore(deploy): SessionAccountFactory on 46630, recorded by the demo's first run"
-          git push
+          echo "::error::the demo changed deployments/fleet-46630.json or app/session-target.json; commit the record through a reviewed change"
+          git --no-pager diff -- deployments/fleet-46630.json app/session-target.json
+          exit 1

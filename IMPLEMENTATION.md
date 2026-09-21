@@ -2029,3 +2029,25 @@ an address (FR-008); a page in the app waits until the redesign settles, so
 it lands once. `docs/gas-sponsorship.md` is the integration, end to end;
 `scripts/sponsor-deploy-live.ts` deploys the set and prints the host
 variables. Six unit tests, one fork test that is the doc page as code.
+
+## The CI gate, Phase 1 of the mainnet beta (2026-09-21, T001–T003, T005)
+
+`verify.yml` runs the no-network set on every push and pull request to main
+(fleet suite, app, landing, Solidity, progress check); `verify-full.yml` runs
+every fork suite nightly and by hand, one file per fork, with the RPCs read from
+secrets and the public endpoints as the default, never as a required check.
+Nothing commits to main any more: `progress.yml` is gone, the Vercel build
+computes `landing/public/progress.json` from the task lists it deploys
+(`scripts/progress.mjs` reads git where there is one and `VERCEL_GIT_COMMIT_SHA`
+where there is not, leaving an unknown fact out), and `session-demo.yml` fails
+on a moved factory record instead of pushing it. `test/fleet/ci-workflows.test.ts`
+reads these facts from the workflow files.
+
+Deviation, conservative: the landing still reads `/api/progress` (the public
+mirror's copy) before its own `progress.json`, because the landing suite pins
+that order and a test edit is not this contract's to make. The mirror is stale
+while its push token is wrong, so until that is fixed the sheet shows the
+mirror's last sync; the deploy's own file is the fallback, not the source.
+
+T004 is blocked outside the code: branch protection and rulesets on a private
+repository need GitHub Pro (`403` from the API). T006 follows T004.

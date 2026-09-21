@@ -1,8 +1,7 @@
-// Serves the latest build progress to the landing without sending visitors to
-// GitHub. The file is committed to the public mirror on every push to main
-// (.github/workflows/progress.yml); this reads it server-side and caches it at
-// the edge for five minutes, so the landing follows the repo and a visitor's
-// browser only ever talks to chit.tools. The rule is PROGRESS.md.
+// Serves the public mirror's copy of the build progress without sending
+// visitors to GitHub: read server-side, cached at the edge for five minutes.
+// The Vercel build computes the deploy's own progress.json as the landing's
+// fallback when this is unreachable. The rule is PROGRESS.md.
 //
 // Plain JS on purpose: see api/fleet/campaign.js.
 

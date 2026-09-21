@@ -62,7 +62,19 @@ function readStages() {
 }
 
 function git(...args) {
-  return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
+  return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+}
+
+/** The last change, from git where there is one. A Vercel build has no .git:
+ *  it names the commit in VERCEL_GIT_COMMIT_SHA and nothing else is known, and
+ *  an unknown fact is left out rather than typed in. */
+function lastChange() {
+  try {
+    return { commit: git("rev-parse", "--short", "HEAD"), committedAt: git("log", "-1", "--format=%cI"), commits: Number(git("rev-list", "--count", "HEAD")) };
+  } catch {
+    const sha = process.env.VERCEL_GIT_COMMIT_SHA;
+    return sha ? { commit: sha.slice(0, 7) } : {};
+  }
 }
 
 const specs = readdirSync(`${root}specs`, { withFileTypes: true })
@@ -75,9 +87,7 @@ const total = specs.reduce((n, s) => n + s.total, 0);
 const progress = {
   rule: "PROGRESS.md",
   generatedAt: new Date().toISOString(),
-  commit: git("rev-parse", "--short", "HEAD"),
-  committedAt: git("log", "-1", "--format=%cI"),
-  commits: Number(git("rev-list", "--count", "HEAD")),
+  ...lastChange(),
   tasks: { done, total, percent: total === 0 ? 0 : Math.floor((done / total) * 100) },
   stages: readStages(),
   specs,

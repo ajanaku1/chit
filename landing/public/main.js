@@ -299,9 +299,9 @@
   });
 
   /* ── Build progress, rendered from progress.json ─────
-     Nothing below invents a number. The file is recomputed from the repo's
-     task lists on every push to main (PROGRESS.md); the API serves the
-     latest copy, and the same-origin file is the fallback for local runs. */
+     Nothing below invents a number. The file is recomputed from the task
+     lists in the Vercel build (PROGRESS.md); the API serves the public
+     mirror's copy, and the same-origin file is the deploy's own fallback. */
   async function loadProgress() {
     for (const url of ['/api/progress', 'progress.json']) {
       try {
@@ -364,8 +364,10 @@
       ? open.map((t) => codeItem(t.id, t.text))
       : [codeItem('Nothing open', 'every specced task has passed its gate')]));
 
-    const when = new Date(p.committedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
-    slot('stamp').textContent = `Read from commit ${p.commit}, ${when}. ${p.commits} commits so far. Stage 3 has no task list yet, so it is not in the count.`;
+    // A build without git history knows the commit and nothing more; the stamp says what is known.
+    const when = p.committedAt ? `, ${new Date(p.committedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}` : '';
+    const count = p.commits ? ` ${p.commits} commits so far.` : '';
+    slot('stamp').textContent = `Read from commit ${p.commit ?? 'unknown'}${when}.${count} Stage 3 has no task list yet, so it is not in the count.`;
   }
 
   /* ── Triggers. A sheet is one step deeper than screen B, so "back"

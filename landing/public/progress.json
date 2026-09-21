@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-21T07:18:56.052Z",
-  "commit": "8e1d058",
-  "committedAt": "2026-09-21T08:18:42+01:00",
-  "commits": 471,
+  "generatedAt": "2026-09-21T07:51:37.340Z",
+  "commit": "7b0ff2e",
+  "committedAt": "2026-09-21T08:33:55+01:00",
+  "commits": 474,
   "tasks": {
-    "done": 82,
+    "done": 84,
     "total": 175,
-    "percent": 46
+    "percent": 48
   },
   "stages": [
     {
@@ -113,12 +113,12 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 2,
+      "done": 4,
       "total": 94,
       "phases": [
         {
           "name": "Setup",
-          "done": 2,
+          "done": 4,
           "total": 6
         },
         {
@@ -154,16 +154,8 @@
       ],
       "open": [
         {
-          "id": "T003",
-          "text": "[B] Add a second job running the fork suites against a private RPC secret, nightly, not as a required check"
-        },
-        {
           "id": "T004",
           "text": "[F] Enable branch protection on `main` requiring the `verify` check, after T002 has run once"
-        },
-        {
-          "id": "T005",
-          "text": "[B] Stop `session-demo.yml` and `progress.yml` committing to `main`; generate `landing/public/progress.json` in the Vercel build instead"
         },
         {
           "id": "T006",
