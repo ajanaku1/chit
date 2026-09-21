@@ -7,6 +7,12 @@ name: Sweep the pool
 # hardening"). It lives here because Vercel's Hobby plan runs a cron at most
 # once a day; the two daily crons in vercel.json stay as a fallback.
 #
+# This is the queueing clock, and it does not tick faster for safety's sake:
+# how often it runs is the size of the batch a charge hides in. Beating the
+# pool's POST_WINDOW is the posting clock's job: /api/fleet/sweep-posting,
+# every two hours from vercel.json, posts and funds and never queues.
+# test/fleet/sweep-timing.test.ts holds both.
+#
 # One repository secret, optional: FLEET_CRON_SECRET, the same value as
 # CRON_SECRET on Vercel. With it set on both sides, only this workflow and
 # Vercel's own crons can start a sweep. Without it the endpoint is open.

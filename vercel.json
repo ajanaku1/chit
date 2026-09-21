@@ -22,6 +22,30 @@
     },
     "api/bot/watch.js": {
       "maxDuration": 300
+    },
+    "api/fleet/balance.js": {
+      "maxDuration": 60
+    },
+    "api/fleet/buy.js": {
+      "maxDuration": 60
+    },
+    "api/fleet/campaign.js": {
+      "maxDuration": 60
+    },
+    "api/fleet/control.js": {
+      "maxDuration": 60
+    },
+    "api/fleet/sponsor.js": {
+      "maxDuration": 180
+    },
+    "api/fleet/sweep-posting.js": {
+      "maxDuration": 180
+    },
+    "api/fleet/sweep.js": {
+      "maxDuration": 180
+    },
+    "api/fleet/trade.js": {
+      "maxDuration": 60
     }
   },
   "crons": [
@@ -32,6 +56,10 @@
     {
       "path": "/api/fleet/sweep",
       "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/fleet/sweep-posting",
+      "schedule": "45 */2 * * *"
     },
     {
       "path": "/api/buyback/keeper",

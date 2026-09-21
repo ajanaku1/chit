@@ -188,15 +188,30 @@ const marketFromEnv = (): MarketPort | undefined => {
   return createMarket(publicClient, { poolManager, escrow, escrowFromBlock });
 };
 
-/** One operator-signed client pair for 46630, shared by every chain adapter. */
-const clients = (key: `0x${string}`) => {
-  const rpcUrl = rpcFromEnv();
-  const chain = defineChain({
+/**
+ * Robinhood Chain seals a block several times a second (measured 2026-09-20
+ * over 20,000 blocks: 286 ms on 46630, 102 ms on 4663). viem derives how often
+ * it polls for a receipt from the chain's block time and assumes twelve
+ * seconds when it is told nothing, which came to a poll every four seconds
+ * for every write the service waits on. Stated, it is viem's floor of half a
+ * second, on either chain. test/fleet/sweep-timing.test.ts holds the figure.
+ */
+export const FLEET_BLOCK_TIME_MS = 250;
+
+/** The chain as every fleet client sees it. */
+export const fleetChain = (rpcUrl: string) =>
+  defineChain({
     id: FLEET_CHAIN_ID,
     name: CHAIN_NAME,
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: { default: { http: [rpcUrl] } },
+    blockTime: FLEET_BLOCK_TIME_MS,
   });
+
+/** One operator-signed client pair for the configured chain, shared by every chain adapter. */
+const clients = (key: `0x${string}`) => {
+  const rpcUrl = rpcFromEnv();
+  const chain = fleetChain(rpcUrl);
   // The public testnet RPC drops requests under a burst, and one dropped read
   // fails the whole request. Batching turns a page's reads into one HTTP call,
   // and a retry absorbs the rest.

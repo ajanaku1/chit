@@ -1,8 +1,9 @@
 // Plain JS on purpose: see api/fleet/campaign.js. Called on a schedule (the
-// GitHub Actions cron every four hours, and Vercel's own crons) and
+// GitHub Actions cron every four hours, and Vercel's two daily crons) and
 // opportunistically by the app; it can only do what the chain already permits.
 // The scheduled sweep is where charges are queued in a batch, so with
-// CRON_SECRET set only a caller carrying it may start one.
+// CRON_SECRET set only a caller carrying it may start one. This is the
+// queueing clock; the posting clock is api/fleet/sweep-posting.js.
 import { handleFleetRequest } from "../../dist/src/fleet/service-runtime.js";
 import { sweepTriggerAllowed } from "../../dist/src/fleet/sweep-trigger.js";
 

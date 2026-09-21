@@ -210,7 +210,7 @@ export class CampaignRouter {
       };
     }
 
-    if (action === "sweep") return this.#sweep();
+    if (action === "sweep") return this.#sweep(body);
     if (action === "status") return this.#status(body);
 
     const auth = request["auth"] as AuthEnvelope | undefined;
@@ -446,11 +446,20 @@ export class CampaignRouter {
   }
 
   /** Funds every draw whose wait is over and posts every charge now due. */
-  /** The scheduled sweep: the one place owed charges are queued, in a batch, off any trader's request. */
-  async #sweep(): Promise<RouterResult> {
+  /**
+   * The scheduled sweep: the one place owed charges are queued, in a batch, off any trader's request.
+   *
+   * Two clocks call it. The queueing one is a privacy parameter: how often it
+   * ticks is the size of the batch a charge hides in. The posting one only has
+   * to beat POST_WINDOW, so it asks for `queueOwed: false` and may tick as
+   * often as it likes without shrinking a batch. Queueing stays the default,
+   * so a caller that says nothing gets what the scheduled sweep always did.
+   */
+  async #sweep(body: Record<string, unknown> = {}): Promise<RouterResult> {
     const pool = this.#pool();
     const chain = this.#deps.chain;
-    const report = await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []), { queueOwed: true });
+    const queueOwed = body["queueOwed"] !== false;
+    const report = await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []), { queueOwed });
     return { status: 200, body: report };
   }
 
