@@ -29,8 +29,15 @@ contract FleetPoolInvariants is StdInvariant, Test {
     /// drift here is a path that moves ETH without counting it. totalOutflow
     /// is already net of rollbacks, so they do not appear separately.
     function invariant_balanceIsAccountedFor() public view {
-        uint256 expected = handler.ghostDeposited() - pool.totalOutflow() - handler.ghostExitsPaid() - pool.totalClaimed();
-        assertEq(address(pool).balance, expected, "balance != deposits - outflow - exits - claims");
+        uint256 expected = handler.ghostDeposited() + pool.donated() - pool.totalOutflow() - handler.ghostExitsPaid() - pool.totalClaimed();
+        assertEq(address(pool).balance, expected, "balance != deposits + donated - outflow - exits - claims");
+    }
+
+    /// The same identity from the contract's own counters and nothing else:
+    /// what the outside monitor asserts from public views (FR-027, T037).
+    function invariant_theIdentityHoldsFromPublicViews() public view {
+        uint256 expected = pool.everDeposited() + pool.donated() - pool.totalOutflow() - pool.exitsPaid() - pool.totalClaimed();
+        assertEq(address(pool).balance, expected, "balance != everDeposited + donated - totalOutflow - exitsPaid - totalClaimed");
     }
 
     /// The pool can always pay every honest trader what it owes them, once the
@@ -72,12 +79,14 @@ contract FleetPoolInvariants is StdInvariant, Test {
         }
     }
 
-    /// The operator can never claim more than the gas it fronted.
-    function invariant_claimableIsGasOnly() public view {
-        uint256 owed = pool.totalOutflow() + pool.totalClaimed();
-        uint256 expected = pool.totalDrawSpent() > owed ? pool.totalDrawSpent() - owed : 0;
-        assertEq(pool.claimable(), expected, "claimable drifted");
-        assertLe(pool.totalClaimed(), handler.ghostGasFronted(), "claimed more gas than fronted");
+    /// Replaces the gas-only claim invariant (T036), which asserted the
+    /// behaviour FR-030 exists to change. The claim is the surplus: it never
+    /// exceeds what the pool holds over what it owes its depositors, so a full
+    /// claim can never leave an exit unpaid.
+    function invariant_claimableNeverExceedsTheSurplus() public view {
+        uint256 owed = handler.sumUnspent();
+        assertGe(address(pool).balance, owed, "the pool cannot pay what it owes");
+        assertLe(pool.claimable(), address(pool).balance - owed, "claimable exceeds the surplus");
     }
 }
 
@@ -97,7 +106,6 @@ contract Handler is Test {
     uint256 public ghostExitsPaid;
     uint256 public ghostPosted;
     uint256 public ghostWithdrawn;
-    uint256 public ghostGasFronted;
 
     uint256[] internal sizes;
 
@@ -250,7 +258,6 @@ contract Handler is Test {
         }
         uint256 actual = p + gasCeiling;
         pool.commit(c, actual);
-        ghostGasFronted += gasCeiling;
         _charge(campaignOwner[c], actual);
     }
 
@@ -265,8 +272,13 @@ contract Handler is Test {
 
     function claim(uint256 amount) external {
         uint256 c = pool.claimable();
-        if (c == 0) return;
+        if (c == 0 || pool.paused()) return;
         pool.claimOperator(bound(amount, 1, c));
+    }
+
+    /// Anyone may make the pool whole, paused or not; it credits nobody.
+    function donate(uint256 amount) external {
+        pool.donate{value: bound(amount, 1, 0.1 ether)}();
     }
 
     function pause(bool on) external {

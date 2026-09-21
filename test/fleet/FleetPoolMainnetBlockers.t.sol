@@ -51,10 +51,10 @@ contract FleetPoolMainnetBlockersTest is Test {
         pool.executeExit();
     }
 
-    /// M2. The service pays a withdrawal from the operator's wallet and posts
-    /// the charge (pool-buy.ts withdraw). research.md says claimOperator
-    /// reimburses it; claimable() counts fronted gas only, so it never does.
-    function test_finding_M2_aWithdrawalIsNeverReimbursed() public {
+    /// M2, fixed (T038). The service pays a withdrawal from the operator's
+    /// wallet and posts the charge; the claim now reimburses it out of the
+    /// pool's surplus, through the same claim that reimburses fronted gas.
+    function test_fixed_M2_aWithdrawalIsReimbursedFromTheSurplus() public {
         _deposit(ALICE, 0.1 ether);
 
         // The payout: operator to payee, outside the pool, on purpose.
@@ -72,23 +72,52 @@ contract FleetPoolMainnetBlockersTest is Test {
         // Alice has been paid in full and leaves with nothing more.
         _exit(ALICE);
 
-        assertEq(OPERATOR.balance, operatorBefore - 0.1 ether, "the operator is out 0.1");
-        assertEq(address(pool).balance, 0.1 ether, "the pool holds it");
+        assertEq(address(pool).balance, 0.1 ether, "the pool holds what was posted");
         assertEq(pool.totalDeposited(), 0, "for no depositor");
-        assertEq(pool.claimable(), 0, "and none of it is claimable");
+        assertEq(pool.claimable(), 0.1 ether, "and all of it is the operator's to claim");
         vm.prank(ADMIN);
-        vm.expectRevert(FleetPool.ClaimExceeded.selector);
-        pool.claimOperator(1);
+        pool.claimOperator(0.1 ether);
+        assertEq(OPERATOR.balance, operatorBefore, "the operator is made whole");
+        assertEq(address(pool).balance, 0, "and the pool owes nobody");
     }
 
-    /// M3. A charge that misses POST_WINDOW is a hole in the pool. The trader it
-    /// belonged to exits whole; the last trader out cannot exit at all, because
-    /// executeExit pays in full or reverts.
-    function test_finding_M3_anExpiredChargeMakesTheLastExitRevert() public {
+    /// M3, fixed (T039). A batch posts what it can and reports the rest: an
+    /// expired charge says so and the charge beside it still posts, in one
+    /// transaction that reverts for neither.
+    function test_fixed_M3_aBatchPostsWhatItCanAndReportsTheRest() public {
+        _deposit(ALICE, 0.1 ether);
+        _deposit(BOB, 0.1 ether);
+        bytes32 stale = _queue(0.02 ether);
+        vm.warp(block.timestamp + 12 hours + 1);
+        bytes32 fresh = _queue(0.03 ether);
+        vm.warp(block.timestamp + 60);
+
+        bytes32[] memory ids = new bytes32[](3);
+        address[] memory whos = new address[](3);
+        ids[0] = stale; whos[0] = ALICE;
+        ids[1] = fresh; whos[1] = BOB;
+        ids[2] = fresh; whos[2] = BOB;
+        vm.prank(OPERATOR);
+        FleetPool.PostResult[] memory results = pool.postQueuedBatch(ids, whos);
+
+        assertEq(uint256(results[0]), uint256(FleetPool.PostResult.Expired));
+        assertEq(uint256(results[1]), uint256(FleetPool.PostResult.Posted));
+        assertEq(uint256(results[2]), uint256(FleetPool.PostResult.AlreadyPosted));
+        (, uint256 aliceSpent,,) = pool.depositorOf(ALICE);
+        (, uint256 bobSpent,,) = pool.depositorOf(BOB);
+        assertEq(aliceSpent, 0, "the expired charge posted nothing");
+        assertEq(bobSpent, 0.03 ether, "the fresh one posted once");
+        assertEq(pool.totalPosted(), 0.03 ether);
+    }
+
+    /// M3, fixed (T039). The hole an expired charge leaves is closed by
+    /// donate(), which credits nobody and works while paused; a deposit does
+    /// not, and the last trader out is paid in full.
+    function test_fixed_M3_thePoolIsMadeWholeByDonateWhilePaused() public {
         _deposit(ALICE, 0.1 ether);
         _deposit(BOB, 0.1 ether);
 
-        // Alice's fleet spends 0.05 of the pool.
+        // Alice's fleet spends 0.05 of the pool and the charge misses its window.
         address[] memory accounts = new address[](1);
         accounts[0] = FLEET_ACCOUNT;
         vm.startPrank(OPERATOR);
@@ -99,46 +128,29 @@ contract FleetPoolMainnetBlockersTest is Test {
         pool.commit(CAMPAIGN, 0.05 ether - pool.GAS_HEADROOM());
         pool.closeDraw(CAMPAIGN);
         vm.stopPrank();
-        assertEq(address(pool).balance, 0.15 ether);
-
-        // The charge is queued, and the sweep does not get to it for twelve hours.
         bytes32 id = _queue(0.05 ether);
         vm.warp(block.timestamp + 12 hours + 1);
         vm.prank(OPERATOR);
         vm.expectRevert(FleetPool.PostWindowClosed.selector);
         pool.postQueued(id, ALICE);
-
-        // Alice leaves with everything she deposited, 0.05 of it Bob's.
-        uint256 aliceBefore = ALICE.balance;
         _exit(ALICE);
-        assertEq(ALICE.balance - aliceBefore, 0.1 ether);
+        assertEq(address(pool).balance, 0.05 ether, "0.05 short of what Bob is owed");
 
-        // Bob cannot leave: not with 0.05, not with anything.
-        vm.prank(BOB);
-        pool.requestExit();
-        vm.warp(block.timestamp + 24 hours);
-        vm.prank(BOB);
-        vm.expectRevert(FleetPool.TransferFailed.selector);
-        pool.executeExit();
-    }
-
-    /// M3, the remedy that exists. The pool takes no plain ETH, so the hole is
-    /// closed by a deposit of a published size from a wallet that then never
-    /// exits. That works, and not while the pool is paused: which is when it
-    /// would be needed.
-    function test_finding_M3_thePoolIsMadeWholeOnlyThroughADeposit() public {
-        vm.prank(OPERATOR);
-        (bool ok, ) = address(pool).call{value: 0.05 ether}("");
-        assertFalse(ok, "no receive(): the pool refuses plain ETH");
-
-        vm.prank(OPERATOR);
-        pool.deposit{value: 0.05 ether}();
-        assertEq(address(pool).balance, 0.05 ether, "a deposit is the top-up");
-
+        // The guardian pauses; a deposit is refused, a donation is not.
         vm.prank(OPERATOR);
         pool.pause();
         vm.prank(OPERATOR);
         vm.expectRevert(FleetPool.Paused.selector);
         pool.deposit{value: 0.05 ether}();
+        vm.prank(OPERATOR);
+        pool.donate{value: 0.05 ether}();
+        assertEq(pool.donated(), 0.05 ether);
+        assertEq(pool.totalDeposited(), 0.1 ether, "the donation credits nobody");
+
+        // Bob leaves whole, paused or not.
+        uint256 bobBefore = BOB.balance;
+        _exit(BOB);
+        assertEq(BOB.balance - bobBefore, 0.1 ether);
+        assertEq(address(pool).balance, 0);
     }
 }
