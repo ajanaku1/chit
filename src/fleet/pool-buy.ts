@@ -21,6 +21,14 @@ import type { Uint } from "./types.js";
 export const EXIT_DELAY_SECONDS = 24 * 60 * 60;
 
 /**
+ * Mirrors FleetPool.POST_WINDOW: how long after it was queued a charge can
+ * still be posted. Past it the contract refuses the posting for good, so the
+ * sweep reports the charge as expired instead of asking again every time.
+ * test/fleet/pool-sweep-postings.test.ts reads the contract's figure.
+ */
+export const POST_WINDOW_SECONDS = 12 * 60 * 60;
+
+/**
  * The random window that separates a settlement from the charge it causes.
  * The contract refuses anything under 60 seconds; the service floor sits
  * above it so a block that lands late never turns an activation into a
@@ -150,8 +158,30 @@ export type PoolPort = {
    * sweep passes it, because a sweep that rides on a trader's request would
    * put that batch in the same window as the request's own buy.
    */
-  sweep(accountsOf: AccountsResolver, options?: { queueOwed?: boolean }): Promise<{ funded: Hex[]; posted: string[]; queued?: number }>;
+  sweep(accountsOf: AccountsResolver, options?: { queueOwed?: boolean }): Promise<SweepReport>;
   buy(input: PooledBuyInput): Promise<PooledBuyReport>;
+};
+
+/** A due charge the sweep tried to post and could not: its public id, and what stopped it. */
+export type PostingFailure = { id: string; reason: string };
+
+/**
+ * What a sweep did, and what it could not do. Every due charge ends up in
+ * exactly one of `posted`, `failed`, `expired` or `unreadable`, because a
+ * charge that is not posted inside POST_WINDOW is a hole in the pool, and a
+ * hole nobody can see is how a pool ends up short. The last three are
+ * optional so fakes that predate them still type-check.
+ */
+export type SweepReport = {
+  funded: Hex[];
+  posted: string[];
+  queued?: number;
+  /** Tried and not posted this time; the next sweep tries again while the window is open. */
+  failed?: PostingFailure[];
+  /** Past POST_WINDOW and unposted: lost for good. They never leave the queue, so this list only grows. */
+  expired?: string[];
+  /** Due charges whose depositor this ledger key cannot open. Anything but zero means the key is wrong. */
+  unreadable?: number;
 };
 
 /**
@@ -245,6 +275,26 @@ export const createPoolService = (
   };
 
   const chainSeconds = async (): Promise<bigint> => (await publicClient.getBlock()).timestamp;
+
+  /**
+   * An expired charge never leaves the queue, and ordinary traffic sweeps
+   * every few seconds, so a line per sweep would bury the log it is meant to
+   * be found in. Each loss is said once per instance; the report counts it
+   * every time. The same for unreadable charges: said when the number moves.
+   */
+  const saidExpired = new Set<string>();
+  let saidUnreadable = 0;
+  const sayWhatIsNew = (expired: readonly string[], unreadable: number): void => {
+    const fresh = expired.filter((id) => !saidExpired.has(id));
+    for (const id of fresh) saidExpired.add(id);
+    if (fresh.length > 0) {
+      console.error(`sweep: ${fresh.length} charge(s) passed POST_WINDOW unposted and are lost to the pool: ${fresh.join(", ")}`);
+    }
+    if (unreadable !== saidUnreadable && unreadable > 0) {
+      console.error(`sweep: ${unreadable} due charge(s) cannot be opened with this ledger key and will expire unposted; check FLEET_LEDGER_KEY`);
+    }
+    saidUnreadable = unreadable;
+  };
 
   return {
     caps: () => pool.caps(),
@@ -369,19 +419,40 @@ export const createPoolService = (
       const queued = options.queueOwed ? await queueOwed() : 0;
       const seconds = await chainSeconds();
 
+      // Every due charge is accounted for: posted, failed with a reason,
+      // expired, or unreadable. A charge that misses its window is never the
+      // trader's loss and the exit must not wait for it, but it is a hole in
+      // the pool, so it gets a number and a line instead of an empty catch.
       const posted: string[] = [];
+      const failed: PostingFailure[] = [];
+      const expired: string[] = [];
+      let unreadable = 0;
       for (const entry of await pool.queued()) {
         if (entry.posted || entry.dueAt > seconds) continue;
+        // The contract refuses it for good from here on; asking again on every
+        // sweep costs a call and says nothing new.
+        if (seconds > entry.queuedAt + BigInt(POST_WINDOW_SECONDS)) {
+          expired.push(entry.id);
+          continue;
+        }
         const depositor = openDepositor(ledgerKey, entry.encDepositor);
-        if (!depositor) continue;
+        if (!depositor) {
+          unreadable += 1;
+          continue;
+        }
         try {
           await pool.postQueued(entry.id, depositor);
           posted.push(entry.id);
-        } catch {
-          // Past its window: the charge is the operator's loss, never the
-          // trader's, and the exit must not be blocked waiting for it.
+        } catch (error) {
+          const reason = postingReason(error);
+          failed.push({ id: entry.id, reason });
+          // The id is public since SpendQueued. The depositor is not, until
+          // the posting lands, so it is never logged; nor is anything past
+          // the error's first line, where viem prints the call it was making.
+          console.error(`sweep: charge ${entry.id} not posted (${reason}): ${messageOf(error)}`);
         }
       }
+      sayWhatIsNew(expired, unreadable);
 
       const funded: Hex[] = [];
       for (const draw of await pool.draws()) {
@@ -404,7 +475,7 @@ export const createPoolService = (
           console.error(`sweep: draw ${draw.campaign} not funded: ${messageOf(error)}`);
         }
       }
-      return { funded, posted, queued };
+      return { funded, posted, queued, failed, expired, unreadable };
     },
 
     async buy({ campaign, depositor, target, buys }) {
@@ -479,6 +550,19 @@ const ctx = (wallet: WalletClient) => ({ account: wallet.account ?? null, chain:
 /** The first line of an error, which for viem is the sentence and never the request arguments. */
 const messageOf = (error: unknown): string =>
   (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "";
+
+/**
+ * What stopped a posting: the contract's own error when it names one, else the
+ * kind of failure it was. A dropped RPC call is not a refusal, and a report
+ * that calls both "refused" cannot tell a closed window from a bad night.
+ */
+const postingReason = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : String(error);
+  const revert = /(?:Error:\s*)?([A-Z][A-Za-z0-9_]*)\(\)/.exec(message)?.[1];
+  if (revert) return revert;
+  const kind = error instanceof Error ? error.name : "";
+  return kind && kind !== "Error" ? kind : "unknown";
+};
 
 const reasonOf = (error: unknown): string => {
   const message = error instanceof Error ? error.message : String(error);

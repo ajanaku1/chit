@@ -10,6 +10,8 @@ Extends the Stage 1 Fleet API (`specs/001-fleet-mission/contracts/fleet-api.md`)
 | `POST /api/fleet/campaign` | `topUp` | yes | `{ campaign, amount }` | `{ ...campaign, draw }` | 401, 409, 422 |
 | `POST /api/fleet/buy` | `buy` | yes | as Stage 1 | per-account results with `principal`, `gas`, `draw` | as Stage 1 |
 | `POST /api/fleet/control` | `close` | yes | `{ campaign }` | `{ ...campaign, creditedToBalance }` | as Stage 1 |
-| `POST /api/fleet/sweep` | `sweep` | no (Vercel cron header or opportunistic internal call) | `{}` | `{ funded: [campaign...], posted: [id...] }` | 503 |
+| `POST /api/fleet/sweep` | `sweep` | no (Vercel cron header or opportunistic internal call) | `{}` | `{ funded: [campaign...], posted: [id...], queued, failed: [{ id, reason }...], expired: [id...], unreadable }` | 503 |
+
+`sweep` accounts for every due charge: each is in exactly one of `posted`, `failed` (tried and not posted this time, with the contract's own error name or the kind of failure; retried while its window is open), `expired` (past `POST_WINDOW`, unposted, lost for good; the list only grows, because an expired charge never leaves the queue) or `unreadable` (a count: the ledger key cannot open the depositor, which means the key is wrong). Ids are the public queue ids; a depositor is never reported or logged before its posting lands.
 
 Rules: `withdraw` refuses `amount > available` and warns (not refuses) when `destination` equals the primary wallet via `warning: "destination_is_primary"`. `activate` refuses when the pool is paused (`409 state_invalid: pool_paused`). Every state-changing action performs a sweep of due draws first. Responses never include `ownerRef` or any depositor address other than the caller's.
