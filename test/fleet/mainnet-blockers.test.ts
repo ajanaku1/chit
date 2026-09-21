@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  createPublicClient, defineChain, encodeAbiParameters, http, keccak256, parseEther,
+  createPublicClient, encodeAbiParameters, http, keccak256, parseEther,
   type Address, type Hex, type PublicClient, type WalletClient,
 } from "viem";
 
@@ -12,6 +12,7 @@ import { DRAW_STATE, createFleetPool } from "../../src/fleet/chain-pool.js";
 import { planSlices } from "../../src/fleet/order-plan.js";
 import { CHARGE_GRAIN, coarseCharge, createPoolService, type PoolPort } from "../../src/fleet/pool-buy.js";
 import { ledgerKey, openDepositor, sealDepositor } from "../../src/fleet/pool-ledger.js";
+import { fleetChain } from "../../src/fleet/service-runtime.js";
 import { createMemoryStore, type StorePort } from "../../src/fleet/store.js";
 import { UNIVERSAL_ROUTER_EXECUTE, encodeBuyCall, venuePoolKey } from "../../src/fleet/v4-swap.js";
 
@@ -193,14 +194,11 @@ describe("M3: the sweep", () => {
     assert.equal(widest, 3, "three chains of awaited calls: batch: true on the transport has nothing to batch");
   });
 
-  it("finding_M3c: the service's chain has no blockTime, so viem polls a receipt every 4 seconds on a 250 ms chain", () => {
-    const chain = defineChain({
-      id: 46630, name: "Robinhood Chain Testnet",
-      nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-      rpcUrls: { default: { http: ["http://127.0.0.1:1"] } },
-    });
-    const client = createPublicClient({ chain, transport: http("http://127.0.0.1:1", { batch: true }) });
-    assert.equal(client.pollingInterval, 4_000);
+  // Replaces finding_M3c (T046), which built its own chain and so could not see the fix:
+  // this one takes the chain the service itself builds its clients from.
+  it("fixed_M3c: the service's chain states its block time, so viem polls a receipt every half second, not every four", () => {
+    const client = createPublicClient({ chain: fleetChain("http://127.0.0.1:1"), transport: http("http://127.0.0.1:1", { batch: true }) });
+    assert.equal(client.pollingInterval, 500);
   });
 });
 
