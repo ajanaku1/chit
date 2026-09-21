@@ -517,8 +517,12 @@ a:focus-visible, button:focus-visible{outline:2px solid var(--coral); outline-of
 .limit__next:hover span{translate:calc(3 * var(--u)) 0}
 
 /* 6.7 MODAL SHEETS — Launch app / Open the app, and Read the boundary.
-   The limit sheet's glass, centred over whichever screen is showing. */
+   The limit sheet's glass, centred over whichever screen is showing.
+   The one row takes its height from the screen, not from the sheet: the
+   sheet's max-height:100% only caps it against a row with a height of its
+   own, and only a capped sheet hands the scrolling to its body. */
 .modal{position:absolute; inset:0; z-index:7; display:grid; place-items:center;
+  grid-template-rows:minmax(0,1fr);
   padding:calc(100 * var(--u)) var(--gutter) calc(40 * var(--u));
   background:rgba(13,12,11,.55);
   backdrop-filter:blur(calc(14 * var(--u))) saturate(.8);
