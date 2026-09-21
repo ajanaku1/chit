@@ -2099,3 +2099,24 @@ queueing schedule as it was, and the largest posting gap under a third of
 `POST_WINDOW`, read from the contract. `finding_M3c` built its own chain and so
 could never see the fix; `fixed_M3c` takes the chain the service builds its
 clients from.
+
+## A posting that does not land is said and counted (2026-09-21, Boye, branch fix/postings-counted, T044)
+
+The sweep posts every queued charge that is due. When a posting failed, the
+sweep said nothing: no log line, no count, and no place in its report where a
+failure could have gone. A charge that is never posted inside `POST_WINDOW` can
+never be charged to anyone, so this was the one failure that cost money and
+made no sound.
+
+The posting loop now reports three things beside what it posted. `failed`: the
+charge's public queue id and the reason, the contract's own error name where
+there is one. `expired`: charges past their window, which are no longer
+retried, because the contract refuses them for good. `unreadable`: due charges
+this ledger key cannot open, which points at the wrong `FLEET_LEDGER_KEY`. The
+log carries the public queue id and the first line of the error and never the
+depositor: a line with both would be the link the pool withholds. An expired
+charge stays in the queue for ever and ordinary traffic sweeps every few
+seconds, so each loss is said once per instance and counted every time.
+`POST_WINDOW_SECONDS` mirrors the contract's constant. Eleven tests in
+`test/fleet/pool-sweep-postings.test.ts`; `finding_M3a` is replaced by
+`fixed_M3a`, the same sweep and the same failing posting, now named and counted.
