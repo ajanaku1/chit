@@ -19,6 +19,7 @@ import { createFleetChain, type FleetChain } from "./chain-service.js";
 import { createMarket, type MarketPort } from "./market.js";
 import { ledgerKey } from "./pool-ledger.js";
 import { createPoolService, type PoolPort } from "./pool-buy.js";
+import { createNeonReadCache } from "./pool-reads-neon.js";
 import { createMemoryStore, type StorePort } from "./store.js";
 import { createNeonStore } from "./store-neon.js";
 import { validateFeeConfig, type FeeConfig } from "./eligibility.js";
@@ -147,9 +148,14 @@ const poolFromEnv = (store: StorePort): PoolPort | undefined => {
   const address = poolAddressFromEnv();
   if (!key || !address) return undefined;
   const { wallet, publicClient } = clients(key);
+  // The queue's mark (pool-reads.ts) is shared the way the store is: with
+  // DATABASE_URL a cold instance starts reading where the last one stopped,
+  // without it each instance keeps its own and reads the queue once in full.
+  const url = process.env.DATABASE_URL;
+  const fleetPool = createFleetPool(wallet, publicClient, address, url ? { cache: createNeonReadCache(neon(url)) } : {});
   // The same store the router uses: owed spend recorded by a buy on one
   // instance is queued by a sweep on another.
-  return createPoolService(wallet, publicClient, createFleetPool(wallet, publicClient, address), ledgerKeyFromEnv(key), { store });
+  return createPoolService(wallet, publicClient, fleetPool, ledgerKeyFromEnv(key), { store });
 };
 
 /**

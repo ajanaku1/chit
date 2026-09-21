@@ -9,6 +9,7 @@
 import { parseAbi, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 
 import type { DrawView, LedgerInputs, QueuedView } from "./pool-ledger.js";
+import { createPoolReads, type PoolReadCache } from "./pool-reads.js";
 
 const POOL_ABI = parseAbi([
   "function deposit() payable",
@@ -97,6 +98,8 @@ export const createFleetPool = (
   wallet: WalletClient,
   publicClient: PublicClient,
   address: Address,
+  /** `cache` is where the queue's mark is kept between instances; this instance's memory when absent. */
+  options: { cache?: PoolReadCache } = {},
 ): FleetPool => {
   // viem infers a union of exact argument tuples per function name; the calls
   // below are checked against the ABI at the call site instead.
@@ -126,28 +129,12 @@ export const createFleetPool = (
     return { campaign, ...raw };
   };
 
-  const allDraws = async (): Promise<PoolDraw[]> => {
-    const count = await read<bigint>("campaignCount");
-    const draws: PoolDraw[] = [];
-    for (let i = 0n; i < count; i += 1n) {
-      const campaign = await read<Hex>("campaignAt", [i]);
-      const draw = await drawAt(campaign);
-      if (draw) draws.push(draw);
-    }
-    return draws;
-  };
-
-  const allQueued = async (): Promise<PoolQueued[]> => {
-    const count = await read<bigint>("queuedSpendCount");
-    const entries: PoolQueued[] = [];
-    for (let i = 0n; i < count; i += 1n) {
-      const [id, raw] = await read<[Hex, {
-        encDepositor: Hex; amount: bigint; dueAt: bigint; queuedAt: bigint; posted: boolean;
-      }]>("queuedSpendAt", [i]);
-      entries.push({ id, ...raw });
-    }
-    return entries;
-  };
+  // The two lists only grow. They are read in pool-reads.ts: through Multicall3,
+  // so the round trips do not grow with them, and the queue from a mark, so
+  // charges whose window has closed are not read again.
+  const reads = createPoolReads(publicClient, address, options);
+  const allDraws = (): Promise<PoolDraw[]> => reads.draws();
+  const allQueued = (): Promise<PoolQueued[]> => reads.queued();
 
   return {
     address,
