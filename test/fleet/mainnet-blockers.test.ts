@@ -47,10 +47,24 @@ const wallet = {
 const makePool = (draws: PoolDraw[] = []) => {
   const queued: PoolQueued[] = [];
   const posted: { id: Hex; depositor: Address; amount: bigint }[] = [];
-  const knobs = { batchLandsThenReceiptFails: false, buyLandsThenReceiptFails: false, postingFails: false };
+  const knobs = { batchLandsThenReceiptFails: false, buyLandsThenReceiptFails: false, postingFails: false, resolveAs: "mined" as "mined" | "never-mined" };
   let n = 0;
   const pool = {
     address: account(0x901),
+    // The signed step over this fake: the hash is recorded, then the named function runs; a receipt wait that
+    // gives up is `unknown` (the transaction landed), any other throw is `reverted`; resolve answers the knob.
+    nextNonce: async () => 5,
+    signAndBroadcast: async (step: { nonce: number; functionName?: string; args?: readonly unknown[]; record: (h: Hex, n: number) => Promise<void> }) => {
+      const hash = `0x${"e".repeat(64)}` as Hex;
+      await step.record(hash, step.nonce);
+      try {
+        await (pool as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[step.functionName!]!(...(step.args ?? []));
+        return { status: "mined", hash };
+      } catch (error) {
+        return String(error).includes("WaitForTransactionReceipt") ? { status: "unknown", hash, nonce: step.nonce } : { status: "reverted", hash };
+      }
+    },
+    resolve: async (hash: Hex, nonce: number) => (knobs.resolveAs === "never-mined" ? { status: "never-mined", hash, nonce } : { status: "mined", hash }),
     depositorOf: async () => ({ deposited: 0n, spent: 0n, exitRequestedAt: 0n, exitAmount: 0n }),
     headroom: async () => ({ perDepositor: 0n, perPool: 0n }),
     paused: async () => false,
@@ -115,20 +129,28 @@ describe("M1: a withdrawal whose payout fails", () => {
 });
 
 describe("M4: a transaction that lands while its receipt wait fails", () => {
-  it("finding_M4a: a batch that landed is released and queued again, so the trader is charged twice", async () => {
+  // Replaces finding_M4a (T024): the same batch, the same dropped receipt, and the trader is charged once.
+  it("fixed_M4a: a batch whose receipt wait failed stays sent under its hash, is resolved by it on the next sweep, and is never queued again", async () => {
     const o = opts();
     const { pool, posted, knobs } = makePool();
     const service = createPoolService(wallet, publicClient, pool, KEY, o);
     await o.store.recordOwed({ id: "one-buy", depositor: ALICE, amount: "5000", incurredAt: "2026-09-19T00:00:00Z" });
 
+    const original = console.warn;
+    console.warn = () => {};
     knobs.batchLandsThenReceiptFails = true;
-    await service.sweep(async () => [], { queueOwed: true });
+    const first = await service.sweep(async () => [], { queueOwed: true }).finally(() => { console.warn = original; });
+    assert.equal(first.queued, 0, "nothing is claimed for a transaction whose fate was not seen");
+    assert.deepEqual((await o.store.sentBatches()).map((b) => b.ids), [["one-buy"]], "the row is sent, named by the hash recorded before the broadcast");
+    assert.equal(await o.store.owedFor(ALICE), "5000", "and still owed, so the balance keeps subtracting it");
+
     knobs.batchLandsThenReceiptFails = false;
     await service.sweep(async () => [], { queueOwed: true });
+    assert.deepEqual(await o.store.sentBatches(), [], "the hash resolved to a receipt: the row is the chain's");
     await service.sweep(async () => []);
 
     const charged = posted.filter((p) => p.depositor.toLowerCase() === ALICE).reduce((sum, p) => sum + p.amount, 0n);
-    assert.equal(charged, 10_000n, "one buy of 5000, posted twice");
+    assert.equal(charged, 5_000n, "one buy of 5000, posted once");
   });
 
   it("finding_M4b: a buy that landed is reported rejected and never charged, so the pool pays for it", async () => {
