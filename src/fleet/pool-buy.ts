@@ -11,7 +11,7 @@ import { randomUUID } from "node:crypto";
 
 import { parseEther, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 
-import type { FleetPool, PoolDraw, WriteOutcome } from "./chain-pool.js";
+import type { FleetPool, PoolDraw, PoolQueued, WriteOutcome } from "./chain-pool.js";
 import { DRAW_STATE } from "./chain-pool.js";
 import { availableBalance, depositSizes, openDepositor, sealDepositor } from "./pool-ledger.js";
 import { createMemoryStore, type SentBatch, type StorePort } from "./store.js";
@@ -198,7 +198,12 @@ export type SweepReport = {
   expired?: string[];
   /** Due charges whose depositor this ledger key cannot open. Anything but zero means the key is wrong. */
   unreadable?: number;
+  /** The automatic pause this sweep pulled (FR-026, FR-034), and what pulled it. Absent when nothing did. */
+  paused?: { trigger: PauseTrigger; detail: string[] };
 };
+
+/** The two machine-detectable triggers of FR-026. The third, a depositor losing money, needs a person to confirm. */
+export type PauseTrigger = "charge-expired" | "exit-failed";
 
 /**
  * Admits one sweep per interval. A sweep reads every draw and every queued
@@ -353,6 +358,43 @@ export const createPoolService = (
   };
 
   const chainSeconds = async (): Promise<bigint> => (await publicClient.getBlock()).timestamp;
+
+  /**
+   * The automatic pause (T050): a charge that passed its deadline unrecorded,
+   * or an exit that would fail if sent, pulls the brake in the same sweep
+   * that saw it (FR-034). A charge that expired before the pool was last
+   * resumed has been dealt with, by the resume gate, and does not pull it
+   * again; an exit that would still fail does, because the pool is not
+   * whole. Only the scheduled sweep looks, since it is the one that reads
+   * every queued charge anyway.
+   */
+  const pauseIfTriggered = async (expiredIds: readonly string[], queued: readonly PoolQueued[], seconds: bigint): Promise<SweepReport["paused"]> => {
+    if (!pool.pause) return undefined;
+    const since = pool.lastResumedAt ? await pool.lastResumedAt() : 0n;
+    const fresh = queued.filter((q) => expiredIds.includes(q.id) && q.queuedAt + BigInt(POST_WINDOW_SECONDS) > since).map((q) => q.id);
+    let trigger: PauseTrigger | undefined;
+    let detail: string[] = [];
+    if (fresh.length > 0) {
+      trigger = "charge-expired";
+      detail = fresh;
+    } else if (pool.exitsRequested && pool.exitWouldFail) {
+      for (const depositor of await pool.exitsRequested()) {
+        const record = await pool.depositorOf(depositor);
+        if (record.exitRequestedAt === 0n || seconds < record.exitRequestedAt + BigInt(EXIT_DELAY_SECONDS)) continue;
+        if (await pool.exitWouldFail(depositor)) {
+          trigger = "exit-failed";
+          // Never the depositor: an exit that fails is public the moment it is sent, but this one was not.
+          detail = [`an exit due at ${iso(record.exitRequestedAt + BigInt(EXIT_DELAY_SECONDS))} would revert`];
+          break;
+        }
+      }
+    }
+    if (!trigger) return undefined;
+    if (await pool.paused()) return { trigger, detail };
+    const hash = await pool.pause();
+    console.error(`pause: ${trigger} (${detail.join(", ")}); the pool is paused in ${hash}; nothing moves until the resume gate passes`);
+    return { trigger, detail };
+  };
 
   /**
    * An expired charge never leaves the queue, and ordinary traffic sweeps
@@ -516,7 +558,8 @@ export const createPoolService = (
       const failed: PostingFailure[] = [];
       const expired: string[] = [];
       let unreadable = 0;
-      for (const entry of await pool.queued()) {
+      const queuedNow = await pool.queued();
+      for (const entry of queuedNow) {
         if (entry.posted || entry.dueAt > seconds) continue;
         // The contract refuses it for good from here on; asking again on every
         // sweep costs a call and says nothing new.
@@ -542,6 +585,7 @@ export const createPoolService = (
         }
       }
       sayWhatIsNew(expired, unreadable);
+      const pausedNow = options.queueOwed ? await pauseIfTriggered(expired, queuedNow, seconds) : undefined;
 
       const funded: Hex[] = [];
       for (const draw of await pool.draws()) {
@@ -571,7 +615,7 @@ export const createPoolService = (
           console.error(`sweep: draw ${draw.campaign} not funded: ${messageOf(error)}`);
         }
       }
-      return { funded, posted, queued, failed, expired, unreadable };
+      return { funded, posted, queued, failed, expired, unreadable, ...(pausedNow ? { paused: pausedNow } : {}) };
     },
 
     async buy({ campaign, depositor, target, buys }) {

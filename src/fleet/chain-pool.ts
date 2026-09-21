@@ -16,6 +16,9 @@ const POOL_ABI = parseAbi([
   "function requestExit()",
   "function executeExit()",
   "function setPaused(bool paused_)",
+  "function pause()",
+  "event ExitRequested(address indexed depositor, uint256 amount, uint64 availableAt)",
+  "event PausedSet(bool paused)",
   "function queueSpendBatch(bytes[] encDepositors, uint256[] amounts, uint64[] dueAts) returns (uint256[])",
   "function postQueued(bytes32 id, address depositor)",
   "function postQueuedBatch(bytes32[] ids, address[] depositors) returns (uint8[])",
@@ -132,6 +135,18 @@ export type FleetPool = {
   donate(amount: bigint): Promise<Hex>;
   claimable(): Promise<bigint>;
   claimOperator(amount: bigint): Promise<Hex>;
+  /**
+   * The brake, pulled by the operator's key (FR-034: automatic on a
+   * machine-detectable trigger). Optional so fakes that predate it still
+   * type-check; the service says so in the log when it cannot pull it.
+   */
+  pause?(): Promise<Hex>;
+  /** Every depositor who has requested an exit, from the pool's own events, whether or not they have since left. */
+  exitsRequested?(): Promise<Address[]>;
+  /** Whether `executeExit` from this depositor would revert now: an exit transaction that would fail, before anyone sends it. */
+  exitWouldFail?(depositor: Address): Promise<boolean>;
+  /** When the pool was last unpaused (PausedSet(false)), in chain seconds; 0 when never. A trigger older than this has been dealt with. */
+  lastResumedAt?(): Promise<bigint>;
 };
 
 const ctx = (wallet: WalletClient) => ({ account: wallet.account ?? null, chain: wallet.chain ?? null });
@@ -224,9 +239,48 @@ export const createFleetPool = (
     return count > nonce ? { status: "never-mined", hash, nonce } : { status: "unknown", hash, nonce };
   };
 
+  /**
+   * The pool's own logs, over the whole chain in one filtered query, which the
+   * public RPC answers quickly for one address and one topic; a node that
+   * refuses the span is read in halves.
+   */
+  const logsOf = async (eventName: "ExitRequested" | "PausedSet", fromBlock = 0n, toBlock?: bigint): Promise<{ args: Record<string, unknown>; blockNumber: bigint }[]> => {
+    const event = POOL_ABI.find((e) => e.type === "event" && e.name === eventName);
+    const to = toBlock ?? (await publicClient.getBlockNumber());
+    try {
+      const logs = (await publicClient.getLogs({ address, event: event as never, fromBlock, toBlock: to })) as unknown as { args: Record<string, unknown>; blockNumber: bigint | null }[];
+      return logs.map((log) => ({ args: log.args, blockNumber: log.blockNumber ?? 0n }));
+    } catch (error) {
+      if (to - fromBlock < 1_000n) throw error;
+      const mid = fromBlock + (to - fromBlock) / 2n;
+      return [...(await logsOf(eventName, fromBlock, mid)), ...(await logsOf(eventName, mid + 1n, to))];
+    }
+  };
+
   return {
     address,
     nextNonce: (from) => publicClient.getTransactionCount({ address: from, blockTag: "pending" }),
+    pause: () => write("pause", []),
+    async exitsRequested() {
+      const seen = new Set<string>();
+      for (const log of await logsOf("ExitRequested")) seen.add(String(log.args["depositor"]).toLowerCase());
+      return [...seen] as Address[];
+    },
+    async exitWouldFail(depositor) {
+      try {
+        await publicClient.simulateContract({ address, abi: POOL_ABI, functionName: "executeExit", account: depositor } as never);
+        return false;
+      } catch {
+        return true;
+      }
+    },
+    async lastResumedAt() {
+      const resumes = (await logsOf("PausedSet")).filter((log) => log.args["paused"] === false);
+      const last = resumes.at(-1);
+      if (!last) return 0n;
+      const block = await publicClient.getBlock({ blockNumber: last.blockNumber });
+      return block.timestamp;
+    },
     signAndBroadcast,
     resolve,
 

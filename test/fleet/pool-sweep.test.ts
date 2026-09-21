@@ -38,8 +38,17 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
   /** What the signed step reports for a batch, and what resolve answers for a hash left sent. */
   let batchOutcome: "mined" | "reverted" | "unknown" = "mined";
   let resolveAs: "mined" | "reverted" | "never-mined" | "unknown" = "mined";
+  /** The pause's inputs: whether the pool is paused, who has asked to exit and whether their exit would fail, when it was last resumed. */
+  let isPaused = false;
+  let exiting: Address[] = [];
+  let exitFails = false;
+  let resumedAt = 0n;
   const pool: FleetPool = {
     address: "0x0000000000000000000000000000000000000901" as Address,
+    pause: async () => { calls.push({ fn: "pause", args: [] }); isPaused = true; return "0x0p"; },
+    exitsRequested: async () => exiting,
+    exitWouldFail: async () => exitFails,
+    lastResumedAt: async () => resumedAt,
     // The signed step, over this fake: the hash is recorded first, then the named function runs as before.
     nextNonce: async () => 0,
     signAndBroadcast: async (step) => {
@@ -60,7 +69,7 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
     depositorOf: async () => ({ deposited: 0n, spent: 0n, exitRequestedAt: 0n, exitAmount: 0n }),
     headroom: async () => ({ perDepositor: 0n, perPool: 0n }),
     caps: async () => ({ depositor: 500000000000000000n, draw: 200000000000000000n, pool: 5000000000000000000n }),
-    paused: async () => false,
+    paused: async () => isPaused,
     draws: async () => draws,
     drawOf: async (c) => draws.find((d) => d.campaign === c),
     queued: async () => queued,
@@ -101,6 +110,9 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
   return {
     pool, calls,
     setBatchOutcome: (o: typeof batchOutcome) => { batchOutcome = o; },
+    setPaused: (on: boolean) => { isPaused = on; },
+    setExiting: (who: Address[], fails: boolean) => { exiting = who; exitFails = fails; },
+    setResumedAt: (at: bigint) => { resumedAt = at; },
     setResolveAs: (o: typeof resolveAs) => { resolveAs = o; },
     refuse: (c: Hex) => { refuseFund = new Set([...refuseFund, c]); },
     failCommits: (n: number) => { commitFailures = n; },
@@ -315,6 +327,65 @@ describe("the batch through the signed step (T025)", () => {
     assert.equal(third.queued, 2, "provably never mined: owed again, and queued in this very sweep");
     assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 2);
     assert.deepEqual(await o.store.sentBatches(), []);
+  });
+});
+
+describe("the automatic pause (T050, T052)", () => {
+  const NOW = 1_700_000_000n;
+  const expiredCharge = (n: number, queuedAt: bigint): PoolQueued =>
+    ({ id: `0x${n.toString(16).padStart(64, "0")}` as Hex, encDepositor: sealDepositor(KEY, ALICE), amount: 5_000n, dueAt: queuedAt + 60n, queuedAt, posted: false });
+  const quietly = async <T,>(work: () => Promise<T>): Promise<T> => {
+    const original = console.error;
+    console.error = () => {};
+    try { return await work(); } finally { console.error = original; }
+  };
+
+  it("a charge that passed its deadline unrecorded pauses the pool in the same sweep, once", async () => {
+    const { pool, calls } = makePool([], [expiredCharge(1, NOW - 13n * 3600n)]);
+    const o = opts();
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
+    const report = await quietly(() => service.sweep(async () => [], { queueOwed: true }));
+    assert.deepEqual(report.paused, { trigger: "charge-expired", detail: [`0x${"1".padStart(64, "0")}`] });
+    assert.equal(calls.filter((c) => c.fn === "pause").length, 1, "the brake, in the sweep that saw it");
+    const again = await quietly(() => service.sweep(async () => [], { queueOwed: true }));
+    assert.equal(again.paused?.trigger, "charge-expired", "still the reason");
+    assert.equal(calls.filter((c) => c.fn === "pause").length, 1, "and not pulled twice");
+  });
+
+  it("a charge that expired before the pool was last resumed has been dealt with and pauses nothing", async () => {
+    const { pool, calls, setResumedAt } = makePool([], [expiredCharge(2, NOW - 13n * 3600n)]);
+    setResumedAt(NOW - 60n);
+    const report = await quietly(() => createPoolService(wallet, publicClient, pool, KEY, opts()).sweep(async () => [], { queueOwed: true }));
+    assert.equal(report.paused, undefined);
+    assert.equal(calls.filter((c) => c.fn === "pause").length, 0);
+  });
+
+  it("an exit that would fail if sent pauses the pool, and one that is not yet due does not", async () => {
+    const { pool, calls, setExiting } = makePool([]);
+    const requestedAt = NOW - 25n * 3600n;
+    const due: FleetPool = { ...pool, depositorOf: async () => ({ deposited: parseEther("0.1"), spent: 0n, exitRequestedAt: requestedAt, exitAmount: parseEther("0.1") }) };
+    setExiting([ALICE], true);
+    const report = await quietly(() => createPoolService(wallet, publicClient, due, KEY, opts()).sweep(async () => [], { queueOwed: true }));
+    assert.equal(report.paused?.trigger, "exit-failed");
+    assert.ok(!report.paused?.detail.join(" ").toLowerCase().includes(ALICE.toLowerCase()), "the depositor is never named");
+    assert.equal(calls.filter((c) => c.fn === "pause").length, 1);
+
+    const { pool: p2, calls: c2, setExiting: e2 } = makePool([]);
+    const notDue: FleetPool = { ...p2, depositorOf: async () => ({ deposited: parseEther("0.1"), spent: 0n, exitRequestedAt: NOW - 3600n, exitAmount: parseEther("0.1") }) };
+    e2([ALICE], true);
+    const quiet = await createPoolService(wallet, publicClient, notDue, KEY, opts()).sweep(async () => [], { queueOwed: true });
+    assert.equal(quiet.paused, undefined, "not due: nobody could have sent it yet");
+    assert.equal(c2.filter((c) => c.fn === "pause").length, 0);
+  });
+
+  it("the opportunistic sweep never pulls the brake; the scheduled one does", async () => {
+    const { pool, calls } = makePool([], [expiredCharge(3, NOW - 13n * 3600n)]);
+    const service = createPoolService(wallet, publicClient, pool, KEY, opts());
+    const opportunistic = await quietly(() => service.sweep(async () => []));
+    assert.equal(opportunistic.paused, undefined);
+    assert.equal(calls.filter((c) => c.fn === "pause").length, 0);
+    await quietly(() => service.sweep(async () => [], { queueOwed: true }));
+    assert.equal(calls.filter((c) => c.fn === "pause").length, 1);
   });
 });
 
