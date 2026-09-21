@@ -2,7 +2,6 @@ name: Eyebrow
 
 # The agent-toolchain gate. eyebrow (eyebrow.cc, MIT) inventories the AI
 # coding artifacts a repository carries (project skills, commands, MCP
-# configs, rules files for Claude Code, Cursor, Codex, Gemini CLI, Windsurf)
 # and hashes them into eyebrowlock.json, committed here beside the code they
 # would act on. `eyebrow verify --ci` recomputes the inventory on every push
 # and pull request and fails on any drift from the lockfile, on any artifact
@@ -33,7 +32,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: alexverify/eyebrow/action@v0.5.2
+      - uses: alexverify/eyebrow/action@206507d5703311453677c5fb46a5cd1b11550731 # v0.5.2
         with:
           lockfile: eyebrowlock.json
           policy: eyebrow.policy.json
