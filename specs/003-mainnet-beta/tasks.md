@@ -99,7 +99,7 @@ one deployment.
 
 - [x] T041 [P] [B] Add `blockTime` to the chain definition in `src/fleet/service-runtime.ts`
 - [x] T042 [P] [B] Add `maxDuration` for `api/fleet/*` in `vercel.json`
-- [ ] T043 [B] Read `ledgerInputs` through Multicall3 in `src/fleet/chain-pool.ts`, caching entries that can no longer change
+- [x] T043 [B] Read `ledgerInputs` through Multicall3 in `src/fleet/chain-pool.ts`, caching entries that can no longer change
 - [x] T044 [B] Log and count every failed posting with its reason in `src/fleet/pool-buy.ts`, and add the field to the sweep's report
 - [x] T045 [B] Move one Vercel cron off the twelve-hour spacing in `vercel.json`
   - Done another way, because it cannot be done as written: two runs a day always leave a gap of at
@@ -108,8 +108,8 @@ one deployment.
     funds what is ready and never queues. The queueing schedule is untouched, because how often it
     ticks is the size of the batch a charge hides in. `test/fleet/sweep-timing.test.ts` reads
     `POST_WINDOW` from the contract and holds the largest posting gap under a third of it.
-- [ ] T046 [P] [B] Replace `finding_M3a`, `finding_M3b`, `finding_M3c` with siblings stating the fixed behaviour
-  - `finding_M3c` is replaced by `fixed_M3c` with T041, `finding_M3a` by `fixed_M3a` with T044; M3b goes with T043.
+- [x] T046 [P] [B] Replace `finding_M3a`, `finding_M3b`, `finding_M3c` with siblings stating the fixed behaviour
+  - `finding_M3c` is replaced by `fixed_M3c` with T041, `finding_M3a` by `fixed_M3a` with T044, `finding_M3b` by `fixed_M3b` with T043.
 
 ### 2F. Safety rails — FR-023, FR-032, FR-034, FR-035, FR-043
 

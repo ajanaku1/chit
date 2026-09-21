@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-21T12:57:51.619Z",
-  "commit": "a98f4de",
-  "committedAt": "2026-09-21T14:55:32+02:00",
-  "commits": 485,
+  "generatedAt": "2026-09-21T13:01:46.123Z",
+  "commit": "8c52f53",
+  "committedAt": "2026-09-21T14:59:05+02:00",
+  "commits": 489,
   "tasks": {
-    "done": 92,
+    "done": 94,
     "total": 175,
-    "percent": 52
+    "percent": 53
   },
   "stages": [
     {
@@ -113,7 +113,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 12,
+      "done": 14,
       "total": 94,
       "phases": [
         {
@@ -123,7 +123,7 @@
         },
         {
           "name": "Foundational",
-          "done": 8,
+          "done": 10,
           "total": 47
         },
         {
@@ -280,14 +280,6 @@
         {
           "id": "T040",
           "text": "[F] Correct the comment at `src/fleet/pool-buy.ts:46`: the grain falls to the operator, not the pool"
-        },
-        {
-          "id": "T043",
-          "text": "[B] Read `ledgerInputs` through Multicall3 in `src/fleet/chain-pool.ts`, caching entries that can no longer change"
-        },
-        {
-          "id": "T046",
-          "text": "[P] [B] Replace `finding_M3a`, `finding_M3b`, `finding_M3c` with siblings stating the fixed behaviour"
         },
         {
           "id": "T047",
