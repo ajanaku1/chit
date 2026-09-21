@@ -1,11 +1,11 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-21T12:54:02.596Z",
-  "commit": "42952e0",
-  "committedAt": "2026-09-21T10:38:39+01:00",
-  "commits": 481,
+  "generatedAt": "2026-09-21T12:57:51.619Z",
+  "commit": "a98f4de",
+  "committedAt": "2026-09-21T14:55:32+02:00",
+  "commits": 485,
   "tasks": {
-    "done": 91,
+    "done": 92,
     "total": 175,
     "percent": 52
   },
@@ -113,7 +113,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 11,
+      "done": 12,
       "total": 94,
       "phases": [
         {
@@ -123,7 +123,7 @@
         },
         {
           "name": "Foundational",
-          "done": 7,
+          "done": 8,
           "total": 47
         },
         {
@@ -284,10 +284,6 @@
         {
           "id": "T043",
           "text": "[B] Read `ledgerInputs` through Multicall3 in `src/fleet/chain-pool.ts`, caching entries that can no longer change"
-        },
-        {
-          "id": "T044",
-          "text": "[B] Log and count every failed posting with its reason in `src/fleet/pool-buy.ts`, and add the field to the sweep's report"
         },
         {
           "id": "T046",
