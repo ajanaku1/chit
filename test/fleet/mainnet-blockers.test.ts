@@ -150,23 +150,26 @@ describe("M4: a transaction that lands while its receipt wait fails", () => {
 });
 
 describe("M3: the sweep", () => {
-  it("finding_M3a: a posting that fails is dropped without a word and without a count", async () => {
+  // Replaces finding_M3a (T046): the same sweep, the same failing posting, and now it is said and counted.
+  it("fixed_M3a: a posting that fails is logged by its public id, with its reason, and counted in the report", async () => {
     const o = opts();
     const { pool, queued, knobs } = makePool();
     const service = createPoolService(wallet, publicClient, pool, KEY, o);
     await o.store.recordOwed({ id: "x", depositor: ALICE, amount: "5000", incurredAt: "2026-09-19T00:00:00Z" });
 
-    const logged: unknown[] = [];
+    const logged: string[] = [];
     const original = { error: console.error, warn: console.warn, log: console.log };
-    console.error = console.warn = console.log = (...args: unknown[]) => { logged.push(args); };
+    console.error = console.warn = console.log = (...args: unknown[]) => { logged.push(args.map(String).join(" ")); };
     knobs.postingFails = true;
     const report = await service.sweep(async () => [], { queueOwed: true }).finally(() => Object.assign(console, original));
 
     assert.equal(report.queued, 1, "the charge is on chain and due");
-    assert.equal(queued.filter((q) => !q.posted).length, 1, "postQueued was tried and failed");
+    const [unposted] = queued.filter((q) => !q.posted);
+    assert.ok(unposted, "postQueued was tried and failed");
     assert.deepEqual(report.posted, [], "nothing was posted");
-    assert.deepEqual(logged, [], "and nothing was logged: not the window, not the RPC error this was");
-    assert.deepEqual(Object.keys(report).sort(), ["funded", "posted", "queued"], "the report has no field for a failed posting");
+    assert.deepEqual(report.failed?.map((f) => f.id), [unposted.id], "the report names the charge that did not post");
+    assert.ok(logged.some((line) => line.includes(unposted.id) && line.includes("not posted")), "and the log says so, by the charge's public id");
+    assert.ok(!logged.join("\n").toLowerCase().includes(ALICE.toLowerCase()), "never by the depositor: a log line with both is the link the pool withholds");
   });
 
   it("finding_M3b: one balance read costs 2N + M + 3 reads, and each loop has one request in flight at a time", async () => {
