@@ -527,7 +527,14 @@ export const createPoolService = (
           // fund() reverts DrawExceeded on this; skipping is cheaper than
           // paying for the revert on every sweep until the draw is closed.
           if (draw.amount - draw.spent < seeded) continue;
-          await pool.fund(draw.campaign, accounts);
+          const outcome = await signed("fund", [draw.campaign, accounts], { kind: "fund", campaign: draw.campaign });
+          // Unknown is settled by the draw itself: Pending still means nothing happened; anything else means it did.
+          const landed = outcome.status === "mined"
+            || (outcome.status === "unknown" && (await pool.drawOf(draw.campaign))?.state !== DRAW_STATE.pending);
+          if (!landed) {
+            console.error(`sweep: draw ${draw.campaign} not funded: ${outcome.status} (${outcome.hash})`);
+            continue;
+          }
           funded.push(draw.campaign);
           // The headroom left the pool for accounts the trader owns. It is
           // charged like any other spend: recorded now, queued by a later
@@ -577,18 +584,42 @@ export const createPoolService = (
     const principal = BigInt(buy.value);
     const gasCeiling = BigInt(buy.maxCost);
     const before = (await pool.drawOf(campaign))?.spent ?? 0n;
-    let hash: Hex;
+    let outcome: WriteOutcome;
     try {
       const limit = await gasLimitFor(gasCeiling);
-      hash = await pool.fundAndExecute(campaign, buy.account, principal, gasCeiling, target, buy.callData, limit.gas);
+      outcome = await signed("fundAndExecute", [campaign, buy.account, principal, gasCeiling, target, buy.callData], { kind: "buy", campaign, account: buy.account }, limit.gas);
     } catch (error) {
-      // Logged as well as returned: a refused buy the browser shows as "failed"
-      // should be findable in the function logs, first line only, no secrets.
+      // Nothing was broadcast. Logged as well as returned: a refused buy the browser
+      // shows as "failed" should be findable in the function logs, first line only, no secrets.
       console.warn(`buy refused for ${buy.account}: ${messageOf(error)}`);
       return { account: buy.account, status: "rejected", reason: reasonOf(error) };
     }
     const after = (await pool.drawOf(campaign))?.spent ?? before;
-    return { account: buy.account, status: "sponsored", txHash: hash, charged: after - before };
+    // The draw's spent is the evidence: a buy whose receipt was never seen but whose
+    // principal left the draw was sponsored, and is charged like one (M4b).
+    const landed = outcome.status === "mined" || (outcome.status === "unknown" && after > before);
+    if (!landed) {
+      console.warn(`buy ${outcome.status} for ${buy.account}: ${outcome.hash}`);
+      return { account: buy.account, status: "rejected", reason: outcome.status === "reverted" ? outcome.reason ?? "execution_refused" : outcome.status };
+    }
+    return { account: buy.account, status: "sponsored", txHash: outcome.hash, charged: after - before };
+  }
+
+  /**
+   * One pool function through the signed step. The hash is recorded in the
+   * store's idempotency table before the broadcast, so a transaction this
+   * process loses sight of still has a name somewhere durable. A throw here
+   * means nothing was broadcast; every outcome after the signature is a value.
+   */
+  async function signed(functionName: string, args: readonly unknown[], what: Record<string, unknown>, gas?: bigint): Promise<WriteOutcome> {
+    const nonce = await pool.nextNonce(from());
+    return pool.signAndBroadcast({
+      nonce,
+      functionName,
+      args,
+      ...(gas === undefined ? {} : { gas }),
+      record: (hash, signedNonce) => store.idempotency.put(`fleet-tx|${hash}`, { payloadHash: hash, result: { ...what, nonce: signedNonce } }),
+    });
   }
 
   /**

@@ -47,10 +47,12 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
       await step.record(hash, step.nonce);
       if (step.functionName === "queueSpendBatch" && batchOutcome === "reverted") return { status: "reverted", hash };
       try {
-        if (step.functionName) await (pool as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[step.functionName]!(...step.args);
+        // The gas limit rides as the function's last argument, where the fake's fundAndExecute reads it.
+        if (step.functionName) await (pool as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[step.functionName]!(...step.args, ...(step.gas === undefined ? [] : [step.gas]));
         return batchOutcome === "unknown" ? { status: "unknown", hash, nonce: step.nonce } : { status: "mined", hash };
-      } catch {
-        return { status: "reverted", hash };
+      } catch (error) {
+        const named = /(?:Error:\s*)?([A-Z][A-Za-z0-9_]*)\(\)/.exec(String(error))?.[1];
+        return { status: "reverted", hash, ...(named ? { reason: named } : {}) };
       }
     },
     resolve: async (hash, nonce) => (resolveAs === "mined" || resolveAs === "reverted" ? { status: resolveAs, hash } : { status: resolveAs, hash, nonce }),

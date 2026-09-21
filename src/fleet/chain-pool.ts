@@ -72,7 +72,8 @@ export type DepositorRecord = {
  */
 export type WriteOutcome =
   | { status: "mined"; hash: Hex }
-  | { status: "reverted"; hash: Hex }
+  /** `reason` is the contract's own error when something named it; a receipt alone names nothing. */
+  | { status: "reverted"; hash: Hex; reason?: string }
   | { status: "unknown"; hash: Hex; nonce: number }
   | { status: "never-mined"; hash: Hex; nonce: number };
 
