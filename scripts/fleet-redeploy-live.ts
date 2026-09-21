@@ -18,15 +18,21 @@
  * bytecode runs on both chains, and a bigger cap is a new pool after an
  * audit, not a switch.
  *
+ * The roles: the policy and the pool are deployed with the deployer as their
+ * admin, so this script can wire them (setPool, setGuardian), and their admin
+ * role is then offered to the cold key (Ownable2Step): nothing changes until
+ * FLEET_ADMIN_ADDRESS calls acceptOwnership() on each, and the deployer keeps
+ * nothing it should not. The escrow and the factory have no admin.
+ *
  * What it does not do, on purpose: move anyone's ETH (the old pool keeps its
  * deposits; testers exit it themselves), set a guardian unless
  * FLEET_GUARDIAN_ADDRESS is given (mainnet refuses without one), or touch the
  * host environment (it prints the variables to set).
  *
- * Reads, never invents:
+ * Reads, never invents (the refusals are src/fleet/deploy-guards.ts):
  *   DEPLOYER_PRIVATE_KEY        the operator key, funded on the chain; the
- *                               pool's operator is immutable and the service
- *                               signs with this same key
+ *                               service signs with this same key
+ *   FLEET_ADMIN_ADDRESS         the cold admin, required, never the deployer
  *   FLEET_CHAIN_ID              46630 (default) or 4663
  *   FLEET_RPC_URL               optional; defaults by chain
  *   FLEET_GUARDIAN_ADDRESS      a second key that may pause the pool; required on mainnet
@@ -55,6 +61,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
+import { adminFromEnv, guardianFromEnv } from "../src/fleet/deploy-guards.js";
 import { capsFromEnv } from "../src/fleet/pool-caps.js";
 
 const CHAIN_ID = Number(process.env.FLEET_CHAIN_ID || 46630);
@@ -72,7 +79,7 @@ const chain = defineChain({
   rpcUrls: { default: { http: [RPC_URL] } },
 });
 
-const POLICY_ABI = parseAbi(["function setPool(address pool_)", "function pool() view returns (address)", "function operator() view returns (address)"]);
+const POLICY_ABI = parseAbi(["function setPool(address pool_)", "function pool() view returns (address)", "function operator() view returns (address)", "function transferOwnership(address newOwner)", "function pendingOwner() view returns (address)"]);
 const FACTORY_ABI = parseAbi(["function operator() view returns (address)"]);
 const ESCROW_ABI = parseAbi(["function operator() view returns (address)"]);
 const POOL_ABI = parseAbi([
@@ -85,6 +92,8 @@ const POOL_ABI = parseAbi([
   "function DRAW_CAP() view returns (uint256)",
   "function POOL_CAP() view returns (uint256)",
   "function GAS_HEADROOM() view returns (uint256)",
+  "function transferOwnership(address newOwner)",
+  "function pendingOwner() view returns (address)",
 ]);
 
 type FleetRecord = {
@@ -127,13 +136,9 @@ const main = async (): Promise<void> => {
   const chainId = await publicClient.getChainId();
   if (chainId !== CHAIN_ID) throw new Error(`expected chain ${CHAIN_ID}, the RPC answers ${chainId}`);
   const caps = capsFromEnv(CHAIN_ID);
-  const guardian = process.env.FLEET_GUARDIAN_ADDRESS;
-  if (guardian !== undefined && guardian !== "") {
-    if (!isAddress(guardian)) throw new Error("FLEET_GUARDIAN_ADDRESS is not an address");
-    if (guardian.toLowerCase() === operator.address.toLowerCase()) throw new Error("the guardian must not be the operator; the point is a second key that can only pause");
-  } else if (MAINNET) {
-    throw new Error("a mainnet beta needs a guardian before anything is deployed: set FLEET_GUARDIAN_ADDRESS to a key that is not the operator's");
-  }
+  // Refused before anything is sent: the admin everywhere, the guardian on mainnet.
+  const admin = adminFromEnv(process.env, operator.address);
+  const guardian = guardianFromEnv(process.env, operator.address, MAINNET);
 
   let record: FleetRecord = {};
   let fresh = false;
@@ -186,22 +191,30 @@ const main = async (): Promise<void> => {
 
   // --- the set ---
   const escrow = fresh ? await deploy("FleetCampaignEscrow", [operator.address]) : { address: old.escrow as Address, tx: record.campaignEscrowTx as Hex };
-  const policy = await deploy("FleetSessionPolicy", [operator.address]);
+  // (admin, operator) to both: the deployer is the admin until the wiring is done and the role is offered to the cold key.
+  const policy = await deploy("FleetSessionPolicy", [operator.address, operator.address]);
   const factory = await deploy("FleetAccountFactory", [operator.address]);
-  const pool = await deploy("FleetPool", [operator.address, caps.depositor, caps.draw, caps.pool]);
+  const pool = await deploy("FleetPool", [operator.address, operator.address, caps.depositor, caps.draw, caps.pool]);
   const setPool = await send(`FleetSessionPolicy.setPool(${pool.address})`, () =>
     wallet.writeContract({ address: policy.address, abi: POLICY_ABI, functionName: "setPool", args: [pool.address] }),
   );
   let guardianTx: Hex | null = null;
   if (guardian) {
     guardianTx = (await send(`FleetPool.setGuardian(${guardian})`, () =>
-      wallet.writeContract({ address: pool.address, abi: POOL_ABI, functionName: "setGuardian", args: [guardian as Address] }),
+      wallet.writeContract({ address: pool.address, abi: POOL_ABI, functionName: "setGuardian", args: [guardian] }),
     )).hash;
   }
+  // The admin role, offered to the cold key on both; two-step, so nothing changes until it accepts.
+  const policyHandover = await send(`FleetSessionPolicy.transferOwnership(${admin})`, () =>
+    wallet.writeContract({ address: policy.address, abi: POLICY_ABI, functionName: "transferOwnership", args: [admin] }),
+  );
+  const poolHandover = await send(`FleetPool.transferOwnership(${admin})`, () =>
+    wallet.writeContract({ address: pool.address, abi: POOL_ABI, functionName: "transferOwnership", args: [admin] }),
+  );
 
   // --- read everything back; the record says what is on chain, not what we meant ---
   const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
-  const [policyPool, policyOperator, factoryOperator, poolOperator, escrowOperator, poolGuardian, paused] = await Promise.all([
+  const [policyPool, policyOperator, factoryOperator, poolOperator, escrowOperator, poolGuardian, paused, policyPending, poolPending] = await Promise.all([
     publicClient.readContract({ address: policy.address, abi: POLICY_ABI, functionName: "pool" }),
     publicClient.readContract({ address: policy.address, abi: POLICY_ABI, functionName: "operator" }),
     publicClient.readContract({ address: factory.address, abi: FACTORY_ABI, functionName: "operator" }),
@@ -209,7 +222,10 @@ const main = async (): Promise<void> => {
     publicClient.readContract({ address: escrow.address, abi: ESCROW_ABI, functionName: "operator" }),
     publicClient.readContract({ address: pool.address, abi: POOL_ABI, functionName: "guardian" }),
     publicClient.readContract({ address: pool.address, abi: POOL_ABI, functionName: "paused" }),
+    publicClient.readContract({ address: policy.address, abi: POLICY_ABI, functionName: "pendingOwner" }),
+    publicClient.readContract({ address: pool.address, abi: POOL_ABI, functionName: "pendingOwner" }),
   ]);
+  if (!same(policyPending, admin) || !same(poolPending, admin)) throw new Error(`the admin role is pending for ${policyPending} / ${poolPending}, expected ${admin}`);
   if (!same(policyPool, pool.address)) throw new Error(`policy.pool() is ${policyPool}, expected ${pool.address}`);
   for (const [what, got] of [["policy.operator", policyOperator], ["factory.operator", factoryOperator], ["pool.operator", poolOperator], ["escrow.operator", escrowOperator]] as const) {
     if (!same(got, operator.address)) throw new Error(`${what} is ${got}, expected ${operator.address}`);
@@ -248,6 +264,7 @@ const main = async (): Promise<void> => {
   }
   record.sessionPolicy = policy.address;
   record.sessionPolicyTx = policy.tx;
+  record.sessionPolicyAdminHandoverTx = policyHandover.hash;
   record.accountFactory = factory.address;
   record.accountFactoryTx = factory.tx;
   record.pool = {
@@ -257,6 +274,8 @@ const main = async (): Promise<void> => {
     setPoolTx: setPool.hash,
     guardian: poolGuardian,
     guardianTx,
+    admin,
+    adminHandoverTx: poolHandover.hash,
     caps: { perDepositor: readCaps["DEPOSITOR_CAP"], perDraw: readCaps["DRAW_CAP"], pool: readCaps["POOL_CAP"], gasHeadroom: readCaps["GAS_HEADROOM"] },
     beta: MAINNET,
     deployedAt: now,
@@ -264,6 +283,7 @@ const main = async (): Promise<void> => {
   record.redeployedAt = now;
   await writeFile(RECORD, `${JSON.stringify(record, null, 2)}\n`);
   console.log(`\nrecorded in ${RECORD}${fresh ? "" : "; the old set is under previous[]"}`);
+  console.log(`\nThe admin ${admin} accepts with acceptOwnership() on FleetSessionPolicy ${policy.address} and FleetPool ${pool.address}; until then the deployer still holds both roles.`);
 
   // --- the app's chain target: which chain, and what to say about it ---
   const betaNote = MAINNET

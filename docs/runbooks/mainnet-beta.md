@@ -14,6 +14,7 @@ constructor arguments and a JSON file:
 | per depositor | 0.5 ETH | **0.1 ETH** |
 | per draw | 0.2 ETH | **0.05 ETH** |
 | deposit sizes | 0.01 / 0.05 / 0.1 | same |
+| admin | required (`FLEET_ADMIN_ADDRESS`, never the deployer) | same |
 | guardian | optional | **required** (the script refuses without one) |
 | access | open | **holders only** (CHIT threshold, env) |
 | app note | none | "Beta on Robinhood Chain: capped at 1 ETH…" on every page |
@@ -34,6 +35,10 @@ the page and in the announcement.
 
 - [ ] The operator key, funded on mainnet with about 0.02 ETH (deploys are a
       fraction; the rest is the operator's float for fronting gas).
+- [ ] The **cold admin key**, not the deployer's: it accepts the admin role on
+      the policy and the pool with one `acceptOwnership()` each after the
+      deploy, and is the only key that can unpause or rotate the operator. Its
+      address goes in `FLEET_ADMIN_ADDRESS`.
 - [ ] A **guardian key** that is not the operator's: a hardware wallet or a
       second key kept apart. It can only `pause()`. Its address goes in
       `FLEET_GUARDIAN_ADDRESS`.
@@ -53,19 +58,21 @@ cp app/chain-target.json /tmp/chain-target.bak
 FLEET_CHAIN_ID=4663 FLEET_RPC_URL=http://127.0.0.1:8549 \
 DEPLOYER_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80 \
 FLEET_GUARDIAN_ADDRESS=0x70997970C51812dc3A010C7d01b50e0d17dc79C8 \
+FLEET_ADMIN_ADDRESS=0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC \
 npm run fleet-redeploy:live
 cp /tmp/chain-target.bak app/chain-target.json && rm deployments/fleet-4663.json
 ```
 
 Expected: escrow, policy, factory and pool deployed, `setPool`,
-`setGuardian`, the caps read back as 0.1 / 0.05 / 1, the record and the
+`setGuardian`, the admin role offered to `FLEET_ADMIN_ADDRESS` on the policy
+and the pool, the caps read back as 0.1 / 0.05 / 1, the record and the
 chain target written. Rehearsed on 2026-09-16 against mainnet block
 63,969,832.
 
 ## 3. Deploy
 
 ```bash
-FLEET_CHAIN_ID=4663 FLEET_GUARDIAN_ADDRESS=0x…guardian… npm run fleet-redeploy:live
+FLEET_CHAIN_ID=4663 FLEET_ADMIN_ADDRESS=0x…admin… FLEET_GUARDIAN_ADDRESS=0x…guardian… npm run fleet-redeploy:live
 ```
 
 - [ ] commit `deployments/fleet-4663.json` and `app/chain-target.json`:

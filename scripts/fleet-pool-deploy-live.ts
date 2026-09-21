@@ -16,6 +16,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createPublicClient, createWalletClient, defineChain, http, isAddress, isHex, type Address, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { capsFromEnv } from "../src/fleet/pool-caps.js";
 
 const DEFAULT_RPC = "https://rpc.testnet.chain.robinhood.com";
 const RECORD = path.resolve("deployments/fleet-46630.json");
@@ -84,7 +85,9 @@ const main = async (): Promise<void> => {
     hash = ((process.env.FLEET_POOL_DEPLOY_TX as Hex | undefined) ?? `0x${"0".repeat(64)}`) as Hex;
     console.log(`resuming FleetPool ${address}`);
   } else {
-    hash = await wallet.deployContract({ abi: abi as never, bytecode, args: [account.address, account.address] as never });
+    // The caps are constructor arguments now (T007); this script deploys the testnet set.
+    const caps = capsFromEnv(46630);
+    hash = await wallet.deployContract({ abi: abi as never, bytecode, args: [account.address, account.address, caps.depositor, caps.draw, caps.pool] as never });
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
     if (receipt.status !== "success" || !receipt.contractAddress) throw new Error(`FleetPool deploy failed: ${hash}`);
     address = receipt.contractAddress as Address;
