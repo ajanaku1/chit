@@ -5,28 +5,36 @@
   "admin": "0xCb70EfEfC73f241047262d4FACe6D21d052F6946",
   "entryPoint": "0x0000000071727de22e5e9d8baf0edac6f37da032",
   "router": "0x8876789976decbfcbbbe364623c63652db8c0904",
-  "sessionPolicy": "0x653285b2024343a31f8cbf349e86a621d5ae1c9d",
-  "accountFactory": "0xf1ebd7494fd5cf74b1dd0623e2ab6a07afaefa5e",
+  "sessionPolicy": "0x4a0c45555d9015961481d496a180495481b0e492",
+  "accountFactory": "0x74789523f038cfe520de09fb802ff3cbe4fad896",
   "campaignEscrow": "0x4c3374f29f51b316da909a91f01db6f26d10d012",
   "paymaster": "0x5c80cdd0f1b0397e52efb7138da531ad297d7be0",
-  "sessionPolicyTx": "0xe54dac7cf494b70da38b5535c422ab2c439769a7ef27802b13683160cafc23e9",
-  "accountFactoryTx": "0x58b010bb7b207128005234555e5c2328aa5c2cb9d190eac44e245d1f72f4c645",
+  "sessionPolicyTx": "0x1ed0071d76d6fa163e463cf69356bc72e5b9389f6df0594aac145b01c47e4f7e",
+  "accountFactoryTx": "0xd8c5bbc79f24f064d096ceb539cd78abec6db260b0bd88801b66bf0e579bffdf",
   "campaignEscrowTx": "0xb5548c73627845c4594e9f4fba63f207643d34ecc8519335d91cbeab92becffd",
   "paymasterTx": "0xac70be27073a867f3bbffe97eb3fc329e9de32523feea872e13ead0bcdcf9b50",
   "setSettlerTx": "0xb91005e9bda1e8b515883d2c2d075bd3a5143f5e3cee4c5b2566a3fb75d5b95f",
   "adminHandoverTx": "0x950d7d080635c7d78773520d9ca4c8df65421a0290e3bda85f32cbc3a3e991bf",
   "deployedAt": "2026-09-16T11:05:01.687Z",
   "pool": {
-    "address": "0xb29139f3119d490eae473ba29fe8deadfb2c5ca5",
+    "address": "0x5c619e51e9a4559dfb0bed22e9ec3ae1ae22beef",
     "operator": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
-    "deployTx": "0x4ae5ab7ab489278edb312b31e1883268e7cbdb98fb59f4ef08967c91fe53ecbd",
+    "deployTx": "0xb479ab618ba86010b2b35774f5d13a2efabda50a42d143ec957aa3c4640c718d",
+    "setPoolTx": "0x8c88794b6de2ae0cf182b042a544f49109e730dfe568c6bd8ed339d30113c90f",
+    "guardian": "0x0000000000000000000000000000000000000000",
+    "guardianTx": null,
+    "admin": "0xCb70EfEfC73f241047262d4FACe6D21d052F6946",
+    "adminHandoverTx": "0xdcfbcb38402a51d890b77e08b26a6ecdc850eea224b9fc76dade506c716c193b",
     "caps": {
       "perDepositor": "500000000000000000",
       "perDraw": "200000000000000000",
       "pool": "5000000000000000000",
       "gasHeadroom": "200000000000000"
     },
-    "deployedAt": "2026-09-16T11:08:41.662Z"
+    "maxPostBatch": "256",
+    "beta": false,
+    "deployedAt": "2026-09-21T10:44:00.000Z",
+    "note": "read back from the chain on 2026-09-21 after the redeploy script landed every transaction and then failed to write this record (its `previous` handling; fixed in the same commit); the admin's acceptOwnership() on the policy and the pool is pending"
   },
   "venue": {
     "poolManager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
@@ -98,28 +106,52 @@
     "withdrawTo": "0xd34d26a820395b76023017df657d09cf2fb38aa3",
     "at": "2026-09-13T14:08:09.774Z"
   },
-  "previous": {
-    "note": "the pre-audit set, superseded 2026-09-16 by the hardened deploy above; kept for the transaction history it names",
-    "sessionPolicy": "0x57c7436bbbb40b08adef5c84f0aeaee0c4f3e011",
-    "accountFactory": "0x5c0e2ec619c11b66e0e0efb7931bccfa6b784ea6",
-    "campaignEscrow": "0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325",
-    "pool": {
-      "address": "0xce92096098ae1e397b167292edad8f3bdb8200c9",
-      "operator": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
-      "deployTx": "0x9671b8022f416b276fb86daa4f2c113a12cc293f517a25ee6b75cc9fdb5e7afc",
-      "caps": {
-        "perDepositor": "500000000000000000",
-        "perDraw": "200000000000000000",
-        "pool": "5000000000000000000",
-        "gasHeadroom": "200000000000000"
-      },
-      "deployedAt": "2026-09-08T21:34:53.299Z"
+  "previous": [
+    {
+      "note": "the pre-audit set, superseded 2026-09-16 by the hardened deploy above; kept for the transaction history it names",
+      "sessionPolicy": "0x57c7436bbbb40b08adef5c84f0aeaee0c4f3e011",
+      "accountFactory": "0x5c0e2ec619c11b66e0e0efb7931bccfa6b784ea6",
+      "campaignEscrow": "0xd2c31ec466ead5f745bc6ba08cc49ff8435f1325",
+      "pool": {
+        "address": "0xce92096098ae1e397b167292edad8f3bdb8200c9",
+        "operator": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
+        "deployTx": "0x9671b8022f416b276fb86daa4f2c113a12cc293f517a25ee6b75cc9fdb5e7afc",
+        "caps": {
+          "perDepositor": "500000000000000000",
+          "perDraw": "200000000000000000",
+          "pool": "5000000000000000000",
+          "gasHeadroom": "200000000000000"
+        },
+        "deployedAt": "2026-09-08T21:34:53.299Z"
+      }
+    },
+    {
+      "retiredAt": "2026-09-21T10:44:00.000Z",
+      "reason": "redeployed after the September audit: refusals, guardian, atomic fund and execute, caps at deployment, the surplus claim, batch posting, donate() and the monitor's counters",
+      "sessionPolicy": "0x653285b2024343a31f8cbf349e86a621d5ae1c9d",
+      "sessionPolicyTx": "0xe54dac7cf494b70da38b5535c422ab2c439769a7ef27802b13683160cafc23e9",
+      "accountFactory": "0xf1ebd7494fd5cf74b1dd0623e2ab6a07afaefa5e",
+      "accountFactoryTx": "0x58b010bb7b207128005234555e5c2328aa5c2cb9d190eac44e245d1f72f4c645",
+      "pool": {
+        "address": "0xb29139f3119d490eae473ba29fe8deadfb2c5ca5",
+        "operator": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
+        "deployTx": "0x4ae5ab7ab489278edb312b31e1883268e7cbdb98fb59f4ef08967c91fe53ecbd",
+        "caps": {
+          "perDepositor": "500000000000000000",
+          "perDraw": "200000000000000000",
+          "pool": "5000000000000000000",
+          "gasHeadroom": "200000000000000"
+        },
+        "deployedAt": "2026-09-16T11:08:41.662Z"
+      }
     }
-  },
+  ],
   "sessionKeys": {
     "factory": "0xe6abb3aba7625c215f805ddc762e1148860796be",
     "deployTx": "0x057fefee2ecec166f14cf1822789842054df019cd9fd73d086c3492086076c28",
     "deployer": "0x6c4bdD9d9ec762d9ca86e91CAC1Ec87A98059254",
     "deployedAt": "2026-09-19T09:46:07.691Z"
-  }
+  },
+  "sessionPolicyAdminHandoverTx": "0xfb5b3242e22b0b511241faca94a212d389d9abe37a7dca85378cb2c8e0034d82",
+  "redeployedAt": "2026-09-21T10:44:00.000Z"
 }

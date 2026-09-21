@@ -49,8 +49,16 @@ same files the contract work below changes, so it lands before any of it.
 - [x] T007 [F] Rebase `feat/mainnet-beta` onto `main`, resolving against batch queueing, the Neon store, hashed queue ids and the admin split
 - [x] T008 [F] Reconcile `scripts/fleet-redeploy-live.ts` after the rebase: `(admin, operator)` to both constructors, `FLEET_ADMIN_ADDRESS` read, refusal without a guardian on mainnet
 - [x] T009 [F] Confirm `src/fleet/pool-caps.ts` publishes both sets and that the pool's constructor enforces them
-- [ ] T010 [F] Redeploy testnet from the rebased branch and close T040 in `specs/002-private-funding-pool/tasks.md`
-- [ ] T011 [F] Verify against the redeployed testnet pool that the caps read back from the bytecode, not from any constant in the service or the app
+- [x] T010 [F] Redeploy testnet from the rebased branch and close T040 in `specs/002-private-funding-pool/tasks.md`
+  - Deployed 2026-09-21 from main (`f654c17` bytecode): pool `0x5c619e51e9a4559dfb0bed22e9ec3ae1ae22beef`, policy
+    `0x4a0c4555…e492`, factory `0x74789523…d896`; record in `deployments/fleet-46630.json`. spec-002's T040 stays
+    open: its live quickstart on chit.tools needs `FLEET_POOL_ADDRESS` and the two `FLEET_*_ADDRESS` set on Vercel
+    and a production deploy, both the user's to run.
+- [x] T011 [F] Verify against the redeployed testnet pool that the caps read back from the bytecode, not from any constant in the service or the app
+  - Read back 2026-09-21: 0.5 / 0.2 / 5 from `0x5c61…beef`. The service reads them from the pool (`chain-pool.ts`
+    `caps()`, `campaign-routes.ts`); the Balance page reads them from the balance view. Finding: the fleet wizard still
+    carries `DRAW_CAP` in `app/src/fleet/balance.ts:94` for its meter and its refusal, which is 0.2 on testnet and
+    wrong for the 0.05 beta; that is T059's to remove.
 - [x] T012 [P] [F] Verify deployment refuses without a guardian, as a test rather than a rehearsal note
 
 **Checkpoint**: One bytecode lineage. Every contract change below is written once.
@@ -145,6 +153,7 @@ Phase 4). The money path is safe enough for real ETH.
 - [ ] T057 [US1] [F] Show the custody sentence in full beside the amount on the deposit form in `app/src/fleet/balance.ts`
 - [ ] T058 [US1] [F] State once, where a depositor reads it, that the gate controls the interface only and the contract accepts direct deposits within its caps
 - [ ] T059 [US1] [F] Read the caps from the deployed pool in `app/src/fleet/balance.ts` and refuse a size that would breach either
+  - Includes the fleet wizard's `DRAW_CAP` constant (T011's finding): the draw meter and `drawIssue` read the pool's cap from the balance view instead.
 - [ ] T060 [P] [US1] [F] Test the gate's three states, including that a failed balance read shows retry and never rejection
 - [ ] T061 [P] [US1] [F] Test that the beta note appears on every page and cannot be dismissed
 

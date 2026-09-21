@@ -75,6 +75,7 @@ Every test is written and observed failing before its paired implementation (pro
 - [x] T038 Update `specs/002-private-funding-pool/quickstart.md` evidence section and `IMPLEMENTATION.md` (COMP-106)
 - [x] T039 `./verify.sh pool-acceptance` green and every Stage 1 fleet tag green (FR-017, SC-009, SC-010; COMP-106)
 - [ ] T040 Live: deploy the pool, run the quickstart live validation on chit.tools, record tx hashes under `pooledBuy` (outward; user go) (SC-001–SC-008)
+  - The pool is deployed (2026-09-21, the beta bytecode, `deployments/fleet-46630.json`); the live quickstart waits on the Vercel env and a production deploy.
   - Done: the pool is deployed at `0xce92096098ae1e397b167292edad8f3bdb8200c9`, and a
     full journey landed on 46630 — deposit `0x4986a9cc…`, sponsored buy `0xc37f0bdd…`,
     withdrawal `0x8fba5a00…`, all three confirmed successful on chain and recorded

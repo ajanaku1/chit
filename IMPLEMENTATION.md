@@ -2292,3 +2292,19 @@ Not yet: the service still posts one charge per transaction (`postQueued`); the
 sweep's move to `postQueuedBatch` is a small change beside the co-dev's sweep
 work in 2E and is left for whoever touches `sweep()` next. The monitor's
 optional-view selectors match the compiled ones.
+
+## Testnet redeployed on the beta bytecode (2026-09-21, T010, T011)
+
+`npm run fleet-redeploy:live` on 46630 with the recorded operator and admin:
+FleetSessionPolicy `0x4a0c4555…e492`, FleetAccountFactory `0x74789523…d896`,
+FleetPool `0x5c619e51…beef`, `setPool` wired, the admin role offered to
+`0xCb70…6946` on both (Ownable2Step; pending until it accepts), no guardian on
+testnet. Every transaction landed and the script then failed to write the
+record: the first record kept its prior set as one object with a note, and the
+script spread it as a list. The record was written from chain read-backs (caps
+0.5 / 0.2 / 5, `MAX_POST_BATCH` 256, not paused, `policy.pool()` the new pool,
+pending owner the admin) and the script now takes the object form as one entry.
+`RECORDED_46630` in `service-runtime.ts` names the new policy and factory; the
+escrow is unchanged. The old pool keeps its 0.061 ETH for its depositors to exit
+themselves. T011's finding: the fleet wizard's draw meter and refusal still use
+a constant cap; recorded under T059.

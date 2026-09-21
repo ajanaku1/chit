@@ -44,14 +44,15 @@ const BALANCE_OF_SELECTOR = "0x70a08231";
 
 /**
  * Deployed contracts on 46630, as recorded in deployments/fleet-46630.json
- * (the hardened set, deployed 2026-09-16: atomic buy, batch queueing, hashed
- * queue ids, hot operator and cold admin). Override with FLEET_*_ADDRESS only
- * after a redeploy.
+ * (the beta bytecode, deployed 2026-09-21: caps at deployment, the surplus
+ * claim, batch posting, donate() and the monitor's counters, on the hardened
+ * set of 2026-09-16). Override with FLEET_*_ADDRESS only after a redeploy.
+ * The pool itself is FLEET_POOL_ADDRESS, never a default: 0x5c619e51…beef.
  */
 const RECORDED_46630 = {
   escrow: "0x4c3374f29f51b316da909a91f01db6f26d10d012",
-  factory: "0xf1ebd7494fd5cf74b1dd0623e2ab6a07afaefa5e",
-  policy: "0x653285b2024343a31f8cbf349e86a621d5ae1c9d",
+  factory: "0x74789523f038cfe520de09fb802ff3cbe4fad896",
+  policy: "0x4a0c45555d9015961481d496a180495481b0e492",
   /** Uniswap v4 PoolManager on 46630 (deployments/fleet-46630.json, venue.poolManager). */
   poolManager: "0x8366a39cc670b4001a1121b8f6a443a643e40951",
   /** The venue's test coin (deployments/fleet-46630.json, venue.token): the default portfolio when no allowlist is set. */

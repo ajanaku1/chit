@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-21T20:41:21.645Z",
-  "commit": "417dc92",
+  "generatedAt": "2026-09-21T21:25:08.649Z",
+  "commit": "f654c17",
   "committedAt": "2026-09-21T21:41:21+01:00",
-  "commits": 528,
+  "commits": 529,
   "tasks": {
-    "done": 120,
+    "done": 122,
     "total": 175,
-    "percent": 68
+    "percent": 69
   },
   "stages": [
     {
@@ -113,7 +113,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 40,
+      "done": 42,
       "total": 94,
       "phases": [
         {
@@ -123,7 +123,7 @@
         },
         {
           "name": "Foundational",
-          "done": 36,
+          "done": 38,
           "total": 47
         },
         {
@@ -160,14 +160,6 @@
         {
           "id": "T006",
           "text": "[B] Prove the gate: push a deliberately broken test to a branch, confirm the check blocks the merge, revert"
-        },
-        {
-          "id": "T010",
-          "text": "[F] Redeploy testnet from the rebased branch and close T040 in `specs/002-private-funding-pool/tasks.md`"
-        },
-        {
-          "id": "T011",
-          "text": "[F] Verify against the redeployed testnet pool that the caps read back from the bytecode, not from any constant in the service or the app"
         },
         {
           "id": "T026",

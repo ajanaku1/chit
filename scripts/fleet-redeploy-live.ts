@@ -109,7 +109,7 @@ type FleetRecord = {
   accountFactoryTx?: Hex;
   campaignEscrowTx?: Hex;
   pool?: { address: Address; deployTx?: Hex; deployedAt?: string; [k: string]: unknown };
-  previous?: unknown[];
+  previous?: unknown[] | Record<string, unknown>;
   [k: string]: unknown;
 };
 
@@ -242,8 +242,10 @@ const main = async (): Promise<void> => {
   // --- the record ---
   const now = new Date().toISOString();
   if (!fresh) {
+    // The first record kept one prior set as an object with a note; it is one entry of the list.
+    const prior = record.previous;
     record.previous = [
-      ...(record.previous ?? []),
+      ...(Array.isArray(prior) ? prior : prior ? [prior] : []),
       {
         retiredAt: now,
         reason: "redeployed after the September audit: refusals, guardian, atomic fund and execute, caps at deployment",
