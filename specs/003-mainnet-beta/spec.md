@@ -20,6 +20,7 @@
 - Q: How fast must the pool be paused once a trigger fires? → A: Automatically where the trigger is machine-detectable; within 15 minutes of confirmation otherwise.
 - Q: What has to be true before a paused pool can reopen? → A: The cause fixed, a test covering it, the pool made whole if it was short, and the account published to depositors.
 - Q: When should the beta stop accepting withdrawals because the operator is owed too much? → A: Alert at half the operator's float, refuse through the existing path at the float itself.
+- Q: What is the operator's float? → A: 0.2 ETH on the operator wallet for the 1 ETH pool cap, so the alert is at 0.1 ETH; read by the service and the monitor from one variable, `FLEET_OPERATOR_FLOAT_ETH`, never a constant in either (decided 2026-09-21).
 
 ## User Scenarios & Testing *(mandatory)*
 
