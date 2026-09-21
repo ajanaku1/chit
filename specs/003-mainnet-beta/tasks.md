@@ -24,7 +24,7 @@ when it must come nearly first. See the resequencing note at the end.
 **Purpose**: Reproductions in place so every fix has a target, and nothing
 untested can reach production while the work is in flight.
 
-- [ ] T001 [F] Copy the review's reproductions into `test/fleet/` (`mainnet-blockers.test.ts`, `mainnet-blockers-m4c.test.ts`, `FleetPoolMainnetBlockers.t.sol`) and confirm 10 of 10 and 3 of 3 pass on the current head
+- [x] T001 [F] Copy the review's reproductions into `test/fleet/` (`mainnet-blockers.test.ts`, `mainnet-blockers-m4c.test.ts`, `FleetPoolMainnetBlockers.t.sol`) and confirm 10 of 10 and 3 of 3 pass on the current head
 - [ ] T002 [B] Add `.github/workflows/verify.yml` running the no-network set: fleet suite, app verify, landing verify, Solidity tests, progress check
 - [ ] T003 [B] Add a second job running the fork suites against a private RPC secret, nightly, not as a required check
 - [ ] T004 [F] Enable branch protection on `main` requiring the `verify` check, after T002 has run once
