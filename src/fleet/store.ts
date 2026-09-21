@@ -20,6 +20,16 @@ export type IdempotencyRecord = { payloadHash: Hex; result: unknown };
 
 export type OwedSpend = { id: string; depositor: Address; amount: Uint; incurredAt: string };
 
+/**
+ * Rows a signed transaction was to settle, by that transaction: its hash was
+ * recorded before the broadcast and its fate has not been seen. The next
+ * sweep resolves each by the hash, never by an exception.
+ */
+export type SentBatch = { txHash: Hex; nonce: number; ids: string[] };
+
+/** Where a resolved `sent` row goes: the chain's (confirmed), the next batch's (owed), or nobody's (void: a charge for a payout that never happened). */
+export type SentResolution = "confirmed" | "owed" | "void";
+
 export type StorePort = {
   /** Creates what the adapter needs; idempotent. */
   initialize(): Promise<void>;
@@ -46,12 +56,22 @@ export type StorePort = {
   releaseOwed(ids: readonly string[]): Promise<void>;
   /** Recorded and not yet confirmed, so the balance can subtract it before the chain knows. */
   owedFor(depositor: Address): Promise<Uint>;
+  /**
+   * The leased rows are `sent`: this hash, signed with this nonce, carries them.
+   * Written before the broadcast (the adapter's `record`), so a process that
+   * dies next leaves rows with a name to resolve, not rows to queue again.
+   */
+  markSent(ids: readonly string[], txHash: Hex, nonce: number): Promise<void>;
+  /** Every batch still `sent`, oldest nonce first, for the sweep to resolve. */
+  sentBatches(): Promise<SentBatch[]>;
+  /** What the hash came to. `sent --exception--> owed` is the transition that does not exist. */
+  resolveSent(ids: readonly string[], to: SentResolution): Promise<void>;
 };
 
 /** Default lease on an operator lock: long enough for a five-account buy with receipts, short enough that a dead instance frees it. */
 export const LOCK_TTL_MS = 120_000;
 
-type OwedRow = OwedSpend & { leased: boolean; confirmed: boolean };
+type OwedRow = OwedSpend & { leased: boolean; confirmed: boolean; voided: boolean; txHash?: Hex; nonce?: number };
 
 export const createMemoryStore = (): StorePort => {
   const results = new Map<string, IdempotencyRecord>();
@@ -95,9 +115,9 @@ export const createMemoryStore = (): StorePort => {
         if (locks.get(name) === settled) locks.delete(name);
       }
     },
-    async recordOwed(entry) { owed.set(entry.id, { ...entry, leased: false, confirmed: false }); },
+    async recordOwed(entry) { owed.set(entry.id, { ...entry, leased: false, confirmed: false, voided: false }); },
     async takeOwed(limit) {
-      const rows = [...owed.values()].filter((r) => !r.leased && !r.confirmed).slice(0, limit);
+      const rows = [...owed.values()].filter((r) => !r.leased && !r.confirmed && !r.voided && r.txHash === undefined).slice(0, limit);
       for (const row of rows) row.leased = true;
       return rows.map(({ id, depositor, amount, incurredAt }) => ({ id, depositor, amount, incurredAt }));
     },
@@ -110,9 +130,31 @@ export const createMemoryStore = (): StorePort => {
     async owedFor(depositor) {
       let sum = 0n;
       for (const row of owed.values()) {
-        if (!row.confirmed && row.depositor.toLowerCase() === depositor.toLowerCase()) sum += BigInt(row.amount);
+        if (!row.confirmed && !row.voided && row.depositor.toLowerCase() === depositor.toLowerCase()) sum += BigInt(row.amount);
       }
       return sum.toString();
+    },
+    async markSent(ids, txHash, nonce) {
+      for (const id of ids) { const row = owed.get(id); if (row) { row.txHash = txHash; row.nonce = nonce; } }
+    },
+    async sentBatches() {
+      const byHash = new Map<Hex, SentBatch>();
+      for (const row of owed.values()) {
+        if (row.txHash === undefined || row.confirmed || row.voided) continue;
+        const batch = byHash.get(row.txHash) ?? { txHash: row.txHash, nonce: row.nonce ?? 0, ids: [] };
+        batch.ids.push(row.id);
+        byHash.set(row.txHash, batch);
+      }
+      return [...byHash.values()].sort((a, b) => a.nonce - b.nonce);
+    },
+    async resolveSent(ids, to) {
+      for (const id of ids) {
+        const row = owed.get(id);
+        if (!row) continue;
+        if (to === "confirmed") row.confirmed = true;
+        else if (to === "void") row.voided = true;
+        else { delete row.txHash; delete row.nonce; row.leased = false; }
+      }
     },
   };
 };

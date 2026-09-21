@@ -79,6 +79,27 @@ const contract = (name: string, make: () => StorePort): void => {
       await store.releaseOwed(["o3"]);
       assert.deepEqual((await store.takeOwed(5)).map((o) => o.id), ["o3"], "a released row goes back to the next batch");
     });
+
+    it("a sent row is named by its hash, still owed, never offered again, and goes where its hash resolves", async () => {
+      const store = make();
+      await store.recordOwed(owed("s1"));
+      await store.recordOwed(owed("s2", DEPOSITOR, "2500"));
+      await store.recordOwed(owed("s3", OTHER, "7"));
+      const [a, b] = await store.takeOwed(2);
+      await store.markSent([a!.id, b!.id], TX, 41);
+      assert.deepEqual(await store.sentBatches(), [{ txHash: TX, nonce: 41, ids: [a!.id, b!.id].sort() }]);
+      assert.equal(await store.owedFor(DEPOSITOR), "3500", "sent is still owed: the balance keeps subtracting it until the chain confirms");
+      assert.deepEqual((await store.takeOwed(5)).map((o) => o.id), ["s3"], "a sent row is not leased again on the strength of anything");
+
+      await store.resolveSent([a!.id], "confirmed");
+      await store.resolveSent([b!.id], "owed");
+      assert.deepEqual(await store.sentBatches(), [], "resolved either way, nothing is sent");
+      assert.deepEqual((await store.takeOwed(5)).map((o) => o.id), [b!.id], "a never-mined row is owed again; a confirmed one is the chain's (s3 is still leased from above)");
+
+      await store.resolveSent(["s3"], "void");
+      assert.equal(await store.owedFor(OTHER), "0", "a voided charge is nobody's");
+      assert.deepEqual((await store.takeOwed(5)).map((o) => o.id), [], "and is never queued");
+    });
   });
 };
 
