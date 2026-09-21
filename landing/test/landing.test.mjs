@@ -299,6 +299,30 @@ test("every Learn More opens a limit sheet whose contract citations are real", a
 });
 
 /**
+ * "What is left" grows with the task lists, so the sheet has to hold a list
+ * longer than the screen. A modal sheet is capped at the modal's height and
+ * its body scrolls, but a percentage only caps anything against a row that
+ * has a height of its own: in an auto row the sheet grew with its list, past
+ * the bottom of the screen, where nothing scrolled and Close was out of reach.
+ * With one open task it never showed; with 87 the sheet was 7,989px tall on a
+ * 900px screen. Below 768px the modal scrolls as a whole and is left as it was.
+ */
+test("a modal sheet stays inside the screen, and a long list scrolls within it", async () => {
+  const css = await source("style.css");
+  const rule = (selector) => {
+    const found = css.match(new RegExp(`^${selector.replace(/[.\s]/g, (c) => (c === "." ? "\\." : "\\s+"))}\\{[^}]*\\}`, "m"));
+    assert.ok(found, `no ${selector} rule`);
+    return found[0];
+  };
+
+  assert.match(rule(".modal"), /grid-template-rows:\s*minmax\(0,\s*1fr\)/, "the modal's row takes its height from the screen, not from the sheet");
+  assert.match(rule(".modal .limit"), /max-height:\s*100%/, "the sheet is capped at that row");
+  const body = rule(".limit__body");
+  assert.match(body, /min-height:\s*0/, "the body may shrink below its content");
+  assert.match(body, /overflow:\s*auto/, "and scrolls what does not fit");
+});
+
+/**
  * Read the boundary opens the boundary sheet and stays on the landing. The
  * progress sheet is still reachable at #progress and carries no hand-typed
  * number: every figure is rendered from progress.json, which
