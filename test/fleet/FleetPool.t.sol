@@ -187,6 +187,7 @@ contract FleetPoolTest is Test {
     // --- F5, fixed: a queued spend is born inside its window -------------------
 
     function test_finding_F5_queuedSpendBeyondWindowIsRefused() public {
+        _deposit(ALICE, 0.05 ether); // a charge posts only what a deposit backs (FR-033)
         vm.startPrank(OPERATOR);
         (bytes[] memory refs, uint256[] memory amounts, uint64[] memory dues) = _batch(1);
         amounts[0] = 0.01 ether;
@@ -201,12 +202,13 @@ contract FleetPoolTest is Test {
         assertEq(spent, 0.01 ether, "a charge at the edge of the window still posts");
     }
 
-    // --- F6: posted spend is bounded by nothing --------------------------
+    // --- F6, fixed by FR-033: posted spend is bounded by the deposit behind it ---
 
-    /// postQueued names any depositor for any amount. The contract cannot know
-    /// the depositor (that is the design) but it could know the aggregate: the
-    /// sum of posted spend has no reason ever to exceed the sum of draw spend.
-    /// Today it can.
+    /// postQueued names any depositor for any amount, and the contract cannot
+    /// know the depositor (that is the design). What it now bounds is the
+    /// posting itself: only the part of a charge still backed by unspent
+    /// deposit is posted, and totalPosted grows by that, so the excess is the
+    /// operator's loss and never a claim on the pool.
     function test_finding_F6_postedSpendExceedsAllDrawSpend() public {
         _deposit(ALICE, 0.1 ether);
         assertEq(pool.totalDrawSpent(), 0, "no campaign has spent anything");
@@ -216,7 +218,11 @@ contract FleetPoolTest is Test {
         vm.prank(OPERATOR);
         pool.postQueued(id, ALICE);
 
-        assertEq(_unspent(ALICE), 0, "Alice was charged 1 ETH against 0 of draw spend");
+        assertEq(_unspent(ALICE), 0, "Alice is charged everything she has");
+        (, uint256 spent,,) = pool.depositorOf(ALICE);
+        assertEq(spent, 0.1 ether, "and not one wei more than she deposited");
+        assertEq(pool.totalPosted(), 0.1 ether, "the pool counts the backed part only");
+        assertEq(pool.claimable(), 0.1 ether, "which is what the operator may claim");
     }
 
     // --- behaviour the contract promises, pinned ---------------------------
@@ -344,20 +350,72 @@ contract FleetPoolTest is Test {
         vm.stopPrank();
     }
 
-    function test_claimableIsExactlyTheGasFronted() public {
+    /// The claim is the surplus: what was posted against deposits, less what
+    /// left the pool as headroom and principal, less what was claimed. Before
+    /// the charges are posted nothing is claimable; after, exactly the gas the
+    /// operator fronted, which the pool holds and no depositor is owed.
+    function test_claimableIsTheSurplusOncePosted() public {
         _deposit(ALICE, 0.1 ether);
         _openAndFund(CAMPAIGN, 0.1 ether, FLEET_ACCOUNT);
-        assertEq(pool.claimable(), 0, "headroom left the pool, nothing is owed for it");
+        assertEq(pool.claimable(), 0, "headroom left the pool and nothing is posted: nothing to claim");
 
         vm.startPrank(OPERATOR);
         pool.fundPrincipal(CAMPAIGN, FLEET_ACCOUNT, 0.05 ether, 0.001 ether);
         pool.commit(CAMPAIGN, 0.05 ether + 0.0007 ether);
+        bytes32 headroom = _queueOne(pool.GAS_HEADROOM(), uint64(block.timestamp + 60));
+        bytes32 buy = _queueOne(0.05 ether + 0.0007 ether, uint64(block.timestamp + 60));
+        vm.warp(block.timestamp + 60);
+        pool.postQueued(headroom, ALICE);
+        pool.postQueued(buy, ALICE);
         vm.stopPrank();
-        assertEq(pool.claimable(), 0.0007 ether, "only the gas is owed");
+        assertEq(pool.claimable(), 0.0007 ether, "posted less outflow: the gas fronted, and only that");
+        assertEq(pool.claimable(), address(pool).balance - _unspent(ALICE), "which is exactly the surplus over what Alice is owed");
 
         vm.prank(OPERATOR);
         vm.expectRevert(FleetPool.ClaimExceeded.selector);
         pool.claimOperator(0.0007 ether + 1);
+    }
+
+    /// T032: the number in MAX_POST_BATCH, measured. The RPC reports a nominal
+    /// 2^50 block gas limit on 4663 and 46630; Arbitrum's per-transaction limit
+    /// of 32,000,000 is the one that binds, and a full batch stays under half.
+    function test_aFullBatchFitsInHalfATransaction() public {
+        for (uint256 i = 0; i < 5; i++) _deposit(ALICE, 0.1 ether);
+        uint256 n = pool.MAX_POST_BATCH();
+        vm.startPrank(OPERATOR);
+        bytes32[] memory ids = new bytes32[](n);
+        address[] memory whos = new address[](n);
+        for (uint256 i = 0; i < n; i++) {
+            ids[i] = _queueOne(0.0001 ether, uint64(block.timestamp + 60));
+            whos[i] = ALICE;
+        }
+        vm.warp(block.timestamp + 60);
+        uint256 before = gasleft();
+        FleetPool.PostResult[] memory results = pool.postQueuedBatch(ids, whos);
+        uint256 used = before - gasleft();
+        vm.stopPrank();
+        assertEq(results.length, n);
+        assertLe(used + 21_000 + n * 64 * 16, 16_000_000, "a full batch, with its calldata, is over half a transaction");
+        vm.prank(OPERATOR);
+        vm.expectRevert(FleetPool.BatchTooLarge.selector);
+        pool.postQueuedBatch(new bytes32[](n + 1), new address[](n + 1));
+    }
+
+    /// Counters for the monitor (FR-027), from public views alone.
+    function test_theIdentityHoldsFromPublicViews() public {
+        _deposit(ALICE, 0.1 ether);
+        vm.prank(BOB);
+        pool.donate{value: 0.02 ether}();
+        _openAndFund(CAMPAIGN, 0.05 ether, FLEET_ACCOUNT);
+        vm.prank(ALICE);
+        pool.requestExit();
+        vm.warp(block.timestamp + 24 hours);
+        vm.prank(ALICE);
+        pool.executeExit();
+        assertEq(pool.everDeposited(), 0.1 ether);
+        assertEq(pool.donated(), 0.02 ether);
+        assertEq(pool.exitsPaid(), 0.1 ether);
+        assertEq(address(pool).balance, pool.everDeposited() + pool.donated() - pool.totalOutflow() - pool.exitsPaid() - pool.totalClaimed());
     }
 
     /// A reentrant account cannot pull a second headroom or principal: state
