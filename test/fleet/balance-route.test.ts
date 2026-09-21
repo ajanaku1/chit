@@ -5,7 +5,7 @@ import { privateKeyToAccount } from "viem/accounts";
 
 import { CampaignRouter, type RouterDeps } from "../../src/fleet/campaign-routes.js";
 import { CampaignService, challengeBytes, payloadHash } from "../../src/fleet/campaign-service.js";
-import type { BalanceView, PoolPort } from "../../src/fleet/pool-buy.js";
+import { WithdrawalRefused, type BalanceView, type PoolPort } from "../../src/fleet/pool-buy.js";
 import type { AuthEnvelope } from "../../src/fleet/types.js";
 
 /**
@@ -147,6 +147,23 @@ test("a paused pool refuses withdrawals and says so", async () => {
   const result = await router.handle(await signed(service, "withdraw", body), key("withdraw5"));
   assert.equal(result.status, 409);
   assert.deepEqual(calls, []);
+});
+
+test("a payout the operator cannot make right now is 503, retryable, with its reason, and nothing recorded", async () => {
+  const { service } = makeRouter();
+  const unused = () => { throw new Error("not part of the refusal"); };
+  const pool: PoolPort = {
+    balance: async () => view(),
+    withdraw: async () => { throw new WithdrawalRefused("operator_float_short"); },
+    openDraw: unused, topUpDraw: unused, buy: unused,
+    drawOf: async () => undefined, ownerOf: async () => undefined, closeDraw: async () => undefined,
+    sweep: async () => ({ funded: [], posted: [] }),
+  };
+  const router = new CampaignRouter({ service, pool });
+  const body = { amount: parseEther("0.01").toString(), destination: fresh };
+  const result = await router.handle(await signed(service, "withdraw", body), key("withdraw6"));
+  assert.equal(result.status, 503);
+  assert.deepEqual(result.body, { code: "withdrawal_unavailable", retryable: true, reason: "operator_float_short" });
 });
 
 test("without a pool configured the route answers 503 rather than inventing a balance", async () => {

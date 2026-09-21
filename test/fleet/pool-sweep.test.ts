@@ -45,6 +45,7 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
     signAndBroadcast: async (step) => {
       const hash = `0x${"d".repeat(64)}` as const;
       await step.record(hash, step.nonce);
+      if (!step.functionName) { calls.push({ fn: "transfer", args: [step.to, step.value] }); return { status: "mined", hash }; }
       if (step.functionName === "queueSpendBatch" && batchOutcome === "reverted") return { status: "reverted", hash };
       try {
         // The gas limit rides as the function's last argument, where the fake's fundAndExecute reads it.
@@ -115,6 +116,7 @@ const wallet = {
 
 const publicClient = {
   getBlock: async () => ({ timestamp: 1_700_000_000n }),
+  getBalance: async () => parseEther("1"),
   getGasPrice: async () => 1_000_000_000n,
   waitForTransactionReceipt: async () => ({ status: "success", gasUsed: 50_000n, effectiveGasPrice: 1_000_000_000n }),
 } as unknown as PublicClient;
@@ -319,14 +321,20 @@ describe("withdraw", () => {
     const { pool, calls } = makePool([]);
     const order: string[] = [];
     const o = opts();
-    const store = { ...o.store, recordOwed: async (e: Parameters<typeof o.store.recordOwed>[0]) => { order.push("record"); return o.store.recordOwed(e); } };
-    const w = { ...wallet, sendTransaction: async () => { order.push("pay"); return `0x${"a".repeat(64)}`; } } as unknown as WalletClient;
-    const service = createPoolService(w, publicClient, pool, KEY, { ...o, store });
+    const store = {
+      ...o.store,
+      recordOwed: async (e: Parameters<typeof o.store.recordOwed>[0]) => { order.push("record"); return o.store.recordOwed(e); },
+      markSent: async (...a: Parameters<typeof o.store.markSent>) => { order.push("name"); return o.store.markSent(...a); },
+    };
+    const paying: FleetPool = { ...pool, signAndBroadcast: async (step) => { const out = await pool.signAndBroadcast(step); order.push("pay"); return out; } };
+    const service = createPoolService(wallet, publicClient, paying, KEY, { ...o, store });
 
     const receipt = await service.withdraw({ depositor: ALICE, amount: parseEther("0.01").toString(), destination: BOB });
 
-    assert.deepEqual(order, ["record", "pay"]);
+    assert.deepEqual(order, ["record", "name", "pay"], "recorded, named by the payout's hash, then paid");
+    assert.deepEqual(calls.filter((c) => c.fn === "transfer").map((c) => c.args), [[BOB, parseEther("0.01")]], "the payout is a plain transfer of the exact amount");
     assert.equal(typeof receipt.chargeId, "string");
+    assert.deepEqual(await o.store.sentBatches(), [], "the payout mined: the charge stands as plain owed, for a later batch");
     assert.equal(await o.store.owedFor(ALICE), coarseCharge(parseEther("0.01")).toString());
     assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 0, "the payout and the charge never share the operator's transaction window");
   });

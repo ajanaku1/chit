@@ -18,7 +18,7 @@ import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuo
 import type { MarketPort } from "./market.js";
 import { createMemoryStore, type StorePort } from "./store.js";
 import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } from "./order-plan.js";
-import { DRAW_CAP, MIN_GAS_CEILING, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
+import { DRAW_CAP, MIN_GAS_CEILING, WithdrawalRefused, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
 import { UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall, minOutFor } from "./v4-swap.js";
@@ -124,6 +124,8 @@ const STATUS: Record<string, number> = {
   budget_exceeded: 422,
   budget_invalid: 422,
   dependency_evidence_invalid: 503,
+  /** The operator cannot pay a withdrawal right now; nothing was recorded, so the trader tries again or takes the exit. */
+  withdrawal_unavailable: 503,
 };
 
 /** Buy-path policy refusals are 403 per the fleet-api.md route table. */
@@ -1224,6 +1226,9 @@ const errorResult = (error: unknown, action = "?"): RouterResult => {
   if (error instanceof ServiceError || error instanceof CampaignStateError || error instanceof BudgetError) {
     code = error.code;
     reason = (error as { reason?: string }).reason;
+  } else if (error instanceof WithdrawalRefused) {
+    code = error.code;
+    reason = error.reason;
   } else if (error instanceof PolicyRejection) {
     code = "policy_rejected";
     status = POLICY_REJECTED_STATUS;
@@ -1237,5 +1242,5 @@ const errorResult = (error: unknown, action = "?"): RouterResult => {
   status ??= code === undefined ? undefined : STATUS[code];
   if (code === undefined || status === undefined) throw error;
   if (status >= 400 && code !== "challenge_invalid") console.warn(`fleet route refused: ${action} ${code}${reason ? ` (${reason})` : ""}`);
-  return { status, body: { code, retryable: code === "challenge_invalid", ...(reason ? { reason } : {}) } };
+  return { status, body: { code, retryable: code === "challenge_invalid" || code === "withdrawal_unavailable", ...(reason ? { reason } : {}) } };
 };

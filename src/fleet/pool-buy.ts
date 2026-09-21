@@ -130,8 +130,22 @@ export type PooledBuyReport = { results: PooledBuyOutcome[]; draw: DrawSummary }
 export type AccountsResolver = (campaign: Hex) => Promise<Address[]>;
 
 export type WithdrawInput = { depositor: Address; amount: Uint; destination: Address };
-/** The payout's hash and the id of the charge recorded for it, queued by a later sweep. */
-export type WithdrawReceipt = { payoutTx: Hex; chargeId: string };
+/** The payout's hash and the id of the charge recorded for it, queued by a later sweep. `unresolved` when the payout was signed and broadcast but its receipt was not seen: the next sweep resolves it by the hash. */
+export type WithdrawReceipt = { payoutTx: Hex; chargeId: string; unresolved?: true };
+
+/**
+ * A withdrawal Chit cannot pay right now, and paid nothing towards: the
+ * operator's float is short, or the payout was refused before or at the
+ * chain. Nothing is recorded; the trader tries again later or takes the
+ * no-Chit exit (design-mainnet-beta.md, "the withdrawal-refused state").
+ */
+export class WithdrawalRefused extends Error {
+  readonly code = "withdrawal_unavailable";
+  constructor(readonly reason: string) {
+    super(`withdrawal_unavailable: ${reason}`);
+    this.name = "WithdrawalRefused";
+  }
+}
 
 /** What the router may ask of the pool. */
 export type PoolPort = {
@@ -406,27 +420,37 @@ export const createPoolService = (
 
     async withdraw({ depositor, amount, destination }) {
       const value = BigInt(amount);
-      // The charge is recorded before the payout, not after. Record first and
-      // a failure between the two leaves a charge the sweep queues against a
-      // payout that never happened, which the exit refunds; pay first and the
-      // same failure leaves ETH paid and nothing recorded, and a retry pays
-      // it again. Recorded-but-unpaid is recoverable; paid-but-unrecorded is
-      // not.
-      const chargeId = (await charge(depositor, value)) ?? "";
+      const operator = from();
+      // The operator's own balance pays this. Short of the payout and the gas
+      // to send it, the answer is a refusal that recorded nothing and can be
+      // retried, never a charge for a payout that could not happen (M1, T021).
+      const [balance, gasPrice] = await Promise.all([publicClient.getBalance({ address: operator }), publicClient.getGasPrice().catch(() => 0n)]);
+      if (balance < value + 21_000n * gasPrice * 2n) throw new WithdrawalRefused("operator_float_short");
+      // The charge is recorded before the payout, then named by the payout's
+      // hash before the broadcast: a failure between the two leaves a charge
+      // that the next sweep resolves by that hash and voids if nothing was
+      // paid; paid-but-unrecorded cannot happen, because the hash is known
+      // before the node is.
+      const chargeId = await charge(depositor, value);
+      const ids = chargeId ? [chargeId] : [];
       // Paid by the operator, not the pool: a pool payout would publish the
       // depositor beside the address they chose to be paid at. The payout is
       // the exact amount asked for; the charge posted later is its coarse
       // form, so the transfer to the payee and the charge to the depositor
       // never carry the same number.
-      const payoutTx = await wallet.sendTransaction({
-        account: wallet.account ?? null,
-        chain: wallet.chain ?? null,
-        to: destination,
-        value,
-      } as never);
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: payoutTx });
-      if (receipt.status !== "success") throw new Error(`withdrawal payout reverted: ${payoutTx}`);
-      return { payoutTx, chargeId };
+      let nonce = 0;
+      let outcome: WriteOutcome;
+      try {
+        nonce = await pool.nextNonce(operator);
+        outcome = await pool.signAndBroadcast({ nonce, to: destination, value, record: (hash, signedNonce) => store.markSent(ids, hash, signedNonce, "payout") });
+      } catch (error) {
+        // Nothing was broadcast: the charge is void and the trader may try again.
+        await store.resolveSent(ids, "void");
+        throw new WithdrawalRefused(reasonOf(error));
+      }
+      await settleSent({ txHash: outcome.hash, nonce, ids, kind: "payout" }, outcome);
+      if (outcome.status === "reverted" || outcome.status === "never-mined") throw new WithdrawalRefused(`payout_${outcome.status.replace("-", "_")}`);
+      return { payoutTx: outcome.hash, chargeId: chargeId ?? "", ...(outcome.status === "unknown" ? { unresolved: true as const } : {}) };
     },
 
     async openDraw({ campaign, depositor, amount }) {
