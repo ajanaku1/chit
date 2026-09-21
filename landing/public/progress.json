@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-21T14:06:13.164Z",
-  "commit": "b0b5a6e",
-  "committedAt": "2026-09-21T15:44:21+02:00",
-  "commits": 500,
+  "generatedAt": "2026-09-21T20:06:57.557Z",
+  "commit": "eb5b564",
+  "committedAt": "2026-09-21T21:06:34+01:00",
+  "commits": 524,
   "tasks": {
-    "done": 96,
+    "done": 109,
     "total": 175,
-    "percent": 54
+    "percent": 62
   },
   "stages": [
     {
@@ -113,7 +113,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 16,
+      "done": 29,
       "total": 94,
       "phases": [
         {
@@ -123,7 +123,7 @@
         },
         {
           "name": "Foundational",
-          "done": 12,
+          "done": 25,
           "total": 47
         },
         {
@@ -168,58 +168,6 @@
         {
           "id": "T011",
           "text": "[F] Verify against the redeployed testnet pool that the caps read back from the bytecode, not from any constant in the service or the app"
-        },
-        {
-          "id": "T013",
-          "text": "[F] Add `nextNonce"
-        },
-        {
-          "id": "T014",
-          "text": "[F] Add `signAndBroadcast"
-        },
-        {
-          "id": "T015",
-          "text": "[F] Add `resolve"
-        },
-        {
-          "id": "T016",
-          "text": "[F] Extend `StorePort` in `src/fleet/store.ts` with the `sent` state, `txHash`, `nonce`, `markSent` and `resolveSent`"
-        },
-        {
-          "id": "T017",
-          "text": "[F] Implement the new store methods in `src/fleet/store-neon.ts` with its migration, and in the memory adapter"
-        },
-        {
-          "id": "T018",
-          "text": "[F] Route `queueOwed` in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against `pool.queued"
-        },
-        {
-          "id": "T019",
-          "text": "[F] Route the sponsored buy in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against the draw's `spent` before reporting rejected"
-        },
-        {
-          "id": "T020",
-          "text": "[F] Route fleet funding in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against the draw's state before skipping the headroom charge"
-        },
-        {
-          "id": "T021",
-          "text": "[F] Check the operator's balance before recording a withdrawal charge in `src/fleet/pool-buy.ts`; refuse with a retryable response and record nothing"
-        },
-        {
-          "id": "T022",
-          "text": "[F] Route the withdrawal payout through the lifecycle, storing the hash on the owed row before broadcast"
-        },
-        {
-          "id": "T023",
-          "text": "[P] [F] Replace `finding_M1` with siblings stating the fixed behaviour"
-        },
-        {
-          "id": "T024",
-          "text": "[P] [F] Replace `finding_M4a`, `finding_M4b`, `finding_M4c` with siblings stating the fixed behaviour"
-        },
-        {
-          "id": "T025",
-          "text": "[F] Add the three outcome tests beside `test/fleet/pool-sweep.test.ts:233`: mined, reverted, never-mined"
         },
         {
           "id": "T026",

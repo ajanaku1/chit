@@ -57,19 +57,19 @@ same files the contract work below changes, so it lands before any of it.
 
 ### 2B. The durable write lifecycle (M1, M4) — FR-014, FR-016
 
-- [ ] T013 [F] Add `nextNonce(address)` to `src/fleet/chain-pool.ts`, defaulting to the pending transaction count
-- [ ] T014 [F] Add `signAndBroadcast({nonce, functionName, args, value, gas, record})` to `src/fleet/chain-pool.ts` per `contracts/chain-adapter.md`: sign, call `record` with the hash, then broadcast; return mined, reverted or unknown, never throw to mean "nothing happened"
-- [ ] T015 [F] Add `resolve(hash, nonce, from)` to `src/fleet/chain-pool.ts`: a receipt decides mined or reverted; no receipt once the account nonce has passed decides never-mined
-- [ ] T016 [F] Extend `StorePort` in `src/fleet/store.ts` with the `sent` state, `txHash`, `nonce`, `markSent` and `resolveSent`
-- [ ] T017 [F] Implement the new store methods in `src/fleet/store-neon.ts` with its migration, and in the memory adapter
-- [ ] T018 [F] Route `queueOwed` in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against `pool.queued()` by the exact sealed references sent before releasing any row
-- [ ] T019 [F] Route the sponsored buy in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against the draw's `spent` before reporting rejected
-- [ ] T020 [F] Route fleet funding in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against the draw's state before skipping the headroom charge
-- [ ] T021 [F] Check the operator's balance before recording a withdrawal charge in `src/fleet/pool-buy.ts`; refuse with a retryable response and record nothing
-- [ ] T022 [F] Route the withdrawal payout through the lifecycle, storing the hash on the owed row before broadcast
-- [ ] T023 [P] [F] Replace `finding_M1` with siblings stating the fixed behaviour
-- [ ] T024 [P] [F] Replace `finding_M4a`, `finding_M4b`, `finding_M4c` with siblings stating the fixed behaviour
-- [ ] T025 [F] Add the three outcome tests beside `test/fleet/pool-sweep.test.ts:233`: mined, reverted, never-mined
+- [x] T013 [F] Add `nextNonce(address)` to `src/fleet/chain-pool.ts`, defaulting to the pending transaction count
+- [x] T014 [F] Add `signAndBroadcast({nonce, functionName, args, value, gas, record})` to `src/fleet/chain-pool.ts` per `contracts/chain-adapter.md`: sign, call `record` with the hash, then broadcast; return mined, reverted or unknown, never throw to mean "nothing happened"
+- [x] T015 [F] Add `resolve(hash, nonce, from)` to `src/fleet/chain-pool.ts`: a receipt decides mined or reverted; no receipt once the account nonce has passed decides never-mined
+- [x] T016 [F] Extend `StorePort` in `src/fleet/store.ts` with the `sent` state, `txHash`, `nonce`, `markSent` and `resolveSent`
+- [x] T017 [F] Implement the new store methods in `src/fleet/store-neon.ts` with its migration, and in the memory adapter
+- [x] T018 [F] Route `queueOwed` in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against `pool.queued()` by the exact sealed references sent before releasing any row
+- [x] T019 [F] Route the sponsored buy in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against the draw's `spent` before reporting rejected
+- [x] T020 [F] Route fleet funding in `src/fleet/pool-buy.ts` through the lifecycle, reconciling against the draw's state before skipping the headroom charge
+- [x] T021 [F] Check the operator's balance before recording a withdrawal charge in `src/fleet/pool-buy.ts`; refuse with a retryable response and record nothing
+- [x] T022 [F] Route the withdrawal payout through the lifecycle, storing the hash on the owed row before broadcast
+- [x] T023 [P] [F] Replace `finding_M1` with siblings stating the fixed behaviour
+- [x] T024 [P] [F] Replace `finding_M4a`, `finding_M4b`, `finding_M4c` with siblings stating the fixed behaviour
+- [x] T025 [F] Add the three outcome tests beside `test/fleet/pool-sweep.test.ts:233`: mined, reverted, never-mined
 
 ### 2C. The operator lock (M5)
 

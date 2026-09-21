@@ -2242,3 +2242,31 @@ every file the generator reads. Rehearsed on exactly those files with no `.git`:
 the assembler exits 0 and writes 88 of 175 with the commit from
 `VERCEL_GIT_COMMIT_SHA`; the sheet already copes with a build that knows its
 commit and nothing more.
+
+## The durable write lifecycle, Phase 2B of the mainnet beta (2026-09-21, T013–T025)
+
+Every money-moving write now goes through one signed step in the chain adapter
+(`chain-pool.ts`: `nextNonce`, `signAndBroadcast`, `resolve`): the hash is taken
+from the signature and recorded before any node sees the transaction, the
+broadcast and the receipt wait each turn a failure into `unknown` with the hash
+and nonce rather than a throw, and `resolve` reads the receipt or, with none,
+the account's mined nonce (`never-mined`, an outcome the contract's rules named
+and its type block did not). The store gained the `sent` state (`markSent`,
+`sentBatches`, `resolveSent` to confirmed, owed or void; four additive Neon
+columns), with the transaction's kind on the row because a mined batch and a
+mined payout mean opposite things. The queue batch marks its rows sent under the
+hash and is resolved on the next scheduled sweep before anything new is queued;
+the buy and the funding record the hash in the idempotency table and settle an
+unknown outcome from the draw itself (spent moved; state no longer Pending); the
+withdrawal refuses before recording anything when the operator is short
+(`withdrawal_unavailable`, 503, retryable), and otherwise names its charge by the
+payout's hash so a payout that never mined voids it. `sent --exception--> owed`
+does not exist anywhere. finding_M1, M4a, M4b and M4c are replaced by siblings;
+three outcome tests state mined, reverted and never-mined for the batch. 507
+fleet tests; `./verify.sh beta-money` passes.
+
+Two things said plainly. The operator lock across `nextNonce` and the step (rule
+5 of the adapter contract) is Phase 2C (T026, co-dev), and `finding_M5` still
+stands until then. The float-based refusal of FR-032 (refuse at the float, alert
+at half) needs the contract's reimbursement counter (Phase 2D); until then the
+refusal is the plain one T021 names: short of the payout and its gas.
