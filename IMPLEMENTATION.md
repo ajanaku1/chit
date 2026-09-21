@@ -2148,3 +2148,38 @@ hand-written ABI is held against the compiled pool function by function, so a
 struct that gains a field fails there instead of decoding wrong. `finding_M3b`
 flipped and is replaced by `fixed_M3b`: the same balance read through the same
 adapter, the same few round trips at twice the history. That closes T046.
+
+## The pool is watched from outside, once an hour (2026-09-21, Boye, branch feat/pool-monitor, T053)
+
+A monitor reads the pool the way anyone can, from outside the service, and
+says what is wrong: a charge unposted for over four hours, a pool holding less
+than its own counters allow, an operator under half its float, a fleet left
+unfunded, a role that moved, a hosted service configured with another pool. It
+holds no key, so it cannot open a sealed depositor, and what it sends is
+counts, totals and ages. Run against the live testnet pool it read 36 charges
+and 7 draws in six requests and under two seconds, and had nothing to report.
+
+`src/fleet/monitor.ts` is the rule, pure, every threshold tested on both sides
+of its edge. From the views only the bound `balance ≥ totalDeposited −
+totalOutflow − totalClaimed` follows, because an exit takes the whole deposit
+out of `totalDeposited` and pays back less; the monitor switches to the exact
+identity of T037 by itself once the pool answers `everDeposited`, `exitsPaid`
+and `donated`. The float is `FLEET_OPERATOR_FLOAT_ETH`, the one variable the
+service reads too, and the warning sits at half of it. Every line says who is
+expected to act, critical findings go out every run, warnings every sixth
+hour, and once a day a digest goes out whether or not anything is wrong, so a
+monitor that died cannot be mistaken for a quiet pool. Of the three pause
+triggers two can be seen from outside; a failed exit transaction leaves nothing
+in the pool's views, and neither do a failed sweep or a refused withdrawal, so
+those are reported where they happen (T049, still open).
+
+`monitor-reads.ts` reads everything at one block through Multicall3, twenty
+blocks behind the tip: the public RPC answers from several nodes, and one call
+in four pinned to the newest block was refused by a node that had not seen it.
+The snapshot was held against an independent viem read of the same block: 221
+values, identical. It runs from `.github/workflows/monitor.yml` and not from
+Vercel, because every other clock here ends at a Vercel function. And it runs
+with no install: three files that import no package, their own ABI coding held
+against viem and the compiled pool, run by node as TypeScript, so an hourly run
+is one billed minute and not three. Findings go to the operator chat
+(`MONITOR_CHAT_ID`), never the group's. `docs/fleet-monitor.md` is the page.

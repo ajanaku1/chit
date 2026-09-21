@@ -107,6 +107,10 @@ src/fleet/            Operator service (Node, TypeScript, viem)
   operator-executor.ts    Operator-executes transaction path
   chain-buy.ts, v4-swap.ts  The permitted Uniswap v4 buy route
   session-policy.ts, campaign-budget.ts, eligibility.ts, sdk.ts, types.ts
+  monitor.ts, monitor-reads.ts, monitor-cli.ts
+                          The outside monitor. Not part of the service: it reads public
+                          chain state hourly from a GitHub workflow, on plain node with no
+                          install, so these three import no package (docs/fleet-monitor.md)
 
 api/fleet/*.js        Vercel function entry points. Deliberately plain JS —
                       Vercel's TS pass type-checks viem differently from ours,
