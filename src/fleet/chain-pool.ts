@@ -6,7 +6,7 @@
  * types and never see a ciphertext they did not seal themselves.
  */
 
-import { parseAbi, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
+import { encodeFunctionData, keccak256, parseAbi, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 
 import type { DrawView, LedgerInputs, QueuedView } from "./pool-ledger.js";
 import { createPoolReads, type PoolReadCache } from "./pool-reads.js";
@@ -62,8 +62,41 @@ export type DepositorRecord = {
   exitAmount: bigint;
 };
 
+/**
+ * What a signed step came to. `unknown` is a transaction that was signed and
+ * recorded and whose fate this process could not see (the broadcast or the
+ * receipt wait failed); it is resolved later by its hash, never guessed.
+ * `never-mined` is `resolve`'s answer when no receipt exists and the account's
+ * nonce has moved past the one it was signed with: nothing happened, and the
+ * work it carried may be done again.
+ */
+export type WriteOutcome =
+  | { status: "mined"; hash: Hex }
+  | { status: "reverted"; hash: Hex }
+  | { status: "unknown"; hash: Hex; nonce: number }
+  | { status: "never-mined"; hash: Hex; nonce: number };
+
+/**
+ * One money-moving write (specs/003-mainnet-beta/contracts/chain-adapter.md).
+ * Either a function of the pool or, for a withdrawal payout, a plain transfer
+ * to `to`. `record` runs with the hash after signing and before broadcast and
+ * must persist it durably; if it throws, nothing is broadcast.
+ */
+export type SignedStep = {
+  nonce: number;
+  value?: bigint;
+  gas?: bigint;
+  record: (hash: Hex, nonce: number) => Promise<void>;
+} & ({ functionName: string; args: readonly unknown[]; to?: undefined } | { to: Address; functionName?: undefined; args?: undefined });
+
 export type FleetPool = {
   readonly address: Address;
+  /** The nonce a signed step will use: the pending count, so a step queued behind another lands after it. */
+  nextNonce(from: Address): Promise<number>;
+  /** Sign, persist the hash, broadcast, wait: mined, reverted or unknown, and never a throw to mean "nothing happened". */
+  signAndBroadcast(step: SignedStep): Promise<WriteOutcome>;
+  /** A write whose outcome was never observed: a receipt decides; no receipt once the nonce has passed decides never-mined; else still unknown. */
+  resolve(hash: Hex, nonce: number, from: Address): Promise<WriteOutcome>;
   depositorOf(depositor: Address): Promise<DepositorRecord>;
   headroom(depositor: Address): Promise<{ perDepositor: bigint; perPool: bigint }>;
   /** The pool's caps, immutable since deployment; read once and kept. */
@@ -136,8 +169,55 @@ export const createFleetPool = (
   const allDraws = (): Promise<PoolDraw[]> => reads.draws();
   const allQueued = (): Promise<PoolQueued[]> => reads.queued();
 
+  /**
+   * The lifecycle every caller that moves money goes through. The hash is
+   * known from the signature alone, so it is recorded before the node ever
+   * sees the transaction: a process that dies between the two leaves a row
+   * that says "sent" and a hash to resolve, never a transaction the store
+   * has no name for. A failure after the broadcast is `unknown`, because the
+   * transaction may well be in a block by the time the error reaches here.
+   */
+  const signAndBroadcast = async (step: SignedStep): Promise<WriteOutcome> => {
+    const request = await wallet.prepareTransactionRequest({
+      ...ctx(wallet),
+      to: step.to ?? address,
+      ...(step.to ? {} : { data: encodeFunctionData({ abi: POOL_ABI, functionName: step.functionName, args: step.args } as never) }),
+      ...(step.value === undefined ? {} : { value: step.value }),
+      ...(step.gas === undefined ? {} : { gas: step.gas }),
+      nonce: step.nonce,
+    } as never);
+    const serialized = await wallet.signTransaction(request as never);
+    const hash = keccak256(serialized);
+    await step.record(hash, step.nonce);
+    try {
+      await wallet.sendRawTransaction({ serializedTransaction: serialized });
+    } catch {
+      return { status: "unknown", hash, nonce: step.nonce };
+    }
+    try {
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      return { status: receipt.status === "success" ? "mined" : "reverted", hash };
+    } catch {
+      return { status: "unknown", hash, nonce: step.nonce };
+    }
+  };
+
+  const resolve = async (hash: Hex, nonce: number, from: Address): Promise<WriteOutcome> => {
+    try {
+      const receipt = await publicClient.getTransactionReceipt({ hash });
+      return { status: receipt.status === "success" ? "mined" : "reverted", hash };
+    } catch {
+      // No receipt. Mined or not is decided by the account's nonce, never by the error.
+    }
+    const count = await publicClient.getTransactionCount({ address: from, blockTag: "latest" });
+    return count > nonce ? { status: "never-mined", hash, nonce } : { status: "unknown", hash, nonce };
+  };
+
   return {
     address,
+    nextNonce: (from) => publicClient.getTransactionCount({ address: from, blockTag: "pending" }),
+    signAndBroadcast,
+    resolve,
 
     async depositorOf(depositor) {
       const [deposited, spent, exitRequestedAt, exitAmount] = await read<

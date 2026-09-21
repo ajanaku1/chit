@@ -37,6 +37,19 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
   let failBatch = false;
   const pool: FleetPool = {
     address: "0x0000000000000000000000000000000000000901" as Address,
+    // The signed step, over this fake: the hash is recorded first, then the named function runs as before.
+    nextNonce: async () => 0,
+    signAndBroadcast: async (step) => {
+      const hash = `0x${"d".repeat(64)}` as const;
+      await step.record(hash, step.nonce);
+      try {
+        if (step.functionName) await (pool as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[step.functionName]!(...step.args);
+        return { status: "mined", hash };
+      } catch {
+        return { status: "reverted", hash };
+      }
+    },
+    resolve: async (hash) => ({ status: "mined", hash }),
     depositorOf: async () => ({ deposited: 0n, spent: 0n, exitRequestedAt: 0n, exitAmount: 0n }),
     headroom: async () => ({ perDepositor: 0n, perPool: 0n }),
     caps: async () => ({ depositor: 500000000000000000n, draw: 200000000000000000n, pool: 5000000000000000000n }),
