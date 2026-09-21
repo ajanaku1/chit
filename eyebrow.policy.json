@@ -1,0 +1,6 @@
+{
+  "failOnSeverity": "high",
+  "requireApproval": true,
+  "requireSignedApproval": true,
+  "requireSignature": true
+}

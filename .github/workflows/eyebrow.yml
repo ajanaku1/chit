@@ -1,0 +1,39 @@
+name: Eyebrow
+
+# The agent-toolchain gate. eyebrow (eyebrow.cc, MIT) inventories the AI
+# coding artifacts a repository carries (project skills, commands, MCP
+# and hashes them into eyebrowlock.json, committed here beside the code they
+# would act on. `eyebrow verify --ci` recomputes the inventory on every push
+# and pull request and fails on any drift from the lockfile, on any artifact
+# nobody approved, and on a lockfile that is not signed by a key in
+# eyebrow.trustedkeys (eyebrow.policy.json says so).
+#
+# What this gate means, exactly: no skill, command, MCP server or rules file
+# reaches this repository without being locked, approved and signed by one of
+# us. Today the project scope holds no such artifact, so the lockfile is
+# empty and signed; the gate is what stops the first one arriving quietly.
+# What it does not mean: it says nothing about the contracts or the bot
+# code, and nothing about the tools on a developer's own machine (those are
+# the machine snapshots in .eyebrow/fleet, see docs/runbooks/eyebrow.md).
+#
+# No secrets. The action installs the checksum-verified binary of the tag it
+# is pinned to and runs verify with the committed lockfile, policy and keys.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: alexverify/eyebrow/action@206507d5703311453677c5fb46a5cd1b11550731 # v0.5.2
+        with:
+          lockfile: eyebrowlock.json
+          policy: eyebrow.policy.json
+          trusted-keys: eyebrow.trustedkeys
