@@ -1,0 +1,68 @@
+name: Watch the pool from outside
+
+# Once an hour, from outside the service: the pool's public state, read at one
+# block and held against the deployment record. What it looks for is what goes
+# wrong here without a sound: a charge ageing toward POST_WINDOW, a pool that
+# holds less than its counters allow, an operator short of ETH, a fleet left
+# unfunded, roles that moved, a hosted service configured with another pool.
+# src/fleet/monitor.ts is the rule, docs/fleet-monitor.md what each finding
+# means and what to do about it.
+#
+# It lives here and not on Vercel on purpose. Every other clock in this repo
+# ends at a Vercel function, this workflow's sibling sweep.yml included, so an
+# outage there stops the posting and would stop a monitor beside it too. This
+# one reads the chain directly and asks the site one public question.
+#
+# No install. The runner is three TypeScript files that import no package, and
+# node runs them as they are, so a run is a sparse checkout and a few seconds:
+# one billed minute an hour. An `npm ci` here would be two or three, every
+# hour, out of the same minutes the sweep and the keeper run on.
+#
+# A critical finding fails the run. With TELEGRAM_BOT_TOKEN and MONITOR_CHAT_ID
+# set, findings also go to the operator chat, each line saying who is expected
+# to act: critical ones every run, warnings every sixth hour, and once a day a
+# digest whether or not anything is wrong, so silence means something. The
+# group's chat id is not given to this job.
+
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pool-monitor
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            src/fleet/monitor.ts
+            src/fleet/monitor-reads.ts
+            src/fleet/monitor-cli.ts
+            deployments
+          sparse-checkout-cone-mode: false
+
+      # 22.18 or newer: node strips the types itself from there on.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Read the pool and report
+        env:
+          # Optional. Without it the public RPC is read, which is enough for six requests an hour.
+          ROBINHOOD_TESTNET_RPC_URL: ${{ secrets.ROBINHOOD_TESTNET_RPC_URL }}
+          MONITOR_SITE_URL: https://chit.tools
+          # One figure for the service and the monitor; the warning sits at half of it.
+          FLEET_OPERATOR_FLOAT_ETH: ${{ vars.FLEET_OPERATOR_FLOAT_ETH }}
+          MONITOR_OPERATOR_CRITICAL_ETH: ${{ vars.MONITOR_OPERATOR_CRITICAL_ETH }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          MONITOR_CHAT_ID: ${{ secrets.MONITOR_CHAT_ID }}
+        run: node src/fleet/monitor-cli.ts
