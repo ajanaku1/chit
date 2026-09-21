@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-21T20:06:57.557Z",
-  "commit": "eb5b564",
-  "committedAt": "2026-09-21T21:06:34+01:00",
-  "commits": 524,
+  "generatedAt": "2026-09-21T20:41:21.645Z",
+  "commit": "417dc92",
+  "committedAt": "2026-09-21T21:41:21+01:00",
+  "commits": 528,
   "tasks": {
-    "done": 109,
+    "done": 120,
     "total": 175,
-    "percent": 62
+    "percent": 68
   },
   "stages": [
     {
@@ -113,7 +113,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 29,
+      "done": 40,
       "total": 94,
       "phases": [
         {
@@ -123,7 +123,7 @@
         },
         {
           "name": "Foundational",
-          "done": 25,
+          "done": 36,
           "total": 47
         },
         {
@@ -180,50 +180,6 @@
         {
           "id": "T029",
           "text": "[B] Replace `finding_M5` with a two-instance test driving real nonce behaviour"
-        },
-        {
-          "id": "T030",
-          "text": "[F] Add `totalPosted` to `contracts/fleet/FleetPool.sol`, accumulated in `postQueued`, counting only the part of a charge still backed by unspent deposit"
-        },
-        {
-          "id": "T031",
-          "text": "[F] Redefine `claimable"
-        },
-        {
-          "id": "T032",
-          "text": "[F] Measure on a fork the largest `postQueuedBatch` that fits within half the block gas limit, and record the number"
-        },
-        {
-          "id": "T033",
-          "text": "[F] Add `postQueuedBatch` to `contracts/fleet/FleetPool.sol` with that cap: per-entry result of posted, expired or already posted, never reverting the batch"
-        },
-        {
-          "id": "T034",
-          "text": "[F] Add payable `donate"
-        },
-        {
-          "id": "T035",
-          "text": "[F] Add `everDeposited`, `exitsPaid` and `donated` counters with events to `contracts/fleet/FleetPool.sol`"
-        },
-        {
-          "id": "T036",
-          "text": "[F] Replace `invariant_claimableIsGasOnly` in `test/fleet/FleetPoolInvariants.t.sol` with an invariant that claimable never exceeds the pool's surplus over what it owes"
-        },
-        {
-          "id": "T037",
-          "text": "[F] Add the monitor identity as an invariant: `balance == everDeposited + donated - totalOutflow - exitsPaid - totalClaimed`"
-        },
-        {
-          "id": "T038",
-          "text": "[P] [F] Replace `test_finding_M2_aWithdrawalIsNeverReimbursed` with its fixed sibling"
-        },
-        {
-          "id": "T039",
-          "text": "[P] [F] Replace both `test_finding_M3_*` Solidity tests with siblings covering `postQueuedBatch` and `donate"
-        },
-        {
-          "id": "T040",
-          "text": "[F] Correct the comment at `src/fleet/pool-buy.ts:46`: the grain falls to the operator, not the pool"
         },
         {
           "id": "T047",

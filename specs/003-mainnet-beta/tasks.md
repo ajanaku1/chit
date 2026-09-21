@@ -87,17 +87,17 @@ same files the contract work below changes, so it lands before any of it.
 Written on the rebased bytecode from 2A, so the caps and these changes ship as
 one deployment.
 
-- [ ] T030 [F] Add `totalPosted` to `contracts/fleet/FleetPool.sol`, accumulated in `postQueued`, counting only the part of a charge still backed by unspent deposit
-- [ ] T031 [F] Redefine `claimable()` as `max(0, totalPosted - totalOutflow - totalClaimed)` in `contracts/fleet/FleetPool.sol`
-- [ ] T032 [F] Measure on a fork the largest `postQueuedBatch` that fits within half the block gas limit, and record the number
-- [ ] T033 [F] Add `postQueuedBatch` to `contracts/fleet/FleetPool.sol` with that cap: per-entry result of posted, expired or already posted, never reverting the batch
-- [ ] T034 [F] Add payable `donate()` to `contracts/fleet/FleetPool.sol`, crediting no depositor and working while paused
-- [ ] T035 [F] Add `everDeposited`, `exitsPaid` and `donated` counters with events to `contracts/fleet/FleetPool.sol`
-- [ ] T036 [F] Replace `invariant_claimableIsGasOnly` in `test/fleet/FleetPoolInvariants.t.sol` with an invariant that claimable never exceeds the pool's surplus over what it owes
-- [ ] T037 [F] Add the monitor identity as an invariant: `balance == everDeposited + donated - totalOutflow - exitsPaid - totalClaimed`
-- [ ] T038 [P] [F] Replace `test_finding_M2_aWithdrawalIsNeverReimbursed` with its fixed sibling
-- [ ] T039 [P] [F] Replace both `test_finding_M3_*` Solidity tests with siblings covering `postQueuedBatch` and `donate()` while paused
-- [ ] T040 [F] Correct the comment at `src/fleet/pool-buy.ts:46`: the grain falls to the operator, not the pool
+- [x] T030 [F] Add `totalPosted` to `contracts/fleet/FleetPool.sol`, accumulated in `postQueued`, counting only the part of a charge still backed by unspent deposit
+- [x] T031 [F] Redefine `claimable()` as `max(0, totalPosted - totalOutflow - totalClaimed)` in `contracts/fleet/FleetPool.sol`
+- [x] T032 [F] Measure on a fork the largest `postQueuedBatch` that fits within half the block gas limit, and record the number
+- [x] T033 [F] Add `postQueuedBatch` to `contracts/fleet/FleetPool.sol` with that cap: per-entry result of posted, expired or already posted, never reverting the batch
+- [x] T034 [F] Add payable `donate()` to `contracts/fleet/FleetPool.sol`, crediting no depositor and working while paused
+- [x] T035 [F] Add `everDeposited`, `exitsPaid` and `donated` counters with events to `contracts/fleet/FleetPool.sol`
+- [x] T036 [F] Replace `invariant_claimableIsGasOnly` in `test/fleet/FleetPoolInvariants.t.sol` with an invariant that claimable never exceeds the pool's surplus over what it owes
+- [x] T037 [F] Add the monitor identity as an invariant: `balance == everDeposited + donated - totalOutflow - exitsPaid - totalClaimed`
+- [x] T038 [P] [F] Replace `test_finding_M2_aWithdrawalIsNeverReimbursed` with its fixed sibling
+- [x] T039 [P] [F] Replace both `test_finding_M3_*` Solidity tests with siblings covering `postQueuedBatch` and `donate()` while paused
+- [x] T040 [F] Correct the comment at `src/fleet/pool-buy.ts:46`: the grain falls to the operator, not the pool
 
 ### 2E. The sweep (M3)
 

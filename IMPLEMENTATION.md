@@ -2270,3 +2270,25 @@ Two things said plainly. The operator lock across `nextNonce` and the step (rule
 stands until then. The float-based refusal of FR-032 (refuse at the float, alert
 at half) needs the contract's reimbursement counter (Phase 2D); until then the
 refusal is the plain one T021 names: short of the payout and its gas.
+
+## The contract, Phase 2D of the mainnet beta (2026-09-21, T030–T040)
+
+M2 as a contract change, on the rebased bytecode, so mainnet gets one new
+bytecode. `FleetPool` posts only the part of a charge still backed by unspent
+deposit and counts it in `totalPosted` (FR-033); `claimable()` is the surplus,
+`max(0, totalPosted - totalOutflow - totalClaimed)`, so one claim reimburses
+fronted gas and fronted withdrawals alike and never reaches an unspent deposit
+(FR-030); `postQueuedBatch` posts up to `MAX_POST_BATCH` (256, measured against
+Arbitrum's 32M per-transaction limit, the RPC's 2^50 block limit being nominal)
+and reports per entry instead of reverting; `donate()` makes the pool whole
+while paused, crediting nobody (FR-036); `everDeposited`, `exitsPaid` and
+`donated` give the monitor its identity from public views (FR-027). The
+gas-only invariant is replaced by the surplus bound and the identity; M2 and
+both M3 Solidity findings are replaced by siblings; the grain comment says the
+rounding is the operator's (FR-031). 81 Solidity tests, 507 fleet;
+`./verify.sh beta-contract` passes.
+
+Not yet: the service still posts one charge per transaction (`postQueued`); the
+sweep's move to `postQueuedBatch` is a small change beside the co-dev's sweep
+work in 2E and is left for whoever touches `sweep()` next. The monitor's
+optional-view selectors match the compiled ones.
