@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-20T22:20:39.624Z",
-  "commit": "8ede515",
-  "committedAt": "2026-09-20T23:19:47+01:00",
-  "commits": 454,
+  "generatedAt": "2026-09-21T07:18:56.052Z",
+  "commit": "8e1d058",
+  "committedAt": "2026-09-21T08:18:42+01:00",
+  "commits": 471,
   "tasks": {
-    "done": 80,
+    "done": 82,
     "total": 175,
-    "percent": 45
+    "percent": 46
   },
   "stages": [
     {
@@ -113,12 +113,12 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 0,
+      "done": 2,
       "total": 94,
       "phases": [
         {
           "name": "Setup",
-          "done": 0,
+          "done": 2,
           "total": 6
         },
         {
@@ -153,14 +153,6 @@
         }
       ],
       "open": [
-        {
-          "id": "T001",
-          "text": "[F] Copy the review's reproductions into `test/fleet/`"
-        },
-        {
-          "id": "T002",
-          "text": "[B] Add `.github/workflows/verify.yml` running the no-network set: fleet suite, app verify, landing verify, Solidity tests, progress check"
-        },
         {
           "id": "T003",
           "text": "[B] Add a second job running the fork suites against a private RPC secret, nightly, not as a required check"
