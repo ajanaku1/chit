@@ -125,15 +125,17 @@ one deployment.
 
 ### 2F. Safety rails — FR-023, FR-032, FR-034, FR-035, FR-043
 
-- [ ] T047 [F] Refuse to start without `DATABASE_URL`, `CRON_SECRET` or `FLEET_TOKEN_ALLOWLIST` when the chain is mainnet, in `src/fleet/service-runtime.ts`
+- [x] T047 [F] Refuse to start without `DATABASE_URL`, `CRON_SECRET` or `FLEET_TOKEN_ALLOWLIST` when the chain is mainnet, in `src/fleet/service-runtime.ts`
 - [ ] T048 [B] Add the alert sink routing to the existing Telegram bot, with FR-023's three timescales and the named operator chat
 - [ ] T049 [B] Alert on a sweep failure, a refused withdrawal, an unposted charge older than four hours, and the operator's balance reaching half the float
   - Half of it is in the outside monitor (T053): a charge unposted for over four hours, and the operator's
     balance at half of `FLEET_OPERATOR_FLOAT_ETH`. A sweep failure and a refused withdrawal happen where an
     outside reader cannot look, so they are reported from the sweep's workflow and the withdrawal path; open.
-- [ ] T050 [F] Pause the pool automatically on the two machine-detectable triggers: a charge passing its deadline unrecorded, and an exit transaction failing
-- [ ] T051 [F] Add the resume gate: the pool cannot be unpaused until the cause is recorded as fixed, a test covering it exists, and the pool is whole
-- [ ] T052 [P] [F] Test that an automatic pause fires within one sweep of its trigger and that resume is refused while any condition is unmet
+- [x] T050 [F] Pause the pool automatically on the two machine-detectable triggers: a charge passing its deadline unrecorded, and an exit transaction failing
+- [x] T051 [F] Add the resume gate: the pool cannot be unpaused until the cause is recorded as fixed, a test covering it exists, and the pool is whole
+  - Unpausing is the admin's cold key on chain, so the gate is `npm run fleet-resume-check` before it: the incident record
+    (`incidents/`), its test in the repository, the identity, and no shortfall from the counters (`src/fleet/pool-solvency.ts`).
+- [x] T052 [P] [F] Test that an automatic pause fires within one sweep of its trigger and that resume is refused while any condition is unmet
 - [x] T053 [B] Build the outside monitor asserting FR-027's exact identity from public views
   - `src/fleet/monitor*.ts`, hourly from `.github/workflows/monitor.yml`, `docs/fleet-monitor.md`. It asserts the
     exact identity of T037 by itself once the pool answers `everDeposited`, `exitsPaid` and `donated` (T035);

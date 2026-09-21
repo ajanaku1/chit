@@ -2308,3 +2308,24 @@ pending owner the admin) and the script now takes the object form as one entry.
 escrow is unchanged. The old pool keeps its 0.061 ETH for its depositors to exit
 themselves. T011's finding: the fleet wizard's draw meter and refusal still use
 a constant cap; recorded under T059.
+
+## The safety rails, the founder's part of Phase 2F (2026-09-21, T047, T050–T052)
+
+Mainnet refuses to start without `DATABASE_URL`, `CRON_SECRET` or
+`FLEET_TOKEN_ALLOWLIST`, naming the first one missing, and every route answers
+503 with it (`service-preflight.ts`). The scheduled sweep pulls the brake on
+the two machine-detectable triggers of FR-026 in the pass that sees them: a
+charge past its deadline unrecorded (unless it expired before the pool was
+last resumed, which the pool's own `PausedSet(false)` log says) and an exit
+that would fail, found by simulating `executeExit` as each depositor whose
+exit is due (`ExitRequested` logs). The report says the trigger and never a
+depositor. The resume gate is a read-only check before the admin's
+`setPaused(false)`: an incident record with its test in the repository, the
+identity, and no shortfall, the last two derived from public views alone in
+`pool-solvency.ts` (owed = everDeposited − exitsPaid − totalPosted; whole ⇔
+totalPosted + donated ≥ totalOutflow + totalClaimed). 515 fleet tests.
+
+Two things said plainly. The third trigger, a depositor losing money, needs a
+person to confirm and is not automated; the fifteen-minute clock of FR-034 is
+the runbook's. And `./verify.sh beta-rails` is the phase's gate as a whole: it
+also wants the alerting (T048, T049, co-dev), so it stays red until that lands.
