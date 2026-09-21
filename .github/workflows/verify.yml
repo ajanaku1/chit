@@ -1,0 +1,62 @@
+name: Verify
+
+# The no-network set, on every push and pull request to main: the fleet
+# suite, the app's typecheck + tests + build, the landing's tests, the
+# Solidity tests and the progress check. None of these reach an RPC; the fork
+# suites are a separate, nightly job (T003), never a required check.
+#
+# Hardhat runs its Solidity tests only. Its nodejs runner resolves the file
+# paths some tests read against the parent of the checkout and fails them
+# with ENOENT on any clean machine; the same tests pass under `test:fleet`,
+# which is the runner that counts.
+#
+# The landing has no dependencies, so it gets no install.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Full history: scripts/progress.mjs publishes the commit count.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            app/package-lock.json
+
+      - name: Install
+        run: npm ci && npm --prefix app ci
+
+      - name: Fleet suite
+        run: npm run test:fleet
+
+      - name: App typecheck, tests and build
+        run: npm --prefix app run verify
+
+      - name: Landing tests
+        run: npm --prefix landing run verify
+
+      - name: Solidity tests
+        run: npx hardhat test solidity
+
+      - name: Progress is current
+        run: node scripts/progress.mjs --check
