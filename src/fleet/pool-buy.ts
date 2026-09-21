@@ -11,10 +11,10 @@ import { randomUUID } from "node:crypto";
 
 import { parseEther, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 
-import type { FleetPool, PoolDraw } from "./chain-pool.js";
+import type { FleetPool, PoolDraw, WriteOutcome } from "./chain-pool.js";
 import { DRAW_STATE } from "./chain-pool.js";
 import { availableBalance, depositSizes, openDepositor, sealDepositor } from "./pool-ledger.js";
-import { createMemoryStore, type StorePort } from "./store.js";
+import { createMemoryStore, type SentBatch, type StorePort } from "./store.js";
 import type { Uint } from "./types.js";
 
 /** Matches the contract's own delay, so the app never promises a shorter wait. */
@@ -246,10 +246,62 @@ export const createPoolService = (
     return id;
   };
 
+  /** The operator: the account every money-moving write is signed by. */
+  const from = (): Address => {
+    const address = wallet.account?.address;
+    if (!address) throw new Error("the operator wallet has no account");
+    return address;
+  };
+
+  /**
+   * The sealed references this instance sent under each hash. Sealing is
+   * random, so nothing but this memory can match a batch to the queue's
+   * entries; the receipt is the evidence that crosses instances.
+   */
+  const sentRefs = new Map<Hex, readonly Hex[]>();
+
+  /**
+   * What a sent transaction came to, applied to its rows. Unknown is left
+   * sent for the next sweep; nothing here reads an exception as proof of
+   * anything (M4). A batch that reverted or never mined goes back to the
+   * next sweep, unless the queue already carries the references this
+   * instance sent, in which case it landed and the rows are the chain's.
+   */
+  const settleSent = async (batch: SentBatch, outcome: WriteOutcome): Promise<void> => {
+    if (outcome.status === "unknown") {
+      console.warn(`sweep: ${batch.kind} ${batch.txHash} (nonce ${batch.nonce}) is still unresolved; ${batch.ids.length} row(s) stay sent`);
+      return;
+    }
+    if (batch.kind === "payout") {
+      await store.resolveSent(batch.ids, outcome.status === "mined" ? "owed" : "void");
+      if (outcome.status !== "mined") console.error(`withdrawal payout ${batch.txHash} ${outcome.status}: nothing was paid, its charge is void`);
+      return;
+    }
+    if (outcome.status === "mined") {
+      await store.resolveSent(batch.ids, "confirmed");
+      return;
+    }
+    const refs = sentRefs.get(batch.txHash);
+    if (refs && (await pool.queued()).some((entry) => refs.includes(entry.encDepositor))) {
+      await store.resolveSent(batch.ids, "confirmed");
+      return;
+    }
+    await store.resolveSent(batch.ids, "owed");
+    console.error(`sweep: batch ${batch.txHash} ${outcome.status}: ${batch.ids.length} charge(s) go back to the next sweep`);
+  };
+
+  /** Every batch left sent by an earlier run, resolved by its hash before anything new is queued. */
+  const resolveSent = async (): Promise<void> => {
+    for (const batch of await store.sentBatches()) {
+      await settleSent(batch, await pool.resolve(batch.txHash, batch.nonce, from()));
+    }
+  };
+
   /**
    * One transaction for everything owed: entries shuffled so their order says
    * nothing about the order of the buys, each with its own random due time.
-   * A failed transaction releases the rows for the next sweep.
+   * The rows are marked sent under the hash before the broadcast; only a
+   * failure before the signature releases them on the spot.
    */
   const queueOwed = async (): Promise<number> => {
     const owed = await store.takeOwed(BATCH_LIMIT);
@@ -258,20 +310,30 @@ export const createPoolService = (
       const j = Math.floor(random() * (i + 1));
       [owed[i], owed[j]] = [owed[j]!, owed[i]!];
     }
-    const base = await chainSeconds();
+    const ids = owed.map((o) => o.id);
+    const refs = owed.map((o) => sealDepositor(ledgerKey, o.depositor));
+    let nonce = 0;
+    let outcome: WriteOutcome;
     try {
-      const tx = await pool.queueSpendBatch(
-        owed.map((o) => sealDepositor(ledgerKey, o.depositor)),
-        owed.map((o) => BigInt(o.amount)),
-        owed.map(() => base + BigInt(delay())),
-      );
-      await store.confirmOwed(owed.map((o) => o.id), tx);
-      return owed.length;
+      const base = await chainSeconds();
+      nonce = await pool.nextNonce(from());
+      outcome = await pool.signAndBroadcast({
+        nonce,
+        functionName: "queueSpendBatch",
+        args: [refs, owed.map((o) => BigInt(o.amount)), owed.map(() => base + BigInt(delay()))],
+        record: async (hash, signedNonce) => {
+          sentRefs.set(hash, refs);
+          await store.markSent(ids, hash, signedNonce, "batch");
+        },
+      });
     } catch (error) {
-      await store.releaseOwed(owed.map((o) => o.id));
+      // Before the signature, or inside record: nothing was broadcast.
+      await store.releaseOwed(ids);
       console.error(`sweep: batch of ${owed.length} charges not queued: ${messageOf(error)}`);
       return 0;
     }
+    await settleSent({ txHash: outcome.hash, nonce, ids, kind: "batch" }, outcome);
+    return outcome.status === "mined" ? owed.length : 0;
   };
 
   const chainSeconds = async (): Promise<bigint> => (await publicClient.getBlock()).timestamp;
@@ -416,6 +478,7 @@ export const createPoolService = (
       // Owed first, and only on the scheduled sweep: what the batch queues is
       // charges recorded in earlier requests, sent from a transaction window
       // that no trader's request opened.
+      if (options.queueOwed) await resolveSent();
       const queued = options.queueOwed ? await queueOwed() : 0;
       const seconds = await chainSeconds();
 

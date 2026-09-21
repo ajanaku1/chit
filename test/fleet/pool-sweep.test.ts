@@ -35,6 +35,9 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
   let commitFailures = 0;
   let failBuy = false;
   let failBatch = false;
+  /** What the signed step reports for a batch, and what resolve answers for a hash left sent. */
+  let batchOutcome: "mined" | "reverted" | "unknown" = "mined";
+  let resolveAs: "mined" | "reverted" | "never-mined" | "unknown" = "mined";
   const pool: FleetPool = {
     address: "0x0000000000000000000000000000000000000901" as Address,
     // The signed step, over this fake: the hash is recorded first, then the named function runs as before.
@@ -42,14 +45,15 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
     signAndBroadcast: async (step) => {
       const hash = `0x${"d".repeat(64)}` as const;
       await step.record(hash, step.nonce);
+      if (step.functionName === "queueSpendBatch" && batchOutcome === "reverted") return { status: "reverted", hash };
       try {
         if (step.functionName) await (pool as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[step.functionName]!(...step.args);
-        return { status: "mined", hash };
+        return batchOutcome === "unknown" ? { status: "unknown", hash, nonce: step.nonce } : { status: "mined", hash };
       } catch {
         return { status: "reverted", hash };
       }
     },
-    resolve: async (hash) => ({ status: "mined", hash }),
+    resolve: async (hash, nonce) => (resolveAs === "mined" || resolveAs === "reverted" ? { status: resolveAs, hash } : { status: resolveAs, hash, nonce }),
     depositorOf: async () => ({ deposited: 0n, spent: 0n, exitRequestedAt: 0n, exitAmount: 0n }),
     headroom: async () => ({ perDepositor: 0n, perPool: 0n }),
     caps: async () => ({ depositor: 500000000000000000n, draw: 200000000000000000n, pool: 5000000000000000000n }),
@@ -91,6 +95,8 @@ const makePool = (draws: PoolDraw[], queued: PoolQueued[] = []) => {
   };
   return {
     pool, calls,
+    setBatchOutcome: (o: typeof batchOutcome) => { batchOutcome = o; },
+    setResolveAs: (o: typeof resolveAs) => { resolveAs = o; },
     refuse: (c: Hex) => { refuseFund = new Set([...refuseFund, c]); },
     failCommits: (n: number) => { commitFailures = n; },
     failBuys: () => { failBuy = true; },
@@ -240,6 +246,69 @@ describe("balance", () => {
     const view = await service.balance(ALICE);
     assert.equal(view.available, parseEther("0.04").toString());
     assert.equal(view.owed, parseEther("0.01").toString());
+  });
+});
+
+describe("the batch through the signed step (T025)", () => {
+  const seed = async (o: ReturnType<typeof opts>) => {
+    await o.store.recordOwed({ id: "m1", depositor: ALICE, amount: "5000", incurredAt: "2026-09-15T00:00:00Z" });
+    await o.store.recordOwed({ id: "m2", depositor: BOB, amount: "7000", incurredAt: "2026-09-15T00:00:01Z" });
+  };
+  const quietly = async <T,>(name: "warn" | "error", work: () => Promise<T>): Promise<T> => {
+    const original = console[name];
+    console[name] = () => {};
+    try { return await work(); } finally { console[name] = original; }
+  };
+
+  it("mined: the rows are the chain's, nothing is owed and nothing is sent", async () => {
+    const { pool, calls } = makePool([]);
+    const o = opts();
+    await seed(o);
+    const report = await createPoolService(wallet, publicClient, pool, KEY, o).sweep(async () => [], { queueOwed: true });
+    assert.equal(report.queued, 2);
+    assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 1);
+    assert.equal(await o.store.owedFor(ALICE), "0");
+    assert.deepEqual(await o.store.sentBatches(), []);
+    assert.deepEqual(await o.store.takeOwed(5), []);
+  });
+
+  it("reverted: the rows go back to the next sweep, which sends them again", async () => {
+    const { pool, calls, setBatchOutcome } = makePool([]);
+    const o = opts();
+    await seed(o);
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
+    setBatchOutcome("reverted");
+    const first = await quietly("error", () => service.sweep(async () => [], { queueOwed: true }));
+    assert.equal(first.queued, 0);
+    assert.equal(await o.store.owedFor(ALICE), "5000", "still owed");
+    assert.deepEqual(await o.store.sentBatches(), [], "not sent: a receipt said reverted");
+    setBatchOutcome("mined");
+    const second = await service.sweep(async () => [], { queueOwed: true });
+    assert.equal(second.queued, 2, "the same two rows, in the next batch");
+    assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 1, "the reverted attempt never ran the function; the mined one did");
+  });
+
+  it("never-mined: an unknown outcome leaves the rows sent, the next sweep resolves the hash, and only then are they queued again", async () => {
+    const { pool, calls, setBatchOutcome, setResolveAs } = makePool([]);
+    const o = opts();
+    await seed(o);
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
+    setBatchOutcome("unknown");
+    const first = await quietly("warn", () => service.sweep(async () => [], { queueOwed: true }));
+    assert.equal(first.queued, 0);
+    assert.equal((await o.store.sentBatches()).length, 1, "sent, under the hash recorded before the broadcast");
+    assert.deepEqual(await o.store.takeOwed(5), [], "and offered to nobody on the strength of an exception");
+
+    setBatchOutcome("mined");
+    setResolveAs("unknown");
+    const second = await quietly("warn", () => service.sweep(async () => [], { queueOwed: true }));
+    assert.equal(second.queued, 0, "still unknown: still sent, still not queued again");
+
+    setResolveAs("never-mined");
+    const third = await quietly("error", () => service.sweep(async () => [], { queueOwed: true }));
+    assert.equal(third.queued, 2, "provably never mined: owed again, and queued in this very sweep");
+    assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 2);
+    assert.deepEqual(await o.store.sentBatches(), []);
   });
 });
 
