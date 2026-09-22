@@ -182,17 +182,38 @@ describe("FleetPool draws", () => {
     await assert.rejects(pool.write.fundPrincipal([CAMPAIGN, accounts()[0]!, 1n, 1n]), "a closed draw spends nothing");
   });
 
-  it("lets the operator reclaim only the gas it actually fronted", async () => {
+  it("lets the operator reclaim only the gas it actually fronted, and only once a depositor has been charged for it", async () => {
     const pool = await fundedDraw();
+    const publicClient = await viem.getPublicClient();
     const principal = parseEther("0.0005");
     const gas = parseEther("0.00001");
     await pool.write.fundPrincipal([CAMPAIGN, accounts()[0]!, principal, parseEther("0.0002")]);
     await pool.write.commit([CAMPAIGN, principal + gas]);
 
-    // Headroom and principal left the pool already; only the gas is owed.
+    // T031 made the claim the pool's surplus, and until a charge is posted
+    // there is none: the headroom and the principal have left, and nobody is
+    // yet known to owe for them. So the operator may take nothing at all
+    // here — it cannot reimburse itself for money no depositor has been
+    // charged. Before T031 this read `gas`, which let a claim run ahead of
+    // the posting that backs it.
+    const out = HEADROOM * BigInt(accounts().length) + principal;
+    assert.equal(await pool.read.totalOutflow(), out);
+    assert.equal(await pool.read.claimable(), 0n, "nothing posted: nothing to claim");
+    await assert.rejects(pool.write.claimOperator([1n]), "not one wei ahead of the posting");
+
+    // The charge the service posts for this campaign: what the depositor's
+    // own instruction consumed — the gas seeded to the fleet, the principal,
+    // and the gas the operator fronted to execute the buy.
+    await pool.write.queueSpendBatch([[`0x${"e9".repeat(32)}`], [out + gas], [0n]]);
+    const [id] = await pool.read.queuedSpendAt([0n]);
+    await pool.write.postQueued([id, alice!.account.address]);
+    assert.equal(await pool.read.totalPosted(), out + gas);
+
+    // Now the surplus is exactly the gas the operator fronted, and no more.
     assert.equal(await pool.read.claimable(), gas);
     await assert.rejects(pool.write.claimOperator([gas + 1n]), "the operator cannot help itself to the pool");
     await pool.write.claimOperator([gas]);
     assert.equal(await pool.read.claimable(), 0n);
+    assert.equal(await publicClient.getBalance({ address: pool.address }), parseEther("0.1") - out - gas, "the pool holds the deposit less what left it");
   });
 });
