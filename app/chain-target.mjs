@@ -33,6 +33,26 @@ export const CAPS_UNTIL_AUDIT = "The caps stay until a professional audit is com
 /** T058: said once where a depositor reads it. The gate is the interface's; the pool does not know about CHIT. */
 export const GATE_SENTENCE = "This gate is the interface's only: the contract accepts a deposit within its caps from anyone who finds it.";
 
+/**
+ * The session account factory for a chain, or none. The Sessions page reads
+ * this to find a trader's own account; a factory belongs to the chain it was
+ * deployed on, so a build for one chain must never ship the other's (T081,
+ * FR-019: neither host offers the other's funds). 46630 is the deployed
+ * testnet factory; 4663 has none until the beta deploys one, and an empty
+ * target is what the page shows as "not deployed on this network yet",
+ * which is true rather than an address that answers wrongly.
+ * FLEET_SESSION_FACTORY sets it for a deploy exactly as the caps are set.
+ */
+const SESSION_FACTORIES = { 46630: "0xe6abb3aba7625c215f805ddc762e1148860796be", 4663: "" };
+
+export const sessionTargetFromEnv = (env = process.env) => {
+  const chainId = Number(env.FLEET_CHAIN_ID || 46630);
+  if (!(chainId in SESSION_FACTORIES)) throw new Error(`FLEET_CHAIN_ID=${chainId} is not a chain this app is built for (46630 or 4663)`);
+  const override = env.FLEET_SESSION_FACTORY;
+  if (override !== undefined && override !== "" && !/^0x[0-9a-fA-F]{40}$/.test(override)) throw new Error(`FLEET_SESSION_FACTORY must be an address, got ${override}`);
+  return { chainId, sessionFactory: (override ?? SESSION_FACTORIES[chainId]).toLowerCase() };
+};
+
 export const chainTargetFromEnv = (env = process.env) => {
   const chainId = Number(env.FLEET_CHAIN_ID || 46630);
   const published = PUBLISHED[chainId];

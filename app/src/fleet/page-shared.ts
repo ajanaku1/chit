@@ -192,15 +192,39 @@ export const loadFleetSnapshot = (): FleetSnapshot | undefined => {
  * shell shows on every page). Loaded once, before any wallet call, and
  * mutated in place so every module that imported it sees the same object.
  */
+/**
+ * The chain this bundle was built for, injected by app/build.mjs from the
+ * same target it writes to chain-target.json (T081). The file is still read
+ * at runtime, and still wins, but the default a page starts from is its own
+ * host's chain: a build for the beta that cannot read the file must not fall
+ * back to the playground's chain and ask a wallet to switch to testnet on the
+ * real-money host. The fallback here is only for a bundle built without the
+ * define, which is a test importing this module directly.
+ */
+declare const __CHAIN_TARGET__: { chainId: number; chainName: string; rpcUrls: string[] } | undefined;
+// Imported directly (a test, not a bundle) the define is absent and the
+// playground is the fallback, as it always was. In a deploy the define is
+// always there, so the fallback is dead code in both bundles and neither
+// host can start on the other's chain.
+const BUILT_FOR = (typeof __CHAIN_TARGET__ === "undefined" ? undefined : __CHAIN_TARGET__)
+  ?? { chainId: 46630, chainName: "Robinhood Chain Testnet", rpcUrls: ["https://rpc.testnet.chain.robinhood.com"] };
+
+/** What the pool's status line calls the chain: the playground says testnet and its id, the beta its own name and id. */
+const chainLabelFor = (chainId: number, chainName: string): string =>
+  chainName.toLowerCase().includes("testnet") ? `testnet ${chainId}` : `${chainName} ${chainId}`;
+
+/** The chain a wallet is asked to add or switch to: this host's, from the build, replaced by chain-target.json when it loads. */
 export const ROBINHOOD_TESTNET = {
-  chainId: "0xb626",
-  chainName: "Robinhood Chain Testnet",
-  rpcUrls: ["https://rpc.testnet.chain.robinhood.com"],
+  chainId: `0x${BUILT_FOR.chainId.toString(16)}`,
+  chainName: BUILT_FOR.chainName,
+  rpcUrls: [...BUILT_FOR.rpcUrls],
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
 };
 export const CHAIN = ROBINHOOD_TESTNET;
 export type ChainTarget = { chainId: number; chainName: string; rpcUrls: string[]; beta?: boolean; betaNote?: string; buyChitUrl?: string; testnetUrl?: string };
-export let chainTarget: ChainTarget = { chainId: 46630, chainName: ROBINHOOD_TESTNET.chainName, rpcUrls: [...ROBINHOOD_TESTNET.rpcUrls] };
+if (BUILT_FOR.chainId) setChainLabel(chainLabelFor(BUILT_FOR.chainId, BUILT_FOR.chainName));
+
+export let chainTarget: ChainTarget = { chainId: BUILT_FOR.chainId, chainName: ROBINHOOD_TESTNET.chainName, rpcUrls: [...ROBINHOOD_TESTNET.rpcUrls] };
 /** The chain id as the wizard signs it and the service checks it. */
 export const chainIdDecimal = (): string => String(chainTarget.chainId);
 
@@ -214,7 +238,7 @@ export const loadChainTarget = (): Promise<void> => {
         ROBINHOOD_TESTNET.chainId = `0x${target.chainId.toString(16)}`;
         ROBINHOOD_TESTNET.chainName = chainTarget.chainName;
         ROBINHOOD_TESTNET.rpcUrls = chainTarget.rpcUrls;
-        setChainLabel(target.chainId === 46630 ? "testnet 46630" : `${chainTarget.chainName} ${target.chainId}`);
+        setChainLabel(chainLabelFor(target.chainId, chainTarget.chainName));
       }
     } catch {
       // no target file: testnet, as built

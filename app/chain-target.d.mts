@@ -15,4 +15,6 @@ export const CAPS_UNTIL_AUDIT: string;
 export function betaFacts(poolCap: string): string[];
 export function withCaps(html: string, target: ChainTarget): string;
 export function chainTargetFromEnv(env?: Record<string, string | undefined>): ChainTarget;
+export type SessionTarget = { chainId: number; sessionFactory: string };
+export function sessionTargetFromEnv(env?: Record<string, string | undefined>): SessionTarget;
 export function withBetaNote(html: string, target: ChainTarget): string;

@@ -2582,3 +2582,42 @@ machine sees, is paused by the guardian inside FR-034's fifteen minutes with
 the exit still requestable and, once due, passing `exitWouldFail`. Six cases,
 all green against mainnet block 69,633,641 on 2026-09-22; the runbook § 2
 says how to run it. Nothing was sent to the chain.
+
+## Two hosts, one source: what keeps the beta and the playground apart (2026-09-22, Lucian, branch feat/two-hosts, T081)
+
+T080 makes a second Vercel deployment for 46630; T081 is the confirmation
+that each host names its chain and neither offers the other's funds
+(FR-019). Writing it found two ways the beta could have spoken for the
+playground.
+
+`app/session-target.json` was copied into every build, and it names chain
+46630 and the session factory deployed there. A beta build therefore shipped
+a testnet factory address, and the Sessions page would have called
+`accountOf` on it on 4663, where it is not that contract. The target is now
+written by the build from `sessionTargetFromEnv` (4663 has no factory until
+the beta deploys one, `FLEET_SESSION_FACTORY` sets it), and the page
+refuses a target that names another chain than the one it loaded, so neither
+mistake can recur alone.
+
+The bundles carried the playground's chain as their compiled-in default
+(`ROBINHOOD_TESTNET`, 0xb626, the testnet RPC), replaced at runtime by
+`chain-target.json`. On the beta a failed read of that file would have left
+the real-money host asking a wallet to switch to testnet, silently. The
+build now defines `__CHAIN_TARGET__` from the same target it writes to the
+file, so a page starts on its own host's chain and the file only confirms
+it; the literal the define replaces stays as the fallback for a test that
+imports the module directly, unreachable in a deploy.
+
+`app/test/two-hosts.test.ts` builds both hosts from the same source with
+nothing but `FLEET_CHAIN_ID` between them and holds them apart: each
+target's chain, RPC, caps and note; each bundle's effective default; the
+playground naming the mainnet RPC nowhere at all; the one crossing FR-004
+allows, the link to the free testnet, which is an address and not a chain;
+and the session factory per chain. It runs the real `build.mjs`, so a later
+change that copies what should be written per chain fails here.
+
+Two portability fixes came with it, because the build and three tests could
+not run on Windows at all: `build.mjs` and the tests now cross between URLs
+and paths with `fileURLToPath`/`pathToFileURL` instead of `.pathname`,
+which on Windows is `/D:/…`. No behaviour changes on Linux; four tests that
+could not run here now do.

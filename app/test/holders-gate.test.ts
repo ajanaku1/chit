@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,7 +18,7 @@ import { drawCapOf, drawIssue, drawShare, launchState, DRAW_CAP } from "../src/f
  */
 
 const execute = promisify(execFile);
-const appRoot = new URL("../", import.meta.url).pathname;
+const appRoot = fileURLToPath(new URL("../", import.meta.url));
 const target = { chainName: "Robinhood Chain", buyChitUrl: "https://example.test/buy", testnetUrl: "https://example.test/testnet" };
 
 test("above the threshold the gate is open; below it, closed with what is held and what is needed", () => {
