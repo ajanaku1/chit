@@ -153,15 +153,15 @@ Phase 4). The money path is safe enough for real ETH.
 
 ## Phase 3: US1 — Put real money in and take it out (P1)
 
-- [ ] T054 [P] [US1] [F] Generate `app/chain-target.json` at build time from the chain environment in `app/build.mjs`
+- [x] T054 [P] [US1] [F] Generate `app/chain-target.json` at build time from the chain environment in `app/build.mjs`
 - [ ] T055 [US1] [F] Add the holders gate in `app/src/fleet/holders-gate.ts`: above the threshold passes silently, below shows holdings and requirement with links to buy CHIT and to the testnet host, a failed read shows retry
-- [ ] T056 [US1] [F] Add the non-dismissible beta note carrying FR-006's three facts to every page in `app/src/fleet/page-shared.ts`
-- [ ] T057 [US1] [F] Show the custody sentence in full beside the amount on the deposit form in `app/src/fleet/balance.ts`
+- [x] T056 [US1] [F] Add the non-dismissible beta note carrying FR-006's three facts to every page in `app/src/fleet/page-shared.ts`
+- [x] T057 [US1] [F] Show the custody sentence in full beside the amount on the deposit form in `app/src/fleet/balance.ts`
 - [ ] T058 [US1] [F] State once, where a depositor reads it, that the gate controls the interface only and the contract accepts direct deposits within its caps
 - [ ] T059 [US1] [F] Read the caps from the deployed pool in `app/src/fleet/balance.ts` and refuse a size that would breach either
   - Includes the fleet wizard's `DRAW_CAP` constant (T011's finding): the draw meter and `drawIssue` read the pool's cap from the balance view instead.
 - [ ] T060 [P] [US1] [F] Test the gate's three states, including that a failed balance read shows retry and never rejection
-- [ ] T061 [P] [US1] [F] Test that the beta note appears on every page and cannot be dismissed
+- [x] T061 [P] [US1] [F] Test that the beta note appears on every page and cannot be dismissed
 
 **Checkpoint**: Deposit and exit work under the caps with the truth on the page.
 This alone is a viable beta.
