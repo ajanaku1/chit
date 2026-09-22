@@ -45,6 +45,7 @@ test("a quote discloses threshold, base fee, discount, and exact net fee", () =>
     discount: "2500000000000000",
     netFee: "7500000000000000",
     eligible: true,
+    holdings: "5000000000000000000000000",
   });
 });
 

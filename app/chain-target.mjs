@@ -27,6 +27,9 @@ export const betaFacts = (poolCap) => [
   "Chit's operator key can move what is in the pool, up to that cap.",
 ];
 
+/** T058: said once where a depositor reads it. The gate is the interface's; the pool does not know about CHIT. */
+export const GATE_SENTENCE = "This gate is the interface's only: the contract accepts a deposit within its caps from anyone who finds it.";
+
 export const chainTargetFromEnv = (env = process.env) => {
   const chainId = Number(env.FLEET_CHAIN_ID || 46630);
   const published = PUBLISHED[chainId];
@@ -64,6 +67,18 @@ export const withBetaNote = (html, target) => {
   if (!target.beta) return html;
   const facts = target.betaFacts.map((fact) => `<span>${escape(fact)}</span>`).join(" ");
   const strip = `<p id="beta-note" class="beta-note" role="note"><strong>Beta on ${escape(target.chainName)}.</strong> ${facts}</p>\n      `;
-  const marked = html.replace(/<(\w+)([^>]*)\sdata-beta-note([^>]*)\shidden([^>]*)>(?:[^<]*)<\/\1>/g, (_, tag, a, b, c) => `<${tag}${a} data-beta-note${b}${c}>${escape(target.betaNote)}</${tag}>`);
+  const marked = html
+    .replace(/<(\w+)([^>]*)\sdata-beta-note([^>]*)\shidden([^>]*)>(?:[^<]*)<\/\1>/g, (_, tag, a, b, c) => `<${tag}${a} data-beta-note${b}${c}>${escape(target.betaNote)}</${tag}>`)
+    .replace(/<(\w+)([^>]*)\sdata-beta-gate-note([^>]*)\shidden([^>]*)>(?:[^<]*)<\/\1>/g, (_, tag, a, b, c) => `<${tag}${a} data-beta-gate-note${b}${c}>${escape(GATE_SENTENCE)}</${tag}>`);
   return marked.replace(/(<header class="masthead">)/, `${strip}$1`);
 };
+
+/**
+ * The caps a page states before the pool has answered are the target's, not a
+ * number of the page's own (FR-001, T059): the draw cap figure on the Balance
+ * page and the wizard's meter label are rewritten from the target; at runtime
+ * the pool's own caps replace them.
+ */
+export const withCaps = (html, target) => html
+  .replace(/data-led="[0-9.]+" data-unit="ETH" data-cap="draw">[0-9.]+ ETH/g, `data-led="${target.caps.draw}" data-unit="ETH" data-cap="draw">${target.caps.draw} ETH`)
+  .replace(/aria-label="This draw against the [0-9.]+ ETH cap"/g, `aria-label="This draw against the ${target.caps.draw} ETH cap"`);
