@@ -1,11 +1,11 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-22T14:34:39.128Z",
-  "commit": "fce7b8c",
-  "committedAt": "2026-09-22T14:25:36+01:00",
-  "commits": 586,
+  "generatedAt": "2026-09-22T14:49:45.930Z",
+  "commit": "5157b3d",
+  "committedAt": "2026-09-22T15:39:15+01:00",
+  "commits": 589,
   "tasks": {
-    "done": 161,
+    "done": 162,
     "total": 175,
     "percent": 92
   },
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 80,
+      "done": 81,
       "total": 94,
       "phases": [
         {
@@ -143,7 +143,7 @@
         },
         {
           "name": "Launch",
-          "done": 7,
+          "done": 8,
           "total": 12
         }
       ],
@@ -195,10 +195,6 @@
         {
           "id": "T092",
           "text": "[F] Verify contract source on the explorer for every deployed contract"
-        },
-        {
-          "id": "T093",
-          "text": "[F] Record the open decision against each acceptance outcome with its evidence, per FR-040"
         },
         {
           "id": "T094",
