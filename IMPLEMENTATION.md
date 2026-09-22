@@ -2750,3 +2750,29 @@ exactly on the fill and refuse a buy for any movement at all.
 The liquidity figures moved several per cent between his measure and mine
 within the same afternoon, which is the reason FR-012 has the day's re-run
 (T091) rather than a number in a file.
+
+## The pool suites give the service an operator that signs for itself (2026-09-22, Boye, branch fix/fork-suites-sign-locally)
+
+The signed step signs before it broadcasts, so the hash is recorded before
+the node sees the transaction. The node's own accounts cannot do that: they
+sign by `eth_signTransaction`, which Hardhat does not serve, and every signed
+step handed one of them fails with "Method eth_signTransaction is not
+supported". The four pool suites on the local chain handed the service
+exactly those accounts, so since the lifecycle landed `fleet-pool-fund`,
+`-balance`, `-observer` and `fleet-order` have been red in every nightly run:
+every funding refused, every payout refused, and the tests reading it as the
+pool's fault.
+
+`test/fork/local-operator.ts` gives a suite an operator that is a local
+account, funded from the node's first, on the node's own transport; the
+node's accounts stay what they are good for, the traders and deploying. The
+admin of the policy and the pool is the deploying account again, so the
+admin's own calls in the suites (`setPool`) go through the client that
+deployed. Four suites, one line each and the constructor arguments; all four
+green on the local chain, and the other seven local suites unchanged.
+
+One red test remains in the nightly and is not this: `fleet-pool-draw`'s
+"reclaim only the gas it actually fronted" asserts what `claimable()` meant
+before T031 made it the surplus, and no posting happens in that test, so the
+claim is now zero. T036 replaced the Solidity invariant that said the same;
+this fork test says it still, and wants the same sibling.

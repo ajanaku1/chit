@@ -11,6 +11,7 @@ import { coarseCharge, createPoolService } from "../../src/fleet/pool-buy.js";
 import { createMemoryStore } from "../../src/fleet/store.js";
 import type { AuthEnvelope } from "../../src/fleet/types.js";
 import { TESTNET_CAPS } from "../../src/fleet/pool-caps.js";
+import { localOperator } from "./local-operator.js";
 
 /**
  * The balance journey through the router against a real pool: a trader's
@@ -23,14 +24,16 @@ describe("Pool balance through the router", () => {
   const OPERATOR_KEY = `0x${"7".repeat(64)}` as const;
 
   let viem: Awaited<ReturnType<typeof network.connect>>["viem"];
+  let provider: Awaited<ReturnType<typeof network.connect>>["provider"];
 
   before(async () => {
-    ({ viem } = await network.connect({ network: "default" }));
+    ({ viem, provider } = await network.connect({ network: "default" }));
   });
 
   it("shows a deposit to a fresh instance and pays a withdrawal from the operator wallet", async () => {
-    const [operator, trader] = await viem.getWalletClients();
+    const [funder, trader] = await viem.getWalletClients();
     const publicClient = await viem.getPublicClient();
+    const operator = await localOperator(funder!, provider, publicClient.chain);
     const contract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address, TESTNET_CAPS.depositor, TESTNET_CAPS.draw, TESTNET_CAPS.pool]);
 
     const pool = createFleetPool(operator!, publicClient, contract.address as Address);
