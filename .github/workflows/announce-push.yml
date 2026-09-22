@@ -60,7 +60,7 @@ jobs:
       # no node_modules, so a link there is what the script's import resolves.
       - name: Fetch the Anthropic SDK
         run: |
-          npm install --prefix "$RUNNER_TEMP/sdk" --no-audit --no-fund --no-package-lock @anthropic-ai/sdk
+          npm install --prefix "$RUNNER_TEMP/sdk" --no-audit --no-fund --no-package-lock @anthropic-ai/sdk@0.127.0
           ln -s "$RUNNER_TEMP/sdk/node_modules" node_modules
 
       - name: Post the push
