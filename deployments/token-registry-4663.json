@@ -1,0 +1,30 @@
+{
+  "chainId": 4663,
+  "candidates": "T062, named before any checking began (2026-09-22, Lucian): CHIT, then three of the chain's own: HOODCAT, HEY (heyresearch.xyz's token) and ORUS (orusagent.xyz's token). Checked so far: CHIT, below. HOODCAT (0x89baf66f3c98b07cef3d4f9e91da5956aca6252d) is not an entry: the pool Dexscreener lists for it (0xee73…cd1a, fee 3000, spacing 200, hook 0x4Eb1…e0cc) is quoted in HOOD (0x32ac8c1d7672667d5ebdea22935f7b06fc8d496f), not in ETH, and its seventeen ETH pools are all traps with fees from 5% to 99% and no depth; the fleet buys with ETH, so there is nothing to pin. HEY and ORUS: addresses to be confirmed by their teams, then measured by test/fork/token-registry.test.ts before an entry is written. An entry is enabled only with its four checks on file and passed (FR-012), and the liquidity check is repeated on the day (rule 4).",
+  "tokens": [
+    {
+      "token": "0xd523a627030509021cc39b6d7c8543417d3e50d8",
+      "symbol": "CHIT",
+      "decimals": 18,
+      "poolKey": {
+        "currency0": "0x0000000000000000000000000000000000000000",
+        "currency1": "0xd523a627030509021cc39b6d7c8543417d3e50d8",
+        "fee": 0,
+        "tickSpacing": 200,
+        "hooks": "0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044"
+      },
+      "poolId": "0x84a4f18cfab0b389a63c4d8a56d08f021a6fd5efb0b0b3617cfbbd6706f09f41",
+      "slippageBps": 300,
+      "enabled": true,
+      "checks": {
+        "ordinaryTransfer": true,
+        "holderRestrictions": false,
+        "liquidityEth": "9.023",
+        "liquidityMultipleOfDrawCap": 180,
+        "forkTest": "test/fork/token-registry.test.ts on the 4663 fork at block 69561387: 1000 CHIT went PoolManager → fresh → other → fresh, whole each time; a 0.05 ETH buy through the Universal Router in this pool bought 513,003 CHIT for a local quote of 523,473, 2.00% under (the launchpad hook's fee, not in the quote), inside the 300 bps bound; a 100 bps bound would have refused it",
+        "checkedAt": "2026-09-22T10:41:00.000Z"
+      },
+      "note": "The launchpad's hooked pool the buyback buys through (deployments/buyback-4663.json). The hook takes about 2% on a buy, so the bound is 300 bps, not the default 100: a 1% bound would refuse every buy. Twenty other ETH pools exist for CHIT, traps with fees up to 90%; none of them is this key."
+    }
+  ]
+}

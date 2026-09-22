@@ -2449,3 +2449,41 @@ before anything is sent. finding_M6 is replaced by its sibling.
 Left in the phase: the failure counter and the cooldown (T069, T070), the
 picker bound to the registry (T071, T072, T076), the fork checks per token
 (T074, T075), and the memes, which are the founder's to name (T062).
+
+## The token registry: the beta trades from a file, not from discovery (2026-09-22, Lucian, branch feat/token-registry, T062, T063, T064, T073 in part, T074, T075)
+
+Phase 4's first half, the part that does not touch `campaign-routes.ts` or
+the app: the registry file, its reader, and the checks on the fork. T065 to
+T072 (the buy path, the quote through the registry, the bound shown, the
+failure counter, the picker) stay the founder's, so nothing here crosses the
+files the lock work (2C) and the app work (Phase 3) are in.
+
+`src/fleet/token-registry.ts` reads `deployments/token-registry-<chainId>.json`
+and holds it to the contract's five rules: `poolId` must be the id of
+`poolKey` (a mismatch throws naming the token; one of them names the wrong
+pool), the pool must be the token's ETH pool (currency0 native, currency1 the
+token), the bound defaults to 100 bps, a disabled entry is never returned by
+`tradableEntry` or `enabledTokens` but stays on record for `anyEntry`
+(FR-038, what a fleet holds must stay movable), and an entry may be enabled
+only with its four FR-012 checks on file and passed. A missing file is an
+empty registry, never a fallback to discovery; a broken one is refused with
+the reason. `meetsLiquidity` is the check to repeat on the day, against the
+chain; `leastOut` is FR-013's number, the least a depositor receives.
+
+The candidates (T062, before any checking): CHIT, HOODCAT, HEY, ORUS. CHIT is
+the one entry: the launchpad's hooked pool the buyback buys through,
+`0x84a4…9f41`, bound 300 bps. The fork test
+(`test/fork/token-registry.test.ts`, `npm run test:fork:registry`, at block
+69561387) measured it: ETH side 9.02 ETH, 180 times the draw cap; 1000 CHIT
+went PoolManager → fresh → other → fresh whole each time, so ordinary
+transfer and no holder restriction; a 0.05 ETH buy through the Universal
+Router in exactly that pool bought 513,003 for a local quote of 523,473,
+2.00% under, the hook's fee, which the local quote does not carry. So 300
+bps is the bound and 100 would refuse every buy; the test holds a wider
+bound to that: it passes only if 100 would have refused the fill. HOODCAT is
+not an entry: the pool Dexscreener lists for it is quoted in HOOD
+(`0x32ac…496f`), not ETH, and its seventeen ETH pools are traps, fees from
+5% to 99%, no depth. Pool discovery had picked one of those traps, which is
+the whole reason the registry is a file. HEY and ORUS wait on their
+addresses from their teams, then the same fork run. `.vercelignore` lets the
+registry file through for the service; nine unit tests hold the rules.
