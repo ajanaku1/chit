@@ -90,6 +90,29 @@ balance, and either the findings or "nothing to report". Nobody has to act on
 it. It is there because a monitor that only speaks when something is wrong
 cannot be told from one that died: a day without a digest is itself a signal.
 
+## What the service reports itself
+
+Two failures leave nothing for an outside reader to find, so the service says
+them (T048, T049, FR-023). A sweep that threw wrote nothing at all, and a
+withdrawal that was refused never reached the chain. `src/fleet/alerts.ts` is
+the sink: the same chat, the same "who acts", and three timescales. `NOW` and
+`4H` go out when they happen — the class is an upper bound on when an operator
+learns of it, and the line says which one it is — and `DAY` lines are held in
+the store and sent as one digest by the first scheduled sweep past the digest
+hour. A failure that cannot be classified takes the faster class.
+
+| Alert | When | Acts | Means | First response |
+|---|---|---|---|---|
+| `withdrawal-refused` | now | money path | A depositor asked for their money and did not get it. The reason travels with it (`operator_float_short`, `payout_reverted`, `OperatorLockLost()`). Never the payee, never the amount. | Read the reason. A short float is topped up; anything else is a refusal to explain before the next one. |
+| `sweep-failed` | 4h | operations | The scheduled sweep threw. Nothing was queued or posted this run; what it did not queue still has its deadline. | The function's logs. If the next sweep also fails, post by hand. |
+| `charges-unreadable` | 4h | money path | A due charge cannot be opened with this ledger key, so it will expire unposted whatever the next sweep does. | `FLEET_LEDGER_KEY` is wrong or was rotated. Nothing else will fix it. |
+| `postings-failed` | daily | money path | Postings that failed and will be tried again while their window is open. | Read the reasons in the digest; if the same charge keeps failing, it becomes `charge-at-risk` here. |
+| `sweep-unreachable` | 4h | operations | The four-hourly workflow could not start a sweep at all: the function did not answer. Raised by `.github/workflows/sweep.yml`, because nothing inside the service runs when the service is the problem. | Vercel status, then the function logs. |
+
+The service needs `TELEGRAM_BOT_TOKEN` and `MONITOR_CHAT_ID` in its own
+environment, the same two values the monitor's workflow has. Without them the
+alerts are logged and not sent, which is what a preview and a local run want.
+
 ## After an expired charge
 
 An expired charge stays on chain for good, so it would be reported for good.

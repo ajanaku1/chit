@@ -138,11 +138,20 @@ one deployment.
 ### 2F. Safety rails — FR-023, FR-032, FR-034, FR-035, FR-043
 
 - [x] T047 [F] Refuse to start without `DATABASE_URL`, `CRON_SECRET` or `FLEET_TOKEN_ALLOWLIST` when the chain is mainnet, in `src/fleet/service-runtime.ts`
-- [ ] T048 [B] Add the alert sink routing to the existing Telegram bot, with FR-023's three timescales and the named operator chat
-- [ ] T049 [B] Alert on a sweep failure, a refused withdrawal, an unposted charge older than four hours, and the operator's balance reaching half the float
+- [x] T048 [B] Add the alert sink routing to the existing Telegram bot, with FR-023's three timescales and the named operator chat
+  - `src/fleet/alerts.ts`: one sink to `MONITOR_CHAT_ID` (never `TELEGRAM_CHAT_ID`, which is the group), each
+    line saying who acts in the monitor's own vocabulary. `immediately` and `four-hours` go out when they
+    happen and say which class they are; `daily` is held in the store and sent as one digest by the first
+    scheduled sweep past the digest hour. No timescale means immediate, as FR-023 asks. Nothing throws at the
+    caller: an alert is raised from inside a path that is already failing. `verify.sh beta-alerts`.
+- [x] T049 [B] Alert on a sweep failure, a refused withdrawal, an unposted charge older than four hours, and the operator's balance reaching half the float
   - Half of it is in the outside monitor (T053): a charge unposted for over four hours, and the operator's
-    balance at half of `FLEET_OPERATOR_FLOAT_ETH`. A sweep failure and a refused withdrawal happen where an
-    outside reader cannot look, so they are reported from the sweep's workflow and the withdrawal path; open.
+    balance at half of `FLEET_OPERATOR_FLOAT_ETH`. The other half is reported where it happens: a sweep that
+    threw and a withdrawal that was refused, from the router; postings that failed and a ledger key that
+    cannot open a due charge, from the sweep's report; and a sweep that never started, from the workflow,
+    since nothing inside the service runs when the service is what failed. Open, and a setting rather than
+    code: the service needs `TELEGRAM_BOT_TOKEN` and `MONITOR_CHAT_ID` in its Vercel environment, the same
+    two values the monitor's workflow already has, or the alerts are logged and not sent.
 - [x] T050 [F] Pause the pool automatically on the two machine-detectable triggers: a charge passing its deadline unrecorded, and an exit transaction failing
 - [x] T051 [F] Add the resume gate: the pool cannot be unpaused until the cause is recorded as fixed, a test covering it exists, and the pool is whole
   - Unpausing is the admin's cold key on chain, so the gate is `npm run fleet-resume-check` before it: the incident record
