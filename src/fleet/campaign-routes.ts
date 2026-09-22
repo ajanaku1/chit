@@ -9,6 +9,7 @@
  * wallet, a signature, or any credential material.
  */
 
+import type { AlertSink } from "./alerts.js";
 import { BudgetError, CampaignBudget } from "./campaign-budget.js";
 import type { OnChainCampaign } from "./chain-campaign.js";
 import { campaignKey, type ChainBuy, type FleetChain } from "./chain-service.js";
@@ -18,7 +19,7 @@ import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuo
 import type { MarketPort } from "./market.js";
 import { createMemoryStore, type StorePort } from "./store.js";
 import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } from "./order-plan.js";
-import { DRAW_CAP, MIN_GAS_CEILING, WithdrawalRefused, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
+import { DRAW_CAP, MIN_GAS_CEILING, WithdrawalRefused, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy, type SweepReport } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
 import { anyEntry, enabledTokens, type TokenRegistry } from "./token-registry.js";
@@ -69,6 +70,12 @@ export type RouterDeps = {
    * is the right default for a single process and for unit tests.
    */
   store?: StorePort;
+  /**
+   * Where the two failures nobody outside can see are reported (T049): a sweep
+   * that threw, and a withdrawal that was refused. Absent means they are only
+   * logged, which is what a unit test and a local run want.
+   */
+  alerts?: AlertSink;
   /**
    * Tokens a sponsored buy may target. Absent means any 20-byte value, which
    * on a public chain means any reverting or worthless pool is a free way to
@@ -158,6 +165,11 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : {};
 
+/** An error as an alert may carry it: the first line only, because the rest of a viem error is the request it was building. */
+const firstLine = (error: unknown): string => (error instanceof Error ? error.message : String(error)).split("\n")[0]?.trim() ?? "";
+
+const count = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
+
 /**
  * The wire shape of an order carries `entropy` where `Order` carries `seed`.
  * `assertNoSecrets` refuses any request body field literally named `seed`
@@ -192,10 +204,30 @@ export class CampaignRouter {
   }
 
   async handle(request: unknown, idempotencyKey?: string): Promise<RouterResult> {
+    const action = String(asRecord(request)["action"] ?? "?");
     try {
       return await this.#dispatch(asRecord(request), idempotencyKey);
     } catch (error) {
-      return errorResult(error, String(asRecord(request)["action"] ?? "?"));
+      await this.#report(action, error);
+      return errorResult(error, action);
+    }
+  }
+
+  /**
+   * The failures an outside reader cannot see (T049, FR-023). A refusal is
+   * money the depositor asked for and did not get, and nothing on chain says
+   * so, so it goes at once. A sweep that threw wrote nothing, and what it did
+   * not queue still has its deadline, so it belongs to the four-hour class.
+   * Nothing here may throw: the caller is already failing.
+   */
+  async #report(action: string, error: unknown): Promise<void> {
+    const alerts = this.#deps.alerts;
+    if (!alerts) return;
+    if (error instanceof WithdrawalRefused) {
+      // The reason only; a payee and an amount in a chat are the link the pool withholds.
+      await alerts.raise({ what: "withdrawal-refused", summary: `a withdrawal was refused: ${error.reason}`, acts: "money-path", timescale: "immediately" });
+    } else if (action === "sweep") {
+      await alerts.raise({ what: "sweep-failed", summary: `the scheduled sweep failed: ${firstLine(error)}`, acts: "operations", timescale: "four-hours" });
     }
   }
 
@@ -478,7 +510,36 @@ export class CampaignRouter {
     const chain = this.#deps.chain;
     const queueOwed = body["queueOwed"] !== false;
     const report = await pool.sweep(async (campaign) => (chain ? chain.accountsOf(campaign) : []), { queueOwed });
+    await this.#reportSweep(report);
     return { status: 200, body: report };
+  }
+
+  /**
+   * What a finished sweep has to say (FR-024, T049). Postings that failed are
+   * tried again by the next sweep while the window is open, so they are the
+   * day's summary. A charge this ledger key cannot open will expire whatever
+   * the next sweep does, and the key is the fault, so that one is sooner. The
+   * scheduled sweep is also where the day's digest is offered, because it is
+   * the one thing that runs on a clock in every instance.
+   */
+  async #reportSweep(report: SweepReport): Promise<void> {
+    const alerts = this.#deps.alerts;
+    if (!alerts) return;
+    const failed = report.failed ?? [];
+    if (failed.length > 0) {
+      await alerts.raise({
+        what: "postings-failed", acts: "money-path", timescale: "daily",
+        summary: `${count(failed.length, "posting")} failed and will be tried again`,
+        detail: [...new Set(failed.map((f) => f.reason))].slice(0, 3),
+      });
+    }
+    if (report.unreadable) {
+      await alerts.raise({
+        what: "charges-unreadable", acts: "money-path", timescale: "four-hours",
+        summary: `${count(report.unreadable, "due charge")} cannot be opened with this ledger key and will expire unposted; check FLEET_LEDGER_KEY`,
+      });
+    }
+    await alerts.flushDaily();
   }
 
   /**

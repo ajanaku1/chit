@@ -34,6 +34,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Start the sweep
+        id: sweep
         env:
           FLEET_CRON_SECRET: ${{ secrets.FLEET_CRON_SECRET }}
         run: |
@@ -42,3 +43,31 @@ jobs:
           else
             curl -fsS --max-time 240 https://chit.tools/api/fleet/sweep
           fi
+
+      # A sweep that never started is the half of T049 the service cannot
+      # report: it reports its own failures, but nothing inside it runs when
+      # the function is unreachable, times out or answers 5xx. Four hours,
+      # because the charges this sweep did not queue still have their deadline
+      # and the next tick may well get them (FR-023). The operator chat only,
+      # never the group; without the two secrets the red run is the alert.
+      - name: Say so in the operator chat
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          MONITOR_CHAT_ID: ${{ secrets.MONITOR_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$MONITOR_CHAT_ID" ]; then
+            echo "not sent: TELEGRAM_BOT_TOKEN and MONITOR_CHAT_ID are not both set"
+            exit 0
+          fi
+          TEXT="Chit fleet service · alert · the scheduled sweep
+          4H sweep-unreachable (operations): the four-hourly sweep did not start; /api/fleet/sweep did not answer
+              $RUN_URL"
+          # No --max-time here: the smallest one in this file is how long the
+          # sweep is given (test/fleet/sweep-timing.test.ts reads it), and a
+          # smaller number on this call would read as less patience for the
+          # sweep itself. The job's five minutes bound this one.
+          curl -fsS -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -H 'content-type: application/json' \
+            --data "$(jq -nc --arg chat "$MONITOR_CHAT_ID" --arg text "$TEXT" '{chat_id: $chat, text: $text, disable_web_page_preview: true}')"

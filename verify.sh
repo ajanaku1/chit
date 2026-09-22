@@ -158,6 +158,9 @@ checksh beta-contract "the pool reimburses fronted withdrawals and an outsider c
 checksh beta-rails "the sweep has clocks, failures are counted, and the pool pauses itself" \
   'grep -q "blockTime" src/fleet/service-runtime.ts && grep -q "maxDuration" vercel.json && grep -qE "multicall|Multicall3" src/fleet/chain-pool.ts && grep -qiE "alert" src/fleet/service-runtime.ts && grep -qiE "autopause|pauseOnTrigger|automatic pause" src/fleet/*.ts'
 
+checksh beta-alerts "the service says what an outside reader cannot see, to the operator chat and not to the group" \
+  'test -f src/fleet/alerts.ts && grep -q "MONITOR_CHAT_ID" src/fleet/alerts.ts && ! grep -q "TELEGRAM_CHAT_ID\"]" src/fleet/alerts.ts && ! grep -q "TELEGRAM_CHAT_ID" .github/workflows/sweep.yml && grep -q "if: failure()" .github/workflows/sweep.yml && grep -q "alerts" src/fleet/service-runtime.ts && npm run build:fleet && node --test dist-fleet/test/fleet/alerts.test.js dist-fleet/test/fleet/alert-routes.test.js dist-fleet/test/fleet/ci-workflows.test.js dist-fleet/test/fleet/store.test.js dist-fleet/test/fleet/store-neon.test.js'
+
 checksh beta-surfaces "the gate, the beta note and the honest refusal are on the pages a depositor reads" \
   'test -f app/src/fleet/holders-gate.ts && grep -q "chain-target.json" app/build.mjs && grep -qiE "not been audited|unaudited" app/src/fleet/page-shared.ts && grep -qiE "operator key can move|operator can move" app/src/fleet/page-shared.ts && npm --prefix app run verify'
 
