@@ -69,6 +69,23 @@ and the pool, the caps read back as 0.1 / 0.05 / 1, the record and the
 chain target written. Rehearsed on 2026-09-16 against mainnet block
 63,969,832.
 
+The rest of the rehearsal FR-040 and SC-012 ask for is a test on the same
+kind of fork, run by hand before the day and nightly by `verify-full.yml`:
+
+```bash
+npm run test:fork:rehearsal   # test/fork/mainnet-rehearsal.test.ts
+```
+
+It deploys the beta's pool on the fork with the beta's caps and a guardian,
+then: the caps read back as 0.1 / 0.05 / 1 (T089); deployment is refused
+without a guardian and with a guardian that is the operator; the guardian
+pauses without the operator signing anything, the operator cannot unpause,
+and an exit completes while paused; and each of FR-026's three triggers is
+fired (T090): a charge past its window unrecorded and an exit that would
+fail, each pausing the pool from the scheduled sweep itself, and a
+depositor's loss, paused by the guardian's hand inside the fifteen minutes
+of FR-034. Six cases; passed 2026-09-22 against mainnet block 69,633,641.
+
 ## 3. Deploy
 
 ```bash

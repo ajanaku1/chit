@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-22T11:20:01.618Z",
-  "commit": "5f78d60",
-  "committedAt": "2026-09-22T12:19:33+01:00",
-  "commits": 572,
+  "generatedAt": "2026-09-22T11:55:39.761Z",
+  "commit": "3afb4c0",
+  "committedAt": "2026-09-22T12:24:58+01:00",
+  "commits": 573,
   "tasks": {
-    "done": 159,
+    "done": 161,
     "total": 175,
-    "percent": 90
+    "percent": 92
   },
   "stages": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 78,
+      "done": 80,
       "total": 94,
       "phases": [
         {
@@ -143,7 +143,7 @@
         },
         {
           "name": "Launch",
-          "done": 5,
+          "done": 7,
           "total": 12
         }
       ],
@@ -187,14 +187,6 @@
         {
           "id": "T088",
           "text": "[F] Soak on testnet for forty-eight hours with alerting on; no charge unrecorded beyond four hours"
-        },
-        {
-          "id": "T089",
-          "text": "[F] Rehearse on a fork of 4663: caps read back, refusal without a guardian, guardian pause without the operator, exit while paused"
-        },
-        {
-          "id": "T090",
-          "text": "[F] Rehearse each of the three pause triggers on the fork, including the two that fire automatically"
         },
         {
           "id": "T091",
