@@ -2862,3 +2862,28 @@ Open, and a setting rather than code: the service needs `TELEGRAM_BOT_TOKEN`
 and `MONITOR_CHAT_ID` in its Vercel environment, the same two values the
 monitor's workflow has. Without them every alert is logged and not sent, which
 is what a preview and a local run want and is not what production wants.
+
+## 2026-09-22: the last red fork test, and what it was really saying
+
+`fleet-pool-draw` "reclaim only the gas it actually fronted" was the last of
+the six red suites (Boye's #24 fixed the other five; this one was mine). It
+asserted `claimable() == gas` straight after `commit`, which was true before
+T031 and is not now: the claim became the pool's surplus,
+`totalPosted − (totalOutflow + totalClaimed)`, so with nothing posted there
+is nothing to claim.
+
+The test was not weakened to pass. Its subject — the operator reclaims what
+it fronted and not a wei more — is intact, and the journey the new contract
+requires was added around it: the charge is queued and posted against the
+depositor first. That let the case say something stronger than it did
+before, so it now holds both halves of FR-030:
+
+- before the posting, `claimable()` is zero and a claim of one wei is
+  refused — the operator cannot reimburse itself for money no depositor has
+  yet been charged for, which is exactly what the old assertion allowed;
+- after it, the surplus is exactly the gas fronted, `gas + 1` is refused,
+  and the pool's own balance is the deposit less what left it.
+
+`./verify.sh pool-foundation` PASS, and every local-network fork suite is
+green: balance, control, draw, exit, fund, observer, order, contracts,
+session-keys. The nightly `verify-full` was red from 2026-09-21 until now.
