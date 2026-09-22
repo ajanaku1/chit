@@ -263,24 +263,28 @@ describe("M3: the sweep", () => {
 });
 
 describe("M5: the operator lock", () => {
-  it("finding_M5: the scheduled sweep signs with the operator key while holding no lock", async () => {
+  // Replaces finding_M5 (T029): the same scheduled sweep, and now every signed step is under the lock, and nothing between them is.
+  it("fixed_M5: the scheduled sweep signs each step under the operator lock, and holds it across none of the sweep", async () => {
     const held: string[] = [];
     const memory = createMemoryStore();
     const store: StorePort = {
       ...memory,
-      withLock: async (name, work) => { held.push(name); try { return await work(); } finally { held.pop(); } },
+      withLock: async (name, work) => { held.push(name); try { return await memory.withLock(name, work); } finally { held.pop(); } },
     };
-    let locksDuringSweep: string[] | undefined;
-    const pool = {
-      sweep: async () => { locksDuringSweep = [...held]; return { funded: [], posted: [], queued: 0 }; },
-    } as unknown as PoolPort;
-    const service = new CampaignService({ origin: "https://chit.example", chainId: 46630, maxTtlSeconds: 300 }, { store });
-    const router = new CampaignRouter({ service, store, pool } as RouterDeps);
+    const draws = [1, 2].map((n) => ({ campaign: campaign(n), amount: parseEther("0.02"), spent: 0n, reserved: 0n, principalOut: 0n, dueAt: NOW - 10n, ownerRef: sealDepositor(KEY, ALICE), state: DRAW_STATE.pending }));
+    const { pool } = makePool(draws);
+    const locksAtSigning: string[][] = [];
+    const locksBetween: string[][] = [];
+    const signing = pool.signAndBroadcast;
+    pool.signAndBroadcast = async (step) => { locksAtSigning.push([...held]); return signing(step); };
+    const reading = pool.queued;
+    pool.queued = async () => { locksBetween.push([...held]); return reading(); };
+    const service = createPoolService(wallet, publicClient, pool, KEY, { ...opts(), store });
+    await service.sweep(async () => [account(1)], { queueOwed: true });
 
-    const result = await router.handle({ action: "sweep", body: {} });
-
-    assert.equal(result.status, 200);
-    assert.deepEqual(locksDuringSweep, [], "queueSpendBatch, postQueued and fund are sent with the operator lock free");
+    assert.equal(locksAtSigning.length, 2, "two fundings were signed");
+    assert.ok(locksAtSigning.every((locks) => locks.includes("operator")), "each with the operator lock held");
+    assert.ok(locksBetween.length > 0 && locksBetween.every((locks) => !locks.includes("operator")), "and the queue was read with it free: the lock is a step's, not the sweep's");
   });
 });
 
