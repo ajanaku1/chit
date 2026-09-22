@@ -2329,3 +2329,41 @@ Two things said plainly. The third trigger, a depositor losing money, needs a
 person to confirm and is not automated; the fifteen-minute clock of FR-034 is
 the runbook's. And `./verify.sh beta-rails` is the phase's gate as a whole: it
 also wants the alerting (T048, T049, co-dev), so it stays red until that lands.
+
+## The push announcer speaks in the group's voice (2026-09-21, Lucian, branch feat/announce-push-voice)
+
+Every push to main reaches the Telegram group through
+`scripts/announce-push.mjs`, which until now sent the commit subjects grouped
+as new / fixed / tests, then each new diary entry as written. Honest, and
+unreadable on a phone: the subjects in this repository are written for the
+dev who reads the log, some of them are whole paragraphs, and a holder
+scrolling the group got a list in another register from every feature post.
+
+With `ANTHROPIC_API_KEY` set as a repository secret, the push and the diary
+now go out as one post written by Claude (`claude-opus-5`, adaptive
+thinking, medium effort) from the facts the script already gathered and
+nothing else: every commit's whole message (the log is read with `%B` now,
+not `%s`), the diary entries the push added, and the chain records it will
+be followed by. The system prompt is the group's voice and its rules, lower
+case, no dashes, no disclaimers, `$CHIT` upper case, say only what the facts
+say, never a launch, a price, an audit or a partnership the facts do not name,
+and a feature post from the group as the example. The answer is checked once
+more in the script: only `<b>`, `<i>` and `<code>` survive and must be
+balanced, every other angle bracket and bare ampersand is escaped, the dashes
+become commas, the cashtag is upper-cased, a code fence is stripped, and an
+answer under 40 or over 4096 characters is refused. A refused answer, a failed
+call, a missing SDK or a missing key all fall back to the grouped message and
+the diary as before, so the group never misses a push because the voice was
+unavailable. The chain message is never reworded: every address and
+transaction in it is a link a reader can check.
+
+The workflow installs only the SDK, into a folder of its own linked as
+`node_modules`, since the repository's tree is not needed to post; the job's
+timeout grew from three minutes to six. Rehearsed on the range
+`bc4fb6d..68963eb` (nine commits, three diary entries) against a local server
+standing in for the API: a canned answer with a code fence, two em dashes, a
+bare ampersand, `$chit` and a `<script>` tag came out clean and was the one
+message; a 500 from the server and a run without the key both sent the
+grouped message and the three diary entries as before, exit 0 each time.
+The run itself is now inside a main-module guard, so the file can be imported
+for its `tidyVoice` and `voiceFacts` without announcing anything.
