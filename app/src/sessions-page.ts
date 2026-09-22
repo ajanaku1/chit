@@ -29,6 +29,7 @@ import {
 import {
   ROBINHOOD_TESTNET,
   chainTarget,
+  loadChainTarget,
   confirmDialog,
   ensureRobinhoodTestnet,
   getConnectedWallet,
@@ -121,9 +122,16 @@ const transact = async (label: string, to: Hex, data: Hex, value?: bigint): Prom
 // ---- reading ----
 
 const loadTarget = async (): Promise<void> => {
+  // The chain first: the session target is only this host's if it names the same chain.
+  await loadChainTarget();
   try {
     const target = (await (await fetch("./session-target.json")).json()) as Target;
-    factory = target.sessionFactory && isAddress(target.sessionFactory) ? (target.sessionFactory as Hex) : undefined;
+    // A factory answers only on the chain it was deployed on: a target naming
+    // another chain is not this host's, and using it would put a testnet
+    // address in front of a trader on mainnet (T081).
+    const ours = target.chainId === chainTarget.chainId;
+    if (!ours) console.warn(`session target names chain ${target.chainId}, this host is ${chainTarget.chainId}; ignored`);
+    factory = ours && target.sessionFactory && isAddress(target.sessionFactory) ? (target.sessionFactory as Hex) : undefined;
   } catch {
     factory = undefined;
   }

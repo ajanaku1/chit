@@ -297,6 +297,7 @@ export const fundingProgress = (dueAt: string, now: Date, windowMs = 15 * 60_000
 
 /** What the header's status pill says: only what the last balance read showed, never a guess. */
 /** "testnet 46630" or "Robinhood Chain 4663": whatever chain-target.json says, never a string of the page's own. */
+/** The playground's, until the build's own target and then chain-target.json say otherwise (page-shared.ts). */
 let chainLabelText = "testnet 46630";
 export const setChainLabel = (label: string): void => { chainLabelText = label; };
 export const chainLabel = (): string => chainLabelText;

@@ -424,7 +424,7 @@ test("the Trade page: fleet card, order form, orders list, and the honest line a
   assert.match(html, /<button id="o-place" type="submit" class="primary big" disabled>Place order<\/button>/);
   assert.match(html, /Trades stay public/);
   assert.doesNotMatch(html, /organic|volume/i, "the stagger hides the funder, it does not sell volume");
-  assert.match(await read("build.mjs"), /"trade-page": new URL\("\.\/src\/trade-page\.ts"/);
+  assert.match(await read("build.mjs"), /"trade-page": fileURLToPath\(new URL\("\.\/src\/trade-page\.ts"/);
   assert.match(await read("build.mjs"), /"\.\/trade\.html"/);
 });
 

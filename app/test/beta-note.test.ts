@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -17,7 +18,7 @@ import { MAINNET_BETA_CAPS, TESTNET_CAPS } from "../../src/fleet/pool-caps.js";
  */
 
 const execute = promisify(execFile);
-const appRoot = new URL("../", import.meta.url).pathname;
+const appRoot = fileURLToPath(new URL("../", import.meta.url));
 const PAGES = ["fleet.html", "fleet-dashboard.html", "balance.html", "fleet-privacy.html", "trade.html", "sessions.html"];
 const eth = (wei: bigint) => (Number(wei) / 1e18).toString();
 

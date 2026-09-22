@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { readFile, mkdtemp, rm } from "node:fs/promises";
@@ -19,7 +20,7 @@ import { chromium } from "playwright";
  */
 
 const execute = promisify(execFile);
-const appRoot = new URL("../", import.meta.url).pathname;
+const appRoot = fileURLToPath(new URL("../", import.meta.url));
 
 const WALLET = "0x00000000000000000000000000000000000000aa";
 const CAMPAIGN = `0x${"11".repeat(32)}`;

@@ -15,7 +15,7 @@ import { readFile, stat } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 
 const PORT = Number(process.env.PORT ?? 3000);
-const ROOT = new URL("../public/", import.meta.url).pathname;
+const ROOT = fileURLToPath(new URL("../public/", import.meta.url));
 process.env.FLEET_ORIGIN ??= `http://localhost:${PORT}`;
 
 // The pool address comes from the recorded deployment unless the environment
