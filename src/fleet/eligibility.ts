@@ -59,6 +59,7 @@ export const createQuote = (config: FeeConfig, chitBalance: Uint, quoteId: strin
     discount: checked.discount,
     netFee: (BigInt(checked.baseFee) - BigInt(checked.discount)).toString(),
     eligible: BigInt(balance) >= BigInt(checked.threshold),
+    holdings: balance,
   };
 };
 
@@ -78,5 +79,7 @@ export const OPEN_ACCESS_CHARGE = { feeAsset: "ETH", recipient: "0x0000000000000
 export const chargeQuote = (quote: FeeQuote, config: FeeConfig, chargeEvidence: string): FeeCharge => {
   if (!quote.eligible) throw new EligibilityError("ineligible", "quote_ineligible");
   const checked = validateFeeConfig(config);
-  return { ...quote, feeAsset: checked.feeAsset, recipient: checked.recipient, chargeEvidence };
+  // The wallet's holdings were for the gate to show; a charge records fee facts only.
+  const { holdings: _holdings, ...facts } = quote;
+  return { ...facts, feeAsset: checked.feeAsset, recipient: checked.recipient, chargeEvidence };
 };

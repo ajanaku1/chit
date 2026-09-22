@@ -60,6 +60,8 @@ export type FeeQuote = {
   discount: Uint;
   netFee: Uint;
   eligible: boolean;
+  /** The wallet's CHIT, in base units, so a gate can say what it holds against the threshold (FR-004). Absent on open access. */
+  holdings?: Uint;
 };
 export type FeeCharge = FeeQuote & { feeAsset: string; recipient: string; chargeEvidence: string };
 export type AccountResult = { account: Address; status: "sponsored" | "rejected"; budget: Budget };
