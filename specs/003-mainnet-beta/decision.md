@@ -18,7 +18,7 @@ description of intent.
 | SC-001 | No depositor charged for a buy that did not happen, none charged twice | Sign→record→broadcast→wait lifecycle with `mined`/`reverted`/`unknown` outcomes and `resolve` for the unknown (`chain-pool-writes.test.ts`); sent state per hash and nonce, `resolveSent` confirmed/owed/void (`pool-sweep.test.ts`); idempotency keys scoped per action (`campaign-routes.ts`) | met in code; observed across the beta |
 | SC-002 | Every depositor who asks to leave is paid within the delay, with or without Chit | `requestExit`/`executeExit` on the contract, 24 h, no operator path (`fleet-pool-exit.test.ts`); an exit completes while paused and with the operator's nonce unchanged (`mainnet-rehearsal.test.ts`, PR #26) | met |
 | SC-003 | Every withdrawal ends paid or refused in the same session, none left owed | Record before pay, refusal before anything is recorded (`WithdrawalRefused`, `pool-sweep.test.ts` "withdraw"); the refused state on the Balance page with the exit beneath it (`withdrawal-refused.test.ts`, PR #22) | met in code; observed across the beta |
-| SC-004 | No charge expires unrecorded | Automatic pause on `charge-expired` from the scheduled sweep, bounded by the last resume (`pool-sweep.test.ts` T050; on the real contract in `mainnet-rehearsal.test.ts`); 48 h soak with alerting on (T088) | **pending**: T088 waits on alerting (T048/T049, Boye) |
+| SC-004 | No charge expires unrecorded | Automatic pause on `charge-expired` from the scheduled sweep, bounded by the last resume (`pool-sweep.test.ts` T050; on the real contract in `mainnet-rehearsal.test.ts`). Alerting is in (PR #35, `./verify.sh beta-alerts` PASS). The soak's own predicate is `npm run fleet-soak`, which samples the pool and refuses to pass a run that is short, broken by silence, paused, short of what it owes, or carrying a charge past four hours | **pending**: the 48 h run itself, which starts at the next production deploy |
 | SC-005 | The most a depositor can lose to a contract fault is the pool cap, said on every page before depositing | Caps immutable at construction (`FleetPool.sol`, `FleetPool.t.sol` BadCaps); FR-006's three facts and the caps-until-audit sentence on every page and beside the deposit amount (`beta-note.test.ts`, PR #17, PR #25) | met |
 | SC-006 | Each listed token's buy lands within its bound, checked on the real pool | All three enabled entries on the 4663 fork at block 69,746,534 (`token-registry.test.ts`, reproduced founder-side 2026-09-22): CHIT 2.00 % under a 300 bps bound, HEY and ORUS 3.00 % under a 400 bps bound — the bound is each pool's hook fee plus 100 bps of real slippage; `price_moved` refusal per slice before any send (PR #21) | met for the enabled set; re-run on the day |
 | SC-007 | Every launch token holds ≥ 50× the draw cap, confirmed on the day | `npm run registry:liquidity` (PR #28) is the day's one command and exits 1 under the floor. Fork measure 2026-09-22, all three at least 3× clear of the floor: CHIT 8.71 ETH (174×), HEY 8.12 (162×), ORUS 8.79 (176×) | met on the day: T091 |
@@ -44,7 +44,10 @@ description of intent.
 
 ## Before the word is written
 
-- [ ] T088: 48 h soak on testnet from the same code, alerting on, no charge unrecorded beyond 4 h
+- [ ] T088: 48 h soak on testnet from the same code, alerting on, no charge
+      unrecorded beyond 4 h. Started by `npm run fleet-soak -- --watch` after the
+      deploy that turns alerting on; closed by `npm run fleet-soak` printing
+      PASS, whose output is the evidence for this row
 - [ ] T091: liquidity re-measured for every enabled entry on the day
 - [ ] T092: every deployed contract verified on the explorer (`npm run explorer:verify:mainnet`; by hand behind the explorer's challenge)
 - [ ] T080: the second Vercel deployment live at `testnet.chit.tools` (T081's

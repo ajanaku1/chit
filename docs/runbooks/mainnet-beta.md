@@ -86,6 +86,26 @@ fail, each pausing the pool from the scheduled sweep itself, and a
 depositor's loss, paused by the guardian's hand inside the fifteen minutes
 of FR-034. Six cases; passed 2026-09-22 against mainnet block 69,633,641.
 
+## 2b. The soak (T088, FR-039)
+
+Forty-eight hours on testnet from the same code, with alerting on. Alerting
+only becomes live at a production deployment, and that deployment is started
+by hand, so the order is: set the alert environment, deploy, then start the
+run — a soak that began before alerting was on did not soak with alerting on.
+
+```bash
+npm run fleet-soak -- --watch     # a sample every 10 minutes; leave it running
+npm run fleet-soak                # the verdict; exit 1 until it holds
+```
+
+`--once` takes a single sample and exits, for a cron where a long-lived
+process is awkward. The verdict refuses a run that is short of forty-eight
+hours, broken by more than thirty minutes of silence, paused at any sample,
+short of what the pool owes, or carrying a charge unposted past four hours.
+Silence fails on purpose: an hour nobody watched is not a soaked hour. The
+samples are working notes and are not committed; the printed verdict is what
+goes in `specs/003-mainnet-beta/decision.md` against SC-004.
+
 ## 3. Deploy
 
 ```bash

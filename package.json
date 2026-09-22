@@ -36,6 +36,7 @@
     "test:fleet:deploy": "npm run build && node --test dist/test/fork/fleet-deploy.test.js",
     "explorer:verify": "npx hardhat compile && npm run build && npx hardhat run dist/scripts/explorer-verify.js --network robinhoodTestnet",
     "explorer:verify:mainnet": "npx hardhat compile && npm run build && npx hardhat run dist/scripts/explorer-verify.js --network robinhoodMainnet",
+    "fleet-soak": "npm run build && node --env-file-if-exists=.env dist/scripts/fleet-soak.js",
     "fleet-resume-check": "npm run build && node --env-file=.env dist/scripts/fleet-resume-check.js"
   },
   "dependencies": {

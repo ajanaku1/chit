@@ -49,3 +49,8 @@ app/evidence/*
 app/chain-target.json
 # T092: the standard-JSON exports explorer-verify writes for a by-hand upload
 verify/
+
+# T088: the soak run's samples, appended over forty-eight hours by
+# scripts/fleet-soak.ts. The verdict is what gets recorded in the decision
+# record; two days of samples are working notes, not repository history.
+incidents/soak-*.jsonl

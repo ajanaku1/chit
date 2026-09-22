@@ -2887,3 +2887,33 @@ before, so it now holds both halves of FR-030:
 `./verify.sh pool-foundation` PASS, and every local-network fork suite is
 green: balance, control, draw, exit, fund, observer, order, contracts,
 session-keys. The nightly `verify-full` was red from 2026-09-21 until now.
+
+## 2026-09-22: the soak given a predicate (Phase 7, T088)
+
+T088 said forty-eight hours with no charge unrecorded past four hours, and
+nothing in the repository could answer it. Detection during a soak is the
+monitor's and the alert sink's (FR-023, FR-027, Boye's #35); what was missing
+was the record afterwards, so the task could close on a check rather than on
+having watched.
+
+`src/fleet/soak.ts` is the predicate: a run of samples passes when it covers
+forty-eight hours, has no silence longer than thirty minutes, saw no charge
+unposted past four hours, and found the pool whole and running at every
+sample. Silence is a fault rather than an absence of faults — an hour nobody
+watched is not a soaked hour — and that is the check that makes the other
+three worth anything, since the cheapest way to pass the other three is to
+stop sampling. A pause during the run ends it: a trigger fired, and FR-035
+wants it accounted for and resumed before the beta opens, so the clock
+restarts.
+
+`npm run fleet-soak` samples (`--watch`, or `--once` for a cron) and, with no
+flag, reads the run and exits 1 unless it holds. Every figure is a public
+view read at one block — the balance too, or a deposit landing between two
+reads would read as a shortfall — so the record is one an outside reader
+could have kept (SC-009). Sampling writes nothing to the chain. The samples
+are working notes and are ignored; the printed verdict is what the decision
+record carries against SC-004.
+
+Run against the live testnet pool: block 122,918,950, nothing unposted, whole.
+Eight cases on the predicate, including that four hours exactly is inside the
+bound and a second past it is not.
