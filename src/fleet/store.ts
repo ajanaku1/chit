@@ -86,6 +86,17 @@ export type StorePort = {
     /** When the campaign accepts buys again, or undefined when it does now. */
     closedUntil(campaign: string, now: number): Promise<number | undefined>;
   };
+  /**
+   * The alert lines waiting for the day's digest (FR-023's third timescale,
+   * T048). Held here because the instance that saw the failure is gone long
+   * before the digest hour, and because the digest must go out once however
+   * many instances are warm.
+   */
+  alerts: {
+    hold(line: string, at: number): Promise<void>;
+    /** Takes every held line, oldest first, and leaves none: the caller sends them or they are lost with it. */
+    takeHeld(): Promise<string[]>;
+  };
 };
 
 /** Three gas-spending failures inside an hour close a campaign for an hour (FR-0xx, the spec's clarification). */
@@ -122,6 +133,7 @@ export const createMemoryStore = (): StorePort => {
   const owed = new Map<string, OwedRow>();
   const failures = new Map<string, number[]>();
   const cooldowns = new Map<string, number>();
+  const held: { at: number; line: string }[] = [];
 
   const pruneNonces = (now: number): void => {
     for (const [nonce, expiresAt] of nonces) if (expiresAt <= now) nonces.delete(nonce);
@@ -213,6 +225,14 @@ export const createMemoryStore = (): StorePort => {
       async closedUntil(campaign, now) {
         const until = cooldowns.get(campaign);
         return until !== undefined && until > now ? until : undefined;
+      },
+    },
+    alerts: {
+      async hold(line, at) { held.push({ at, line }); },
+      async takeHeld() {
+        const lines = [...held].sort((a, b) => a.at - b.at).map((entry) => entry.line);
+        held.length = 0;
+        return lines;
       },
     },
   };

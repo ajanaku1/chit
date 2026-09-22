@@ -60,6 +60,14 @@ const SCHEMA = [
      campaign TEXT PRIMARY KEY,
      closed_until BIGINT NOT NULL
    )`,
+  // The alert lines waiting for the day's digest (T048). One row per line,
+  // taken by whichever instance sends the digest; nothing here is money, so a
+  // row lost with a failed send is a line missing from a summary.
+  `CREATE TABLE IF NOT EXISTS fleet_alerts (
+     id BIGSERIAL PRIMARY KEY,
+     held_at BIGINT NOT NULL,
+     line TEXT NOT NULL
+   )`,
 ];
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -221,6 +229,17 @@ export const createNeonStore = (
       async closedUntil(campaign, now) {
         const [row] = await sql.query("SELECT closed_until FROM fleet_campaign_cooldowns WHERE campaign = $1 AND closed_until > $2", [campaign, now]);
         return row ? Number(row["closed_until"]) : undefined;
+      },
+    },
+    alerts: {
+      async hold(line, at) {
+        await sql.query("INSERT INTO fleet_alerts (held_at, line) VALUES ($1, $2)", [at, line]);
+      },
+      async takeHeld() {
+        // Taken and deleted in one statement, so two instances at the digest
+        // hour cannot both read the same lines and send the digest twice.
+        const rows = await sql.query("DELETE FROM fleet_alerts RETURNING held_at, line");
+        return rows.map((row) => ({ at: Number(row["held_at"]), line: String(row["line"]) })).sort((a, b) => a.at - b.at).map((row) => row.line);
       },
     },
   };

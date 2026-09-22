@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-22T15:55:16.810Z",
-  "commit": "16bb8fd",
-  "committedAt": "2026-09-22T17:55:06+02:00",
-  "commits": 601,
+  "generatedAt": "2026-09-22T19:18:23.908Z",
+  "commit": "04f4994",
+  "committedAt": "2026-09-22T19:37:12+01:00",
+  "commits": 607,
   "tasks": {
-    "done": 166,
+    "done": 168,
     "total": 175,
-    "percent": 94
+    "percent": 96
   },
   "stages": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 85,
+      "done": 87,
       "total": 94,
       "phases": [
         {
@@ -118,7 +118,7 @@
         },
         {
           "name": "Foundational",
-          "done": 45,
+          "done": 47,
           "total": 47
         },
         {
@@ -148,14 +148,6 @@
         }
       ],
       "open": [
-        {
-          "id": "T048",
-          "text": "[B] Add the alert sink routing to the existing Telegram bot, with FR-023's three timescales and the named operator chat"
-        },
-        {
-          "id": "T049",
-          "text": "[B] Alert on a sweep failure, a refused withdrawal, an unposted charge older than four hours, and the operator's balance reaching half the float"
-        },
         {
           "id": "T080",
           "text": "[US4] [F] Create the second Vercel deployment for 46630 with its own environment and the `testnet.chit.tools` domain"

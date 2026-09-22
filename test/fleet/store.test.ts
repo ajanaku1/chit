@@ -118,6 +118,19 @@ const contract = (name: string, make: () => StorePort): void => {
       assert.equal(await store.failures.record("c-3", t + 7_400_000), undefined);
       assert.equal(await store.failures.closedUntil("c-3", t + 7_400_001), undefined);
     });
+
+    it("holds the day's alert lines, oldest first, and gives them up exactly once", async () => {
+      const store = make();
+      const t = 1_700_000_000_000;
+      assert.deepEqual(await store.alerts.takeHeld(), [], "a day with nothing held");
+      await store.alerts.hold("DAY postings-failed (money-path): 2 postings failed", t + 1_000);
+      await store.alerts.hold("DAY postings-failed (money-path): 1 posting failed", t);
+      assert.deepEqual(await store.alerts.takeHeld(), [
+        "DAY postings-failed (money-path): 1 posting failed",
+        "DAY postings-failed (money-path): 2 postings failed",
+      ], "in the order they happened, not the order they were written");
+      assert.deepEqual(await store.alerts.takeHeld(), [], "taken once: the digest is not sent twice");
+    });
   });
 };
 
