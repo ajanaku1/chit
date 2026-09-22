@@ -43,7 +43,7 @@ describe("Neon store", () => {
     });
     const store = createNeonStore(sql);
     await store.initialize();
-    assert.equal(sql.calls.filter((c) => c.query.includes("CREATE TABLE")).length, 7, "one statement per table");
+    assert.equal(sql.calls.filter((c) => c.query.includes("CREATE TABLE")).length, 8, "one statement per table");
 
     assert.equal(await store.claimSlice("o|1"), true);
     assert.equal(await store.claimSlice("o|1"), false);
@@ -213,5 +213,21 @@ describe("Neon store", () => {
     assert.equal(inserted, 0, "the counted failures are cleared once they closed the campaign");
     assert.equal(await store.failures.closedUntil("c-1", 1_000_003), 4_600_000);
     assert.equal(await store.failures.closedUntil("c-1", 4_600_001), undefined, "past the moment, open again");
+  });
+
+  it("the held alert lines are taken and deleted in one statement, so two instances cannot both send the digest", async () => {
+    const rows: { held_at: number; line: string }[] = [];
+    const sql = fakeSql(({ query, params }) => {
+      if (query.startsWith("INSERT INTO fleet_alerts")) { rows.push({ held_at: Number(params[0]), line: String(params[1]) }); return []; }
+      if (query.startsWith("DELETE FROM fleet_alerts")) { const taken = [...rows]; rows.length = 0; return taken; }
+      return undefined;
+    });
+    const store = createNeonStore(sql);
+    await store.alerts.hold("DAY second", 2_000);
+    await store.alerts.hold("DAY first", 1_000);
+    assert.deepEqual(await store.alerts.takeHeld(), ["DAY first", "DAY second"], "oldest first, whatever order they were written in");
+    assert.deepEqual(await store.alerts.takeHeld(), []);
+    assert.equal(sql.calls.filter((c) => c.query.startsWith("DELETE FROM fleet_alerts")).length, 2);
+    assert.ok(sql.calls.every((c) => !/SELECT .* FROM fleet_alerts/.test(c.query)), "never read first and deleted after: that is the race");
   });
 });
