@@ -28,12 +28,17 @@ permissions:
   contents: read
 
 jobs:
-  verify:
+  # Named for what it is: `verify` is the no-network suite's check, required on
+  # main by name, and two jobs called verify were one check that the failing
+  # one of them blocked.
+  eyebrow:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: alexverify/eyebrow/action@206507d5703311453677c5fb46a5cd1b11550731 # v0.5.2
         with:
+          # Pinned to a commit, the action cannot derive its release from the ref; it says which tag it is.
+          version: v0.5.2
           lockfile: eyebrowlock.json
           policy: eyebrow.policy.json
           trusted-keys: eyebrow.trustedkeys
