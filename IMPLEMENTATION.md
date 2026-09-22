@@ -2560,3 +2560,25 @@ sell" control on the beta (`app/test/no-sell.test.ts`), and the pool's routes
 and pooled buy never import the sell encoder, name no sell action, and refuse
 an unnamed action as unknown (`test/fleet/no-sell-path.test.ts`).
 `./verify.sh beta-launch` PASS. 535 fleet tests, 242 app.
+
+## 2026-09-22: the fork rehearsal (Phase 7, T089, T090)
+
+`test/fork/mainnet-rehearsal.test.ts`, on a fork of Robinhood Chain mainnet
+(`connectRobinhoodMainnetFork`), is FR-040's rehearsal as a test the nightly
+fork run picks up and `npm run test:fork:rehearsal` runs by hand. The beta's
+pool is deployed on the fork with `capsFromEnv(4663, {})` and a guardian, as
+the redeploy script would make it. T089: the caps read back as 0.1 / 0.05 /
+1 through both the contract and the service's `caps()`; `guardianFromEnv`
+refuses an absent guardian and one that is the operator; the guardian's
+`pause()` lands with the operator's nonce unchanged; the operator's
+`setPaused(false)` is refused; a deposit is refused while paused; a requested
+exit is paid in full while paused and the pool stays paused until the admin
+resumes. T090, the three triggers of FR-026: a charge queued and left past
+its window pauses the pool from the scheduled sweep (`charge-expired`, the
+charge reported as expired); a pool that paid a draw's principal out, so a
+full exit would revert on the transfer, pauses from the scheduled sweep
+(`exit-failed`, the depositor unnamed); a depositor's loss, the one no
+machine sees, is paused by the guardian inside FR-034's fifteen minutes with
+the exit still requestable and, once due, passing `exitWouldFail`. Six cases,
+all green against mainnet block 69,633,641 on 2026-09-22; the runbook § 2
+says how to run it. Nothing was sent to the chain.
