@@ -32,6 +32,12 @@
  *   BOT_PLATE_OFF                1 keeps the token card as text; otherwise
  *                                it is drawn as a plate with the partners'
  *                                marks (landing/public/bot/partners)
+ *   FLEET_TESTNET_URL            where the free playground app lives when it is
+ *                                its own deploy (testnet.chit.tools). The
+ *                                playground floor's links go there instead of
+ *                                to the beta's host, and the mainnet floor
+ *                                offers it as a door when the playground is
+ *                                not a room in this bot (T082, FR-019)
  *   BOT_MODE                     "playground" (default; testnet, the bot
  *                                holds throwaway keys), "session" (mainnet
  *                                4663 only; the bot holds nothing of yours
@@ -188,7 +194,22 @@ class ConfigFault extends Error {}
 const refuse = (why: string): never => { throw new ConfigFault(why); };
 
 /** What one machine may hand the runtime instead of the environment: a store of its own (the poll runner's file-backed one). */
-export type BotOverrides = { store?: BotWalletStore; mainnetFloor?: boolean };
+export type BotOverrides = { store?: BotWalletStore; mainnetFloor?: boolean; siteUrl?: string };
+
+/**
+ * FLEET_TESTNET_URL: where the free playground app lives once it is its own
+ * deploy (testnet.chit.tools, T080). The playground floor's links go there
+ * instead of to the beta's host, and the mainnet floor offers it as a door
+ * when the playground is not a room in this bot (T082, FR-019: neither host
+ * offers the other's funds). Unset, everything stays on FLEET_ORIGIN, which
+ * is what a single-host deploy wants.
+ */
+export const testnetHost = (): string | undefined => {
+  const raw = process.env.FLEET_TESTNET_URL?.trim();
+  if (!raw) return undefined;
+  if (!/^https:\/\/[^\s/]+/.test(raw)) throw new Error(`FLEET_TESTNET_URL must be an https URL, got ${raw}`);
+  return raw.replace(/\/+$/, "");
+};
 
 const storeFromEnv = (): BotWalletStore => {
   const url = process.env.DATABASE_URL;
@@ -291,7 +312,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     ...(process.env.BOT_HEY_OFF === "1" ? {} : { hey: createHeyScanner({ chainId, ...(process.env.HEY_API_KEY ? { apiKey: process.env.HEY_API_KEY } : {}), ...(process.env.HEY_API_BASE ? { baseUrl: process.env.HEY_API_BASE } : {}) }) }),
     botUsername: username!,
     siteUrl: site,
-    ...(overrides.playgroundFloor ? { playgroundFloor: true } : {}),
+    ...(overrides.playgroundFloor ? { playgroundFloor: true } : { ...(testnetHost() ? { playgroundUrl: testnetHost()! } : {}) }),
     ...(orders ? { orders } : {}),
     ...(alerts ? { alerts } : {}),
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
@@ -340,7 +361,11 @@ const build = (overrides: BotOverrides = {}): ChitBot => {
     ...(faucetKey ? { faucetKey: faucetKey as `0x${string}` } : {}),
   });
   if (!faucetKey) warnOnce("faucet", "BOT_FAUCET_PRIVATE_KEY is not set: new wallets get no test ETH");
-  const site = process.env.FLEET_ORIGIN || "https://chit.tools";
+  // The playground's own host: its cards link to the app that runs on its own
+  // chain, never to the beta's (T082, FR-019). A caller may name it outright
+  // (the dual bot does); otherwise FLEET_TESTNET_URL, and lastly the origin
+  // itself, which is the single-host deploy this started as.
+  const site = overrides.siteUrl ?? testnetHost() ?? process.env.FLEET_ORIGIN ?? "https://chit.tools";
   const bannerBase = process.env.BOT_BANNER_BASE ?? `${site.replace(/\/+$/, "")}/bot`;
   const banners = bannerBase
     ? Object.fromEntries((["home", "buy", "refer", "fleet"] as const).map((k) => [k, `${bannerBase.replace(/[\\/]+$/, "")}/${k}.png`]))

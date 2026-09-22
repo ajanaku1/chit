@@ -2917,3 +2917,25 @@ record carries against SC-004.
 Run against the live testnet pool: block 122,918,950, nothing unposted, whole.
 Eight cases on the predicate, including that four hours exactly is inside the
 bound and a second past it is not.
+## The bot's playground door points at the playground's own host (2026-09-22, Lucian, branch feat/playground-host, T082)
+
+With the beta, the free playground becomes its own deploy on its own chain
+(T080, `testnet.chit.tools`). Until now the bot knew one host,
+`FLEET_ORIGIN`, and used it on both floors: the testnet floor's cards
+linked into the beta's app, which is the crossing FR-019 forbids, and the
+mainnet floor's only door to the playground was the room inside this bot.
+
+`FLEET_TESTNET_URL` names the playground's host, the same variable the app
+reads for the holders gate's "where the free testnet is". The playground
+floor is built with it as its own `siteUrl`, so every link it draws goes to
+the app that runs on its chain; the mainnet floor takes it as
+`playgroundUrl` and offers it as a door, but only when the playground is
+not a room in this bot, because a room is one tap and keeps the user in the
+chat. With neither, no door: a button to a host that does not exist is worse
+than no button. The value is held to an https URL with the value quoted in
+the refusal, so a wallet is never sent somewhere unencrypted, and unset
+leaves everything on `FLEET_ORIGIN`, which is the single-host deploy this
+started as.
+
+Tests: the door in its three states, and the variable read, trimmed,
+stripped of its trailing slash, and refused when it is not https.

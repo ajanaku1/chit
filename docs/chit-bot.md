@@ -320,6 +320,14 @@ them off): the photo on top, the card as its caption, and a tap from one
 banner card to another swaps the picture in place. A card that has no
 banner, or whose text would not fit a caption, is plain text as before.
 
+Once the playground is its own deploy (`testnet.chit.tools`, spec 003
+T080), `FLEET_TESTNET_URL` names it. The playground floor's own links go
+there rather than to the beta's host, and the mainnet floor offers it as a
+door when the playground is not a room in this bot: a room is one tap and
+stays in the chat, so it wins where there is one, and with neither there is
+no door at all. Unset, everything stays on `FLEET_ORIGIN`, which is what a
+single-host deploy wants.
+
 Before the host: `node --env-file=.env scripts/bot-poll.mjs` runs the same
 runtime from one machine by long polling (any 16+ character webhook
 secret), for trying it and for screenshots; it removes the webhook when it

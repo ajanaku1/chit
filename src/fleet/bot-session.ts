@@ -88,6 +88,8 @@ export type SessionBotDeps = {
   sellPresetsPct?: number[];
   /** Set when the testnet playground lives in the same bot: the home cards offer the door. */
   playgroundFloor?: boolean;
+  /** Where the free playground lives when it is not a room in this bot (FLEET_TESTNET_URL): the door is a link to it (T082). */
+  playgroundUrl?: string;
   now?: () => Date;
 };
 
@@ -257,8 +259,17 @@ export class SessionBot {
   }
 
   #mode(): string { return `<b>Robinhood Chain</b> · ${this.#d.session.chainId} · your keys stay with you`; }
-  /** The door to the testnet playground, when it is in this bot. */
-  #door(): Keyboard { return this.#d.playgroundFloor ? [[btn("🧪 Testnet playground", "floor:playground")]] : []; }
+  /**
+   * The door to the free playground. A room in this bot is one tap and stays
+   * in the chat, so it wins; otherwise the door is the testnet host's own
+   * address, which is where the playground lives once it is its own deploy
+   * (T082). Neither, no door: a button to a host that does not exist is
+   * worse than no button.
+   */
+  #door(): Keyboard {
+    if (this.#d.playgroundFloor) return [[btn("🧪 Testnet playground", "floor:playground")]];
+    return this.#d.playgroundUrl ? [[url("🧪 Free testnet playground", this.#d.playgroundUrl)]] : [];
+  }
 
   async #start(chatId: string, tgId: string, param?: string): Promise<void> {
     const linked = param?.startsWith("t-") ? param.slice(2) : undefined;
