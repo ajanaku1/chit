@@ -56,9 +56,8 @@ same files the contract work below changes, so it lands before any of it.
 - [x] T009 [F] Confirm `src/fleet/pool-caps.ts` publishes both sets and that the pool's constructor enforces them
 - [x] T010 [F] Redeploy testnet from the rebased branch and close T040 in `specs/002-private-funding-pool/tasks.md`
   - Deployed 2026-09-21 from main (`f654c17` bytecode): pool `0x5c619e51e9a4559dfb0bed22e9ec3ae1ae22beef`, policy
-    `0x4a0c4555…e492`, factory `0x74789523…d896`; record in `deployments/fleet-46630.json`. spec-002's T040 stays
-    open: its live quickstart on chit.tools needs `FLEET_POOL_ADDRESS` and the two `FLEET_*_ADDRESS` set on Vercel
-    and a production deploy, both the user's to run.
+    `0x4a0c4555…e492`, factory `0x74789523…d896`; record in `deployments/fleet-46630.json`. spec-002's T040 closed
+    2026-09-22: Vercel Production names the new set, chit.tools reports the pool, and the journey ran against it.
 - [x] T011 [F] Verify against the redeployed testnet pool that the caps read back from the bytecode, not from any constant in the service or the app
   - Read back 2026-09-21: 0.5 / 0.2 / 5 from `0x5c61…beef`. The service reads them from the pool (`chain-pool.ts`
     `caps()`, `campaign-routes.ts`); the Balance page reads them from the balance view. Finding: the fleet wizard still

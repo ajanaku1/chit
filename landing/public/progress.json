@@ -1,11 +1,11 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-22T08:33:48.426Z",
-  "commit": "4a5105d",
-  "committedAt": "2026-09-22T09:30:09+01:00",
-  "commits": 542,
+  "generatedAt": "2026-09-22T09:59:11.882Z",
+  "commit": "d848234",
+  "committedAt": "2026-09-22T10:14:55+01:00",
+  "commits": 547,
   "tasks": {
-    "done": 128,
+    "done": 129,
     "total": 175,
     "percent": 73
   },
@@ -69,7 +69,7 @@
     {
       "id": "002-private-funding-pool",
       "title": "Private Funding Pool",
-      "done": 39,
+      "done": 40,
       "total": 40,
       "phases": [
         {
@@ -99,16 +99,11 @@
         },
         {
           "name": "Polish and cross-cutting",
-          "done": 6,
+          "done": 7,
           "total": 7
         }
       ],
-      "open": [
-        {
-          "id": "T040",
-          "text": "Live: deploy the pool, run the quickstart live validation on chit.tools, record tx hashes under `pooledBuy`"
-        }
-      ]
+      "open": []
     },
     {
       "id": "003-mainnet-beta",

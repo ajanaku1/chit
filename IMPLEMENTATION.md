@@ -2381,3 +2381,20 @@ unmerged. From here every change, the founder's and the co-developer's, lands
 by PR and a merge after verify is green. Vercel's GitHub connection still names
 the old owner; installing Vercel's app on the organisation and reconnecting the
 project is the user's, and production stays a deliberate `vercel --prod`.
+
+## chit.tools on the new testnet pool, and the journey run against it (2026-09-22, spec-002 T040)
+
+The admin accepted the policy and the pool (Rabby's send has no data field
+and the explorer has no verified source, so a small local page asked the
+wallet to sign the two `acceptOwnership()` calls). Vercel Production names
+the new set and the user ran the production deploy; the live `quote` reports
+`0x5c61…beef`. `scripts/fleet-pool-journey.ts` then ran the whole Stage 2
+story against it: deposit, activate, fund, a venue buy through the signed
+step, close, withdraw. Two things the script had wrong, fixed: it built no
+market, so the buy route answered `market_unconfigured` (the host builds
+one; now the script does too), and its memory store died with the process,
+so the charges it recorded were never queued; it now queues and posts them
+itself before it exits, with a fixed ninety-second delay. The first attempt
+left a funded campaign behind; closed by hand, and the headroom whose charge
+was lost donated back. The pool reads whole afterwards from public views:
+identity holds, shortfall zero, claimable 0.00898 ETH.

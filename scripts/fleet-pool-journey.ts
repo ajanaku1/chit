@@ -20,6 +20,7 @@ import {
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 
 import { CampaignRouter } from "../src/fleet/campaign-routes.js";
+import { createMarket } from "../src/fleet/market.js";
 import { CampaignService, challengeBytes, payloadHash } from "../src/fleet/campaign-service.js";
 import { createFleetPool } from "../src/fleet/chain-pool.js";
 import { campaignKey, createFleetChain } from "../src/fleet/chain-service.js";
@@ -49,7 +50,7 @@ const keyFromEnv = (): Hex => {
 
 type Deployment = {
   pool?: { address: Address };
-  venue?: { token: Address };
+  venue?: { token: Address; poolManager?: Address };
   sessionPolicy: Address;
   accountFactory: Address;
   campaignEscrow: Address;
@@ -120,11 +121,20 @@ const main = async (): Promise<void> => {
   // --- the journey, in process against the live chain ---------------------
   const serviceConfig = { origin: ORIGIN, chainId: 46630, maxTtlSeconds: 300 };
   const service = new CampaignService(serviceConfig, { nonceSecret: ledgerKey(keyFromEnv()) });
+  // The charges this run records live in its own memory store, so it queues
+  // and posts them itself before it exits: a short, fixed delay makes that a
+  // wait of a minute and a half rather than up to fifteen.
   const router = new CampaignRouter({
     service,
-    pool: createPoolService(wallet, publicClient, pool, ledgerKey(keyFromEnv())),
+    pool: createPoolService(wallet, publicClient, pool, ledgerKey(keyFromEnv()), { delaySeconds: () => 90 }),
     chain: createFleetChain(wallet, publicClient, {
       escrow: record.campaignEscrow, factory: record.accountFactory, policy: record.sessionPolicy,
+    }),
+    // The buy quotes and routes through the venue: the same market the host builds (service-runtime.ts).
+    market: createMarket(publicClient, {
+      poolManager: record.venue!.poolManager as Address,
+      escrow: record.campaignEscrow as Address,
+      escrowFromBlock: BigInt(process.env.FLEET_ESCROW_BLOCK ?? "120343548"),
     }),
   });
 
@@ -205,11 +215,20 @@ const main = async (): Promise<void> => {
   const paid = await call("withdraw", { amount: parseEther("0.01").toString(), destination: fresh });
   console.log(`withdrew to       ${fresh} (${String(paid["payoutTx"])})`);
 
+  // What this run owes the pool (the headroom, the buy, the withdrawal) is
+  // queued in one batch and posted once due, so nothing is left to a store
+  // that dies with this process.
+  const queued = await call("sweep", { queueOwed: true });
+  console.log(`queued            ${JSON.stringify(queued)}`);
+  await new Promise((resolve) => setTimeout(resolve, 100_000));
+  const posted = await call("sweep", { queueOwed: true });
+  console.log(`posted            ${JSON.stringify(posted)}`);
+
   const full = JSON.parse(await readFile(RECORD, "utf8")) as Record<string, unknown>;
   full["pooledJourney"] = {
     campaign, fleet: accounts, depositTx, deposit: DEPOSIT.toString(), draw: DRAW.toString(),
     buy: results[0], creditedToBalance: closed["creditedToBalance"], withdrawTx: paid["payoutTx"],
-    withdrawTo: fresh, at: new Date().toISOString(),
+    withdrawTo: fresh, charges: { queued: queued["queued"], posted: posted["posted"] }, at: new Date().toISOString(),
   };
   await writeFile(RECORD, `${JSON.stringify(full, null, 2)}\n`);
   console.log(`recorded pooledJourney in ${RECORD}`);
