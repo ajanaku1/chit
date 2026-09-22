@@ -27,6 +27,7 @@
     "bot:poll": "npm run build && node --env-file=.env scripts/bot-poll.mjs",
     "buyback-deploy:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/buyback-deploy-live.js",
     "test:fork:registry": "npx tsx --test test/fork/token-registry.test.ts",
+    "test:fork:rehearsal": "npx tsx --test test/fork/mainnet-rehearsal.test.ts",
     "test:fork:buyback": "npm run build && node --test --test-reporter spec dist/test/fork/chit-buyback.test.js",
     "session-deploy:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/session-deploy-live.js",
     "session-demo:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/session-demo-live.js",
