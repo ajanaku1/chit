@@ -33,6 +33,8 @@
     "session-demo:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/session-demo-live.js",
     "sponsor-deploy:live": "npx hardhat compile && npm run build && node --env-file=.env dist/scripts/sponsor-deploy-live.js",
     "test:fleet:deploy": "npm run build && node --test dist/test/fork/fleet-deploy.test.js",
+    "explorer:verify": "npx hardhat compile && npm run build && npx hardhat run dist/scripts/explorer-verify.js --network robinhoodTestnet",
+    "explorer:verify:mainnet": "npx hardhat compile && npm run build && npx hardhat run dist/scripts/explorer-verify.js --network robinhoodMainnet",
     "fleet-resume-check": "npm run build && node --env-file=.env dist/scripts/fleet-resume-check.js"
   },
   "dependencies": {

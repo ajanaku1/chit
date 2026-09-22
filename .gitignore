@@ -47,3 +47,5 @@ app/evidence/*
 /review/
 # written by app/build.mjs from FLEET_CHAIN_ID; never committed
 app/chain-target.json
+# T092: the standard-JSON exports explorer-verify writes for a by-hand upload
+verify/

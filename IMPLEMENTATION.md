@@ -2582,3 +2582,25 @@ machine sees, is paused by the guardian inside FR-034's fifteen minutes with
 the exit still requestable and, once due, passing `exitWouldFail`. Six cases,
 all green against mainnet block 69,633,641 on 2026-09-22; the runbook § 2
 says how to run it. Nothing was sent to the chain.
+
+## 2026-09-22: explorer verification, prepared (Phase 7, T092)
+
+`npm run explorer:verify` (testnet) and `explorer:verify:mainnet`, from
+`scripts/explorer-verify.ts` under `hardhat run --network`: the record
+`deployments/fleet-<chain>.json` names the set (`contractsOf`, escrow,
+paymaster, policy, factory, pool, session factory), each contract's
+constructor arguments are decoded from its own creation transaction against
+the artifact (`constructorArgsOf`; nothing typed by hand), the standard-JSON
+input and encoded arguments are exported to `verify/<chain>/` for a by-hand
+upload, and each unverified contract is submitted to Blockscout through
+hardhat-verify, which the toolbox already carries (no new dependency).
+`hardhat.config.ts` gains the `robinhoodMainnet` network (no account), the
+two explorers as chain descriptors, and Blockscout as the only enabled
+provider. A contract whose creation code is not this checkout's bytecode is
+skipped and named. Found on the way: the mainnet explorer
+(`robinhoodchain.blockscout.com`) answers scripts with a Cloudflare
+challenge, so the runbook § 3 carries the by-hand path with the export.
+Dry run on testnet 2026-09-22: six contracts read, four verifiable from
+main (escrow, policy, factory, pool), the paymaster and the session factory
+deployed from earlier sources. Nothing submitted yet; T092 closes on the
+day, against the mainnet set. 538 fleet tests.
