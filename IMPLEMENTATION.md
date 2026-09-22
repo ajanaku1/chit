@@ -2961,3 +2961,24 @@ FR-008 wants landed before the change that opens the beta rather than in it.
 The beta host gets one new line: no `FLEET_SESSION_FACTORY`, because 4663 has
 none until one is deployed there and the page should say so rather than offer
 the testnet's.
+
+## 2026-09-22: what the playground host must not be given (T080)
+
+Two hazards found while writing out T080, both of them things a careful
+person would walk into by copying the working project's environment:
+
+The store is not scoped by chain. `fleet_owed_spend`, `fleet_locks` and
+`fleet_idempotency` are keyed by campaign and id, never by chain id, so two
+hosts sharing one `DATABASE_URL` would have the playground's sweep read the
+beta's owed charges and try to post them against the testnet pool, and both
+operators would serialise on one lock row. The playground gets its own
+database; nothing in the code needs to change for that, but it has to be
+said where the host is set up.
+
+`vercel.json` is in the repository, so a second project inherits all six
+crons. `/api/buyback/keeper` is fixed to chain 4663 and runs every five
+minutes, so a playground given `BUYBACK_KEEPER_KEY` would race the beta's
+keeper on one account, on the one path that spends real ETH. The bot's
+`orders` and `watch` crons are the same shape. Without those keys the crons
+fail every five minutes into the logs and do nothing, which is the failure
+we want; runbook § 4a now lists what to leave out and why.
