@@ -28,7 +28,7 @@ See §8 — this is enforced by a test.
 | Remote | Repo | What it is |
 |---|---|---|
 | `origin` | `ajanaku1/chit` | The **public hackathon submission** only |
-| `private` | `ajanaku1/chit-fleet` | The **real build**. Push here. |
+| `private` | `Chit-org/chit-fleet` | The **real build**. Push here. |
 
 The build goes to `private`. Do not push product work to `origin`.
 
