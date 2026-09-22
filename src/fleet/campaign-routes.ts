@@ -21,7 +21,8 @@ import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } fro
 import { DRAW_CAP, MIN_GAS_CEILING, WithdrawalRefused, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
-import { UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall, minOutFor } from "./v4-swap.js";
+import type { TokenRegistry } from "./token-registry.js";
+import { BPS, UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall, minOutFor, type PoolKey } from "./v4-swap.js";
 import {
   FleetValidationError,
   isAddress,
@@ -75,6 +76,12 @@ export type RouterDeps = {
    * behind.
    */
   allowedTokens?: readonly Address[];
+  /**
+   * The token registry (FR-011): with one, only its enabled entries trade,
+   * each through its pinned pool and within its own bound; the allowlist is
+   * the testnet's looser form of the same gate.
+   */
+  registry?: TokenRegistry;
   /**
    * Slippage a sponsored buy tolerates, in basis points of the spot estimate;
    * default 200. A buy on a real venue is refused when no quote can be read.
@@ -631,10 +638,9 @@ export class CampaignRouter {
     const value = String(body["value"] ?? "");
     const token = String(body["token"] ?? "");
     if (!/^0x[0-9a-fA-F]{40}$/.test(token)) throw new FleetValidationError("invalid_token");
-    const allowed = this.#deps.allowedTokens;
-    if (allowed && !allowed.some((t) => t.toLowerCase() === token.toLowerCase())) {
-      throw new PolicyRejection("token_not_allowed");
-    }
+    this.#refuseUnlisted(token);
+    // The fill the depositor accepted when they read the quote; the buy is refused before it is sent if the pool no longer gives it inside the bound.
+    const acceptedOut = /^\d+$/.test(String(body["acceptedOut"] ?? "")) ? BigInt(String(body["acceptedOut"])) : undefined;
     // A record restored from the chain by another instance may not know its
     // fleet size yet; enrolment on chain still refuses strangers, so the cap
     // is only applied when the size is known.
@@ -659,9 +665,9 @@ export class CampaignRouter {
     });
 
     const results: Record<string, unknown>[] = this.#deps.pool && record.draw
-      ? await this.#buyFromPool(record, session, requested, token, value, now, wallet)
+      ? await this.#buyFromPool(record, session, requested, token, value, now, wallet, acceptedOut)
       : chain
-        ? await this.#buyOnChain(record, session, chain, requested, token, value, now)
+        ? await this.#buyOnChain(record, session, chain, requested, token, value, now, acceptedOut)
         : await this.#buyInMemory(record, session, submitter!, requested, token, value, now);
 
     // FR edge case: the campaign depletes when the remainder cannot fund
@@ -686,8 +692,34 @@ export class CampaignRouter {
     const token = String(body["token"] ?? "");
     if (!/^0x[0-9a-fA-F]{40}$/.test(token)) throw new TradeValidationError("invalid_token");
     const total = /^\d+$/.test(String(body["totalWei"] ?? "")) ? String(body["totalWei"]) : "0";
-    const quote = await this.#market().tokenQuote(token as Address, total);
-    return { status: 200, body: { ...quote, windowMs: windowFor(record.policy.accounts), capWei: record.policy.maxTradeValue } };
+    const quote = await this.#market().tokenQuote(token as Address, total, this.#poolKeyFor(token));
+    // The bound in force, shown as the least the depositor will receive, not only as a percentage (FR-013, T068).
+    const boundBps = this.#boundBps(token);
+    const minOut = quote.hasPool ? minOutFor(BigInt(quote.estimatedOut), boundBps).toString() : "0";
+    return { status: 200, body: { ...quote, boundBps, minOut, windowMs: windowFor(record.policy.accounts), capWei: record.policy.maxTradeValue } };
+  }
+
+  /** A token is traded only if the registry lists it enabled (FR-011), or, without a registry, if the allowlist has it. */
+  #refuseUnlisted(token: string): void {
+    const registry = this.#deps.registry;
+    if (registry) {
+      const entry = registry.entry(token);
+      if (!entry) throw new PolicyRejection("token_not_listed");
+      if (!entry.enabled) throw new PolicyRejection("token_disabled");
+      return;
+    }
+    const allowed = this.#deps.allowedTokens;
+    if (allowed && !allowed.some((t) => t.toLowerCase() === token.toLowerCase())) throw new PolicyRejection("token_not_allowed");
+  }
+
+  /** The pool a token is quoted and bought through: the registry's pinned key; without a registry, the venue's default. */
+  #poolKeyFor(token: string): PoolKey | undefined {
+    return this.#deps.registry?.entry(token)?.poolKey;
+  }
+
+  /** The bound in force for a token: its registry entry's, else the operator's tolerance, else 2%. */
+  #boundBps(token: string): number {
+    return this.#deps.registry?.entry(token)?.slippageBps ?? this.#deps.maxSlippageBps ?? 200;
   }
 
   /** Validates an order and returns its plan. Nothing executes here. */
@@ -729,7 +761,8 @@ export class CampaignRouter {
     const remaining = record.draw ? record.draw.remaining : this.#budget(record).unused;
     if (BigInt(totalWei) > BigInt(remaining)) throw new TradeValidationError("over_draw");
 
-    const quote = await this.#market().tokenQuote(token as Address, totalWei);
+    this.#refuseUnlisted(token);
+    const quote = await this.#market().tokenQuote(token as Address, totalWei, this.#poolKeyFor(token));
     if (!quote.hasPool) throw new TradeValidationError("no_pool");
 
     const draft: Omit<Order, "id"> = {
@@ -852,7 +885,7 @@ export class CampaignRouter {
    */
   async #buyFromPool(
     record: CampaignRecord, session: SessionKey, requested: Address[],
-    token: string, value: Uint, now: Date, wallet: string,
+    token: string, value: Uint, now: Date, wallet: string, acceptedOut?: bigint,
   ): Promise<Record<string, unknown>[]> {
     const pool = this.#pool();
     return this.#serialized(wallet, async () => {
@@ -867,7 +900,7 @@ export class CampaignRouter {
       if (live?.paused) { record.state = "Paused"; throw new CampaignStateError("state_invalid", "session_paused"); }
     }
     if (BigInt(record.policy.perAccountGas) < MIN_GAS_CEILING) throw new PolicyRejection("gas_ceiling_too_low");
-    const minOut = await this.#minOut(record, token as Address, value);
+    const minOut = await this.#minOut(record, token as Address, value, acceptedOut);
     const refused: Record<string, unknown>[] = [];
     const buys: PooledBuy[] = [];
     for (const account of requested) {
@@ -876,7 +909,7 @@ export class CampaignRouter {
         buys.push({
           account,
           value,
-          callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now, minOut),
+          callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now, minOut, this.#poolKeyFor(token)),
           maxCost: record.policy.perAccountGas,
         });
       } else {
@@ -914,7 +947,7 @@ export class CampaignRouter {
    */
   async #buyOnChain(
     record: CampaignRecord, session: SessionKey, chain: FleetChain,
-    requested: Address[], token: string, value: Uint, now: Date,
+    requested: Address[], token: string, value: Uint, now: Date, acceptedOut?: bigint,
   ): Promise<Record<string, unknown>[]> {
     const minOut = await this.#minOut(record, token as Address, value);
     const refused: Record<string, unknown>[] = [];
@@ -960,13 +993,20 @@ export class CampaignRouter {
    * public chain is an invitation to be sandwiched for the whole principal.
    * The fixture venue used by tests has no pool and takes no minimum.
    */
-  async #minOut(record: CampaignRecord, token: Address, value: Uint): Promise<bigint> {
+  async #minOut(record: CampaignRecord, token: Address, value: Uint, acceptedOut?: bigint): Promise<bigint> {
     if (record.policy.function !== UNIVERSAL_ROUTER_EXECUTE) return 0n;
     const market = this.#deps.market;
     if (!market) throw new ServiceError("dependency_evidence_invalid", "market_unconfigured");
-    const quote = await market.tokenQuote(token, value);
+    const quote = await market.tokenQuote(token, value, this.#poolKeyFor(token));
     if (!quote.hasPool) throw new PolicyRejection("no_pool_for_token");
-    const minOut = minOutFor(BigInt(quote.estimatedOut), this.#deps.maxSlippageBps ?? 200);
+    const bound = this.#boundBps(token);
+    // The quote the depositor accepted, against the one the pool gives now: a
+    // price that already moved past the bound is refused here, before any
+    // transaction is sent and any gas spent (FR-013, T067).
+    if (acceptedOut !== undefined && BigInt(quote.estimatedOut) < (acceptedOut * (BPS - BigInt(bound))) / BPS) {
+      throw new PolicyRejection("price_moved");
+    }
+    const minOut = minOutFor(BigInt(quote.estimatedOut), bound);
     if (minOut === 0n) throw new PolicyRejection("no_quote_for_token");
     return minOut;
   }
@@ -975,7 +1015,7 @@ export class CampaignRouter {
     const reservation = `${record.id}|buy|${account.toLowerCase()}|${value}|${token.toLowerCase()}`;
     return {
       account, key: campaignKey(reservation), value,
-      callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now, minOut),
+      callData: encodeBuyCall(record.policy.function, token as Address, BigInt(value), now, minOut, this.#poolKeyFor(token)),
       maxCost: record.policy.perAccountGas,
     };
   }

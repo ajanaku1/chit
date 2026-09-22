@@ -9,7 +9,7 @@
 import { concatHex, encodeAbiParameters, keccak256, parseAbi, toHex, type Address, type Hex, type PublicClient } from "viem";
 
 import type { Uint } from "./types.js";
-import { VENUE_POOL, venuePoolKey } from "./v4-swap.js";
+import { VENUE_POOL, venuePoolKey, type PoolKey } from "./v4-swap.js";
 
 export type TokenQuote = {
   token: Address;
@@ -19,11 +19,16 @@ export type TokenQuote = {
   sqrtPriceX96: Uint;
   /** The fill this trade would get right now, fee and price impact included; still an estimate, never a promise. */
   estimatedOut: Uint;
+  /** The pool quoted: the registry's when one names it, else the venue's default for the token. Optional so fakes that predate it still type-check. */
+  poolId?: Hex;
+  /** The pool has a hook whose own fee is not in this quote; the registry's bound covers it. */
+  hooked?: boolean;
 };
 export type Holding = { wallet: Address; eth: Uint; tokens: Record<string, Uint> };
 
 export type MarketPort = {
-  tokenQuote(token: Address, amountInWei: Uint): Promise<TokenQuote>;
+  /** `poolKey` names the pool to quote (a registry entry's); absent, the venue's default key for the token. */
+  tokenQuote(token: Address, amountInWei: Uint, poolKey?: PoolKey): Promise<TokenQuote>;
   holdings(wallets: readonly Address[], tokens: readonly Address[]): Promise<Holding[]>;
   /** Campaign keys this owner registered on the escrow, oldest first. */
   campaignsOf(owner: Address): Promise<Hex[]>;
@@ -32,8 +37,8 @@ export type MarketPort = {
 const POOLS_SLOT = 6n;
 const POOL_KEY_ABI = [{ type: "address" }, { type: "address" }, { type: "uint24" }, { type: "int24" }, { type: "address" }] as const;
 
-export const poolIdFor = (token: Address): Hex => {
-  const key = venuePoolKey(token);
+export const poolIdFor = (token: Address, poolKey?: PoolKey): Hex => {
+  const key = poolKey ?? venuePoolKey(token);
   return keccak256(encodeAbiParameters(POOL_KEY_ABI, [key.currency0, key.currency1, key.fee, key.tickSpacing, key.hooks]));
 };
 
@@ -100,8 +105,9 @@ export const createMarket = (
   client: PublicClient,
   addresses: { poolManager: Address; escrow: Address; escrowFromBlock: bigint },
 ): MarketPort => ({
-  async tokenQuote(token, amountInWei) {
-    const id = poolIdFor(token);
+  async tokenQuote(token, amountInWei, poolKey) {
+    const id = poolIdFor(token, poolKey);
+    const key = poolKey ?? venuePoolKey(token);
     const [symbol, decimals, word, liq] = await Promise.all([
       client.readContract({ address: token, abi: ERC20_ABI, functionName: "symbol" }).catch(() => "?"),
       client.readContract({ address: token, abi: ERC20_ABI, functionName: "decimals" }).catch(() => 18),
@@ -114,8 +120,9 @@ export const createMarket = (
     // slippage guard set against it holds on a thin pool; the spot estimate
     // alone tripped the guard on the testnet venue, where one buy is a tenth
     // of the liquidity.
+    // The pool's own fee tier; a hooked pool often says 0 and charges through the hook, which no local quote sees.
     const estimatedOut = liquidity > 0n
-      ? quoteExactIn(BigInt(amountInWei), sqrtPriceX96, liquidity, true, VENUE_POOL.fee)
+      ? quoteExactIn(BigInt(amountInWei), sqrtPriceX96, liquidity, true, key.fee)
       : estimateOut(BigInt(amountInWei), sqrtPriceX96);
     return {
       token,
@@ -124,6 +131,8 @@ export const createMarket = (
       hasPool: sqrtPriceX96 > 0n,
       sqrtPriceX96: sqrtPriceX96.toString(),
       estimatedOut: estimatedOut.toString(),
+      poolId: id,
+      hooked: key.hooks.toLowerCase() !== VENUE_POOL.hooks,
     };
   },
   async holdings(wallets, tokens) {
