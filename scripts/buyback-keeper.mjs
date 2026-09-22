@@ -75,8 +75,22 @@ if (log && tgToken && tgChat) {
     `total: <b>${chit(totalBurned)} $CHIT</b> burned, ${ethShort(totalSpent)} ETH spent · next buy in an hour`,
     `<a href="${EXPLORER}/tx/${hash}">tx</a> · <a href="https://chit.tools/burn">chit.tools/burn</a>`,
   ].join(String.fromCharCode(10));
-  const r = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: tgChat, text, parse_mode: "HTML", disable_web_page_preview: true }) });
-  console.log(r.ok ? "told the group" : `telegram answered ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  const send = async (body) => {
+    const r = await fetch(`https://api.telegram.org/bot${tgToken}/sendMessage`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat_id: tgChat, text: body, parse_mode: "HTML", disable_web_page_preview: true }) });
+    console.log(r.ok ? "told the group" : `telegram answered ${r.status}: ${(await r.text()).slice(0, 200)}`);
+  };
+  await send(text);
+  // A buy that carries the total across a round number gets a second, bigger line: the same milestones the host's route knows.
+  const milestone = [1, 5, 10, 25, 50, 100, 250, 500].map((m) => BigInt(m) * 10n ** 24n).find((m) => totalBurned - burned < m && totalBurned >= m);
+  if (milestone) {
+    const millions = Number(milestone / 10n ** 24n);
+    const pct = (Number(totalBurned / 10n ** 18n) / 1e9 * 100).toFixed(2);
+    await send([
+      `🔥🔥🔥 <b>${millions}M $CHIT burned.</b>`,
+      `${chit(totalBurned)} $CHIT bought on the pool and sent to the dead address, ${ethShort(totalSpent)} ETH spent, ${pct}% of the minted billion gone for good.`,
+      `nobody pressed a button: a contract with no owner and no withdraw did it, once an hour. next stop ${millions < 10 ? 10 : millions * 2}M. <a href="https://chit.tools/burn">chit.tools/burn</a>`,
+    ].join(String.fromCharCode(10)));
+  }
 } else if (log) {
   console.log("no TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID: the group is not told; the daily post still is");
 }
