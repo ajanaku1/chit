@@ -2776,3 +2776,48 @@ One red test remains in the nightly and is not this: `fleet-pool-draw`'s
 before T031 made it the surplus, and no posting happens in that test, so the
 claim is now zero. T036 replaced the Solidity invariant that said the same;
 this fork test says it still, and wants the same sibling.
+## The operator lock is a step's, and its lease is watched (2026-09-22, Boye, branch feat/operator-lock, T026, T027, T029)
+
+One account signs for every instance of the service, and an account has one
+nonce sequence. Two instances that read the pending count together and sign
+together send two transactions with one nonce, and the node refuses the
+second; the sweep and the control route did exactly that with no lock at all
+(M5). The lock is now taken where the signing is: in `pool-buy.ts`, around
+each `nextNonce` and `signAndBroadcast` pair and around each of the five
+writes that still pick their own nonce inside the adapter (a draw opened,
+topped up or closed, a posting, the brake), for one step, and given back
+between steps. A sweep never holds the account for the length of a sweep, so
+a withdrawal on another instance takes its turn between two fundings. The
+router's action-wide operator lock is gone; its per-wallet lock, which closes
+the check-then-act, stays.
+
+The lock is a row with an expiry, so a dead instance cannot keep it, and so a
+live one whose step outlasts the TTL loses it, silently, to the next instance.
+`withLock` now hands its work a lease: Neon renews it at a third of the TTL
+while the work runs, and the signed step asks `held()` in `record`, after the
+signature and before the node sees anything, where a throw means nothing is
+broadcast. A lost lease is `OperatorLockLost()`, a batch goes back to the next
+sweep, a payout is refused with its charge void. Both statements name the
+holder, so a lease another instance has taken over is neither renewed nor
+released by the one that lost it. Held against a real Postgres, because
+expiry is SQL.
+
+`finding_M5` proved absence of locking and is replaced by `fixed_M5`, which
+sees the lock held at every signature and free at every read between. The
+collision itself is driven twice. In the gate, against a node that keeps an
+account's nonce the way a node does, with two instances over one Neon store on
+PGlite: two withdrawals at once take nonces 5 and 6, and the same two with a
+lock that locks nothing read one nonce and the node refuses the second.
+Nightly, against the local chain's own nonces in `test/fork/fleet-two-
+instances.test.ts`: two adapters, two services, a sweep and two withdrawals
+at once, every signed step one nonce in sequence, nothing waiting on a gap,
+nothing left sent; and the unlocked control refused. `verify.sh pool-lock`.
+
+Found on the way: the signed step signs before it broadcasts, which a JSON-RPC
+account cannot do, and the pool suites still hand the service the node's own
+accounts. Every signed step in `fleet-pool-fund`, `-balance`, `-observer` and
+`fleet-order` has failed on "eth_signTransaction is not supported" since the
+lifecycle landed (checked on a clean worktree of main: six of their tests
+red), which is last night's red `verify-full`. The new fork test uses a local
+account for the operator, funded from the node's; the four suites need the
+same, which is a separate change.
