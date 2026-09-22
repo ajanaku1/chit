@@ -27,9 +27,14 @@ untested can reach production while the work is in flight.
 - [x] T001 [F] Copy the review's reproductions into `test/fleet/` (`mainnet-blockers.test.ts`, `mainnet-blockers-m4c.test.ts`, `FleetPoolMainnetBlockers.t.sol`) and confirm 10 of 10 and 3 of 3 pass on the current head
 - [x] T002 [B] Add `.github/workflows/verify.yml` running the no-network set: fleet suite, app verify, landing verify, Solidity tests, progress check
 - [x] T003 [B] Add a second job running the fork suites against a private RPC secret, nightly, not as a required check
-- [ ] T004 [F] Enable branch protection on `main` requiring the `verify` check, after T002 has run once
+- [x] T004 [F] Enable branch protection on `main` requiring the `verify` check, after T002 has run once
+  - Done 2026-09-22 as a ruleset on `Chit-org/chit-fleet` (the repo moved to the organisation, Team plan, that day):
+    pull requests only, `verify` required, no force-push or deletion, no bypass. A direct push to main is refused
+    (GH013); everything lands by PR and `gh pr merge` once verify is green.
 - [x] T005 [B] Stop `session-demo.yml` and `progress.yml` committing to `main`; generate `landing/public/progress.json` in the Vercel build instead
-- [ ] T006 [B] Prove the gate: push a deliberately broken test to a branch, confirm the check blocks the merge, revert
+- [x] T006 [B] Prove the gate: push a deliberately broken test to a branch, confirm the check blocks the merge, revert
+  - Proved 2026-09-22 by the founder: PR #13 carried one red test; verify failed and the merge was BLOCKED by the base
+    branch policy; the PR was closed and its branch deleted, never merged.
 
 **Checkpoint**: No untested change can reach production.
 

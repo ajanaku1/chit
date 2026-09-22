@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-21T22:13:16.513Z",
-  "commit": "7ec2cec",
-  "committedAt": "2026-09-21T23:12:27+01:00",
-  "commits": 533,
+  "generatedAt": "2026-09-22T08:33:48.426Z",
+  "commit": "4a5105d",
+  "committedAt": "2026-09-22T09:30:09+01:00",
+  "commits": 542,
   "tasks": {
-    "done": 126,
+    "done": 128,
     "total": 175,
-    "percent": 72
+    "percent": 73
   },
   "stages": [
     {
@@ -113,12 +113,12 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 46,
+      "done": 48,
       "total": 94,
       "phases": [
         {
           "name": "Setup",
-          "done": 4,
+          "done": 6,
           "total": 6
         },
         {
@@ -153,14 +153,6 @@
         }
       ],
       "open": [
-        {
-          "id": "T004",
-          "text": "[F] Enable branch protection on `main` requiring the `verify` check, after T002 has run once"
-        },
-        {
-          "id": "T006",
-          "text": "[B] Prove the gate: push a deliberately broken test to a branch, confirm the check blocks the merge, revert"
-        },
         {
           "id": "T026",
           "text": "[B] Take the operator lock around each signed step in `#sweep`, `#sweepOpportunistically` and `#control` in `src/fleet/campaign-routes.ts`, not around the whole sweep"

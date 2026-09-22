@@ -2367,3 +2367,17 @@ message; a 500 from the server and a run without the key both sent the
 grouped message and the three diary entries as before, exit 0 each time.
 The run itself is now inside a main-module guard, so the file can be imported
 for its `tidyVoice` and `voiceFacts` without announcing anything.
+
+## The repository moved to the organisation, and main takes pull requests only (2026-09-22, T004, T006)
+
+`chit-fleet` was transferred from the founder's account to `Chit-org` (Team
+plan). The secrets and the Actions came with it, GitHub redirects the old path,
+and the docs, the mirror's default source and the audit scope name the new one.
+On the Team plan the repository can carry a ruleset, which closes T004: `main`
+takes pull requests only, requires the `verify` check, refuses force-pushes and
+deletions, and nobody bypasses it. T006 is proved: a PR with one deliberately
+red test saw verify fail and the merge refused as BLOCKED, and was closed
+unmerged. From here every change, the founder's and the co-developer's, lands
+by PR and a merge after verify is green. Vercel's GitHub connection still names
+the old owner; installing Vercel's app on the organisation and reconnecting the
+project is the user's, and production stays a deliberate `vercel --prod`.
