@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-22T15:04:40.103Z",
-  "commit": "8d110a2",
-  "committedAt": "2026-09-22T16:04:39+01:00",
-  "commits": 594,
+  "generatedAt": "2026-09-22T15:55:16.810Z",
+  "commit": "16bb8fd",
+  "committedAt": "2026-09-22T17:55:06+02:00",
+  "commits": 601,
   "tasks": {
-    "done": 163,
+    "done": 166,
     "total": 175,
-    "percent": 93
+    "percent": 94
   },
   "stages": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 82,
+      "done": 85,
       "total": 94,
       "phases": [
         {
@@ -118,7 +118,7 @@
         },
         {
           "name": "Foundational",
-          "done": 42,
+          "done": 45,
           "total": 47
         },
         {
@@ -148,18 +148,6 @@
         }
       ],
       "open": [
-        {
-          "id": "T026",
-          "text": "[B] Take the operator lock around each signed step in `#sweep`, `#sweepOpportunistically` and `#control` in `src/fleet/campaign-routes.ts`, not around the whole sweep"
-        },
-        {
-          "id": "T027",
-          "text": "[B] Add lease renewal and a holder check immediately before broadcast in `src/fleet/store.ts` and its adapters"
-        },
-        {
-          "id": "T029",
-          "text": "[B] Replace `finding_M5` with a two-instance test driving real nonce behaviour"
-        },
         {
           "id": "T048",
           "text": "[B] Add the alert sink routing to the existing Telegram bot, with FR-023's three timescales and the named operator chat"

@@ -14,7 +14,7 @@ import { parseEther, type Address, type Hex, type PublicClient, type WalletClien
 import type { FleetPool, PoolDraw, PoolQueued, WriteOutcome } from "./chain-pool.js";
 import { DRAW_STATE } from "./chain-pool.js";
 import { availableBalance, depositSizes, openDepositor, sealDepositor } from "./pool-ledger.js";
-import { createMemoryStore, type SentBatch, type StorePort } from "./store.js";
+import { createMemoryStore, type Lease, type SentBatch, type StorePort } from "./store.js";
 import type { Uint } from "./types.js";
 
 /** Matches the contract's own delay, so the app never promises a shorter wait. */
@@ -142,6 +142,14 @@ export type WithdrawReceipt = { payoutTx: Hex; chargeId: string; unresolved?: tr
  * chain. Nothing is recorded; the trader tries again later or takes the
  * no-Chit exit (design-mainnet-beta.md, "the withdrawal-refused state").
  */
+/** The operator lock's lease expired before the broadcast; nothing was sent. Named like a contract error, so a refusal can carry it. */
+export class LeaseLost extends Error {
+  constructor() {
+    super("OperatorLockLost(): the lease expired before the broadcast, so nothing was sent");
+    this.name = "LeaseLost";
+  }
+}
+
 export class WithdrawalRefused extends Error {
   readonly code = "withdrawal_unavailable";
   constructor(readonly reason: string) {
@@ -276,6 +284,27 @@ export const createPoolService = (
   };
 
   /**
+   * One signed step under the operator lock (M5, T026). The account has one
+   * nonce sequence, so reading the nonce and broadcasting is one turn, taken
+   * per step and given back between steps: a sweep never holds the account
+   * for the length of a sweep, and a withdrawal on another instance gets in
+   * between two fundings. The writes that still pick their own nonce inside
+   * the adapter take the same turn.
+   */
+  const locked = <T>(work: (lease: Lease) => Promise<T>): Promise<T> => store.withLock("operator", work);
+
+  /**
+   * The holder check right before the broadcast (T027). The lock is a lease;
+   * a step that outlasts it has lost it to the next instance. `record` runs
+   * after the signature and before the node sees anything, and a throw there
+   * means nothing is broadcast, so that is where the lease is asked.
+   */
+  const guarded = (lease: Lease, record: (hash: Hex, nonce: number) => Promise<void>) => async (hash: Hex, nonce: number): Promise<void> => {
+    if (!(await lease.held())) throw new LeaseLost();
+    await record(hash, nonce);
+  };
+
+  /**
    * The sealed references this instance sent under each hash. Sealing is
    * random, so nothing but this memory can match a batch to the queue's
    * entries; the receipt is the evidence that crosses instances.
@@ -338,18 +367,20 @@ export const createPoolService = (
     let outcome: WriteOutcome;
     try {
       const base = await chainSeconds();
-      nonce = await pool.nextNonce(from());
-      outcome = await pool.signAndBroadcast({
-        nonce,
-        functionName: "queueSpendBatch",
-        args: [refs, owed.map((o) => BigInt(o.amount)), owed.map(() => base + BigInt(delay()))],
-        record: async (hash, signedNonce) => {
-          sentRefs.set(hash, refs);
-          await store.markSent(ids, hash, signedNonce, "batch");
-        },
+      outcome = await locked(async (lease) => {
+        nonce = await pool.nextNonce(from());
+        return pool.signAndBroadcast({
+          nonce,
+          functionName: "queueSpendBatch",
+          args: [refs, owed.map((o) => BigInt(o.amount)), owed.map(() => base + BigInt(delay()))],
+          record: guarded(lease, async (hash, signedNonce) => {
+            sentRefs.set(hash, refs);
+            await store.markSent(ids, hash, signedNonce, "batch");
+          }),
+        });
       });
     } catch (error) {
-      // Before the signature, or inside record: nothing was broadcast.
+      // Before the signature, inside record, or a lease lost: nothing was broadcast.
       await store.releaseOwed(ids);
       console.error(`sweep: batch of ${owed.length} charges not queued: ${messageOf(error)}`);
       return 0;
@@ -392,7 +423,7 @@ export const createPoolService = (
     }
     if (!trigger) return undefined;
     if (await pool.paused()) return { trigger, detail };
-    const hash = await pool.pause();
+    const hash = await locked(() => pool.pause!());
     console.error(`pause: ${trigger} (${detail.join(", ")}); the pool is paused in ${hash}; nothing moves until the resume gate passes`);
     return { trigger, detail };
   };
@@ -486,10 +517,12 @@ export const createPoolService = (
       let nonce = 0;
       let outcome: WriteOutcome;
       try {
-        nonce = await pool.nextNonce(operator);
-        outcome = await pool.signAndBroadcast({ nonce, to: destination, value, record: (hash, signedNonce) => store.markSent(ids, hash, signedNonce, "payout") });
+        outcome = await locked(async (lease) => {
+          nonce = await pool.nextNonce(operator);
+          return pool.signAndBroadcast({ nonce, to: destination, value, record: guarded(lease, (hash, signedNonce) => store.markSent(ids, hash, signedNonce, "payout")) });
+        });
       } catch (error) {
-        // Nothing was broadcast: the charge is void and the trader may try again.
+        // Nothing was broadcast (a lease lost counts): the charge is void and the trader may try again.
         await store.resolveSent(ids, "void");
         throw new WithdrawalRefused(reasonOf(error));
       }
@@ -499,12 +532,13 @@ export const createPoolService = (
     },
 
     async openDraw({ campaign, depositor, amount }) {
-      await pool.openDraw(campaign, BigInt(amount), await dueAt(), sealDepositor(ledgerKey, depositor));
+      const due = await dueAt();
+      await locked(() => pool.openDraw(campaign, BigInt(amount), due, sealDepositor(ledgerKey, depositor)));
       return summarize((await pool.drawOf(campaign))!);
     },
 
     async topUpDraw({ campaign, amount }) {
-      await pool.topUpDraw(campaign, BigInt(amount));
+      await locked(() => pool.topUpDraw(campaign, BigInt(amount)));
       return summarize((await pool.drawOf(campaign))!);
     },
 
@@ -528,7 +562,7 @@ export const createPoolService = (
     async closeDraw(campaign) {
       const draw = await pool.drawOf(campaign);
       if (!draw || draw.state === DRAW_STATE.closed) return draw ? summarize(draw) : undefined;
-      await pool.closeDraw(campaign);
+      await locked(() => pool.closeDraw(campaign));
       return summarize((await pool.drawOf(campaign))!);
     },
 
@@ -574,7 +608,7 @@ export const createPoolService = (
           continue;
         }
         try {
-          await pool.postQueued(entry.id, depositor);
+          await locked(() => pool.postQueued(entry.id, depositor));
           posted.push(entry.id);
         } catch (error) {
           const reason = postingReason(error);
@@ -683,13 +717,15 @@ export const createPoolService = (
    * means nothing was broadcast; every outcome after the signature is a value.
    */
   async function signed(functionName: string, args: readonly unknown[], what: Record<string, unknown>, gas?: bigint): Promise<WriteOutcome> {
-    const nonce = await pool.nextNonce(from());
-    return pool.signAndBroadcast({
-      nonce,
-      functionName,
-      args,
-      ...(gas === undefined ? {} : { gas }),
-      record: (hash, signedNonce) => store.idempotency.put(`fleet-tx|${hash}`, { payloadHash: hash, result: { ...what, nonce: signedNonce } }),
+    return locked(async (lease) => {
+      const nonce = await pool.nextNonce(from());
+      return pool.signAndBroadcast({
+        nonce,
+        functionName,
+        args,
+        ...(gas === undefined ? {} : { gas }),
+        record: guarded(lease, (hash, signedNonce) => store.idempotency.put(`fleet-tx|${hash}`, { payloadHash: hash, result: { ...what, nonce: signedNonce } })),
+      });
     });
   }
 

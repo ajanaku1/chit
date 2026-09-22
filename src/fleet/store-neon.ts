@@ -9,7 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { COOLDOWN_MS, FAILURE_LIMIT, FAILURE_WINDOW_MS, LOCK_TTL_MS, type IdempotencyRecord, type OwedSpend, type SentBatch, type StorePort } from "./store.js";
+import { COOLDOWN_MS, FAILURE_LIMIT, FAILURE_WINDOW_MS, LOCK_TTL_MS, type Lease, type IdempotencyRecord, type OwedSpend, type SentBatch, type StorePort } from "./store.js";
 import type { Address, Hex, Uint } from "./types.js";
 
 /** What `neon(url)` provides; typed here so tests can hand in a fake. */
@@ -73,7 +73,8 @@ const owedRow = (row: Record<string, unknown>): OwedSpend => ({
 
 export const createNeonStore = (
   sql: StoreSql,
-  options: { ttlMs?: number; pollMs?: number; now?: () => number } = {},
+  /** `renew: false` leaves renewal to the holder, for tests that drive the clock by hand. */
+  options: { ttlMs?: number; pollMs?: number; now?: () => number; renew?: boolean } = {},
 ): StorePort => {
   const ttlMs = options.ttlMs ?? LOCK_TTL_MS;
   const pollMs = options.pollMs ?? 200;
@@ -126,9 +127,28 @@ export const createNeonStore = (
         if (now() >= deadline) throw new Error(`lock_timeout:${name}`);
         await sleep(pollMs);
       }
+      // Both statements name the holder: a lease another instance has taken
+      // over is neither renewed nor released by the one that lost it.
+      const lease: Lease = {
+        async renew() {
+          const at = now();
+          await sql.query("UPDATE fleet_locks SET expires_at = $3 WHERE name = $1 AND holder = $2 AND expires_at >= $4", [name, holder, at + ttlMs, at]);
+        },
+        async held() {
+          const rows = await sql.query("SELECT 1 FROM fleet_locks WHERE name = $1 AND holder = $2 AND expires_at >= $3", [name, holder, now()]);
+          return rows.length === 1;
+        },
+      };
+      // Renewed at a third of the TTL while the work runs, so a step that
+      // outlasts the TTL (a receipt that takes its time) keeps its lock. A
+      // renewal that fails is not fatal here: `held()` says so before the
+      // next broadcast, which is the check that matters.
+      const heartbeat = options.renew === false ? undefined : setInterval(() => { void lease.renew().catch(() => undefined); }, Math.max(1, Math.floor(ttlMs / 3)));
+      heartbeat?.unref?.();
       try {
-        return await work();
+        return await work(lease);
       } finally {
+        if (heartbeat) clearInterval(heartbeat);
         await sql.query("DELETE FROM fleet_locks WHERE name = $1 AND holder = $2", [name, holder]);
       }
     },

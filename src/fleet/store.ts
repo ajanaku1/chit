@@ -48,8 +48,12 @@ export type StorePort = {
    * `now` is passed in so the caller's clock is the only clock.
    */
   burnNonce(nonce: string, expiresAt: number, now: number): Promise<boolean>;
-  /** Runs `work` while holding the named lock; waiters run in arrival order. */
-  withLock<T>(name: string, work: () => Promise<T>): Promise<T>;
+  /**
+   * Runs `work` while holding the named lock; waiters run in arrival order.
+   * `work` is handed the lease, so a step can renew it and ask, right before
+   * it broadcasts, whether it is still the holder.
+   */
+  withLock<T>(name: string, work: (lease: Lease) => Promise<T>): Promise<T>;
   recordOwed(entry: OwedSpend): Promise<void>;
   /** Leases up to `limit` unqueued rows to this caller; a leased row is not offered again until released. */
   takeOwed(limit: number): Promise<OwedSpend[]>;
@@ -88,6 +92,22 @@ export type StorePort = {
 export const FAILURE_LIMIT = 3;
 export const FAILURE_WINDOW_MS = 60 * 60_000;
 export const COOLDOWN_MS = 60 * 60_000;
+
+/**
+ * The holder's side of a lock (T027). A lock is a row with an expiry, so a
+ * dead instance cannot keep it, and so a live one whose step outlasts the TTL
+ * loses it, silently, to the next instance. `renew` pushes the expiry out
+ * while the work runs; `held` is asked right before a broadcast, and a lease
+ * that was lost answers no, so the signed step's `record` can refuse and
+ * nothing is broadcast.
+ */
+export type Lease = {
+  renew(): Promise<void>;
+  held(): Promise<boolean>;
+};
+
+/** A lease that is always held: for the memory store, whose lock is a promise chain in one process. */
+export const HELD: Lease = { renew: async () => undefined, held: async () => true };
 
 /** Default lease on an operator lock: long enough for a five-account buy with receipts, short enough that a dead instance frees it. */
 export const LOCK_TTL_MS = 120_000;
@@ -129,7 +149,7 @@ export const createMemoryStore = (): StorePort => {
     // holder's settlement, whether it resolved or threw.
     async withLock(name, work) {
       const previous = locks.get(name) ?? Promise.resolve();
-      const run = previous.then(work, work);
+      const run = previous.then(() => work(HELD), () => work(HELD));
       const settled = run.then(() => undefined, () => undefined);
       locks.set(name, settled);
       try {

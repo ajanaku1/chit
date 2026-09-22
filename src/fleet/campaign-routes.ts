@@ -336,16 +336,19 @@ export class CampaignRouter {
   }
 
   /**
-   * One money operation at a time, across instances. Every route that moves
-   * money is check-then-act against chain state: read the balance, decide,
-   * write. Two of them interleaved both pass the check and both write, and
-   * the operator pays twice; two instances signing together also collide on
-   * the operator's nonce. The store's lock closes both: per wallet for the
-   * check-then-act, and one operator lock for the signing. The balance is
-   * still re-read after every write, because the chain is the truth.
+   * One money operation per wallet at a time, across instances. Every route
+   * that moves money is check-then-act against chain state: read the balance,
+   * decide, write. Two of them interleaved both pass the check and both
+   * write, and the operator pays twice; the wallet's lock closes that. The
+   * operator's nonce is the other collision, and that lock is the pool
+   * service's: taken around each signed step and given back between steps
+   * (M5, T026), never around a whole action, so a sweep on another instance
+   * and this buy take turns at the account instead of one waiting out the
+   * other. The balance is still re-read after every write, because the chain
+   * is the truth.
    */
   async #serialized<T>(wallet: string, work: () => Promise<T>): Promise<T> {
-    return this.#store.withLock(`wallet:${wallet.toLowerCase()}`, () => this.#store.withLock("operator", work));
+    return this.#store.withLock(`wallet:${wallet.toLowerCase()}`, work);
   }
 
   /** A trader who has asked to leave gets nothing new drawn, bought or paid until they are out. */
