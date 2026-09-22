@@ -810,3 +810,25 @@ test("a wallet leader's cards: the list marks them and says what is copied from 
   assert.match(telegram.last(), /leader closed/);
   assert.equal(await copy.leader("7"), undefined);
 });
+
+/**
+ * T082, FR-019: the free playground has its own host once the beta opens
+ * (testnet.chit.tools), and the mainnet floor's door goes there. A room in
+ * this bot is better than a link and wins when there is one; with neither
+ * there is no door at all, because a button to a host that does not exist is
+ * worse than no button.
+ */
+test("the door to the playground: the room in this bot when there is one, the testnet host when there is not, nothing when there is neither", async () => {
+  const room = setup({ playgroundFloor: true, playgroundUrl: "https://testnet.chit.tools" });
+  await room.bot.handle(dm("/start"));
+  assert.ok(room.buttons().includes("floor:playground"), "a room in this bot is one tap and stays in the chat");
+  assert.ok(!room.buttons().includes("https://testnet.chit.tools"), "and it is the only door offered");
+
+  const host = setup({ playgroundUrl: "https://testnet.chit.tools" });
+  await host.bot.handle(dm("/start"));
+  assert.ok(host.buttons().includes("https://testnet.chit.tools"), "without a room, the door is the playground's own host");
+
+  const neither = setup();
+  await neither.bot.handle(dm("/start"));
+  assert.ok(!neither.buttons().some((b) => /playground|testnet/i.test(b)), "no room and no host, no door");
+});

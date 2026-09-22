@@ -64,3 +64,28 @@ test("a half-configured deployment refuses with a reason and answers 200 so Tele
   await refused({ BOT_FAUCET_PRIVATE_KEY: "0x1234" }, /BOT_FAUCET_PRIVATE_KEY/);
   await refused({ FLEET_CHAIN_ID: "4663" }, /testnet only/);
 });
+
+/**
+ * FLEET_TESTNET_URL names the playground's own host once it is its own
+ * deploy (T082). It is read the way every other address is: an https URL or
+ * a refusal with the value in it, never a guess.
+ */
+test("the playground's host is read from the environment, or is simply absent", async () => {
+  const before = process.env.FLEET_TESTNET_URL;
+  const { testnetHost } = await import("../../src/fleet/bot-runtime.js");
+  try {
+    delete process.env.FLEET_TESTNET_URL;
+    assert.equal(testnetHost(), undefined, "unset: no host, and the mainnet floor offers no door");
+    process.env.FLEET_TESTNET_URL = "  ";
+    assert.equal(testnetHost(), undefined, "blank is unset, not an empty link");
+    process.env.FLEET_TESTNET_URL = "https://testnet.chit.tools/";
+    assert.equal(testnetHost(), "https://testnet.chit.tools", "the trailing slash goes, so a path can be appended");
+    process.env.FLEET_TESTNET_URL = "testnet.chit.tools";
+    assert.throws(() => testnetHost(), /must be an https URL, got testnet\.chit\.tools/);
+    process.env.FLEET_TESTNET_URL = "http://testnet.chit.tools";
+    assert.throws(() => testnetHost(), /must be an https URL/, "a wallet is never sent to a link that is not https");
+  } finally {
+    if (before === undefined) delete process.env.FLEET_TESTNET_URL;
+    else process.env.FLEET_TESTNET_URL = before;
+  }
+});
