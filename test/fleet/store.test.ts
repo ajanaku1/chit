@@ -100,6 +100,24 @@ const contract = (name: string, make: () => StorePort): void => {
       assert.equal(await store.owedFor(OTHER), "0", "a voided charge is nobody's");
       assert.deepEqual((await store.takeOwed(5)).map((o) => o.id), [], "and is never queued");
     });
+
+    it("three gas-spending failures inside an hour close a campaign for an hour; two an hour apart do not", async () => {
+      const store = make();
+      const t = 1_700_000_000_000;
+      assert.equal(await store.failures.closedUntil("c-1", t), undefined);
+      assert.equal(await store.failures.record("c-1", t), undefined);
+      assert.equal(await store.failures.record("c-1", t + 60_000), undefined);
+      assert.equal(await store.failures.closedUntil("c-1", t + 61_000), undefined, "two is not three");
+      assert.equal(await store.failures.record("c-1", t + 120_000), t + 120_000 + 3_600_000, "the third closes it");
+      assert.equal(await store.failures.closedUntil("c-1", t + 121_000), t + 120_000 + 3_600_000);
+      assert.equal(await store.failures.closedUntil("c-2", t + 121_000), undefined, "another campaign is not touched");
+      assert.equal(await store.failures.closedUntil("c-1", t + 120_000 + 3_600_001), undefined, "an hour later it reopens");
+      // Spread across more than an hour, failures never add up to three.
+      assert.equal(await store.failures.record("c-3", t), undefined);
+      assert.equal(await store.failures.record("c-3", t + 3_700_000), undefined);
+      assert.equal(await store.failures.record("c-3", t + 7_400_000), undefined);
+      assert.equal(await store.failures.closedUntil("c-3", t + 7_400_001), undefined);
+    });
   });
 };
 

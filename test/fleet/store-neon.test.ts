@@ -43,7 +43,7 @@ describe("Neon store", () => {
     });
     const store = createNeonStore(sql);
     await store.initialize();
-    assert.equal(sql.calls.filter((c) => c.query.includes("CREATE TABLE")).length, 5, "one statement per table");
+    assert.equal(sql.calls.filter((c) => c.query.includes("CREATE TABLE")).length, 7, "one statement per table");
 
     assert.equal(await store.claimSlice("o|1"), true);
     assert.equal(await store.claimSlice("o|1"), false);
@@ -194,5 +194,24 @@ describe("Neon store", () => {
     ]);
     await store.takeOwed(1);
     await store.owedFor(DEPOSITOR);
+  });
+
+  it("the campaign failure counter: one insert and one count per failure, the cooldown written on the third, and read against now", async () => {
+    let inserted = 0;
+    const sql = fakeSql(({ query, params }) => {
+      if (query.startsWith("INSERT INTO fleet_campaign_failures")) { inserted += 1; return []; }
+      if (query.includes("COUNT(*)::int AS n FROM fleet_campaign_failures")) return [{ n: inserted }];
+      if (query.startsWith("INSERT INTO fleet_campaign_cooldowns")) { assert.match(query, /GREATEST/, "a later cooldown never shortens an earlier one"); return []; }
+      if (query.startsWith("DELETE FROM fleet_campaign_failures")) { inserted = 0; return []; }
+      if (query.includes("SELECT closed_until FROM fleet_campaign_cooldowns")) return Number(params[1]) < 4_600_000 ? [{ closed_until: 4_600_000 }] : [];
+      return undefined;
+    });
+    const store = createNeonStore(sql);
+    assert.equal(await store.failures.record("c-1", 1_000_000), undefined);
+    assert.equal(await store.failures.record("c-1", 1_000_001), undefined);
+    assert.equal(await store.failures.record("c-1", 1_000_002), 1_000_002 + 3_600_000, "the third inside the hour closes the campaign for an hour");
+    assert.equal(inserted, 0, "the counted failures are cleared once they closed the campaign");
+    assert.equal(await store.failures.closedUntil("c-1", 1_000_003), 4_600_000);
+    assert.equal(await store.failures.closedUntil("c-1", 4_600_001), undefined, "past the moment, open again");
   });
 });

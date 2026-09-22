@@ -664,11 +664,23 @@ export class CampaignRouter {
       state: record.state, spentGas: this.#budget(record).spent, now,
     });
 
+    // Three buys that spent gas without completing inside an hour close the
+    // campaign for an hour (T070): told why, and when it reopens. A refusal
+    // that spent nothing never counts, so a price that moved is not a failure.
+    const closedUntil = await this.#store.failures.closedUntil(record.id, now.getTime());
+    if (closedUntil !== undefined) throw new PolicyRejection(`campaign_cooling_down:${new Date(closedUntil).toISOString()}`);
+
     const results: Record<string, unknown>[] = this.#deps.pool && record.draw
       ? await this.#buyFromPool(record, session, requested, token, value, now, wallet, acceptedOut)
       : chain
         ? await this.#buyOnChain(record, session, chain, requested, token, value, now, acceptedOut)
         : await this.#buyInMemory(record, session, submitter!, requested, token, value, now);
+    for (const result of results) {
+      if (result["status"] === "rejected" && result["spentGas"] === true) {
+        const reopens = await this.#store.failures.record(record.id, now.getTime());
+        if (reopens !== undefined) console.warn(`fleet buy: campaign closed for an hour after three gas-spending failures; reopens ${new Date(reopens).toISOString()}`);
+      }
+    }
 
     // FR edge case: the campaign depletes when the remainder cannot fund
     // another permitted request.
