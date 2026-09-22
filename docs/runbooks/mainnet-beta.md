@@ -98,6 +98,27 @@ FLEET_CHAIN_ID=4663 FLEET_ADMIN_ADDRESS=0x…admin… FLEET_GUARDIAN_ADDRESS=0x�
 The record and the chain target are the two files that make the app and the
 docs say mainnet. Nothing else in the repo names the chain.
 
+- [ ] verify every contract's source on the explorer (T092), from the same
+      checkout that deployed:
+
+```bash
+npm run explorer:verify:mainnet
+```
+
+It reads `deployments/fleet-4663.json`, takes each contract's constructor
+arguments from its own creation transaction, writes the standard-JSON input
+and the encoded arguments to `verify/4663/<Contract>.json`, and submits each
+unverified contract to Blockscout (`robinhoodchain.blockscout.com`). That
+explorer answers scripts with a browser challenge (checked 2026-09-22), so
+if the submission is refused, verify by hand: explorer → the address →
+Contract → Verify & publish → "Solidity (Standard JSON input)", compiler
+`v0.8.35+commit.47b9dedd`, upload the `input` from the export, paste
+`constructorArguments`. A contract the script SKIPs was not deployed from
+this checkout's source; check out the deploying commit and run again. The
+testnet run (`npm run explorer:verify`, `EXPLORER_DRY=1` to send nothing)
+is the rehearsal: 2026-09-22, four of the six testnet contracts verifiable
+from main, the paymaster and the session factory from their own commits.
+
 ## 4. The host
 
 Production environment on Vercel:
