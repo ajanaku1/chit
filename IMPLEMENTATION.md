@@ -2698,3 +2698,33 @@ scratch repository before committing). It holds only while entries are
 appended and never rewritten, which is said in the file itself and in
 ONBOARDING.md § 7, together with the rest of the routine: `progress.json` is
 generated, so it is regenerated after a rebase rather than merged.
+## HEY and ORUS in the registry: the beta trades three tokens (2026-09-22, Lucian, branch feat/registry-hey-orus, T062, T064, T075)
+
+The candidates named in T062 were CHIT and three of the chain's own. HOODCAT
+was ruled out when its real pool turned out to be quoted in HOOD. The other
+two are the partners whose lines the bot's token card already carries: HEY
+(Hey Research Lab, heyresearch.xyz, `0xb33eb167…db610`) and ORUS
+(orusagent.xyz, `0x9760089f…23041`), both read from their own sites and
+confirmed against the chain's `Initialize` records rather than a listing
+page.
+
+Both have the same shape as CHIT: the pool that holds the token is the
+launchpad's hooked one (fee 0, spacing 200, hook `0xE5e7…e044`), and every
+other ETH pool of theirs is a trap: nineteen for HEY, twenty-six for ORUS,
+fees from 5% to 99% and no depth. That is three tokens in a row where pool
+discovery would have chosen wrong, which is the case for the registry made
+twice over.
+
+Measured on the 4663 fork (`npm run test:fork:registry`): HEY's pool 8.33
+ETH, 166× the draw cap; ORUS's 8.50 ETH, 170×; a thousand of each went
+PoolManager → fresh → other → fresh whole every time, so ordinary transfer
+and no holder restriction; a 0.05 ETH buy through the Universal Router
+landed 3.00% under the local quote for both, the hook's fee, which the quote
+does not carry. The bound recorded is 400 bps, not 300: the hook takes the
+first three hundred exactly, and a bound sitting on the fill leaves nothing
+for a move between the quote a depositor accepts and the block it executes
+in. The rule, the same one CHIT's 300 follows, is the hook's fee plus one
+hundred basis points of real slippage.
+
+Both entries are enabled with their four checks on file. `npm run
+registry:liquidity` re-measures all three on the day (T091).

@@ -1,6 +1,6 @@
 {
   "chainId": 4663,
-  "candidates": "T062, named before any checking began (2026-09-22, Lucian): CHIT, then three of the chain's own: HOODCAT, HEY (heyresearch.xyz's token) and ORUS (orusagent.xyz's token). Checked so far: CHIT, below. HOODCAT (0x89baf66f3c98b07cef3d4f9e91da5956aca6252d) is not an entry: the pool Dexscreener lists for it (0xee73…cd1a, fee 3000, spacing 200, hook 0x4Eb1…e0cc) is quoted in HOOD (0x32ac8c1d7672667d5ebdea22935f7b06fc8d496f), not in ETH, and its seventeen ETH pools are all traps with fees from 5% to 99% and no depth; the fleet buys with ETH, so there is nothing to pin. HEY and ORUS: addresses to be confirmed by their teams, then measured by test/fork/token-registry.test.ts before an entry is written. An entry is enabled only with its four checks on file and passed (FR-012), and the liquidity check is repeated on the day (rule 4).",
+  "candidates": "T062, named before any checking began (2026-09-22, Lucian): CHIT, then three of the chain's own: HOODCAT, HEY (heyresearch.xyz's token) and ORUS (orusagent.xyz's token). Checked so far: CHIT, below. HOODCAT (0x89baf66f3c98b07cef3d4f9e91da5956aca6252d) is not an entry: the pool Dexscreener lists for it (0xee73…cd1a, fee 3000, spacing 200, hook 0x4Eb1…e0cc) is quoted in HOOD (0x32ac8c1d7672667d5ebdea22935f7b06fc8d496f), not in ETH, and its seventeen ETH pools are all traps with fees from 5% to 99% and no depth; the fleet buys with ETH, so there is nothing to pin. HEY (0xb33eb167…db610, heyresearch.xyz) and ORUS (0x9760089f…23041, orusagent.xyz) are entries below, from their own sites and the chain's Initialize records; both trade in the same launchpad's hooked pool as CHIT. An entry is enabled only with its four checks on file and passed (FR-012), and the liquidity check is repeated on the day (rule 4).",
   "tokens": [
     {
       "token": "0xd523a627030509021cc39b6d7c8543417d3e50d8",
@@ -25,6 +25,54 @@
         "checkedAt": "2026-09-22T10:41:00.000Z"
       },
       "note": "The launchpad's hooked pool the buyback buys through (deployments/buyback-4663.json). The hook takes about 2% on a buy, so the bound is 300 bps, not the default 100: a 1% bound would refuse every buy. Twenty other ETH pools exist for CHIT, traps with fees up to 90%; none of them is this key."
+    },
+    {
+      "token": "0xb33eb16782776b4d738c0fd643577cb0284db610",
+      "symbol": "HEY",
+      "decimals": 18,
+      "poolKey": {
+        "currency0": "0x0000000000000000000000000000000000000000",
+        "currency1": "0xb33eb16782776b4d738c0fd643577cb0284db610",
+        "fee": 0,
+        "tickSpacing": 200,
+        "hooks": "0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044"
+      },
+      "poolId": "0x1f0da4872bea85b2f95064d1c89671a5e578d114c375597d23962a0579771d16",
+      "slippageBps": 400,
+      "enabled": true,
+      "note": "Hey Research Lab (heyresearch.xyz), the builder record on the bot's token card. The launchpad's hooked pool, the only one of its nineteen ETH pools with any depth; the rest carry fees from 79% to 99%. The hook takes about 3% on a buy, so the bound is 400 bps: the hook's fee and 100 bps of real slippage, the same rule as CHIT's 300.",
+      "checks": {
+        "ordinaryTransfer": true,
+        "holderRestrictions": false,
+        "liquidityEth": "8.326",
+        "liquidityMultipleOfDrawCap": 166,
+        "forkTest": "test/fork/token-registry.test.ts on the 4663 fork: 1000 HEY went PoolManager → fresh → other → fresh, whole each time; a 0.05 ETH buy through the Universal Router in this pool bought 596,062 HEY for a local quote of 614,497, 3.00% under (the launchpad hook's fee, not in the quote), inside the 400 bps bound; 300 bps would have sat on the fill exactly, leaving nothing for a move between quote and execution",
+        "checkedAt": "2026-09-22T14:05:00.000Z"
+      }
+    },
+    {
+      "token": "0x9760089f780062156c401b961d0dd1ec8c123041",
+      "symbol": "ORUS",
+      "decimals": 18,
+      "poolKey": {
+        "currency0": "0x0000000000000000000000000000000000000000",
+        "currency1": "0x9760089f780062156c401b961d0dd1ec8c123041",
+        "fee": 0,
+        "tickSpacing": 200,
+        "hooks": "0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044"
+      },
+      "poolId": "0x966c5213b20f0a88ae8cb7b30ba0a239a868d54755ff02405cf025f2f0ab5e66",
+      "slippageBps": 400,
+      "enabled": true,
+      "note": "Orus (orusagent.xyz), the safety read on the bot's token card. The launchpad's hooked pool, the only one of its twenty-six ETH pools with any depth. The hook takes about 3% on a buy, so the bound is 400 bps: the hook's fee and 100 bps of real slippage, the same rule as CHIT's 300.",
+      "checks": {
+        "ordinaryTransfer": true,
+        "holderRestrictions": false,
+        "liquidityEth": "8.372",
+        "liquidityMultipleOfDrawCap": 167,
+        "forkTest": "test/fork/token-registry.test.ts on the 4663 fork: 1000 ORUS went PoolManager → fresh → other → fresh, whole each time; a 0.05 ETH buy through the Universal Router in this pool bought 589,467 ORUS for a local quote of 607,698, 3.00% under (the launchpad hook's fee, not in the quote), inside the 400 bps bound; 300 bps would have sat on the fill exactly",
+        "checkedAt": "2026-09-22T14:05:00.000Z"
+      }
     }
   ]
 }
