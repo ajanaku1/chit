@@ -78,33 +78,42 @@
     "at": "2026-09-06T09:14:25.918Z"
   },
   "pooledJourney": {
-    "campaign": "4a2f75c2-2be8-4539-bf34-57de50291302",
+    "campaign": "a1b0ca53-42e1-4e70-ab60-3a954e8adc0d",
     "fleet": [
-      "0x4d1d97d1db6030d40af3ee14e1d721afad38d3a8",
-      "0x648f15b7821125df2ee2af75e8a057926385eb73",
-      "0x7f88ab81118602d3536b9c0d77f2cc6e4cd997b5",
-      "0x87b1b0d05ce923cee9e0cb859db811ccec89ccfe",
-      "0xd9526299554be0d5ad0928080ee5503f199f91f7"
+      "0x367279cd999c264a084c5c560e1dc8fd845feec1",
+      "0xbe2a6d9704939263e225baadcf4b361435733ee4",
+      "0xc835d4d64387c2fb581321653b8c481d78e3d390",
+      "0xcf4675f990ed3f714d08d423913b21b87fa11a2d",
+      "0xf3963dcedf31f1f237c253d66de06500f3f69261"
     ],
-    "depositTx": "0x4986a9cc379db1b529dc87ebf53d10e2e93efbc97047b42d438a05fb2a1ef41e",
+    "depositTx": "0x6123921bfb72bbdae1b6c5981fbdd5849073089bf66fb19e2410a07ed0f9a6a1",
     "deposit": "50000000000000000",
     "draw": "20000000000000000",
     "buy": {
-      "account": "0x4d1d97d1db6030d40af3ee14e1d721afad38d3a8",
+      "account": "0x367279cd999c264a084c5c560e1dc8fd845feec1",
       "status": "sponsored",
-      "txHash": "0xc37f0bdd49a9397dc888fd228c2f13a4e08e1d758e53ba12e854b34467c427ad",
+      "txHash": "0x26253a1353f220d860a844d194fffb997f7afdc1bfd9439645c5a2743700da20",
       "draw": {
         "amount": "20000000000000000",
-        "spent": "1501593210000000",
-        "remaining": "18498406790000000",
-        "dueAt": "2026-09-13T14:06:43.000Z",
+        "spent": "1502344800000000",
+        "remaining": "18497655200000000",
+        "dueAt": "2026-09-22T09:41:38.000Z",
         "state": "Funded"
       }
     },
-    "creditedToBalance": "18498406790000000",
-    "withdrawTx": "0x8fba5a002634765e10fb7e380173cfd270c47cc6ea42d3d8c2e42925c0dc1f99",
-    "withdrawTo": "0xd34d26a820395b76023017df657d09cf2fb38aa3",
-    "at": "2026-09-13T14:08:09.774Z"
+    "creditedToBalance": "18497655200000000",
+    "withdrawTx": "0xead57bbb3c9eabc8c93f7a08bd27fc2e9c049de04467c6c8bfe8df61a4e8546c",
+    "withdrawTo": "0xe8867544f2353abd4e3ea6196cc06f66494d8d1e",
+    "charges": {
+      "queued": 3,
+      "posted": [
+        "0xc0fc4f52969c6834832b29e2d9a0c199613948035efa0dedeaa5e5969032f587",
+        "0x30b171ec4792f102a6dfabf931f7d0e8ccb6bcbe0b95b2ed69349b1c721ad4ba",
+        "0xf02d5e02a90132d0dc22498eaec16c45cd706ffb0cb1579076040762f8814af1"
+      ]
+    },
+    "at": "2026-09-22T09:44:18.578Z",
+    "note": "the whole Stage 2 journey on the beta bytecode, 2026-09-22: deposit, activate, fund, a venue buy through the signed step, close, withdraw, then the three charges queued and posted by the run itself. A first attempt the same morning stopped at the buy (the script had no market) and left campaign 0xd48ad00e\u20260050 funded; it was closed and its 0.001 ETH of headroom, whose charge died with that process, donated back (0x61f18a59\u202667ed). Read back afterwards: identity holds, owed 0.08852, shortfall 0, claimable 0.00898."
   },
   "previous": [
     {
