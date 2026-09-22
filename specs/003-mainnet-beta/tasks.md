@@ -219,7 +219,7 @@ This alone is a viable beta.
 - [x] T090 [F] Rehearse each of the three pause triggers on the fork, including the two that fire automatically
 - [ ] T091 [F] Re-measure every listed token's liquidity on the day of launch
 - [ ] T092 [F] Verify contract source on the explorer for every deployed contract
-- [ ] T093 [F] Record the open decision against each acceptance outcome with its evidence, per FR-040
+- [x] T093 [F] Record the open decision against each acceptance outcome with its evidence, per FR-040
 - [ ] T094 [F] Deploy with a guardian and open the beta
 
 ---

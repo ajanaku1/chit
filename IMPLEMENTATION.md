@@ -2667,3 +2667,22 @@ registry file says so and exits 0. The verdict sets `process.exitCode`
 rather than calling `process.exit`: with the RPC's sockets still open the
 forced exit aborts the process on Windows, and launch day would read a crash
 where it needs a 1.
+
+## 2026-09-22: the decision record (Phase 7, T093)
+
+`specs/003-mainnet-beta/decision.md`: FR-040's record, one row per acceptance
+outcome (SC-001..SC-016) plus the five fork-rehearsal conditions the
+requirement names, each with the test, record or pull request that shows it,
+and each marked met, met-on-the-day or pending with whose it is. It is
+written unsigned on purpose: the decision line is blank and the file says
+that unsigned it is a status board, not a clearance, so no amount of green
+elsewhere reads as permission to open.
+
+What it shows today: twelve outcomes met or met in code, four pending —
+SC-004 and SC-010 and the alert half of SC-015 on Boye's T048/T049 (the
+`beta-rails` gate's one red condition is the alert sink), and SC-008's second
+host on T080, the founder's Vercel. The "before the word is written" list is
+six items: T088's soak, T091's day-of liquidity, T092's explorer
+verification, T080's deployment, FR-043's named alert receiver, and the
+published promise deployed to production before the change that opens the
+beta (FR-008).
