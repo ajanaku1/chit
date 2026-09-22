@@ -170,7 +170,7 @@ This alone is a viable beta.
 
 ## Phase 4: US2 — Trade a listed token (P2)
 
-- [ ] T062 [US2] [F] Choose the launch candidates: CHIT plus at most three memes on 4663, named and recorded before any checking begins
+- [x] T062 [US2] [F] Choose the launch candidates: CHIT plus at most three memes on 4663, named and recorded before any checking begins
   - Named 2026-09-22 (Lucian, in the registry file): CHIT, then HOODCAT, HEY and ORUS. CHIT is checked and enabled; HOODCAT is not an entry (its real pool is quoted in HOOD, its ETH pools are traps); HEY and ORUS wait on their addresses and the fork's measure. Closed for CHIT; the other two stay the founder's call.
 - [x] T063 [US2] [F] Add `src/fleet/token-registry.ts` loading and validating the reviewed list per `contracts/token-registry.md`, failing hard when a `poolId` does not match its key
 - [x] T064 [US2] [F] Create `deployments/token-registry-4663.json` with CHIT's real pool key, its measured bound and its checks

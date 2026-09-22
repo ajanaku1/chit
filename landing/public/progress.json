@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-22T14:52:52.884Z",
-  "commit": "c9facb5",
-  "committedAt": "2026-09-22T15:49:46+01:00",
-  "commits": 590,
+  "generatedAt": "2026-09-22T15:04:40.103Z",
+  "commit": "8d110a2",
+  "committedAt": "2026-09-22T16:04:39+01:00",
+  "commits": 594,
   "tasks": {
-    "done": 162,
+    "done": 163,
     "total": 175,
-    "percent": 92
+    "percent": 93
   },
   "stages": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 81,
+      "done": 82,
       "total": 94,
       "phases": [
         {
@@ -128,7 +128,7 @@
         },
         {
           "name": "US2 — Trade a listed token",
-          "done": 14,
+          "done": 15,
           "total": 15
         },
         {
@@ -167,10 +167,6 @@
         {
           "id": "T049",
           "text": "[B] Alert on a sweep failure, a refused withdrawal, an unposted charge older than four hours, and the operator's balance reaching half the float"
-        },
-        {
-          "id": "T062",
-          "text": "[US2] [F] Choose the launch candidates: CHIT plus at most three memes on 4663, named and recorded before any checking begins"
         },
         {
           "id": "T080",

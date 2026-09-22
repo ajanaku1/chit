@@ -2698,3 +2698,55 @@ scratch repository before committing). It holds only while entries are
 appended and never rewritten, which is said in the file itself and in
 ONBOARDING.md § 7, together with the rest of the routine: `progress.json` is
 generated, so it is regenerated after a rebase rather than merged.
+## HEY and ORUS in the registry: the beta trades three tokens (2026-09-22, Lucian, branch feat/registry-hey-orus, T062, T064, T075)
+
+The candidates named in T062 were CHIT and three of the chain's own. HOODCAT
+was ruled out when its real pool turned out to be quoted in HOOD. The other
+two are the partners whose lines the bot's token card already carries: HEY
+(Hey Research Lab, heyresearch.xyz, `0xb33eb167…db610`) and ORUS
+(orusagent.xyz, `0x9760089f…23041`), both read from their own sites and
+confirmed against the chain's `Initialize` records rather than a listing
+page.
+
+Both have the same shape as CHIT: the pool that holds the token is the
+launchpad's hooked one (fee 0, spacing 200, hook `0xE5e7…e044`), and every
+other ETH pool of theirs is a trap: nineteen for HEY, twenty-six for ORUS,
+fees from 5% to 99% and no depth. That is three tokens in a row where pool
+discovery would have chosen wrong, which is the case for the registry made
+twice over.
+
+Measured on the 4663 fork (`npm run test:fork:registry`): HEY's pool 8.33
+ETH, 166× the draw cap; ORUS's 8.50 ETH, 170×; a thousand of each went
+PoolManager → fresh → other → fresh whole every time, so ordinary transfer
+and no holder restriction; a 0.05 ETH buy through the Universal Router
+landed 3.00% under the local quote for both, the hook's fee, which the quote
+does not carry. The bound recorded is 400 bps, not 300: the hook takes the
+first three hundred exactly, and a bound sitting on the fill leaves nothing
+for a move between the quote a depositor accepts and the block it executes
+in. The rule, the same one CHIT's 300 follows, is the hook's fee plus one
+hundred basis points of real slippage.
+
+Both entries are enabled with their four checks on file. `npm run
+registry:liquidity` re-measures all three on the day (T091).
+
+## 2026-09-22: HEY and ORUS reproduced founder-side, before merging
+
+Lucian's entries measured again from a clean checkout on a fresh fork
+(block 69,746,534, about 110,000 blocks after his): HEY 8.12 ETH, 162.5× the
+draw cap, a 0.05 ETH buy 3.00 % under the local quote; ORUS 8.79 ETH, 175.8×,
+also 3.00 % under; CHIT unchanged at 2.00 % under its 300 bps. Each pool id
+was derived from its own key rather than trusted from the file, and all three
+matched. Both tokens' symbols and decimals were read from 4663 directly: HEY
+and 18, `Orus` and 18 — the registry writes the ticker `ORUS`, which is a
+display name and not compared with the chain anywhere.
+
+The 400 bps bound is the same rule as CHIT's 300, not a loosening: the
+launchpad hook takes its fee out of the fill and the quote does not know it,
+so the bound is that fee plus 100 bps of real movement. CHIT's pool takes
+200, HEY's and ORUS's take 300 — the same hook contract, a different fee per
+pool, and CHIT's is the graduated one. A bound at 300 for these two would sit
+exactly on the fill and refuse a buy for any movement at all.
+
+The liquidity figures moved several per cent between his measure and mine
+within the same afternoon, which is the reason FR-012 has the day's re-run
+(T091) rather than a number in a file.
