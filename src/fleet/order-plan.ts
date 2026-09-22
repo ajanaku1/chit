@@ -20,6 +20,8 @@ export type Order = {
   windowMs: number;
   createdAt: string;
   owner: Address;
+  /** The fill quoted for the whole total when the order was placed; each slice is refused before it is sent if the pool no longer gives its share inside the bound (FR-013). Not in the id. */
+  acceptedOut?: Uint;
 };
 
 export type Slice = { index: number; wallet: Address; amountWei: Uint; dueAt: string };
