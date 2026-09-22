@@ -27,6 +27,9 @@ export const betaFacts = (poolCap) => [
   "Chit's operator key can move what is in the pool, up to that cap.",
 ];
 
+/** FR-041 (T086): the caps are the beta's until the firm audit, said with the three facts and never as if the audit had happened. */
+export const CAPS_UNTIL_AUDIT = "The caps stay until a professional audit is complete.";
+
 /** T058: said once where a depositor reads it. The gate is the interface's; the pool does not know about CHIT. */
 export const GATE_SENTENCE = "This gate is the interface's only: the contract accepts a deposit within its caps from anyone who finds it.";
 
@@ -46,7 +49,7 @@ export const chainTargetFromEnv = (env = process.env) => {
     rpcUrls: [env.FLEET_RPC_URL || published.rpcUrl],
     caps,
     beta: published.beta,
-    betaNote: published.beta ? `Beta on ${published.chainName}. ${facts.join(" ")}` : "",
+    betaNote: published.beta ? `Beta on ${published.chainName}. ${facts.join(" ")} ${CAPS_UNTIL_AUDIT}` : "",
     betaFacts: facts,
     // Where the holders gate sends a wallet below the line: to buy CHIT, and to the free testnet. Empty means no link.
     buyChitUrl: env.CHIT_BUY_URL || "",
@@ -65,7 +68,7 @@ const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/
  */
 export const withBetaNote = (html, target) => {
   if (!target.beta) return html;
-  const facts = target.betaFacts.map((fact) => `<span>${escape(fact)}</span>`).join(" ");
+  const facts = [...target.betaFacts, CAPS_UNTIL_AUDIT].map((fact) => `<span>${escape(fact)}</span>`).join(" ");
   const strip = `<p id="beta-note" class="beta-note" role="note"><strong>Beta on ${escape(target.chainName)}.</strong> ${facts}</p>\n      `;
   const marked = html
     .replace(/<(\w+)([^>]*)\sdata-beta-note([^>]*)\shidden([^>]*)>(?:[^<]*)<\/\1>/g, (_, tag, a, b, c) => `<${tag}${a} data-beta-note${b}${c}>${escape(target.betaNote)}</${tag}>`)

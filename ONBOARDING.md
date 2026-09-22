@@ -52,9 +52,10 @@ Stage 1's only true claim is *"the operator pays your fleet's gas."*
 The "no trail" claim belongs to Stage 2 and not before.
 
 Stage 2 is **semi-custodial** — Chit briefly holds pooled capital. That is why it
-carries contract-enforced caps, a self-serve exit that works with the service
-offline, and a professional security audit as a hard gate before any real funds.
-Testnet and test token only, today.
+carries contract-enforced caps and a self-serve exit that works with the service
+offline. The mainnet beta opens capped, before the firm audit, and the caps stay
+until a professional audit is complete (specs/003-mainnet-beta, FR-025). The
+contracts have not been audited by a firm. Testnet and test token today.
 
 ---
 
@@ -411,8 +412,10 @@ If maker and checker disagree twice, stop and queue it for a human.
   prompts, caching the balance correctly, recovering from campaigns the service
   has lost, and making the local dev server explain itself. Read the last ~10
   entries of `IMPLEMENTATION.md` for the detail.
-- Before mainnet: a professional security audit. Non-negotiable, and not part of
-  this build.
+- Mainnet is a capped beta (specs/003-mainnet-beta): 1 ETH pool cap, holders
+  only, a guardian on the brake, opened before the firm audit. The caps stay
+  until a professional audit is complete; widening them is that audit's job,
+  not this build's.
 
 ### Your first hour
 

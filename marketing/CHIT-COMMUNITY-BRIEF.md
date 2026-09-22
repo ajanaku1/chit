@@ -158,7 +158,7 @@ Be precise about this in public. Overstating readiness is the second-fastest way
 
 - **Not deployed to a public network.** There is no live contract address a user can interact with today.
 - **The live sponsored buy** is pending the testnet deployment and a funded paymaster.
-- **A professional third-party security audit**, required before real money, not yet done.
+- **A professional third-party security audit**, not yet done. The mainnet beta opens capped (1 ETH pool, holders only, a guardian that can pause) before that audit; the caps stay until it is complete.
 
 ### The honest status line for public use
 
@@ -209,7 +209,7 @@ The contracts have been hardened against a full security review. Key protections
 
 Every fix is proven by automated tests that run against a live blockchain environment, and the whole suite gates every change.
 
-**Explicit limitation:** contracts holding real user funds warrant a professional third-party audit before mainnet. That audit is planned and has not yet been done. Nothing in this document substitutes for it.
+**Explicit limitation:** the contracts have not been audited by a firm. Mainnet opens as a capped beta, 1 ETH for the whole pool, so the most a bug the audit has not seen can cost is that cap; the caps stay until a professional third-party audit is complete and published. Nothing in this document substitutes for it.
 
 ### 9.6 Trust assumptions
 
@@ -357,7 +357,7 @@ Framed as evidence, not dates, ship, then announce.
 - **Now:** Product built and hardened. Deployment tooling ready.
 - **Next:** Deploy contracts to testnet; open early access to $CHIT holders; land the first live sponsored buy on testnet.
 - **Then:** First external trading team runs a private campaign; publish a live usage dashboard (sponsored operations, gas sponsored, active fleets, paymaster reserve, contract addresses).
-- **Before mainnet:** Professional third-party security audit; production bundler; strict allowlists and conservative budgets.
+- **Mainnet, capped:** A holders-only beta with a 1 ETH pool cap and a guardian, opened before the firm audit; the caps stay until a professional third-party audit is complete. Strict allowlists and conservative budgets throughout.
 - **Later:** Reduce the operator-trust assumption toward operator-blind attribution; broaden from meme traders to teams, communities, and automation fleets; governance decisions on token utility taken transparently.
 
 ---

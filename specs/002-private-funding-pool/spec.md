@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: User description: "Chit Fleet Stage 2: private funding pool. The trader deposits ETH into a shared, unkeyed pool; the operator funds both the gas and the trade principal for the trader's fleet accounts from that pool and settles against a per-campaign budget in the operator's ledger, so the primary-wallet-to-fleet relationship is never published on chain. Refunds go to an owner-signed address. Semi-custodial: per-campaign and pool caps, operator pause, an owner withdrawal path independent of the service, and an audit before mainnet. Builds on the live Stage 1. Claims discipline: private, not anonymous; never untraceable."
+**Input**: User description: "Chit Fleet Stage 2: private funding pool. The trader deposits ETH into a shared, unkeyed pool; the operator funds both the gas and the trade principal for the trader's fleet accounts from that pool and settles against a per-campaign budget in the operator's ledger, so the primary-wallet-to-fleet relationship is never published on chain. Refunds go to an owner-signed address. Semi-custodial: per-campaign and pool caps, operator pause, an owner withdrawal path independent of the service, and an audit ahead of mainnet [as written on 2026-09-06; amended 2026-09-22, see FR-016]. Builds on the live Stage 1. Claims discipline: private, not anonymous; never untraceable."
 
 Source of truth for experience decisions: the approved `design-stage2.md` (2026-09-06).
 
@@ -109,7 +109,7 @@ The trader pauses, resumes, revokes, or closes a campaign from the Control Room.
 - **FR-013**: Close MUST credit a campaign's unspent draw back to the trader's balance and MUST NOT transfer ETH to any wallet; a depleted campaign MUST be able to top up its draw from balance.
 - **FR-014**: Campaign states MUST be Draft, Awaiting backup confirmation, Ready to activate, Funding your fleet, Active, Paused, Depleted, Expired, Revoked, and Closed, with Stage 1's rules for pause, resume, revoke, expiry, and terminal states unchanged.
 - **FR-015**: The published claim MUST be limited to: the main wallet never funds the fleet; the chain shows a deposit into Chit and fleets funded by Chit with no transaction linking them; the operator can link them; amounts and timing may be guessed at while the pool is small. The product MUST NOT use "anonymous", "untraceable", or "no trail" without that qualification.
-- **FR-016**: The product MUST stay on Robinhood Chain testnet (46630) with the test token only, MUST exclude mainnet, CHIT gating, batched funding windows, multi-asset deposits, ZK or view-key features, and any anonymity-set claim, and MUST present a professional audit as a gate before real funds.
+- **FR-016**: The product MUST stay on Robinhood Chain testnet (46630) with the test token only, MUST exclude mainnet, CHIT gating, batched funding windows, multi-asset deposits, ZK or view-key features, and any anonymity-set claim, and MUST state that the contracts have not been audited by a firm. *(Amended 2026-09-22: the clause that a professional audit precedes real funds is superseded by `specs/003-mainnet-beta/spec.md` FR-006, FR-008 and FR-025: a capped mainnet beta opens before the firm audit, and its caps stay until that audit is complete.)*
 - **FR-017**: Stage 1 behaviour that Stage 2 does not change (local key generation, encrypted recovery vault, session policy limits, redaction of secrets) MUST remain in force and its existing checks MUST stay green.
 
 ### Key Entities

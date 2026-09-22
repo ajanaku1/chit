@@ -180,7 +180,7 @@ deployments/       Recorded addresses and transaction hashes
 
 Stage 1 is live and stays green. Stage 2 is built, every gate passes, and the pool is deployed. What remains is the live end-to-end validation on chit.tools.
 
-Testnet and test token only. A professional security audit is a gate before real funds, not part of this build.
+Testnet and test token today. Next is a capped beta on Robinhood Chain mainnet, opened before the firm audit, not after it: holders only, the pool capped at 1 ETH, a guardian that can pause it, and the caps kept until a professional audit is complete. The contracts have not been audited by a firm. Chit's operator key can move what is in the pool, up to that cap.
 
 ---
 
