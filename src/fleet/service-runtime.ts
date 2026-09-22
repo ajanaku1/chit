@@ -12,6 +12,7 @@ import { neon } from "@neondatabase/serverless";
 import { createPublicClient, createWalletClient, defineChain, http, isHex, keccak256, stringToBytes, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
+import { createAlertSink } from "./alerts.js";
 import { CampaignRouter, type RouterDeps } from "./campaign-routes.js";
 import { CampaignService } from "./campaign-service.js";
 import { createFleetPool } from "./chain-pool.js";
@@ -410,6 +411,10 @@ export const getFleetRouter = (): CampaignRouter => {
     // challenge, which reads as "it asked me to start over again".
     service: new CampaignService({ origin: ORIGIN, chainId: FLEET_CHAIN_ID, maxTtlSeconds: 600 }, { store, ...(nonceSecret ? { nonceSecret } : {}) }),
     store,
+    // The operator chat, for the two failures the outside monitor cannot see
+    // (T048, T049). Without TELEGRAM_BOT_TOKEN and MONITOR_CHAT_ID the sink
+    // logs instead of sending, so a local run and a preview need no secrets.
+    alerts: createAlertSink({ env: process.env, fetch, store }),
     ...(feeConfig ? { feeConfig, chitBalanceOf } : {}),
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
