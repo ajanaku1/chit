@@ -8,6 +8,7 @@
  */
 
 import { freshPoolStatus, loadCachedBalance, poolStatus, setChainLabel, showableBalance } from "./balance.js";
+import { initHoldersGate } from "./holders-gate.js";
 import { SetupError } from "./campaign-setup.js";
 import { hydrateLed } from "./led.js";
 import { revealOnEnter } from "./motion.js";
@@ -198,7 +199,7 @@ export const ROBINHOOD_TESTNET = {
   nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
 };
 export const CHAIN = ROBINHOOD_TESTNET;
-export type ChainTarget = { chainId: number; chainName: string; rpcUrls: string[]; beta?: boolean; betaNote?: string };
+export type ChainTarget = { chainId: number; chainName: string; rpcUrls: string[]; beta?: boolean; betaNote?: string; buyChitUrl?: string; testnetUrl?: string };
 export let chainTarget: ChainTarget = { chainId: 46630, chainName: ROBINHOOD_TESTNET.chainName, rpcUrls: [...ROBINHOOD_TESTNET.rpcUrls] };
 /** The chain id as the wizard signs it and the service checks it. */
 export const chainIdDecimal = (): string => String(chainTarget.chainId);
@@ -209,7 +210,7 @@ export const loadChainTarget = (): Promise<void> => {
     try {
       const target = (await (await fetch("./chain-target.json")).json()) as Partial<ChainTarget>;
       if (typeof target.chainId === "number" && target.chainId > 0) {
-        chainTarget = { chainId: target.chainId, chainName: target.chainName ?? `chain ${target.chainId}`, rpcUrls: target.rpcUrls?.length ? target.rpcUrls : ROBINHOOD_TESTNET.rpcUrls, ...(target.beta ? { beta: true, betaNote: target.betaNote ?? "" } : {}) };
+        chainTarget = { chainId: target.chainId, chainName: target.chainName ?? `chain ${target.chainId}`, rpcUrls: target.rpcUrls?.length ? target.rpcUrls : ROBINHOOD_TESTNET.rpcUrls, ...(target.beta ? { beta: true, betaNote: target.betaNote ?? "", buyChitUrl: target.buyChitUrl ?? "", testnetUrl: target.testnetUrl ?? "" } : {}) };
         ROBINHOOD_TESTNET.chainId = `0x${target.chainId.toString(16)}`;
         ROBINHOOD_TESTNET.chainName = chainTarget.chainName;
         ROBINHOOD_TESTNET.rpcUrls = chainTarget.rpcUrls;
@@ -1023,5 +1024,20 @@ export const initShell = ({ pill = true }: { pill?: boolean } = {}): void => {
   if (pill) initPoolStatus();
   hydrateLed();
   revealOnEnter();
-  void loadChainTarget().then(showBetaNote);
+  void loadChainTarget().then(() => {
+    showBetaNote();
+    // The holders gate, on the beta only (FR-003): checked after the wallet connects, through the quote the service already gives.
+    if (chainTarget.beta) {
+      initHoldersGate(
+        { chainName: chainTarget.chainName, buyChitUrl: chainTarget.buyChitUrl ?? "", testnetUrl: chainTarget.testnetUrl ?? "" },
+        async () => {
+          const wallet = getConnectedWallet();
+          if (!wallet) throw new Error("no wallet");
+          return fleetApi("quote", { action: "quote", body: { primaryWallet: wallet } });
+        },
+      );
+      const current = getConnectedWallet();
+      if (current) window.dispatchEvent(new CustomEvent("chit-wallet-changed", { detail: { address: current } }));
+    }
+  });
 };

@@ -234,6 +234,12 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 /* ---- Dialogs ---- */
 .wallet-chooser, .confirm-dialog { width: min(24rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid rgba(222, 214, 202, 0.14); border-radius: var(--radius-card); background: rgba(13, 12, 11, 0.72); backdrop-filter: blur(28px); color: var(--paper); }
+/* The holders gate (FR-003): modal, no close, gone the moment the wallet is through. */
+.holders-gate { width: min(28rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid rgba(222, 214, 202, 0.14); border-radius: var(--radius-inner); background: var(--ink); color: var(--paper); }
+.holders-gate::backdrop { background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(6px); }
+.holders-gate h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
+.holders-gate p { margin: 0 0 0.75rem; line-height: 1.5; }
+.holders-gate__links a { color: var(--soft-paper); }
 .wallet-chooser::backdrop, .confirm-dialog::backdrop { background: rgba(0, 0, 0, 0.55); backdrop-filter: blur(4px); }
 .wallet-chooser h2, .confirm-dialog h2 { margin: 0 0 1rem; font-size: 1.15rem; }
 .confirm-dialog p { margin: 0; color: var(--text-muted); line-height: 1.5; }
