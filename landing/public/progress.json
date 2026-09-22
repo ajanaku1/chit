@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-22T10:20:23.762Z",
-  "commit": "e6f7ee7",
-  "committedAt": "2026-09-22T11:20:23+01:00",
-  "commits": 554,
+  "generatedAt": "2026-09-22T10:36:54.539Z",
+  "commit": "fdddbe9",
+  "committedAt": "2026-09-22T11:26:24+01:00",
+  "commits": 556,
   "tasks": {
-    "done": 137,
+    "done": 144,
     "total": 175,
-    "percent": 78
+    "percent": 82
   },
   "stages": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 56,
+      "done": 63,
       "total": 94,
       "phases": [
         {
@@ -128,7 +128,7 @@
         },
         {
           "name": "US2 — Trade a listed token",
-          "done": 0,
+          "done": 7,
           "total": 15
         },
         {
@@ -173,30 +173,6 @@
           "text": "[US2] [F] Choose the launch candidates: CHIT plus at most three memes on 4663, named and recorded before any checking begins"
         },
         {
-          "id": "T063",
-          "text": "[US2] [F] Add `src/fleet/token-registry.ts` loading and validating the reviewed list per `contracts/token-registry.md`, failing hard when a `poolId` does not match its key"
-        },
-        {
-          "id": "T064",
-          "text": "[US2] [F] Create `deployments/token-registry-4663.json` with CHIT's real pool key, its measured bound and its checks"
-        },
-        {
-          "id": "T065",
-          "text": "[US2] [F] Wire the fleet buy path in `src/fleet/campaign-routes.ts` to the registry's pool key, replacing the hardcoded venue key"
-        },
-        {
-          "id": "T066",
-          "text": "[US2] [F] Quote through the existing `pool-registry.ts` discovery and `market.ts` arithmetic rather than the single full-range formula at `src/fleet/market.ts:118`"
-        },
-        {
-          "id": "T067",
-          "text": "[US2] [F] Refuse a buy that would land outside the token's bound, before any transaction is sent"
-        },
-        {
-          "id": "T068",
-          "text": "[US2] [F] Show the bound as the least the depositor will receive, as part of the quote they accept"
-        },
-        {
           "id": "T069",
           "text": "[US2] [F] Add the per-campaign failure counter to `src/fleet/store.ts` and its adapters, counting only gas-spending failures"
         },
@@ -211,10 +187,6 @@
         {
           "id": "T072",
           "text": "[US2] [F] Make disabling an entry stop new buys without affecting tokens already held, and keep the owner's path to move them"
-        },
-        {
-          "id": "T073",
-          "text": "[P] [US2] [F] Replace `finding_M6` with a sibling showing the encoded buy names the real pool"
         },
         {
           "id": "T074",

@@ -2430,3 +2430,22 @@ page. 239 app tests, 516 fleet.
 
 Two variables the beta build wants set on Vercel, both optional: CHIT_BUY_URL
 and FLEET_TESTNET_URL; and CHIT_FEE_THRESHOLD on the service is the gate.
+
+## The token registry and the pinned pool, Phase 4 begun (2026-09-22, T063–T068, T073)
+
+`src/fleet/token-registry.ts` loads the reviewed list per the contract: a
+`poolId` that is not its `poolKey`'s id fails the load, an enabled entry must
+carry its four checks with a date, a disabled entry is kept and never offered.
+`deployments/token-registry-4663.json` pins CHIT to the launchpad's pool (the
+buyback's, hook and all) with a 3% bound: the hook's 2%, which no local quote
+sees, and 1% of movement. On mainnet the service loads it at boot and refuses
+to start when it does not load; the market quotes the pinned pool with the
+pool's own fee tier; the buy is encoded with the pinned key; the token quote
+says the bound in force and the least the depositor will receive; and a buy
+whose accepted quote the pool no longer gives inside the bound is refused
+before anything is sent. finding_M6 is replaced by its sibling.
+`./verify.sh beta-venue` passes; 523 fleet tests.
+
+Left in the phase: the failure counter and the cooldown (T069, T070), the
+picker bound to the registry (T071, T072, T076), the fork checks per token
+(T074, T075), and the memes, which are the founder's to name (T062).
