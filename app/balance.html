@@ -96,6 +96,14 @@
             <p id="withdraw-note" class="fineprint" role="status" aria-live="polite"></p>
             <button id="withdraw-submit" type="submit" class="primary">Withdraw</button>
           </form>
+          <!-- The withdrawal-refused state: what happened, try again, and the exit beside it. The same state covers a paused pool. -->
+          <div id="withdraw-refused" class="callout" role="alert" hidden>
+            <p id="withdraw-refused-text"></p>
+            <div class="wnav">
+              <button id="withdraw-retry" type="button" class="ghost">Try again</button>
+              <a class="primary" href="#exit-card">Take it out of the pool yourself</a>
+            </div>
+          </div>
         </section>
 
         <section id="exit-card" class="wstep card-warm" aria-labelledby="exit-h">

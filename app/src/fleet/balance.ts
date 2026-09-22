@@ -239,6 +239,23 @@ export const clearCachedBalance = (storage: Storage, wallet: string): void => {
 
 /** The testnet pool's per-depositor cap, 0.5 ETH: the fallback when a read predates `caps`. */
 export const TRADER_CAP = "500000000000000000";
+/**
+ * The withdrawal-refused state (design-mainnet-beta.md, T077, T078): what
+ * happened, that nothing was recorded and nothing is owed, and that the exit
+ * beside it needs nobody. `paused` is the same state for a paused pool. Any
+ * other refusal is not this state and gets undefined.
+ */
+export const withdrawRefusal = (cause: { code: string; reason?: string } | { paused: true }): string | undefined => {
+  if ("paused" in cause) {
+    return "The pool is paused, so nothing moves through Chit right now. Nothing was recorded and nothing is owed. Your unspent deposit is still yours to take out of the pool yourself: that path doesn't need us.";
+  }
+  if (cause.code === "withdrawal_unavailable") {
+    return "We can't pay this right now. Try again in a few minutes, or take it out of the pool yourself: that path doesn't need us. Nothing was recorded and nothing is owed.";
+  }
+  if (cause.code === "state_invalid" && cause.reason === "pool_paused") return withdrawRefusal({ paused: true });
+  return undefined;
+};
+
 /** The per-depositor cap the page should show: the chain's, or the published testnet number. */
 export const traderCapOf = (view: Pick<BalanceState, "caps"> | undefined): string => view?.caps?.depositor ?? TRADER_CAP;
 
