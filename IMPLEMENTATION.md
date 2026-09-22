@@ -2412,3 +2412,21 @@ sentence in the specification's words, in a strip before the masthead that
 is sticky and holds no control; the deposit form repeats the whole statement
 beside the amount (FR-007), and off the beta neither is written. The test
 builds the app twice, for 4663 and 46630, and reads every page.
+
+## The holders gate and the pool's caps in the app, Phase 3 done (2026-09-22, T055, T058, T059, T060)
+
+The gate (`app/src/fleet/holders-gate.ts`) runs on the beta after the wallet
+connects, through the quote the service already answers, which now says what
+the wallet holds: through silently above the threshold; below it a modal with
+the holding, the requirement, a link to buy CHIT and one to the testnet where
+the build was given them, never an error; a failed read is a retry, never a
+rejection. The threshold is the service's env, so it moves without a deploy.
+The gate says once, and the deposit form repeats on the beta, that it gates
+the interface only. The wizard refuses a draw against the pool's cap read
+with the balance, not a constant, and the build rewrites the draw-cap figure
+a page states before the pool answers from the chain target. Phase 3's
+checkpoint holds: deposit and exit work under the caps with the truth on the
+page. 239 app tests, 516 fleet.
+
+Two variables the beta build wants set on Vercel, both optional: CHIT_BUY_URL
+and FLEET_TESTNET_URL; and CHIT_FEE_THRESHOLD on the service is the gate.

@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-22T10:09:52.270Z",
-  "commit": "ae7b76f",
-  "committedAt": "2026-09-22T11:03:43+01:00",
-  "commits": 549,
+  "generatedAt": "2026-09-22T10:20:23.762Z",
+  "commit": "e6f7ee7",
+  "committedAt": "2026-09-22T11:20:23+01:00",
+  "commits": 554,
   "tasks": {
-    "done": 133,
+    "done": 137,
     "total": 175,
-    "percent": 76
+    "percent": 78
   },
   "stages": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 52,
+      "done": 56,
       "total": 94,
       "phases": [
         {
@@ -123,7 +123,7 @@
         },
         {
           "name": "US1 — Put real money in and take it out",
-          "done": 4,
+          "done": 8,
           "total": 8
         },
         {
@@ -167,22 +167,6 @@
         {
           "id": "T049",
           "text": "[B] Alert on a sweep failure, a refused withdrawal, an unposted charge older than four hours, and the operator's balance reaching half the float"
-        },
-        {
-          "id": "T055",
-          "text": "[US1] [F] Add the holders gate in `app/src/fleet/holders-gate.ts`: above the threshold passes silently, below shows holdings and requirement with links to buy CHIT and to the testnet host, a failed read shows retry"
-        },
-        {
-          "id": "T058",
-          "text": "[US1] [F] State once, where a depositor reads it, that the gate controls the interface only and the contract accepts direct deposits within its caps"
-        },
-        {
-          "id": "T059",
-          "text": "[US1] [F] Read the caps from the deployed pool in `app/src/fleet/balance.ts` and refuse a size that would breach either"
-        },
-        {
-          "id": "T060",
-          "text": "[P] [US1] [F] Test the gate's three states, including that a failed balance read shows retry and never rejection"
         },
         {
           "id": "T062",

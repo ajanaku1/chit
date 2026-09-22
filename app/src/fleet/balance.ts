@@ -93,10 +93,13 @@ export const exitView = (
 /** Mirrors the pool's per-draw cap, so the wizard refuses what the chain would. */
 export const DRAW_CAP = "200000000000000000";
 
-/** The reason a draw cannot be committed, or undefined. */
-export const drawIssue = (amount: string, available: string): string | undefined => {
+/** The per-draw cap the page should refuse against: the chain's, or the published testnet number. */
+export const drawCapOf = (view: Pick<BalanceState, "caps"> | undefined): string => view?.caps?.draw ?? DRAW_CAP;
+
+/** The reason a draw cannot be committed, or undefined. `cap` is the deployed pool's (drawCapOf). */
+export const drawIssue = (amount: string, available: string, cap: string = DRAW_CAP): string | undefined => {
   if (!DECIMAL.test(amount) || BigInt(amount) === 0n) return "Enter how much of your balance this fleet may spend.";
-  if (BigInt(amount) > BigInt(DRAW_CAP)) return `A fleet may hold at most ${toEth(DRAW_CAP)} ETH.`;
+  if (BigInt(amount) > BigInt(cap)) return `A fleet may hold at most ${toEth(cap)} ETH.`;
   if (BigInt(amount) > BigInt(available)) {
     return BigInt(available) === 0n
       ? "You have 0 ETH at Chit. Add some on the Balance page first."
@@ -149,8 +152,8 @@ export const pollDelayMs = (state: string, dueAt: string | undefined, now: Date)
  * same answer drives the button and the note, so a disabled button always has
  * a reason next to it.
  */
-export const launchState = (draw: string, available: string): { disabled: boolean; note: string } => {
-  const issue = drawIssue(draw, available);
+export const launchState = (draw: string, available: string, cap: string = DRAW_CAP): { disabled: boolean; note: string } => {
+  const issue = drawIssue(draw, available, cap);
   if (issue) return { disabled: true, note: issue };
   return { disabled: false, note: `Your balance is ${toEth(available)} ETH.` };
 };
@@ -261,9 +264,9 @@ export const balanceDelta = (previous: string | undefined, next: string): { up: 
   return after > before ? { up: true, eth: toEth((after - before).toString()) } : { up: false, eth: toEth((before - after).toString()) };
 };
 
-/** How much of the per-fleet draw cap an amount uses, 0..1. */
-export const drawShare = (amount: string): number => {
-  const cap = BigInt(DRAW_CAP);
+/** How much of the per-fleet draw cap an amount uses, 0..1; `cap` is the deployed pool's (drawCapOf). */
+export const drawShare = (amount: string, capWei: string = DRAW_CAP): number => {
+  const cap = BigInt(capWei);
   const value = BigInt(amount);
   return value >= cap ? 1 : Number((value * 10_000n) / cap) / 10_000;
 };

@@ -21,7 +21,7 @@ import {
   type SetupDeps,
   type SetupQuote,
 } from "./fleet/campaign-setup.js";
-import { DRAW_CAP, drawShare, fundingProgress, fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
+import { DRAW_CAP, drawCapOf, drawShare, fundingProgress, fundingWait, launchState, pollDelayMs } from "./fleet/balance.js";
 import {
   banner,
   chainIdDecimal,
@@ -278,14 +278,15 @@ class FleetWizard {
     if (!input || !button || !note) return;
     const drawWei = parseEth(input.value);
     const state = this.#balanceKnown
-      ? launchState(drawWei, this.#availableBalance)
+      ? launchState(drawWei, this.#availableBalance, this.#drawCap)
       : { disabled: true, note: "Your balance shows here once your wallet signs for it." };
     button.disabled = state.disabled;
     note.textContent = state.note;
-    const share = drawShare(drawWei);
+    const share = drawShare(drawWei, this.#drawCap);
     el("draw-fill").style.setProperty("--fill", String(share));
     el("draw-meter").setAttribute("aria-valuenow", String(share));
-    el("draw-meter").setAttribute("aria-valuetext", `${Math.round(share * 100)}% of the ${toEth(DRAW_CAP)} ETH cap`);
+    el("draw-meter").setAttribute("aria-label", `This draw against the ${toEth(this.#drawCap)} ETH cap`);
+    el("draw-meter").setAttribute("aria-valuetext", `${Math.round(share * 100)}% of the ${toEth(this.#drawCap)} ETH cap`);
   }
 
   /**
@@ -507,9 +508,14 @@ class FleetWizard {
   }
 
   /** The spendable balance, or undefined when it could not be read (refused, or no pool yet). */
+  /** The deployed pool's per-draw cap, read with the balance; the published testnet number until then. */
+  #drawCap = DRAW_CAP;
+
   async #fetchBalance(wallet: Hex, force = false): Promise<string | undefined> {
     try {
-      return String((await readBalance(wallet, { force })).available ?? "0");
+      const view = await readBalance(wallet, { force });
+      this.#drawCap = drawCapOf(view);
+      return String(view.available ?? "0");
     } catch {
       return undefined;
     }
