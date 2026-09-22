@@ -122,9 +122,9 @@ const encodeFixtureBuy = (signature: string, token: Address, value: bigint): Hex
  * any watcher of the public mempool can sandwich, so the router never passes
  * zero for a real venue (see `minOutFor`).
  */
-export const encodeBuyCall = (signature: string, token: Address, value: bigint, now: Date, minOut = 0n): Hex =>
+export const encodeBuyCall = (signature: string, token: Address, value: bigint, now: Date, minOut = 0n, poolKey?: PoolKey): Hex =>
   signature === UNIVERSAL_ROUTER_EXECUTE
-    ? encodeV4EthBuy({ token, amountIn: value, minOut, deadline: BigInt(Math.floor(now.getTime() / 1000) + 3600) })
+    ? encodeV4EthBuy({ token, amountIn: value, minOut, deadline: BigInt(Math.floor(now.getTime() / 1000) + 3600), ...(poolKey ? { poolKey } : {}) })
     : encodeFixtureBuy(signature, token, value);
 
 /** Ten thousand basis points; the slippage the operator tolerates is expressed in them. */

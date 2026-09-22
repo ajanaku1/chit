@@ -171,19 +171,20 @@ This alone is a viable beta.
 ## Phase 4: US2 — Trade a listed token (P2)
 
 - [ ] T062 [US2] [F] Choose the launch candidates: CHIT plus at most three memes on 4663, named and recorded before any checking begins
-- [ ] T063 [US2] [F] Add `src/fleet/token-registry.ts` loading and validating the reviewed list per `contracts/token-registry.md`, failing hard when a `poolId` does not match its key
-- [ ] T064 [US2] [F] Create `deployments/token-registry-4663.json` with CHIT's real pool key, its measured bound and its checks
-- [ ] T065 [US2] [F] Wire the fleet buy path in `src/fleet/campaign-routes.ts` to the registry's pool key, replacing the hardcoded venue key
-- [ ] T066 [US2] [F] Quote through the existing `pool-registry.ts` discovery and `market.ts` arithmetic rather than the single full-range formula at `src/fleet/market.ts:118`
-- [ ] T067 [US2] [F] Refuse a buy that would land outside the token's bound, before any transaction is sent
-- [ ] T068 [US2] [F] Show the bound as the least the depositor will receive, as part of the quote they accept
+  - Named 2026-09-22 (Lucian, in the registry file): CHIT, then HOODCAT, HEY and ORUS. CHIT is checked and enabled; HOODCAT is not an entry (its real pool is quoted in HOOD, its ETH pools are traps); HEY and ORUS wait on their addresses and the fork's measure. Closed for CHIT; the other two stay the founder's call.
+- [x] T063 [US2] [F] Add `src/fleet/token-registry.ts` loading and validating the reviewed list per `contracts/token-registry.md`, failing hard when a `poolId` does not match its key
+- [x] T064 [US2] [F] Create `deployments/token-registry-4663.json` with CHIT's real pool key, its measured bound and its checks
+- [x] T065 [US2] [F] Wire the fleet buy path in `src/fleet/campaign-routes.ts` to the registry's pool key, replacing the hardcoded venue key
+- [x] T066 [US2] [F] Quote through the existing `pool-registry.ts` discovery and `market.ts` arithmetic rather than the single full-range formula at `src/fleet/market.ts:118`
+- [x] T067 [US2] [F] Refuse a buy that would land outside the token's bound, before any transaction is sent
+- [x] T068 [US2] [F] Show the bound as the least the depositor will receive, as part of the quote they accept
 - [ ] T069 [US2] [F] Add the per-campaign failure counter to `src/fleet/store.ts` and its adapters, counting only gas-spending failures
 - [ ] T070 [US2] [F] Refuse buys on a campaign with three failures in the last hour, telling the depositor why and when it reopens
 - [ ] T071 [US2] [F] Bind the token picker to enabled registry entries only in `app/src/fleet/`
 - [ ] T072 [US2] [F] Make disabling an entry stop new buys without affecting tokens already held, and keep the owner's path to move them
-- [ ] T073 [P] [US2] [F] Replace `finding_M6` with a sibling showing the encoded buy names the real pool
-- [ ] T074 [US2] [F] Fork test on 4663 per listed token: quote and execution agree within the bound
-- [ ] T075 [US2] [F] Check and record each candidate from T062: transfer behaviour, holder restrictions, pool key, liquidity at fifty times the draw cap
+- [x] T073 [P] [US2] [F] Replace `finding_M6` with a sibling showing the encoded buy names the real pool
+- [x] T074 [US2] [F] Fork test on 4663 per listed token: quote and execution agree within the bound
+- [x] T075 [US2] [F] Check and record each candidate from T062: transfer behaviour, holder restrictions, pool key, liquidity at fifty times the draw cap
 - [ ] T076 [P] [US2] [F] Test that a disabled entry is never offered, no path trades it, and holdings of it remain movable
 
 **Checkpoint**: Real trading against real pools.

@@ -2430,3 +2430,73 @@ page. 239 app tests, 516 fleet.
 
 Two variables the beta build wants set on Vercel, both optional: CHIT_BUY_URL
 and FLEET_TESTNET_URL; and CHIT_FEE_THRESHOLD on the service is the gate.
+
+## The token registry and the pinned pool, Phase 4 begun (2026-09-22, T063–T068, T073)
+
+`src/fleet/token-registry.ts` loads the reviewed list per the contract: a
+`poolId` that is not its `poolKey`'s id fails the load, an enabled entry must
+carry its four checks with a date, a disabled entry is kept and never offered.
+`deployments/token-registry-4663.json` pins CHIT to the launchpad's pool (the
+buyback's, hook and all) with a 3% bound: the hook's 2%, which no local quote
+sees, and 1% of movement. On mainnet the service loads it at boot and refuses
+to start when it does not load; the market quotes the pinned pool with the
+pool's own fee tier; the buy is encoded with the pinned key; the token quote
+says the bound in force and the least the depositor will receive; and a buy
+whose accepted quote the pool no longer gives inside the bound is refused
+before anything is sent. finding_M6 is replaced by its sibling.
+`./verify.sh beta-venue` passes; 523 fleet tests.
+
+Left in the phase: the failure counter and the cooldown (T069, T070), the
+picker bound to the registry (T071, T072, T076), the fork checks per token
+(T074, T075), and the memes, which are the founder's to name (T062).
+
+## The token registry: the beta trades from a file, not from discovery (2026-09-22, Lucian, branch feat/token-registry, T062, T063, T064, T073 in part, T074, T075)
+
+Phase 4's first half, the part that does not touch `campaign-routes.ts` or
+the app: the registry file, its reader, and the checks on the fork. T065 to
+T072 (the buy path, the quote through the registry, the bound shown, the
+failure counter, the picker) stay the founder's, so nothing here crosses the
+files the lock work (2C) and the app work (Phase 3) are in.
+
+`src/fleet/token-registry.ts` reads `deployments/token-registry-<chainId>.json`
+and holds it to the contract's five rules: `poolId` must be the id of
+`poolKey` (a mismatch throws naming the token; one of them names the wrong
+pool), the pool must be the token's ETH pool (currency0 native, currency1 the
+token), the bound defaults to 100 bps, a disabled entry is never returned by
+`tradableEntry` or `enabledTokens` but stays on record for `anyEntry`
+(FR-038, what a fleet holds must stay movable), and an entry may be enabled
+only with its four FR-012 checks on file and passed. A missing file is an
+empty registry, never a fallback to discovery; a broken one is refused with
+the reason. `meetsLiquidity` is the check to repeat on the day, against the
+chain; `leastOut` is FR-013's number, the least a depositor receives.
+
+The candidates (T062, before any checking): CHIT, HOODCAT, HEY, ORUS. CHIT is
+the one entry: the launchpad's hooked pool the buyback buys through,
+`0x84a4…9f41`, bound 300 bps. The fork test
+(`test/fork/token-registry.test.ts`, `npm run test:fork:registry`, at block
+69561387) measured it: ETH side 9.02 ETH, 180 times the draw cap; 1000 CHIT
+went PoolManager → fresh → other → fresh whole each time, so ordinary
+transfer and no holder restriction; a 0.05 ETH buy through the Universal
+Router in exactly that pool bought 513,003 for a local quote of 523,473,
+2.00% under, the hook's fee, which the local quote does not carry. So 300
+bps is the bound and 100 would refuse every buy; the test holds a wider
+bound to that: it passes only if 100 would have refused the fill. HOODCAT is
+not an entry: the pool Dexscreener lists for it is quoted in HOOD
+(`0x32ac…496f`), not ETH, and its seventeen ETH pools are traps, fees from
+5% to 99%, no depth. Pool discovery had picked one of those traps, which is
+the whole reason the registry is a file. HEY and ORUS wait on their
+addresses from their teams, then the same fork run. `.vercelignore` lets the
+registry file through for the service; nine unit tests hold the rules.
+
+## Two registries the same morning, one kept (2026-09-22)
+
+Lucian built the token registry on `feat/token-registry` the same morning the
+founder built one on `feat/registry-pinned-pool`: the same rules, the same 300
+bps for CHIT, the same hard failure on a wrong `poolId`. Lucian's is kept
+whole (module, file, unit tests, the fork test that measured CHIT at block
+69561387, the candidates and the HOODCAT finding, the `.vercelignore` line
+without which the service on Vercel could not read the file), cherry-picked so
+the authorship stays theirs; the founder's route wiring (T065–T068, T073) sits
+on top of its API, and the mainnet preflight now also wants
+`FLEET_POOL_MANAGER_ADDRESS`, since the file does not carry it. T074 and T075
+are Lucian's; HEY and ORUS wait on addresses.

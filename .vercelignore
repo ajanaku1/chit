@@ -4,6 +4,8 @@
 /cache/
 /contracts/
 /deployments/
+# the token registry is what the service trades from on mainnet (specs/003-mainnet-beta/contracts/token-registry.md); the rest of the records stay out
+!/deployments/token-registry-4663.json
 /dist/
 /docs/
 /node_modules/

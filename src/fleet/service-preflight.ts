@@ -15,6 +15,7 @@ const REQUIRED_ON_MAINNET: readonly [name: string, why: string][] = [
   ["DATABASE_URL", "the shared store: without it a retry on a second instance can pay twice"],
   ["CRON_SECRET", "the sweep's bearer: without it anyone can make the operator sign"],
   ["FLEET_TOKEN_ALLOWLIST", "the tokens a sponsored buy may target: without it, any token"],
+  ["FLEET_POOL_MANAGER_ADDRESS", "the Uniswap v4 pool manager the registry's pools live on (0x8366a39cc670b4001a1121b8f6a443a643e40951 on 4663, deployments/buyback-4663.json): without it no quote and no buy"],
 ];
 
 /** The first thing missing, in the caller's words, or undefined when the chain is not mainnet or nothing is. */

@@ -21,6 +21,8 @@ import { ledgerKey } from "./pool-ledger.js";
 import { createPoolService, type PoolPort } from "./pool-buy.js";
 import { createNeonReadCache } from "./pool-reads-neon.js";
 import { mainnetPreflight } from "./service-preflight.js";
+import { enabledTokens, readTokenRegistry, type TokenRegistry } from "./token-registry.js";
+import { readFileSync } from "node:fs";
 import { createMemoryStore, type StorePort } from "./store.js";
 import { createNeonStore } from "./store-neon.js";
 import { validateFeeConfig, type FeeConfig } from "./eligibility.js";
@@ -185,9 +187,24 @@ const maxSlippageFromEnv = (): number | undefined => {
 };
 
 /** Read-only market facts for the trading panel; the operator's client, no signing. */
+/**
+ * The token registry (FR-011): on mainnet the only tokens the beta trades,
+ * each pinned to its pool; read once at boot from deployments/token-registry-
+ * <chain>.json (FLEET_TOKEN_REGISTRY names another file). A registry that
+ * does not load on mainnet is a boot fault, like a missing variable: the
+ * service refuses rather than trade unlisted tokens. Testnet has none and
+ * keeps its allowlist.
+ */
+const registryFromEnv = (): TokenRegistry | undefined => {
+  const path = process.env.FLEET_TOKEN_REGISTRY || (FLEET_CHAIN_ID === 4663 ? `deployments/token-registry-${FLEET_CHAIN_ID}.json` : undefined);
+  if (!path) return undefined;
+  return readTokenRegistry(JSON.parse(readFileSync(path, "utf8")), FLEET_CHAIN_ID);
+};
+
 const marketFromEnv = (): MarketPort | undefined => {
   const key = operatorKeyFromEnv();
   if (!key) return undefined;
+  // On mainnet the pool manager is named in the environment (the preflight requires it); testnet's is recorded.
   const poolManager = process.env.FLEET_POOL_MANAGER_ADDRESS || DEPLOYED_46630.poolManager;
   const escrow = process.env.FLEET_ESCROW_ADDRESS || DEPLOYED_46630.escrow;
   if (!isAddress(poolManager) || !isAddress(escrow)) return undefined;
@@ -331,7 +348,8 @@ export const handleFleetRequest = async (
   const active = getFleetRouter();
   if (addressFault) {
     console.error(`fleet route refused: ${addressFault}`);
-    return Response.json({ code: "dependency_evidence_invalid", retryable: false, reason: addressFault.startsWith("FLEET_CHAIN_ID") ? "missing_configuration" : "misconfigured_address" }, { status: 503 });
+    const reason = addressFault.startsWith("FLEET_CHAIN_ID") ? "missing_configuration" : addressFault.startsWith("the token registry") ? "registry_invalid" : "misconfigured_address";
+    return Response.json({ code: "dependency_evidence_invalid", retryable: false, reason }, { status: 503 });
   }
   try {
     const body: unknown = await request.json();
@@ -374,6 +392,13 @@ export const getFleetRouter = (): CampaignRouter => {
   const store = storeFromEnv();
   const pool = poolFromEnv(store);
   const poolAddress = poolAddressFromEnv();
+  let registry: TokenRegistry | undefined;
+  try {
+    registry = registryFromEnv();
+  } catch (error) {
+    addressFault = `the token registry does not load: ${error instanceof Error ? error.message : String(error)}`;
+    console.error(`fleet service misconfigured: ${addressFault}`);
+  }
   const market = marketFromEnv();
   const allowedTokens = allowedTokensFromEnv();
   const maxSlippageBps = maxSlippageFromEnv();
@@ -389,8 +414,9 @@ export const getFleetRouter = (): CampaignRouter => {
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
     ...(allowedTokens ? { allowedTokens } : {}),
-    // The portfolio shows what the venue trades: the allowlist when there is one, else the venue's coin, which only testnet records.
-    ...(allowedTokens ? { venueTokens: allowedTokens } : DEPLOYED_46630.venueToken ? { venueTokens: [DEPLOYED_46630.venueToken] } : {}),
+    ...(registry ? { registry } : {}),
+    // The portfolio shows what the venue trades: the registry's enabled tokens, else the allowlist, else the venue's coin, which only testnet records.
+    ...(registry ? { venueTokens: enabledTokens(registry).map((e) => e.token) } : allowedTokens ? { venueTokens: allowedTokens } : DEPLOYED_46630.venueToken ? { venueTokens: [DEPLOYED_46630.venueToken] } : {}),
     ...(maxSlippageBps !== undefined ? { maxSlippageBps } : {}),
     // Without the pool, balance and withdrawal answer 503 the same way.
     ...(pool ? { pool } : {}),
