@@ -14,6 +14,7 @@ import { createPoolService } from "../../src/fleet/pool-buy.js";
 import { createMemoryStore } from "../../src/fleet/store.js";
 import type { AuthEnvelope } from "../../src/fleet/types.js";
 import { TESTNET_CAPS } from "../../src/fleet/pool-caps.js";
+import { localOperator } from "./local-operator.js";
 
 /**
  * A fleet buy as an order, end to end on a live EVM: the browser holds the
@@ -31,9 +32,10 @@ describe("A seeded fleet order over two polls", () => {
   const SEED = `0x${"ab".repeat(32)}` as const;
 
   let viem: Awaited<ReturnType<typeof network.connect>>["viem"];
+  let provider: Awaited<ReturnType<typeof network.connect>>["provider"];
 
   before(async () => {
-    ({ viem } = await network.connect({ network: "default" }));
+    ({ viem, provider } = await network.connect({ network: "default" }));
   });
 
   const travel = async (seconds: number) => {
@@ -43,14 +45,16 @@ describe("A seeded fleet order over two polls", () => {
   };
 
   const setup = async () => {
-    const [operator, trader] = await viem.getWalletClients();
+    const [funder, trader] = await viem.getWalletClients();
     const publicClient = await viem.getPublicClient();
+    const operator = await localOperator(funder!, provider, publicClient.chain);
     const chainId = await publicClient.getChainId();
 
-    const policy = await viem.deployContract("FleetSessionPolicy", [operator!.account.address, operator!.account.address]);
+    // The admin is the node's own account, so the admin's calls below go through the deploying client; the operator signs for itself.
+    const policy = await viem.deployContract("FleetSessionPolicy", [funder!.account.address, operator!.account.address]);
     const factory = await viem.deployContract("FleetAccountFactory", [operator!.account.address]);
     const escrow = await viem.deployContract("FleetCampaignEscrow", [operator!.account.address]);
-    const poolContract = await viem.deployContract("FleetPool", [operator!.account.address, operator!.account.address, TESTNET_CAPS.depositor, TESTNET_CAPS.draw, TESTNET_CAPS.pool]);
+    const poolContract = await viem.deployContract("FleetPool", [funder!.account.address, operator!.account.address, TESTNET_CAPS.depositor, TESTNET_CAPS.draw, TESTNET_CAPS.pool]);
     // The pool funds and executes a buy in one transaction; the policy names it.
     await policy.write.setPool([poolContract.address]);
     const sink = await viem.deployContract("FleetTestSink", []);
