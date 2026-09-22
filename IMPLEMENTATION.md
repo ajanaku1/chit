@@ -2728,3 +2728,25 @@ hundred basis points of real slippage.
 
 Both entries are enabled with their four checks on file. `npm run
 registry:liquidity` re-measures all three on the day (T091).
+
+## 2026-09-22: HEY and ORUS reproduced founder-side, before merging
+
+Lucian's entries measured again from a clean checkout on a fresh fork
+(block 69,746,534, about 110,000 blocks after his): HEY 8.12 ETH, 162.5× the
+draw cap, a 0.05 ETH buy 3.00 % under the local quote; ORUS 8.79 ETH, 175.8×,
+also 3.00 % under; CHIT unchanged at 2.00 % under its 300 bps. Each pool id
+was derived from its own key rather than trusted from the file, and all three
+matched. Both tokens' symbols and decimals were read from 4663 directly: HEY
+and 18, `Orus` and 18 — the registry writes the ticker `ORUS`, which is a
+display name and not compared with the chain anywhere.
+
+The 400 bps bound is the same rule as CHIT's 300, not a loosening: the
+launchpad hook takes its fee out of the fill and the quote does not know it,
+so the bound is that fee plus 100 bps of real movement. CHIT's pool takes
+200, HEY's and ORUS's take 300 — the same hook contract, a different fee per
+pool, and CHIT's is the graduated one. A bound at 300 for these two would sit
+exactly on the fill and refuse a buy for any movement at all.
+
+The liquidity figures moved several per cent between his measure and mine
+within the same afternoon, which is the reason FR-012 has the day's re-run
+(T091) rather than a number in a file.
