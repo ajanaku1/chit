@@ -2939,3 +2939,25 @@ started as.
 
 Tests: the door in its three states, and the variable read, trimmed,
 stripped of its trailing slash, and refused when it is not https.
+
+## 2026-09-22: the host runbook, for two hosts and an order that matters
+
+Section 4 of `docs/runbooks/mainnet-beta.md` described one host and predated
+everything decided today. It now covers both (T080, T081, FR-019) and says
+which comes first and why: the existing project holds `chit.tools` and is on
+46630, so switching it to 4663 before the playground exists points every
+testnet user at an app that spends real money. The playground is created
+first, then the switch.
+
+It also carries the two things that were only in messages: the playground's
+own `FLEET_SESSION_FACTORY` for 46630, which is written per chain now rather
+than copied, and the alerting environment (`MONITOR_CHAT_ID` beside the
+token, the operator's chat and not the group, FR-043) with the sequence the
+soak depends on — alerting is live only from a production deployment, that
+deployment is started by hand, and a soak begun before it did not soak with
+alerting on. The same deployment publishes the corrected promise, which
+FR-008 wants landed before the change that opens the beta rather than in it.
+
+The beta host gets one new line: no `FLEET_SESSION_FACTORY`, because 4663 has
+none until one is deployed there and the page should say so rather than offer
+the testnet's.

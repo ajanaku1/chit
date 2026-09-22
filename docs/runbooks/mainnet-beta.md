@@ -139,19 +139,67 @@ testnet run (`npm run explorer:verify`, `EXPLORER_DRY=1` to send nothing)
 is the rehearsal: 2026-09-22, four of the six testnet contracts verifiable
 from main, the paymaster and the session factory from their own commits.
 
-## 4. The host
+## 4. The hosts
 
-Production environment on Vercel:
+Two deploys of one app, one per chain (T080, T081, FR-019). The order below
+is not arbitrary: **the playground is created first**. The existing project
+holds `chit.tools` and is on 46630 today, so switching it to 4663 before the
+playground exists leaves every testnet user pointed at an app that spends
+real money. Playground first, then switch.
+
+### 4a. The playground, `testnet.chit.tools` (T080)
+
+A new Vercel project from the same repository, on 46630, with the domain
+`testnet.chit.tools`. Its environment is what `chit.tools` uses today plus
+its own session factory:
+
+- [ ] `FLEET_CHAIN_ID=46630`
+- [ ] `FLEET_SESSION_FACTORY=0xe6abb3aba7625c215f805ddc762e1148860796be`
+      — the factory deployed on 46630. It is written per chain now, never
+      copied, so a build that names the wrong chain ships no factory at all
+      rather than one that answers wrongly (`app/test/two-hosts.test.ts`).
+- [ ] everything else the current project has for 46630: `DATABASE_URL`,
+      `CRON_SECRET`, `FLEET_LEDGER_KEY`, `FLEET_NONCE_SECRET`, the testnet
+      addresses. Copy them from the existing project rather than typing
+      them; a testnet ledger key that differs from the one that sealed the
+      existing charges cannot open them.
+
+Check: the playground opens, says testnet 46630, and its cards link to
+itself. Nothing on it links to the beta.
+
+### 4b. Alerting, before the soak (FR-043, T088)
+
+Alerting is only live from a production deployment, and that deployment is
+started by hand. A soak begun before it did not soak with alerting on.
+
+- [ ] `TELEGRAM_BOT_TOKEN` (already set) and `MONITOR_CHAT_ID`, the operator
+      chat the alerts go to — not the group. Named before the beta opens, as
+      FR-043 asks.
+- [ ] `FLEET_TESTNET_URL=https://testnet.chit.tools` on the beta project and
+      in the bot's environment, so the holders gate and the bot's playground
+      door point at 4a rather than at the beta (T082).
+- [ ] `vercel --prod`, by hand. This is also the deployment that publishes
+      the corrected promise, which FR-008 requires to land **before** the
+      change that opens the beta, never in it.
+- [ ] then, and only then, `npm run fleet-soak -- --watch` (§ 2b).
+
+### 4c. The beta, `chit.tools`
+
+The existing project, switched to 4663 once § 3 has deployed the contracts:
 
 - [ ] `FLEET_CHAIN_ID=4663`, `FLEET_RPC_URL=https://rpc.mainnet.chain.robinhood.com`
 - [ ] `FLEET_POOL_ADDRESS`, `FLEET_POLICY_ADDRESS`, `FLEET_FACTORY_ADDRESS`, `FLEET_ESCROW_ADDRESS`, `FLEET_ESCROW_BLOCK` from the script's output
 - [ ] `FLEET_LEDGER_KEY` (32 bytes hex, now, before the first draw), `FLEET_NONCE_SECRET`, `FLEET_TOKEN_ALLOWLIST` (the tokens the beta may buy)
 - [ ] holders only: `CHIT_FEE_THRESHOLD=<threshold>`, `CHIT_BASE_FEE=0`, `CHIT_FEE_DISCOUNT=0`, `CHIT_FEE_RECIPIENT=<operator>`, `CHIT_RPC_URL=https://rpc.mainnet.chain.robinhood.com`, `CHIT_TOKEN_ADDRESS=0xd523a627030509021cc39b6d7c8543417d3e50d8`
+- [ ] no `FLEET_SESSION_FACTORY`: 4663 has none until one is deployed there,
+      and the Sessions page says so rather than offering the testnet's
 - [ ] redeploy; the app rebuilds with the beta note on every page and the balance page's caps read from the pool
 
 Check: a wallet under the threshold gets `ineligible` on `quote`; one over it
 gets a quote with a zero fee. `verifyDeployedAddresses` refuses the router
-if any address holds no code.
+if any address holds no code. And T081's own check, which needs both hosts
+up: each names its chain, neither offers the other's funds, and the only
+link between them is the beta's door to the free playground (FR-004).
 
 ## 5. The first loop, by us
 
