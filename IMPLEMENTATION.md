@@ -2519,3 +2519,12 @@ per token. 533 fleet tests, 240 app.
 
 Open in the phase: HEY and ORUS, named by Lucian, wait on their teams'
 addresses and the fork's measure before an entry is written (T062).
+## The withdrawal-refused state, Phase 5 done (2026-09-22, T077–T079)
+
+The Balance page carries the state the design names: for a payout Chit
+cannot make right now (`withdrawal_unavailable`), what happened, that nothing
+was recorded and nothing is owed, a Try again, and the self-serve exit one
+tap beneath it; a paused pool shows the same state before anything is asked,
+with the exit reachable. Any other refusal stays a banner. Tested as words,
+as markup and as the exit's own state, which no refusal touches. 242 app
+tests.

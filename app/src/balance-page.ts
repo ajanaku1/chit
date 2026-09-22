@@ -18,6 +18,7 @@ import {
   toEth,
   traderCapOf,
   withdrawIssue,
+  withdrawRefusal,
   type BalanceState,
 } from "./fleet/balance.js";
 import { invalidateBalance, readBalance, recentBalance, rememberBalance } from "./fleet/balance-read.js";
@@ -171,10 +172,19 @@ const renderExit = (view: BalanceState): void => {
         : `Ready: claim ${toEth(exit.amount ?? "0")} ETH now.`;
 };
 
+/** The refused state, shown for a payout Chit cannot make and for a paused pool, with the exit beside it; hidden otherwise. */
+const showRefusal = (text: string | undefined): void => {
+  const box = el("withdraw-refused");
+  box.hidden = text === undefined;
+  el("withdraw-refused-text").textContent = text ?? "";
+};
+
 const render = (view: BalanceState): void => {
   renderFigures(view);
   renderDeposits(view);
   renderExit(view);
+  // A paused pool is the refused state before anything is asked (T078); the exit stays reachable beneath it.
+  showRefusal(view.pool.paused ? withdrawRefusal({ paused: true }) : undefined);
 };
 
 /** The wallet's own ETH: the number a trader expects to see first. */
@@ -266,7 +276,10 @@ const withdraw = async (event: Event): Promise<void> => {
     render(state);
     banner(`Paid. Transaction ${String(result["payoutTx"]).slice(0, 10)}…`, "ok");
   } catch (error) {
-    banner(describe(error), "error");
+    // A payout Chit cannot make, or a paused pool, is the refused state (T077): what happened, try again, the exit beside it. Anything else is a banner.
+    const refusal = error instanceof RequestFailed ? withdrawRefusal({ code: error.code, ...(error.reason ? { reason: error.reason } : {}) }) : undefined;
+    if (refusal) showRefusal(refusal);
+    else banner(describe(error), "error");
   }
 };
 
@@ -334,6 +347,7 @@ el("deposit-submit").addEventListener("click", () => {
 });
 
 el("withdraw-form").addEventListener("submit", (event) => void withdraw(event));
+el("withdraw-retry").addEventListener("click", () => { showRefusal(undefined); (el("withdraw-form") as HTMLFormElement).requestSubmit(); });
 el("exit-request").addEventListener("click", () => {
   if (state && BigInt(state.deposited) === 0n) {
     banner("Nothing to exit: you have not deposited anything.", "pending");

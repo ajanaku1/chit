@@ -193,9 +193,9 @@ This alone is a viable beta.
 
 ## Phase 5: US3 — Told the truth when Chit cannot pay (P2)
 
-- [ ] T077 [US3] [F] Add the refused state to the withdrawal surface in `app/src/fleet/`: what happened, try again, and the exit beside it
-- [ ] T078 [US3] [F] Use the same state for a paused pool, keeping the exit reachable
-- [ ] T079 [P] [US3] [F] Test that a refusal records no charge and the exit remains available
+- [x] T077 [US3] [F] Add the refused state to the withdrawal surface in `app/src/fleet/`: what happened, try again, and the exit beside it
+- [x] T078 [US3] [F] Use the same state for a paused pool, keeping the exit reachable
+- [x] T079 [P] [US3] [F] Test that a refusal records no charge and the exit remains available
 
 ---
 
