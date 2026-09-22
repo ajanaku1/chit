@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { describe, it } from "node:test";
 
 import { decodeEventLog, formatEther, parseAbi, parseEther, type Address, type Hex } from "viem";
@@ -33,7 +34,8 @@ const Q96 = 2n ** 96n;
 
 describe("the token registry on the 4663 fork", () => {
   it("every entry: the pinned pool is live and deep enough, the token transfers whole, and a buy lands inside the bound", async () => {
-    const registry = readTokenRegistry(JSON.parse(await readFile(new URL("../../deployments/token-registry-4663.json", import.meta.url), "utf8")), 4663);
+    // From the repository root, not from this file: compiled, this test runs from dist/ (verify-full), where no deployments/ sits beside it.
+    const registry = readTokenRegistry(JSON.parse(await readFile(path.resolve("deployments/token-registry-4663.json"), "utf8")), 4663);
     assert.ok(registry.tokens.length > 0, "the registry names at least one token");
 
     const { viem, provider } = await connectRobinhoodMainnetFork();
