@@ -9,7 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { LOCK_TTL_MS, type IdempotencyRecord, type OwedSpend, type SentBatch, type StorePort } from "./store.js";
+import { COOLDOWN_MS, FAILURE_LIMIT, FAILURE_WINDOW_MS, LOCK_TTL_MS, type IdempotencyRecord, type OwedSpend, type SentBatch, type StorePort } from "./store.js";
 import type { Address, Hex, Uint } from "./types.js";
 
 /** What `neon(url)` provides; typed here so tests can hand in a fake. */
@@ -52,6 +52,14 @@ const SCHEMA = [
   `ALTER TABLE fleet_owed_spend ADD COLUMN IF NOT EXISTS nonce BIGINT`,
   `ALTER TABLE fleet_owed_spend ADD COLUMN IF NOT EXISTS voided BOOLEAN NOT NULL DEFAULT FALSE`,
   `ALTER TABLE fleet_owed_spend ADD COLUMN IF NOT EXISTS sent_kind TEXT`,
+  `CREATE TABLE IF NOT EXISTS fleet_campaign_failures (
+     campaign TEXT NOT NULL,
+     failed_at BIGINT NOT NULL
+   )`,
+  `CREATE TABLE IF NOT EXISTS fleet_campaign_cooldowns (
+     campaign TEXT PRIMARY KEY,
+     closed_until BIGINT NOT NULL
+   )`,
 ];
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -176,6 +184,24 @@ export const createNeonStore = (
       if (ids.length === 0) return;
       const set = to === "confirmed" ? "queued_tx = tx_hash" : to === "void" ? "voided = TRUE" : "tx_hash = NULL, nonce = NULL, sent_kind = NULL, leased_until = 0";
       await sql.query(`UPDATE fleet_owed_spend SET ${set} WHERE id = ANY($1::text[])`, [[...ids]]);
+    },
+    failures: {
+      async record(campaign, at) {
+        await sql.query("INSERT INTO fleet_campaign_failures (campaign, failed_at) VALUES ($1, $2)", [campaign, at]);
+        const [row] = await sql.query("SELECT COUNT(*)::int AS n FROM fleet_campaign_failures WHERE campaign = $1 AND failed_at > $2", [campaign, at - FAILURE_WINDOW_MS]);
+        if (Number(row?.["n"] ?? 0) < FAILURE_LIMIT) return undefined;
+        const until = at + COOLDOWN_MS;
+        await sql.query(
+          "INSERT INTO fleet_campaign_cooldowns (campaign, closed_until) VALUES ($1, $2) ON CONFLICT (campaign) DO UPDATE SET closed_until = GREATEST(fleet_campaign_cooldowns.closed_until, $2)",
+          [campaign, until],
+        );
+        await sql.query("DELETE FROM fleet_campaign_failures WHERE campaign = $1", [campaign]);
+        return until;
+      },
+      async closedUntil(campaign, now) {
+        const [row] = await sql.query("SELECT closed_until FROM fleet_campaign_cooldowns WHERE campaign = $1 AND closed_until > $2", [campaign, now]);
+        return row ? Number(row["closed_until"]) : undefined;
+      },
     },
   };
 };

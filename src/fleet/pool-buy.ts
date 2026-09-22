@@ -119,7 +119,8 @@ export type DrawSummary = {
 };
 
 export type PooledBuy = { account: Address; value: Uint; callData: Hex; maxCost: Uint };
-export type PooledBuyOutcome = { account: Address; status: "sponsored" | "rejected"; txHash?: Hex; reason?: string };
+/** `spentGas`: the rejection was a transaction that reverted on chain, so the operator paid for it; a refusal before any send spent nothing (T069 counts only these). */
+export type PooledBuyOutcome = { account: Address; status: "sponsored" | "rejected"; txHash?: Hex; reason?: string; spentGas?: boolean };
 export type PooledBuyInput = {
   campaign: Hex;
   depositor: Address;
@@ -670,7 +671,7 @@ export const createPoolService = (
     const landed = outcome.status === "mined" || (outcome.status === "unknown" && after > before);
     if (!landed) {
       console.warn(`buy ${outcome.status} for ${buy.account}: ${outcome.hash}`);
-      return { account: buy.account, status: "rejected", reason: outcome.status === "reverted" ? outcome.reason ?? "execution_refused" : outcome.status };
+      return { account: buy.account, status: "rejected", reason: outcome.status === "reverted" ? outcome.reason ?? "execution_refused" : outcome.status, ...(outcome.status === "reverted" ? { spentGas: true, txHash: outcome.hash } : {}) };
     }
     return { account: buy.account, status: "sponsored", txHash: outcome.hash, charged: after - before };
   }

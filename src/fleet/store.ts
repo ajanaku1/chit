@@ -69,7 +69,25 @@ export type StorePort = {
   sentBatches(): Promise<SentBatch[]>;
   /** What the hash came to. `sent --exception--> owed` is the transition that does not exist. */
   resolveSent(ids: readonly string[], to: SentResolution): Promise<void>;
+  /**
+   * The campaign failure counter (specs/003-mainnet-beta/data-model.md,
+   * T069): buys that spent gas without completing, by campaign, and the
+   * time until which the campaign takes no buys once three fell inside an
+   * hour. Held here so a second instance counts the same failures. A refusal
+   * that spent nothing is never recorded.
+   */
+  failures: {
+    /** Records one gas-spending failure at `at`; returns the moment the campaign reopens when this was the third inside the window, else undefined. */
+    record(campaign: string, at: number): Promise<number | undefined>;
+    /** When the campaign accepts buys again, or undefined when it does now. */
+    closedUntil(campaign: string, now: number): Promise<number | undefined>;
+  };
 };
+
+/** Three gas-spending failures inside an hour close a campaign for an hour (FR-0xx, the spec's clarification). */
+export const FAILURE_LIMIT = 3;
+export const FAILURE_WINDOW_MS = 60 * 60_000;
+export const COOLDOWN_MS = 60 * 60_000;
 
 /** Default lease on an operator lock: long enough for a five-account buy with receipts, short enough that a dead instance frees it. */
 export const LOCK_TTL_MS = 120_000;
@@ -82,6 +100,8 @@ export const createMemoryStore = (): StorePort => {
   const nonces = new Map<string, number>();
   const locks = new Map<string, Promise<unknown>>();
   const owed = new Map<string, OwedRow>();
+  const failures = new Map<string, number[]>();
+  const cooldowns = new Map<string, number>();
 
   const pruneNonces = (now: number): void => {
     for (const [nonce, expiresAt] of nonces) if (expiresAt <= now) nonces.delete(nonce);
@@ -158,6 +178,22 @@ export const createMemoryStore = (): StorePort => {
         else if (to === "void") row.voided = true;
         else { delete row.txHash; delete row.nonce; delete row.kind; row.leased = false; }
       }
+    },
+    failures: {
+      async record(campaign, at) {
+        const recent = (failures.get(campaign) ?? []).filter((t) => t > at - FAILURE_WINDOW_MS);
+        recent.push(at);
+        failures.set(campaign, recent);
+        if (recent.length < FAILURE_LIMIT) return undefined;
+        const until = at + COOLDOWN_MS;
+        cooldowns.set(campaign, until);
+        failures.set(campaign, []);
+        return until;
+      },
+      async closedUntil(campaign, now) {
+        const until = cooldowns.get(campaign);
+        return until !== undefined && until > now ? until : undefined;
+      },
     },
   };
 };

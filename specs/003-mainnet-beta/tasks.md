@@ -178,14 +178,14 @@ This alone is a viable beta.
 - [x] T066 [US2] [F] Quote through the existing `pool-registry.ts` discovery and `market.ts` arithmetic rather than the single full-range formula at `src/fleet/market.ts:118`
 - [x] T067 [US2] [F] Refuse a buy that would land outside the token's bound, before any transaction is sent
 - [x] T068 [US2] [F] Show the bound as the least the depositor will receive, as part of the quote they accept
-- [ ] T069 [US2] [F] Add the per-campaign failure counter to `src/fleet/store.ts` and its adapters, counting only gas-spending failures
-- [ ] T070 [US2] [F] Refuse buys on a campaign with three failures in the last hour, telling the depositor why and when it reopens
-- [ ] T071 [US2] [F] Bind the token picker to enabled registry entries only in `app/src/fleet/`
-- [ ] T072 [US2] [F] Make disabling an entry stop new buys without affecting tokens already held, and keep the owner's path to move them
+- [x] T069 [US2] [F] Add the per-campaign failure counter to `src/fleet/store.ts` and its adapters, counting only gas-spending failures
+- [x] T070 [US2] [F] Refuse buys on a campaign with three failures in the last hour, telling the depositor why and when it reopens
+- [x] T071 [US2] [F] Bind the token picker to enabled registry entries only in `app/src/fleet/`
+- [x] T072 [US2] [F] Make disabling an entry stop new buys without affecting tokens already held, and keep the owner's path to move them
 - [x] T073 [P] [US2] [F] Replace `finding_M6` with a sibling showing the encoded buy names the real pool
 - [x] T074 [US2] [F] Fork test on 4663 per listed token: quote and execution agree within the bound
 - [x] T075 [US2] [F] Check and record each candidate from T062: transfer behaviour, holder restrictions, pool key, liquidity at fifty times the draw cap
-- [ ] T076 [P] [US2] [F] Test that a disabled entry is never offered, no path trades it, and holdings of it remain movable
+- [x] T076 [P] [US2] [F] Test that a disabled entry is never offered, no path trades it, and holdings of it remain movable
 
 **Checkpoint**: Real trading against real pools.
 

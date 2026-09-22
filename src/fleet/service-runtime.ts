@@ -21,7 +21,7 @@ import { ledgerKey } from "./pool-ledger.js";
 import { createPoolService, type PoolPort } from "./pool-buy.js";
 import { createNeonReadCache } from "./pool-reads-neon.js";
 import { mainnetPreflight } from "./service-preflight.js";
-import { enabledTokens, readTokenRegistry, type TokenRegistry } from "./token-registry.js";
+import { readTokenRegistry, type TokenRegistry } from "./token-registry.js";
 import { readFileSync } from "node:fs";
 import { createMemoryStore, type StorePort } from "./store.js";
 import { createNeonStore } from "./store-neon.js";
@@ -416,7 +416,8 @@ export const getFleetRouter = (): CampaignRouter => {
     ...(allowedTokens ? { allowedTokens } : {}),
     ...(registry ? { registry } : {}),
     // The portfolio shows what the venue trades: the registry's enabled tokens, else the allowlist, else the venue's coin, which only testnet records.
-    ...(registry ? { venueTokens: enabledTokens(registry).map((e) => e.token) } : allowedTokens ? { venueTokens: allowedTokens } : DEPLOYED_46630.venueToken ? { venueTokens: [DEPLOYED_46630.venueToken] } : {}),
+    // The portfolio shows every registry token, disabled ones too: what a fleet holds of a token stays visible and movable after its entry is disabled (T072).
+    ...(registry ? { venueTokens: registry.tokens.map((e) => e.token) } : allowedTokens ? { venueTokens: allowedTokens } : DEPLOYED_46630.venueToken ? { venueTokens: [DEPLOYED_46630.venueToken] } : {}),
     ...(maxSlippageBps !== undefined ? { maxSlippageBps } : {}),
     // Without the pool, balance and withdrawal answer 503 the same way.
     ...(pool ? { pool } : {}),

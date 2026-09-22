@@ -21,7 +21,7 @@ import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } fro
 import { DRAW_CAP, MIN_GAS_CEILING, WithdrawalRefused, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
-import { anyEntry, type TokenRegistry } from "./token-registry.js";
+import { anyEntry, enabledTokens, type TokenRegistry } from "./token-registry.js";
 import { BPS, UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall, minOutFor, type PoolKey } from "./v4-swap.js";
 import {
   FleetValidationError,
@@ -207,6 +207,12 @@ export class CampaignRouter {
       const wallet = String(body["primaryWallet"] ?? "");
       const poolAddress = this.#deps.poolAddress;
       return { status: 200, body: { ...(await this.#quote(wallet as Address, this.#randomId())), ...(poolAddress ? { poolAddress } : {}) } };
+    }
+    if (action === "tokens") {
+      // The tokens a depositor may be offered (T071): the registry's enabled entries and nothing else; without a registry, nothing, and the page keeps its free entry.
+      const registry = this.#deps.registry;
+      const tokens = registry ? enabledTokens(registry).map((e) => ({ token: e.token, symbol: e.symbol, decimals: e.decimals, boundBps: e.slippageBps })) : [];
+      return { status: 200, body: { tokens } };
     }
     if (action === "challenge") {
       return {
@@ -664,11 +670,23 @@ export class CampaignRouter {
       state: record.state, spentGas: this.#budget(record).spent, now,
     });
 
+    // Three buys that spent gas without completing inside an hour close the
+    // campaign for an hour (T070): told why, and when it reopens. A refusal
+    // that spent nothing never counts, so a price that moved is not a failure.
+    const closedUntil = await this.#store.failures.closedUntil(record.id, now.getTime());
+    if (closedUntil !== undefined) throw new PolicyRejection(`campaign_cooling_down:${new Date(closedUntil).toISOString()}`);
+
     const results: Record<string, unknown>[] = this.#deps.pool && record.draw
       ? await this.#buyFromPool(record, session, requested, token, value, now, wallet, acceptedOut)
       : chain
         ? await this.#buyOnChain(record, session, chain, requested, token, value, now, acceptedOut)
         : await this.#buyInMemory(record, session, submitter!, requested, token, value, now);
+    for (const result of results) {
+      if (result["status"] === "rejected" && result["spentGas"] === true) {
+        const reopens = await this.#store.failures.record(record.id, now.getTime());
+        if (reopens !== undefined) console.warn(`fleet buy: campaign closed for an hour after three gas-spending failures; reopens ${new Date(reopens).toISOString()}`);
+      }
+    }
 
     // FR edge case: the campaign depletes when the remainder cannot fund
     // another permitted request.
@@ -765,9 +783,11 @@ export class CampaignRouter {
     const quote = await this.#market().tokenQuote(token as Address, totalWei, this.#poolKeyFor(token));
     if (!quote.hasPool) throw new TradeValidationError("no_pool");
 
+    // The fill the depositor accepted: the one they were shown at placement, kept as given when the order comes back to execute.
+    const acceptedOut = /^\d+$/.test(String(body["acceptedOut"] ?? "")) ? String(body["acceptedOut"]) : quote.estimatedOut;
     const draft: Omit<Order, "id"> = {
       campaign: record.id, token: token as Address, totalWei, wallets, seed: seed as Hex,
-      windowMs: Number(body["windowMs"] ?? windowFor(record.policy.accounts)), createdAt, owner,
+      windowMs: Number(body["windowMs"] ?? windowFor(record.policy.accounts)), createdAt, owner, acceptedOut,
     };
     let slices: Slice[];
     try {
@@ -807,11 +827,19 @@ export class CampaignRouter {
     const executed: Record<string, unknown>[] = [];
     for (const slice of due) {
       // One slice at a time: sizes differ per wallet, and the pooled path takes one value per call.
-      const results = this.#deps.pool && record.draw
-        ? await this.#buyFromPool(record, session, [slice.wallet], order.token, slice.amountWei, now, wallet)
-        : chain
-          ? await this.#buyOnChain(record, session, chain, [slice.wallet], order.token, slice.amountWei, now)
-          : await this.#buyInMemory(record, session, submitter!, [slice.wallet], order.token, slice.amountWei, now);
+      // The slice's share of the fill accepted for the whole order; a price that moved past the bound refuses this slice before it is sent, and only this slice.
+      const acceptedOut = order.acceptedOut ? (BigInt(order.acceptedOut) * BigInt(slice.amountWei)) / BigInt(order.totalWei) : undefined;
+      let results: Record<string, unknown>[];
+      try {
+        results = this.#deps.pool && record.draw
+          ? await this.#buyFromPool(record, session, [slice.wallet], order.token, slice.amountWei, now, wallet, acceptedOut)
+          : chain
+            ? await this.#buyOnChain(record, session, chain, [slice.wallet], order.token, slice.amountWei, now, acceptedOut)
+            : await this.#buyInMemory(record, session, submitter!, [slice.wallet], order.token, slice.amountWei, now);
+      } catch (error) {
+        if (!(error instanceof PolicyRejection)) throw error;
+        results = [{ status: "rejected", reason: error.reason }];
+      }
       const result = results[0] ?? { status: "rejected", reason: "no_result" };
       if (result["status"] !== "sponsored") console.warn(`trade: slice ${slice.index} of ${order.id} ${String(result["status"])}: ${String(result["reason"] ?? "")}`);
       if (result["status"] !== "sponsored") await this.#store.releaseSlice(`${order.id}|${slice.index}`);

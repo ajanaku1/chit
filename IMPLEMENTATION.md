@@ -2500,3 +2500,22 @@ the authorship stays theirs; the founder's route wiring (T065–T068, T073) sits
 on top of its API, and the mainnet preflight now also wants
 `FLEET_POOL_MANAGER_ADDRESS`, since the file does not carry it. T074 and T075
 are Lucian's; HEY and ORUS wait on addresses.
+
+## The failure counter, the picker and the accepted fill, Phase 4 done (2026-09-22, T069–T072, T076)
+
+Three buys that spent gas without completing inside an hour close a campaign
+for an hour, counted in the shared store so every instance agrees, and the
+depositor is told when it reopens; a refusal that spent nothing, a moved
+price, a never-mined transaction, none of them counts. The Trade page's token
+field becomes a list of the registry's enabled entries where the service keeps
+one (`tokens`, unsigned), and stays a free entry on the testnet; the quote
+shows the least the fleet will receive beside the estimate; an order carries
+the fill accepted at placement and each slice is refused before it is sent,
+alone, when the pool no longer gives its share inside the bound. A disabled
+entry is never listed and no path trades it, while what a fleet holds of it
+stays in the portfolio, and the owner's own path to move it is untouched.
+Phase 4's checkpoint holds: real trading against real pools, the pool pinned
+per token. 533 fleet tests, 240 app.
+
+Open in the phase: HEY and ORUS, named by Lucian, wait on their teams'
+addresses and the fork's measure before an entry is written (T062).

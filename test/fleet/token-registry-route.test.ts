@@ -40,7 +40,8 @@ const registry = readTokenRegistry({
   ],
 }, 4663);
 
-const makeRouter = (quoteOut = "1000000") => {
+const makeRouter = (initialQuote = "1000000") => {
+  let quoteOut = initialQuote;
   const service = new CampaignService(serviceConfig);
   const draw: DrawSummary = { amount: parseEther("0.02").toString(), spent: "0", remaining: parseEther("0.02").toString(), dueAt: "2026-09-08T12:05:00.000Z", state: "Funded" };
   const bought: PooledBuy[] = [];
@@ -55,11 +56,12 @@ const makeRouter = (quoteOut = "1000000") => {
   const session = { chainId: 4663n, router: policy.router as Address, selector: "0x24856bc3", maxTradeValue: 10n ** 15n, perAccountGas: 2n * 10n ** 14n, totalGas: 10n ** 15n, expiry: 1_800_000_000n, spentGas: 0n, paused: false, revoked: false, exists: true } as OnChainSession;
   const chain = { registerCampaign: async () => undefined, readBudget: async () => ({ funded: "0", reserved: "0", spent: "0", unused: "0" }), activate: async () => [owner(11), owner(12), owner(13), owner(14), owner(15)], buy: async () => ({ results: [], budget: { funded: "0", reserved: "0", spent: "0", unused: "0" } }), loadCampaign: async () => undefined, isEnrolled: async () => true, accountsOf: async () => [owner(11), owner(12), owner(13), owner(14), owner(15)], sessionOf: async () => session, control: async () => `0x${"c".repeat(64)}` } as FleetChain;
   const market = {
-    tokenQuote: async (token: Address, _amount: string, poolKey?: unknown) => { quoted.push({ token, poolKey }); return { token, symbol: "CHIT", decimals: 18, hasPool: true, sqrtPriceX96: "1", estimatedOut: quoteOut }; },
+    // The quote scales with the amount, as a pool's does: quoteOut is the fill for 0.001 ETH.
+    tokenQuote: async (token: Address, amount: string, poolKey?: unknown) => { quoted.push({ token, poolKey }); return { token, symbol: "CHIT", decimals: 18, hasPool: true, sqrtPriceX96: "1", estimatedOut: ((BigInt(quoteOut) * BigInt(amount)) / 1_000_000_000_000_000n).toString() }; },
     holdings: async () => [], campaignsOf: async () => [],
   };
-  const deps: RouterDeps = { service, pool, chain, market, registry };
-  return { router: new CampaignRouter(deps), service, bought, quoted };
+  const deps: RouterDeps = { service, pool, chain, market, registry, now: () => new Date("2026-09-22T12:10:00.000Z") };
+  return { router: new CampaignRouter(deps), service, bought, quoted, setQuote: (out: string) => { quoteOut = out; } };
 };
 const signed = async (service: CampaignService, action: string, body: Record<string, unknown>) => {
   const hash = payloadHash(body);
@@ -117,4 +119,29 @@ test("a price that moved past the bound since the depositor accepted the quote i
   const still = await router.handle(await signed(service, "buy", buy(campaign, CHIT, { acceptedOut: "980000" })), key());
   assert.equal(still.status, 200, "inside the bound the buy goes ahead");
   assert.equal(bought.length, 1);
+});
+
+test("the picker's list is the registry's enabled entries and nothing else; a disabled token's holdings stay visible (T071, T072, T076)", async () => {
+  const { router } = makeRouter();
+  const listed = await router.handle({ action: "tokens", body: {} });
+  assert.equal(listed.status, 200);
+  assert.deepEqual((listed.body as { tokens: { symbol: string; boundBps: number }[] }).tokens, [{ token: CHIT, symbol: "CHIT", decimals: 18, boundBps: 300 }], "STK, disabled, is not offered");
+});
+
+test("an order keeps the fill accepted at placement, and a slice whose share the pool no longer gives inside the bound is refused before it is sent, alone", async () => {
+  const { router, service, bought, setQuote } = makeRouter("1000000");
+  const campaign = await activeCampaign(router, service);
+  const placed = await router.handle(await signed(service, "order", { campaign, token: CHIT, totalWei: "1000000000000000", wallets: [owner(11), owner(12)], entropy: `0x${"9".repeat(64)}`, createdAt: "2026-09-22T12:00:00.000Z", windowMs: 60_000 }), key());
+  assert.equal(placed.status, 200, JSON.stringify(placed.body));
+  const order = (placed.body as { order: Record<string, unknown> }).order;
+  assert.equal(order["acceptedOut"], "1000000", "the fill quoted at placement rides with the order");
+  const slices = (placed.body as { slices: { index: number; dueAt: string }[] }).slices;
+
+  setQuote("960000");
+  const run = await router.handle(await signed(service, "trade", { campaign, order, pending: slices.map((s) => s.index) }), key());
+  assert.equal(run.status, 200, JSON.stringify(run.body));
+  const executed = (run.body as { executed: { status: string; reason?: string }[] }).executed;
+  assert.ok(executed.length > 0, "at least one slice was due");
+  assert.ok(executed.every((e) => e.status === "rejected" && e.reason === "price_moved"), JSON.stringify(executed));
+  assert.deepEqual(bought, [], "nothing was sent for a price past the bound");
 });

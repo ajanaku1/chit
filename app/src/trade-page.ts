@@ -30,17 +30,7 @@ import {
   type SliceRecord,
   type WireOrder,
 } from "./fleet/orders.js";
-import {
-  askBeforeSigning,
-  confirmDialog,
-  dropSigningAsk,
-  getConnectedWallet,
-  initHeaderWallet,
-  initShell,
-  loadFleetSnapshot,
-  parseEth,
-  toEth,
-} from "./fleet/page-shared.js";
+import { askBeforeSigning, confirmDialog, dropSigningAsk, fleetApi, getConnectedWallet, initHeaderWallet, initShell, loadFleetSnapshot, parseEth, toEth } from "./fleet/page-shared.js";
 import { forgetSignedReads, readSigned, recentSigned } from "./fleet/signed-read.js";
 import { orderTrade, RequestFailed, SignatureMissing, signedFleetApi } from "./fleet/signed-request.js";
 import { readStatus } from "./fleet/status-read.js";
@@ -52,7 +42,8 @@ const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
 };
 
 type Fleet = { campaign: string; state: string; remaining: string; accounts: number };
-type Quote = { symbol: string; hasPool: boolean; estimatedOut: string; windowMs: number; capWei: string };
+type Quote = { symbol: string; hasPool: boolean; estimatedOut: string; windowMs: number; capWei: string; minOut?: string; boundBps?: number };
+type ListedToken = { token: string; symbol: string; decimals: number; boundBps: number };
 type Holding = { wallet: string; eth: string; tokens: Record<string, string> };
 type HoldingsReply = { holdings?: Holding[]; symbols?: Record<string, string> };
 type PlannedSlice = { index: number; wallet: string; amountWei: string; dueAt: string };
@@ -100,6 +91,7 @@ class TradePage {
       if (this.#quoteTimer !== undefined) window.clearTimeout(this.#quoteTimer);
       this.#quoteTimer = window.setTimeout(() => void this.#quoteToken(), 400);
     });
+    void this.#bindPicker();
     el<HTMLInputElement>("o-total").addEventListener("input", () => this.#preview());
     el<HTMLFormElement>("order-form").addEventListener("submit", (event) => void this.#place(event));
     window.addEventListener("chit-wallet-changed", () => void this.#onWallet());
@@ -249,6 +241,39 @@ class TradePage {
   }
 
   /** Quotes the pasted token against the fleet's current total, on blur or 400ms after typing stops. */
+  /**
+   * The token picker (T071): where the service keeps a registry, the field
+   * becomes a list of its enabled entries and nothing else; a token not in
+   * it is not an error, it is simply not offered. Without a registry the
+   * free entry stays, as on the testnet.
+   */
+  async #bindPicker(): Promise<void> {
+    let listed: ListedToken[] = [];
+    try {
+      const { status, body } = await fleetApi("tokens", { action: "tokens", body: {} });
+      if (status === 200 && Array.isArray(body["tokens"])) listed = body["tokens"] as ListedToken[];
+    } catch {
+      // The free entry stays; the service refuses an unlisted token either way.
+    }
+    if (listed.length === 0) return;
+    const input = el<HTMLInputElement>("o-token");
+    const select = document.createElement("select");
+    select.id = "o-token";
+    select.name = "token";
+    const blank = document.createElement("option");
+    blank.value = "";
+    blank.textContent = "Choose a token";
+    select.append(blank);
+    for (const entry of listed) {
+      const option = document.createElement("option");
+      option.value = entry.token;
+      option.textContent = `${entry.symbol} · ${entry.token.slice(0, 6)}…${entry.token.slice(-4)}`;
+      select.append(option);
+    }
+    select.addEventListener("change", () => void this.#quoteToken());
+    input.replaceWith(select);
+  }
+
   async #quoteToken(): Promise<void> {
     const wallet = this.#wallet;
     const fleet = this.#fleet;
@@ -271,8 +296,12 @@ class TradePage {
       // Typing then leaving the field asks twice for the same quote; a recent answer serves both.
       const quote = (await readSigned(wallet, "tokenQuote", { campaign: fleet.campaign, token, totalWei }, { maxAgeMs: 60_000 })) as Quote;
       this.#quote = quote;
+      // The bound in force, as the least the fleet will receive, beside the estimate (FR-013, T068).
+      const least = quote.hasPool && quote.minOut && quote.boundBps !== undefined
+        ? ` · at least ${toEth(quote.minOut)} ${quote.symbol} (the bound is ${quote.boundBps / 100}%; a fill under it is refused)`
+        : "";
       line.textContent = quote.hasPool
-        ? `${quote.symbol} · pool found · about ${toEth(quote.estimatedOut)} ${quote.symbol} for the total (estimate)`
+        ? `${quote.symbol} · pool found · about ${toEth(quote.estimatedOut)} ${quote.symbol} for the total (estimate)${least}`
         : "No ETH pool for this token on the venue.";
     } catch (error) {
       this.#quote = undefined;
@@ -355,6 +384,8 @@ class TradePage {
         wallets,
         entropy: randomEntropy(),
         createdAt,
+        // The fill accepted here: each slice is refused before it is sent if the pool no longer gives its share inside the bound.
+        acceptedOut: quote.estimatedOut,
       });
       const order = body["order"] as WireOrder;
       const slices: SliceRecord[] = (body["slices"] as PlannedSlice[]).map((slice) => ({
