@@ -2686,3 +2686,15 @@ six items: T088's soak, T091's day-of liquidity, T092's explorer
 verification, T080's deployment, FR-043's named alert receiver, and the
 published promise deployed to production before the change that opens the
 beta (FR-008).
+
+## 2026-09-22: the diary merges itself
+
+`.gitattributes` marks `IMPLEMENTATION.md` `merge=union`. Four pull requests
+in one afternoon (#28, #29, #30, #31) meant four rebases of this file, none
+of which decided anything: every conflict was two entries appended at the
+end, and the resolution was always both. Union is git's built-in driver for
+that, and it applies to rebases as well as merges (checked both ways on a
+scratch repository before committing). It holds only while entries are
+appended and never rewritten, which is said in the file itself and in
+ONBOARDING.md § 7, together with the rest of the routine: `progress.json` is
+generated, so it is regenerated after a rebase rather than merged.

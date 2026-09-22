@@ -1,0 +1,21 @@
+# IMPLEMENTATION.md is a diary: every change appends an entry at the end and
+# nothing edits what is already there. Two branches appending on the same day
+# conflict on every parallel pull request, which is four rebases of the same
+# file in one afternoon (2026-09-22) and no decision in any of them. `union`
+# is git's built-in driver for exactly this: both sides' lines are kept, in
+# order, and no one is asked to choose.
+#
+# What it does NOT do: if two branches change the SAME existing lines, union
+# keeps both versions rather than conflicting, so the file would carry the
+# text twice. That is why entries are appended and never rewritten; a change
+# to an entry already on main is a normal edit, made on main's own copy.
+#
+# landing/public/progress.json is deliberately left out: it is generated, and
+# keeping both sides' lines would make invalid JSON. Resolve it by running
+# `node scripts/progress.mjs` after the rebase, which is the routine written
+# down in ONBOARDING.md § 7.
+#
+# One cosmetic effect: where both sides appended after the same blank line,
+# the kept entries end up adjacent. A markdown heading still renders; add the
+# blank line back when you are next in the file.
+IMPLEMENTATION.md merge=union

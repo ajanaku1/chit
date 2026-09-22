@@ -346,6 +346,24 @@ Work test-first — a failing test paired with its implementation, red-green ord
 visible in the commits. Deviations take the conservative option, get logged in
 `IMPLEMENTATION.md`, and continue.
 
+**Parallel pull requests, and the two files that collide.** `main` takes pull
+requests only, and several of us land work on the same day, so two branches
+routinely touch the same two files. `IMPLEMENTATION.md` resolves itself:
+`.gitattributes` marks it `merge=union`, so both sides' entries are kept, in
+order, on merge and on rebase alike. That works only because the file is
+appended to and never rewritten — union keeps both versions of a line that
+two branches changed, so an edit to an entry already on `main` is made on
+`main`'s own copy, not in a branch that will merge over it.
+`landing/public/progress.json` is generated and cannot be merged that way:
+after a rebase, run `node scripts/progress.mjs`, add it, and continue. The
+whole routine is:
+
+```bash
+git fetch private && git rebase private/main
+node scripts/progress.mjs && git add landing/public/progress.json
+git rebase --continue && git push --force-with-lease
+```
+
 ---
 
 ## 8. Claims discipline
