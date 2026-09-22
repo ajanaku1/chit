@@ -132,7 +132,7 @@ You need a wallet and testnet ETH on Robinhood Chain 46630.
 ## Running locally
 
 ```bash
-git clone https://github.com/ajanaku1/chit-fleet.git
+git clone https://github.com/Chit-org/chit-fleet.git
 cd chit-fleet
 npm ci && npm --prefix app ci
 cp .env.example .env      # then fill in a testnet key

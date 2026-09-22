@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Sync the public mirror (ajanaku1/chit-app) from the private build repo
-# (ajanaku1/chit-fleet), stripping everything that is not shippable.
+# (Chit-org/chit-fleet), stripping everything that is not shippable.
 #
 # Run this after pushing to private. It re-filters the whole history, replays
 # the mirror-only docs patch, and pushes.
@@ -18,7 +18,7 @@ set -euo pipefail
 
 # Overridable so the GitHub workflow can clone and push with its own tokens;
 # by hand, the defaults use whatever credentials git already has.
-PRIVATE_URL="${MIRROR_PRIVATE_URL:-https://github.com/ajanaku1/chit-fleet.git}"
+PRIVATE_URL="${MIRROR_PRIVATE_URL:-https://github.com/Chit-org/chit-fleet.git}"
 PUBLIC_URL="${MIRROR_PUBLIC_URL:-https://github.com/ajanaku1/chit-app.git}"
 PUBLIC_DISPLAY="https://github.com/ajanaku1/chit-app.git"
 BRANCH="main"
