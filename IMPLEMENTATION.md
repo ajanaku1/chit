@@ -2487,3 +2487,16 @@ not an entry: the pool Dexscreener lists for it is quoted in HOOD
 the whole reason the registry is a file. HEY and ORUS wait on their
 addresses from their teams, then the same fork run. `.vercelignore` lets the
 registry file through for the service; nine unit tests hold the rules.
+
+## Two registries the same morning, one kept (2026-09-22)
+
+Lucian built the token registry on `feat/token-registry` the same morning the
+founder built one on `feat/registry-pinned-pool`: the same rules, the same 300
+bps for CHIT, the same hard failure on a wrong `poolId`. Lucian's is kept
+whole (module, file, unit tests, the fork test that measured CHIT at block
+69561387, the candidates and the HOODCAT finding, the `.vercelignore` line
+without which the service on Vercel could not read the file), cherry-picked so
+the authorship stays theirs; the founder's route wiring (T065–T068, T073) sits
+on top of its API, and the mainnet preflight now also wants
+`FLEET_POOL_MANAGER_ADDRESS`, since the file does not carry it. T074 and T075
+are Lucian's; HEY and ORUS wait on addresses.

@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-22T10:36:54.539Z",
-  "commit": "fdddbe9",
-  "committedAt": "2026-09-22T11:26:24+01:00",
-  "commits": 556,
+  "generatedAt": "2026-09-22T10:45:17.354Z",
+  "commit": "beea24d",
+  "committedAt": "2026-09-22T11:41:50+01:00",
+  "commits": 561,
   "tasks": {
-    "done": 144,
+    "done": 146,
     "total": 175,
-    "percent": 82
+    "percent": 83
   },
   "stages": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 63,
+      "done": 65,
       "total": 94,
       "phases": [
         {
@@ -128,7 +128,7 @@
         },
         {
           "name": "US2 — Trade a listed token",
-          "done": 7,
+          "done": 9,
           "total": 15
         },
         {
@@ -187,14 +187,6 @@
         {
           "id": "T072",
           "text": "[US2] [F] Make disabling an entry stop new buys without affecting tokens already held, and keep the owner's path to move them"
-        },
-        {
-          "id": "T074",
-          "text": "[US2] [F] Fork test on 4663 per listed token: quote and execution agree within the bound"
-        },
-        {
-          "id": "T075",
-          "text": "[US2] [F] Check and record each candidate from T062: transfer behaviour, holder restrictions, pool key, liquidity at fifty times the draw cap"
         },
         {
           "id": "T076",

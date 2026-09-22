@@ -21,7 +21,7 @@ import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } fro
 import { DRAW_CAP, MIN_GAS_CEILING, WithdrawalRefused, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
-import type { TokenRegistry } from "./token-registry.js";
+import { anyEntry, type TokenRegistry } from "./token-registry.js";
 import { BPS, UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall, minOutFor, type PoolKey } from "./v4-swap.js";
 import {
   FleetValidationError,
@@ -703,7 +703,7 @@ export class CampaignRouter {
   #refuseUnlisted(token: string): void {
     const registry = this.#deps.registry;
     if (registry) {
-      const entry = registry.entry(token);
+      const entry = anyEntry(registry, token as Address);
       if (!entry) throw new PolicyRejection("token_not_listed");
       if (!entry.enabled) throw new PolicyRejection("token_disabled");
       return;
@@ -714,12 +714,12 @@ export class CampaignRouter {
 
   /** The pool a token is quoted and bought through: the registry's pinned key; without a registry, the venue's default. */
   #poolKeyFor(token: string): PoolKey | undefined {
-    return this.#deps.registry?.entry(token)?.poolKey;
+    return this.#deps.registry ? anyEntry(this.#deps.registry, token as Address)?.poolKey : undefined;
   }
 
   /** The bound in force for a token: its registry entry's, else the operator's tolerance, else 2%. */
   #boundBps(token: string): number {
-    return this.#deps.registry?.entry(token)?.slippageBps ?? this.#deps.maxSlippageBps ?? 200;
+    return (this.#deps.registry ? anyEntry(this.#deps.registry, token as Address)?.slippageBps : undefined) ?? this.#deps.maxSlippageBps ?? 200;
   }
 
   /** Validates an order and returns its plan. Nothing executes here. */

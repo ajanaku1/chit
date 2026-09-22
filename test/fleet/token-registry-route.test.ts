@@ -9,7 +9,7 @@ import type { OnChainSession } from "../../src/fleet/chain-campaign.js";
 import type { FleetChain } from "../../src/fleet/chain-service.js";
 import type { BalanceView, DrawSummary, PoolPort, PooledBuy } from "../../src/fleet/pool-buy.js";
 import { poolIdOf } from "../../src/fleet/pool-registry.js";
-import { parseTokenRegistry } from "../../src/fleet/token-registry.js";
+import { anyEntry, readTokenRegistry } from "../../src/fleet/token-registry.js";
 import type { AuthEnvelope } from "../../src/fleet/types.js";
 import { UNIVERSAL_ROUTER_EXECUTE } from "../../src/fleet/v4-swap.js";
 
@@ -31,12 +31,12 @@ const owner = (n: number): Address => `0x${n.toString(16).padStart(40, "0")}`;
 const salt = (n: number): Hex => `0x${n.toString(16).padStart(64, "0")}`;
 const policy = { chainId: 4663, accounts: 5, router: "0x8876789976decbfcbbbe364623c63652db8c0904", function: UNIVERSAL_ROUTER_EXECUTE, maxTradeValue: "1000000000000000", perAccountGas: "200000000000000", totalGas: "1000000000000000", expiry: "2026-12-31T00:00:00.000Z" };
 
-const registry = parseTokenRegistry({
-  chainId: 4663, poolManager: "0x8366a39cc670b4001a1121b8f6a443a643e40951", router: policy.router,
+const registry = readTokenRegistry({
+  chainId: 4663,
   tokens: [
     { token: CHIT, symbol: "CHIT", decimals: 18, poolKey: { currency0: `0x${"0".repeat(40)}`, currency1: CHIT, fee: 0, tickSpacing: 200, hooks: HOOK }, poolId: "0x84a4f18cfab0b389a63c4d8a56d08f021a6fd5efb0b0b3617cfbbd6706f09f41", slippageBps: 300, enabled: true,
       checks: { ordinaryTransfer: true, holderRestrictions: false, liquidityEth: "7000000000000000000", liquidityMultipleOfDrawCap: 140, forkTest: "x", checkedAt: "2026-09-16" } },
-    { token: STOCK, symbol: "STK", decimals: 18, poolKey: STOCK_KEY, poolId: poolIdOf(STOCK_KEY), enabled: false, checks: {} },
+    { token: STOCK, symbol: "STK", decimals: 18, poolKey: STOCK_KEY, poolId: poolIdOf(STOCK_KEY), enabled: false },
   ],
 }, 4663);
 
@@ -97,7 +97,7 @@ test("a listed token is quoted and bought through its pinned pool, within its ow
   const q = quote.body as { boundBps: number; minOut: string; estimatedOut: string };
   assert.equal(q.boundBps, 300, "the registry's bound, not the operator's default");
   assert.equal(q.minOut, "970000", "the least the depositor will receive, as a figure (T068)");
-  assert.deepEqual(quoted.at(-1)?.poolKey, registry.entry(CHIT)!.poolKey, "quoted on the pinned pool");
+  assert.deepEqual(quoted.at(-1)?.poolKey, anyEntry(registry, CHIT)!.poolKey, "quoted on the pinned pool");
 
   const result = await router.handle(await signed(service, "buy", buy(campaign, CHIT)), key());
   assert.equal(result.status, 200, JSON.stringify(result.body));

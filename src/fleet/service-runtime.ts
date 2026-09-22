@@ -21,7 +21,7 @@ import { ledgerKey } from "./pool-ledger.js";
 import { createPoolService, type PoolPort } from "./pool-buy.js";
 import { createNeonReadCache } from "./pool-reads-neon.js";
 import { mainnetPreflight } from "./service-preflight.js";
-import { parseTokenRegistry, type TokenRegistry } from "./token-registry.js";
+import { enabledTokens, readTokenRegistry, type TokenRegistry } from "./token-registry.js";
 import { readFileSync } from "node:fs";
 import { createMemoryStore, type StorePort } from "./store.js";
 import { createNeonStore } from "./store-neon.js";
@@ -198,13 +198,14 @@ const maxSlippageFromEnv = (): number | undefined => {
 const registryFromEnv = (): TokenRegistry | undefined => {
   const path = process.env.FLEET_TOKEN_REGISTRY || (FLEET_CHAIN_ID === 4663 ? `deployments/token-registry-${FLEET_CHAIN_ID}.json` : undefined);
   if (!path) return undefined;
-  return parseTokenRegistry(JSON.parse(readFileSync(path, "utf8")), FLEET_CHAIN_ID);
+  return readTokenRegistry(JSON.parse(readFileSync(path, "utf8")), FLEET_CHAIN_ID);
 };
 
-const marketFromEnv = (registry?: TokenRegistry): MarketPort | undefined => {
+const marketFromEnv = (): MarketPort | undefined => {
   const key = operatorKeyFromEnv();
   if (!key) return undefined;
-  const poolManager = process.env.FLEET_POOL_MANAGER_ADDRESS || registry?.poolManager || DEPLOYED_46630.poolManager;
+  // On mainnet the pool manager is named in the environment (the preflight requires it); testnet's is recorded.
+  const poolManager = process.env.FLEET_POOL_MANAGER_ADDRESS || DEPLOYED_46630.poolManager;
   const escrow = process.env.FLEET_ESCROW_ADDRESS || DEPLOYED_46630.escrow;
   if (!isAddress(poolManager) || !isAddress(escrow)) return undefined;
   const { publicClient } = clients(key);
@@ -398,7 +399,7 @@ export const getFleetRouter = (): CampaignRouter => {
     addressFault = `the token registry does not load: ${error instanceof Error ? error.message : String(error)}`;
     console.error(`fleet service misconfigured: ${addressFault}`);
   }
-  const market = marketFromEnv(registry);
+  const market = marketFromEnv();
   const allowedTokens = allowedTokensFromEnv();
   const maxSlippageBps = maxSlippageFromEnv();
   if (!allowedTokens) console.warn("FLEET_TOKEN_ALLOWLIST is not set: sponsored buys may target any token");
@@ -415,7 +416,7 @@ export const getFleetRouter = (): CampaignRouter => {
     ...(allowedTokens ? { allowedTokens } : {}),
     ...(registry ? { registry } : {}),
     // The portfolio shows what the venue trades: the registry's enabled tokens, else the allowlist, else the venue's coin, which only testnet records.
-    ...(registry ? { venueTokens: registry.enabled().map((e) => e.token) } : allowedTokens ? { venueTokens: allowedTokens } : DEPLOYED_46630.venueToken ? { venueTokens: [DEPLOYED_46630.venueToken] } : {}),
+    ...(registry ? { venueTokens: enabledTokens(registry).map((e) => e.token) } : allowedTokens ? { venueTokens: allowedTokens } : DEPLOYED_46630.venueToken ? { venueTokens: [DEPLOYED_46630.venueToken] } : {}),
     ...(maxSlippageBps !== undefined ? { maxSlippageBps } : {}),
     // Without the pool, balance and withdrawal answer 503 the same way.
     ...(pool ? { pool } : {}),

@@ -16,7 +16,7 @@ import { fleetChain } from "../../src/fleet/service-runtime.js";
 import { createMemoryStore, type StorePort } from "../../src/fleet/store.js";
 import { UNIVERSAL_ROUTER_EXECUTE, encodeBuyCall } from "../../src/fleet/v4-swap.js";
 import { poolIdFor } from "../../src/fleet/market.js";
-import { parseTokenRegistry } from "../../src/fleet/token-registry.js";
+import { anyEntry, readTokenRegistry } from "../../src/fleet/token-registry.js";
 import { readFileSync } from "node:fs";
 
 /**
@@ -295,9 +295,9 @@ describe("M6: the venue", () => {
   // Replaces finding_M6 (T073): the buy is encoded with the registry's pinned key, hook and all, and the quote reads that pool.
   it("fixed_M6: a fleet buy of CHIT names the recorded pool on 4663, and the quote is of that pool", () => {
     const recorded = { currency0: `0x${"0".repeat(40)}` as Address, currency1: CHIT, fee: 0, tickSpacing: 200, hooks: "0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044" as Address };
-    const registry = parseTokenRegistry(JSON.parse(readFileSync("deployments/token-registry-4663.json", "utf8")), 4663);
-    const entry = registry.entry(CHIT)!;
-    assert.deepEqual(entry.poolKey, recorded, "the registry pins the launchpad's pool");
+    const registry = readTokenRegistry(JSON.parse(readFileSync("deployments/token-registry-4663.json", "utf8")), 4663);
+    const entry = anyEntry(registry, CHIT)!;
+    assert.deepEqual({ ...entry.poolKey, hooks: entry.poolKey.hooks.toLowerCase() }, { ...recorded, hooks: recorded.hooks.toLowerCase() }, "the registry pins the launchpad's pool");
     assert.equal(entry.poolId, "0x84a4f18cfab0b389a63c4d8a56d08f021a6fd5efb0b0b3617cfbbd6706f09f41");
     assert.equal(poolIdFor(CHIT, entry.poolKey), entry.poolId, "the quote reads the pinned pool, not the venue's default");
     const data = encodeBuyCall(UNIVERSAL_ROUTER_EXECUTE, CHIT, parseEther("0.01"), new Date(0), 1n, entry.poolKey).toLowerCase();
