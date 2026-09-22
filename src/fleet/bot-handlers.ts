@@ -46,6 +46,7 @@ import type { TokenPlateRenderer } from "./bot-token-card.js";
 import { heyLine } from "./bot-hey.js";
 import type { OrusScanner } from "./bot-orus.js";
 import { orusLine } from "./bot-orus.js";
+import { partnerLine } from "./bot-share.js";
 import { minimumDraw } from "./pool-buy.js";
 import type { Address, Hex } from "./types.js";
 import { minOutFor } from "./v4-swap.js";
@@ -754,7 +755,8 @@ export class ChitBot {
     const draw = this.#d.share;
     if (!draw) return this.#positions(chatId, tgId);
     if (!isAddress(token)) return this.#say(chatId, "that is not a token address.", kb(back("positions")));
-    const [info, held, trades] = await Promise.all([this.#d.chain.tokenInfo(token), this.#d.chain.tokenBalance(token, wallet.address), this.#d.store.tradesOf(tgId, token)]);
+    // The partners are asked alongside the reads, the same patience as on the token card; the card carries their lines when they answered.
+    const [info, held, trades, orus, hey] = await Promise.all([this.#d.chain.tokenInfo(token), this.#d.chain.tokenBalance(token, wallet.address), this.#d.store.tradesOf(tgId, token), this.#d.orus?.scan(token), this.#d.hey?.scan(token)]);
     if (held === 0n) return this.#say(chatId, `you hold no ${esc(info.symbol)} right now; a card needs a position.`, kb(back("positions")));
     if (!trades.some((t) => t.side === "buy")) return this.#say(chatId, `no ${esc(info.symbol)} was bought through this bot, so there is no cost to put on a card. buy some here and the card is one tap.`, kb([btn(`buy ${info.symbol}`, `buy:${token}`)], back("positions")));
     const paid = trades.reduce((sum, t) => sum + (t.side === "buy" ? BigInt(t.ethWei) : -BigInt(t.ethWei)), 0n);
@@ -763,6 +765,10 @@ export class ChitBot {
     const png = await draw({
       symbol: info.symbol, costEth: Number(formatUnits(paid, 18)), valueEth: Number(formatUnits(worth, 18)), held: fmt(held, info.decimals, 2),
       chainLabel: "robinhood chain", testnet: this.#d.chain.chainId !== 4663, refLink: link,
+      partners: [
+        ...(orus && this.#d.orus ? [partnerLine("orus", orusLine(orus, this.#d.orus.link(token)))] : []),
+        ...(hey ? [partnerLine("hey research lab", heyLine(hey))] : []),
+      ],
     });
     const pnl = paid > 0n ? `${worth >= paid ? "+" : ""}${((Number(formatUnits(worth - paid, 18)) / Number(formatUnits(paid, 18))) * 100).toFixed(1)}%` : "free ride";
     await this.#d.telegram.deliver({

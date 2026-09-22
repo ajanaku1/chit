@@ -7,7 +7,7 @@ import type { BotChain, TokenInfo } from "../../src/fleet/bot-chain.js";
 import { BRIDGE_ORIGINS, createRelayBridge, type BotBridge } from "../../src/fleet/bot-bridge.js";
 import { fleetPhase, type FleetApi } from "../../src/fleet/bot-fleet.js";
 import { ChitBot, type Update } from "../../src/fleet/bot-handlers.js";
-import { CARD_HEIGHT, CARD_WIDTH, createShareRenderer, shareCardSvg, type ShareCard, type ShareRenderer } from "../../src/fleet/bot-share.js";
+import { CARD_HEIGHT, CARD_WIDTH, createShareRenderer, partnerLine, shareCardSvg, type ShareCard, type ShareRenderer } from "../../src/fleet/bot-share.js";
 import type { TokenPlate, TokenPlateRenderer } from "../../src/fleet/bot-token-card.js";
 import { RecordingTelegram, type Keyboard, type Outgoing } from "../../src/fleet/bot-telegram.js";
 import { MemoryBotWalletStore, RefCodeTaken, SealError, checkCanary, open, openKey, refCodeOf, seal, sealCanary, sealKey, walletAad, type BotWallet, type BotWalletStore } from "../../src/fleet/bot-wallets.js";
@@ -862,4 +862,18 @@ test("with a plate renderer the token card is a picture with the caption's facts
   await bot.handle(dm(PEPE));
   assert.equal(telegram.sent.at(-1)!.kind, "send");
   assert.match(telegram.last(), /<b>PEPE<\/b>/);
+});
+
+test("the card carries the partners' lines as plain text when they answered, and makes room for them", () => {
+  const orus = partnerLine("orus", `honeypot unknown · bundled 29% · top 10 hold 25% · 502 holders · liq $22k, burned · deployer 11 launches · <a href="https://www.orusagent.xyz/token/4663/0x1">checked by orus</a>`);
+  const hey = partnerLine("hey research lab", `shipping · 204 commits · 1 release · verified builder · <a href="https://heyresearch.xyz/project/chit">see on HEY</a>`);
+  assert.equal(hey, "hey research lab: shipping · 204 commits · 1 release · verified builder", "tags and the arrow text gone");
+  assert.ok(orus.length <= 100 && orus.endsWith(" …") && !orus.includes("· …"), "a long line is cut at a whole segment: " + orus);
+  const base: ShareCard = { symbol: "CHIT", costEth: 0.233, valueEth: 0.889, held: "17.9M", chainLabel: "robinhood chain", testnet: false, refLink: "t.me/x?start=r-a" };
+  const plain = shareCardSvg(base), withLines = shareCardSvg({ ...base, partners: [orus, hey] });
+  assert.match(plain, /y1="650"/, "no partners: the rule where it always was");
+  assert.doesNotMatch(plain, /hey research lab/);
+  assert.ok(withLines.includes("hey research lab:</tspan>"), "the label in its own colour");
+  assert.match(withLines, /y1="698"/, "two lines: the rule moves down");
+  assert.match(withLines, /verified builder/);
 });
