@@ -158,11 +158,31 @@ its own session factory:
       — the factory deployed on 46630. It is written per chain now, never
       copied, so a build that names the wrong chain ships no factory at all
       rather than one that answers wrongly (`app/test/two-hosts.test.ts`).
-- [ ] everything else the current project has for 46630: `DATABASE_URL`,
-      `CRON_SECRET`, `FLEET_LEDGER_KEY`, `FLEET_NONCE_SECRET`, the testnet
-      addresses. Copy them from the existing project rather than typing
-      them; a testnet ledger key that differs from the one that sealed the
-      existing charges cannot open them.
+- [ ] `FLEET_RPC_URL=https://rpc.testnet.chain.robinhood.com`
+- [ ] **its own `DATABASE_URL`**, a new database, never the beta's. The store
+      is not scoped by chain — `fleet_owed_spend`, `fleet_locks`,
+      `fleet_idempotency` have no chain column — so two hosts sharing one
+      database means the playground's sweep reads the beta's owed charges and
+      tries to post them against the testnet pool, and the two fight over one
+      operator lock. Separate databases, and the question never arises.
+- [ ] `CRON_SECRET` and `FLEET_NONCE_SECRET`, fresh values of its own
+- [ ] `DEPLOYER_PRIVATE_KEY`, the same 46630 operator the pool records
+- [ ] `FLEET_LEDGER_KEY`, **the same value the current project has**: a
+      different key cannot open the charges already sealed in the 46630 pool
+- [ ] `FLEET_POOL_ADDRESS`, `FLEET_POLICY_ADDRESS`, `FLEET_FACTORY_ADDRESS`,
+      `FLEET_ESCROW_ADDRESS`, `FLEET_ESCROW_BLOCK`, today's testnet values
+- [ ] no `CHIT_FEE_THRESHOLD`: the playground is the free one, so no gate
+- [ ] and nothing else. In particular **not** `BUYBACK_KEEPER_KEY` or
+      `BUYBACK_ADDRESS`. `vercel.json` is in the repository, so the new
+      project inherits all six crons, and `/api/buyback/keeper` is fixed to
+      chain 4663 and runs every five minutes: given the key, this host would
+      race the beta's on one account, on a path that spends real ETH. The
+      same goes for `TELEGRAM_*` and `BOT_*`, whose order and watch crons
+      would then run twice. Without the keys those crons fail every five
+      minutes, in the logs and nowhere else, which is the correct failure.
+
+`chit.tools` sits on third-party nameservers, so `testnet.chit.tools` is a
+CNAME added at the registrar, from what Vercel shows when the domain is added.
 
 Check: the playground opens, says testnet 46630, and its cards link to
 itself. Nothing on it links to the beta.
