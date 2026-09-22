@@ -2,8 +2,8 @@
  * Deploys, or redeploys, the fleet set on one chain: FleetSessionPolicy,
  * FleetAccountFactory and FleetPool, tied by `policy.setPool(pool)`, plus a
  * FleetCampaignEscrow when the chain has none yet. Records everything in
- * deployments/fleet-<chainId>.json and writes app/chain-target.json so the
- * app knows which chain it is on and what to say about it.
+ * deployments/fleet-<chainId>.json; the app learns its chain from
+ * FLEET_CHAIN_ID at build time (app/build.mjs), not from a file written here.
  *
  * Two uses, one script:
  *   - testnet (46630, the default): a redeploy after the audit. The old set
@@ -69,7 +69,6 @@ const MAINNET = CHAIN_ID === 4663;
 const DEFAULT_RPC = MAINNET ? "https://rpc.mainnet.chain.robinhood.com" : "https://rpc.testnet.chain.robinhood.com";
 const RPC_URL = process.env.FLEET_RPC_URL || process.env.ROBINHOOD_TESTNET_RPC_URL || DEFAULT_RPC;
 const RECORD = path.resolve(`deployments/fleet-${CHAIN_ID}.json`);
-const CHAIN_TARGET = path.resolve("app/chain-target.json");
 const CHAIN_NAME = MAINNET ? "Robinhood Chain" : "Robinhood Chain Testnet";
 
 const chain = defineChain({
@@ -287,12 +286,7 @@ const main = async (): Promise<void> => {
   console.log(`\nrecorded in ${RECORD}${fresh ? "" : "; the old set is under previous[]"}`);
   console.log(`\nThe admin ${admin} accepts with acceptOwnership() on FleetSessionPolicy ${policy.address} and FleetPool ${pool.address}; until then the deployer still holds both roles.`);
 
-  // --- the app's chain target: which chain, and what to say about it ---
-  const betaNote = MAINNET
-    ? `Beta on Robinhood Chain: capped at ${formatEther(caps.pool)} ETH in the pool, ${formatEther(caps.depositor)} per depositor and ${formatEther(caps.draw)} per draw, not audited by a firm yet. Holders only. The 24 hour self-exit works with Chit offline.`
-    : "";
-  await writeFile(CHAIN_TARGET, `${JSON.stringify({ chainId: CHAIN_ID, chainName: CHAIN_NAME, rpcUrls: [DEFAULT_RPC], beta: MAINNET, betaNote }, null, 2)}\n`);
-  console.log(`wrote ${CHAIN_TARGET}; rebuild the app so it points at ${CHAIN_NAME}`);
+  // The app's chain target is not written here any more: app/build.mjs computes it from FLEET_CHAIN_ID at build time (T054).
 
   // --- what the host has to know ---
   console.log("\nSet these in the host environment, then redeploy the service:");

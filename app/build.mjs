@@ -1,5 +1,7 @@
 import { build } from "esbuild";
-import { copyFile, mkdir, rm } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+
+import { chainTargetFromEnv, withBetaNote } from "./chain-target.mjs";
 
 // APP_OUTPUT: explicit output directory (scripts/assemble-site.mjs sets it to
 // public/app/ so the app deploys beneath the landing). Default: ./dist.
@@ -7,22 +9,27 @@ const output = process.env.APP_OUTPUT
   ? new URL(`file://${process.env.APP_OUTPUT}`)
   : new URL("./dist/", import.meta.url);
 
+// The chain, from the environment, at build time (T054): chain-target.json is
+// written here, never copied, and the beta note goes into every page (T056).
+const target = chainTargetFromEnv(process.env);
+const page = async (source) => writeFile(new URL(source.replace(/^\.\//, ""), output), withBetaNote(await readFile(new URL(source, import.meta.url), "utf8"), target));
+
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await mkdir(new URL("styles/", output), { recursive: true });
+await writeFile(new URL("chain-target.json", output), `${JSON.stringify(target, null, 2)}\n`);
 await Promise.all([
-  copyFile(new URL("./fleet.html", import.meta.url), new URL("fleet.html", output)),
+  page("./fleet.html"),
   copyFile(new URL("./fleet.css", import.meta.url), new URL("fleet.css", output)),
   copyFile(new URL("./src/styles/tokens.css", import.meta.url), new URL("styles/tokens.css", output)),
   copyFile(new URL("./src/styles/components.css", import.meta.url), new URL("styles/components.css", output)),
   copyFile(new URL("./src/styles/pages.css", import.meta.url), new URL("styles/pages.css", output)),
-  copyFile(new URL("./fleet-dashboard.html", import.meta.url), new URL("fleet-dashboard.html", output)),
-  copyFile(new URL("./fleet-privacy.html", import.meta.url), new URL("fleet-privacy.html", output)),
-  copyFile(new URL("./balance.html", import.meta.url), new URL("balance.html", output)),
-  copyFile(new URL("./trade.html", import.meta.url), new URL("trade.html", output)),
-  copyFile(new URL("./sessions.html", import.meta.url), new URL("sessions.html", output)),
+  page("./fleet-dashboard.html"),
+  page("./fleet-privacy.html"),
+  page("./balance.html"),
+  page("./trade.html"),
+  page("./sessions.html"),
   copyFile(new URL("./session-target.json", import.meta.url), new URL("session-target.json", output)),
-  copyFile(new URL("./chain-target.json", import.meta.url), new URL("chain-target.json", output)),
   copyFile(new URL("../brand/logo.svg", import.meta.url), new URL("logo.svg", output)),
   copyFile(new URL("../brand/favicon.svg", import.meta.url), new URL("favicon.svg", output)),
 ]);
