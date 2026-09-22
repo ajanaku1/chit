@@ -34,7 +34,7 @@
     "maxPostBatch": "256",
     "beta": false,
     "deployedAt": "2026-09-21T10:44:00.000Z",
-    "note": "read back from the chain on 2026-09-21 after the redeploy script landed every transaction and then failed to write this record (its `previous` handling; fixed in the same commit); the admin's acceptOwnership() on the policy and the pool is pending"
+    "note": "read back from the chain on 2026-09-21 after the redeploy script landed every transaction and then failed to write this record (its `previous` handling; fixed in the same commit). The admin accepted ownership of the policy and the pool on 2026-09-22 (acceptOwnership from 0xCb70\u20266946; owner() reads it back, pendingOwner() is zero)."
   },
   "venue": {
     "poolManager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
@@ -153,5 +153,6 @@
     "deployedAt": "2026-09-19T09:46:07.691Z"
   },
   "sessionPolicyAdminHandoverTx": "0xfb5b3242e22b0b511241faca94a212d389d9abe37a7dca85378cb2c8e0034d82",
-  "redeployedAt": "2026-09-21T10:44:00.000Z"
+  "redeployedAt": "2026-09-21T10:44:00.000Z",
+  "adminAcceptedAt": "2026-09-22"
 }
