@@ -1,0 +1,31 @@
+{
+  "chainId": 4663,
+  "poolManager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
+  "router": "0x8876789976decbfcbbbe364623c63652db8c0904",
+  "note": "The tokens the beta trades on Robinhood Chain mainnet (specs/003-mainnet-beta/contracts/token-registry.md). Reviewed like code. CHIT's pool is the launchpad's, the one the buyback buys through (deployments/buyback-4663.json); its hook takes 2% on every swap, which the local quote does not see, so its bound is 3%: the hook's 2% and 1% of price movement. The checks are re-run on a fork by test/fork/token-registry-4663.test.ts and re-recorded here on the day the beta opens (T075). Up to three memes may join, named by the founder first (T062); tokenized equities sit here disabled until legal clears them.",
+  "tokens": [
+    {
+      "token": "0xd523a627030509021cc39b6d7c8543417d3e50d8",
+      "symbol": "CHIT",
+      "decimals": 18,
+      "poolKey": {
+        "currency0": "0x0000000000000000000000000000000000000000",
+        "currency1": "0xd523a627030509021cc39b6d7c8543417d3e50d8",
+        "fee": 0,
+        "tickSpacing": 200,
+        "hooks": "0xE5e702641Ea86F4ae6cC3cDaeD2B886f976Be044"
+      },
+      "poolId": "0x84a4f18cfab0b389a63c4d8a56d08f021a6fd5efb0b0b3617cfbbd6706f09f41",
+      "slippageBps": 300,
+      "enabled": true,
+      "checks": {
+        "ordinaryTransfer": true,
+        "holderRestrictions": false,
+        "liquidityEth": "7000000000000000000",
+        "liquidityMultipleOfDrawCap": 140,
+        "forkTest": "test/fork/chit-buyback.test.ts on a fork of 4663, 2026-09-16: a 0.01 ETH buy filled 2.00% under the zero-fee quote (the hook), inside the bound; about 7 ETH on the ETH side at 17.65M CHIT per ETH (docs/chit-buyback.md). Re-measured by test/fork/token-registry-4663.test.ts before the beta opens.",
+        "checkedAt": "2026-09-16"
+      }
+    }
+  ]
+}
