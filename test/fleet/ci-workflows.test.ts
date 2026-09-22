@@ -35,6 +35,20 @@ test("verify-full.yml runs the fork suites nightly and by hand, never on a push,
   assert.match(text, /dist\/test\/fork\/\*\.test\.js/, "the fork suites are not the ones run");
 });
 
+/**
+ * T049's first half: the sweep that runs on a clock says so when it did not
+ * run. The service reports its own failures (campaign-routes.ts), but a
+ * function that is unreachable runs nothing at all, so this workflow is the
+ * only witness. The chat is the operator's; the group is never told.
+ */
+test("sweep.yml reports its own failure to the operator chat, and never to the group", async () => {
+  const text = await workflow("sweep.yml");
+  assert.match(text, /^\s+if: failure\(\)$/m, "a failed sweep passes in silence");
+  assert.match(text, /MONITOR_CHAT_ID: \$\{\{ secrets\.MONITOR_CHAT_ID \}\}/);
+  assert.doesNotMatch(text, /TELEGRAM_CHAT_ID/, "that is the public group's chat id");
+  assert.match(text, /api\.telegram\.org/);
+});
+
 test("no workflow commits to main: none holds contents: write or pushes, and the progress bot is gone", async () => {
   const names = (await readdir(workflows)).filter((name) => name.endsWith(".yml"));
   assert.ok(!names.includes("progress.yml"), "progress.yml still exists; the build computes progress.json now");
