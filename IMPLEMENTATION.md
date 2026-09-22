@@ -2821,3 +2821,44 @@ lifecycle landed (checked on a clean worktree of main: six of their tests
 red), which is last night's red `verify-full`. The new fork test uses a local
 account for the operator, funded from the node's; the four suites need the
 same, which is a separate change.
+
+## The two failures nobody outside can see (2026-09-22, Boye, branch feat/alert-sink, T048, T049)
+
+The outside monitor reads the chain, so it already says when a charge is
+ageing, when the operator is short of its float, when the roles moved. Two
+things never reach it. A sweep that threw wrote nothing at all, and a
+withdrawal that was refused never reached a node: on chain both look exactly
+like an afternoon in which nothing happened. They are reported from where they
+happen now.
+
+`src/fleet/alerts.ts` is the one way the service says so: the same chat the
+monitor uses, `MONITOR_CHAT_ID` and never the group's id, and every line
+saying who is expected to act in the monitor's own vocabulary. FR-023's three
+timescales are a field. `NOW` and `4H` both go out when they happen, because
+the requirement is an upper bound on when an operator learns of something and
+the service has no reason to sit on either; the mark says which class it is,
+so "act now" can be told from "act today". `DAY` lines are held in the store
+and sent as one digest by the first scheduled sweep past the digest hour, the
+monitor's hour, claimed with the nonce burn the instances already share so
+that one digest goes out however many of them are warm. An alert with no
+timescale is immediate: FR-023 says an unclassifiable failure belongs to the
+faster class, and so does an alert the store could not hold.
+
+What is raised: a refused withdrawal (now, money path, with its reason and
+neither the payee nor the amount), a sweep that threw (four hours: what it did
+not queue still has its deadline), a due charge this ledger key cannot open
+(four hours: it will expire whatever the next sweep does, and the key is the
+fault), and postings that failed and will be tried again (the day's digest).
+The fifth is not the service's to raise at all: when `/api/fleet/sweep` does
+not answer, nothing inside it runs, so `.github/workflows/sweep.yml` says it
+itself, from the failed step.
+
+Nothing in the sink throws at its caller. It is called from inside a path that
+is already failing, and a sink that threw would turn a refused withdrawal into
+a 503 and lose the reason with it; a telegram that refuses, a network that
+fails and a store that cannot be reached are each logged and swallowed.
+
+Open, and a setting rather than code: the service needs `TELEGRAM_BOT_TOKEN`
+and `MONITOR_CHAT_ID` in its Vercel environment, the same two values the
+monitor's workflow has. Without them every alert is logged and not sent, which
+is what a preview and a local run want and is not what production wants.
