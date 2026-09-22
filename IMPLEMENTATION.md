@@ -2643,3 +2643,27 @@ not run on Windows at all: `build.mjs` and the tests now cross between URLs
 and paths with `fileURLToPath`/`pathToFileURL` instead of `.pathname`,
 which on Windows is `/D:/…`. No behaviour changes on Linux; four tests that
 could not run here now do.
+
+## The liquidity check as one command, for the day (2026-09-22, Lucian, branch feat/registry-liquidity, T091 prep)
+
+FR-012 asks for the liquidity of every listed token to be re-measured
+immediately before the beta opens, and a token that no longer meets fifty
+times the draw cap not to be offered. `npm run registry:liquidity` is that,
+in one command with an answer rather than a reading: for every entry it
+reads the pool the entry pins, by that key alone, prints the ETH side at the
+current price and the multiple, and exits 1 when an enabled token is under
+the floor, naming what to do. `--write` records the day's number in the
+registry (`liquidityEth`, `liquidityMultipleOfDrawCap`, `checkedAt`) for
+entries that already carry their checks; it writes no other check, because
+transfer behaviour, holder restrictions and the fork test are not what it
+measures, and it never enables or disables an entry: that is a review, in a
+commit, by a person. `FLEET_CHAIN_ID` and `FLEET_RPC_URL` point it at the
+testnet or at a fork, so the rehearsal runs the same command as the day.
+
+Run against 4663 today: CHIT 8.95 ETH, 178.9× the draw cap, meets the floor.
+Rehearsed on its three answers: a pass exits 0, a registry pinning an empty
+pool prints "UNDER THE FLOOR, not to be offered" and exits 1, a chain with no
+registry file says so and exits 0. The verdict sets `process.exitCode`
+rather than calling `process.exit`: with the RPC's sockets still open the
+forced exit aborts the process on Windows, and launch day would read a crash
+where it needs a 1.
