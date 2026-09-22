@@ -209,11 +209,11 @@ This alone is a viable beta.
 
 ## Phase 7: Launch
 
-- [ ] T083 [F] The published-promise commit: correct Stage 2's FR-016, `README.md`, `ONBOARDING.md`, the community brief and the landing page, in one commit that says why
-- [ ] T084 [F] In the same pass, carry Stage 2's privacy wording forward verbatim and confirm no surface has strengthened it
-- [ ] T085 [F] Correct the drafted Telegram and X announcements to state holders-only access, per FR-042
-- [ ] T086 [F] State in depositor-facing copy that the caps remain until a professional audit is complete
-- [ ] T087 [F] Confirm no sell path is reachable in the mainnet build, as a test
+- [x] T083 [F] The published-promise commit: correct Stage 2's FR-016, `README.md`, `ONBOARDING.md`, the community brief and the landing page, in one commit that says why
+- [x] T084 [F] In the same pass, carry Stage 2's privacy wording forward verbatim and confirm no surface has strengthened it
+- [x] T085 [F] Correct the drafted Telegram and X announcements to state holders-only access, per FR-042
+- [x] T086 [F] State in depositor-facing copy that the caps remain until a professional audit is complete
+- [x] T087 [F] Confirm no sell path is reachable in the mainnet build, as a test
 - [ ] T088 [F] Soak on testnet for forty-eight hours with alerting on; no charge unrecorded beyond four hours
 - [ ] T089 [F] Rehearse on a fork of 4663: caps read back, refusal without a guardian, guardian pause without the operator, exit while paused
 - [ ] T090 [F] Rehearse each of the three pause triggers on the fork, including the two that fire automatically

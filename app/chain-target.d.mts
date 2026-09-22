@@ -11,6 +11,7 @@ export type ChainTarget = {
   testnetUrl: string;
 };
 export const GATE_SENTENCE: string;
+export const CAPS_UNTIL_AUDIT: string;
 export function betaFacts(poolCap: string): string[];
 export function withCaps(html: string, target: ChainTarget): string;
 export function chainTargetFromEnv(env?: Record<string, string | undefined>): ChainTarget;

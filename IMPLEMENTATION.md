@@ -2528,3 +2528,35 @@ tap beneath it; a paused pool shows the same state before anything is asked,
 with the exit reachable. Any other refusal stays a banner. Tested as words,
 as markup and as the exit's own state, which no refusal touches. 242 app
 tests.
+
+## 2026-09-22: the published promise (Phase 7, T083–T087)
+
+The correction FR-008 requires, landed before anything opens. Every sentence
+that said a professional audit precedes mainnet or real funds is replaced by
+what is true: mainnet opens as a capped beta before the firm audit, holders
+only, 1 ETH pool cap, a guardian on the brake, the contracts not audited by a
+firm, and the caps kept until a professional audit is complete (FR-025). The
+surfaces: Stage 2's FR-016 (amended in place, the superseding requirements
+named), `README.md` § Status, `ONBOARDING.md` (the Stage 2 paragraph and the
+"Before mainnet" bullet), the community brief (three places), the update note,
+and the landing's status line, which now names the capped beta with "mainnet"
+on the same line as a denial, as `fleet-claims.test.ts` requires. The privacy
+wording is carried forward verbatim and nothing strengthens it (T084; the
+check is written down in `marketing/CHIT-BETA-ANNOUNCEMENT.md`, Lucian's
+draft, cherry-picked from `docs/published-promise` with the Telegram post and
+X thread stating holders-only access as the page enforces it, T085).
+
+Deviation, conservative: the spec's recorded user input (line 9 of
+`specs/002-private-funding-pool/spec.md`) carried "an audit before mainnet"
+and is a quotation; it is annotated in place with the date and the amendment
+rather than rewritten, so `beta-launch` passes without the record pretending
+the words were never said.
+
+T086: `CAPS_UNTIL_AUDIT` ("The caps stay until a professional audit is
+complete.") is a fourth sentence in the beta note and the sticky strip on the
+mainnet build, after FR-006's three facts, which stay three (the test that
+counts them is untouched). T087, as tests: the Sessions page draws no "let it
+sell" control on the beta (`app/test/no-sell.test.ts`), and the pool's routes
+and pooled buy never import the sell encoder, name no sell action, and refuse
+an unnamed action as unknown (`test/fleet/no-sell-path.test.ts`).
+`./verify.sh beta-launch` PASS. 535 fleet tests, 242 app.

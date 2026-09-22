@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-22T11:11:22.270Z",
-  "commit": "b6dc9db",
-  "committedAt": "2026-09-22T12:09:18+01:00",
-  "commits": 568,
+  "generatedAt": "2026-09-22T11:20:01.618Z",
+  "commit": "5f78d60",
+  "committedAt": "2026-09-22T12:19:33+01:00",
+  "commits": 572,
   "tasks": {
-    "done": 154,
+    "done": 159,
     "total": 175,
-    "percent": 88
+    "percent": 90
   },
   "stages": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 73,
+      "done": 78,
       "total": 94,
       "phases": [
         {
@@ -143,7 +143,7 @@
         },
         {
           "name": "Launch",
-          "done": 0,
+          "done": 5,
           "total": 12
         }
       ],
@@ -183,26 +183,6 @@
         {
           "id": "T082",
           "text": "[US4] [B] Point the bot's playground button at the testnet host"
-        },
-        {
-          "id": "T083",
-          "text": "[F] The published-promise commit: correct Stage 2's FR-016, `README.md`, `ONBOARDING.md`, the community brief and the landing page, in one commit that says why"
-        },
-        {
-          "id": "T084",
-          "text": "[F] In the same pass, carry Stage 2's privacy wording forward verbatim and confirm no surface has strengthened it"
-        },
-        {
-          "id": "T085",
-          "text": "[F] Correct the drafted Telegram and X announcements to state holders-only access, per FR-042"
-        },
-        {
-          "id": "T086",
-          "text": "[F] State in depositor-facing copy that the caps remain until a professional audit is complete"
-        },
-        {
-          "id": "T087",
-          "text": "[F] Confirm no sell path is reachable in the mainnet build, as a test"
         },
         {
           "id": "T088",
