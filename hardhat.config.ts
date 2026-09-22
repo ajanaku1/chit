@@ -29,6 +29,14 @@ export default defineConfig({
     },
     // Fork of Robinhood Chain testnet, so Fleet tests run against the real
     // EntryPoint and Universal Router without spending testnet ETH.
+    // Robinhood Chain mainnet (4663), for explorer verification and the
+    // launch-day reads; no account is configured here, nothing deploys from it.
+    robinhoodMainnet: {
+      type: "http",
+      chainType: "l1",
+      chainId: 4663,
+      url: process.env.ROBINHOOD_MAINNET_RPC_URL || "https://rpc.mainnet.chain.robinhood.com",
+    },
     robinhoodTestnetFork: {
       type: "edr-simulated",
       chainType: "l1",
@@ -54,5 +62,22 @@ export default defineConfig({
         url: process.env.ROBINHOOD_MAINNET_RPC_URL || "https://rpc.mainnet.chain.robinhood.com",
       },
     },
+  },
+  // Both chains' explorers are Blockscout; hardhat-verify (in the toolbox)
+  // finds them here. Etherscan and Sourcify know neither chain.
+  chainDescriptors: {
+    46630: {
+      name: "Robinhood Chain testnet",
+      blockExplorers: { blockscout: { url: "https://explorer.testnet.chain.robinhood.com", apiUrl: "https://explorer.testnet.chain.robinhood.com/api" } },
+    },
+    4663: {
+      name: "Robinhood Chain",
+      blockExplorers: { blockscout: { url: "https://robinhoodchain.blockscout.com", apiUrl: "https://robinhoodchain.blockscout.com/api" } },
+    },
+  },
+  verify: {
+    blockscout: { enabled: true },
+    etherscan: { enabled: false },
+    sourcify: { enabled: false },
   },
 });
