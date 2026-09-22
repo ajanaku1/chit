@@ -207,6 +207,10 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 /* ---- Banners and warnings ---- */
 /* Fixed to the viewport: an action low on the page reports where the trader is looking, not at the top. */
+/* FR-006: on every page, above everything, and never off screen: sticky, with nothing that closes it. */
+.beta-note { position: sticky; top: 0; z-index: 50; margin: 0 0 1rem; padding: 0.7rem 1rem; border-bottom: 1px solid rgba(245, 239, 229, 0.18); background: var(--coral-deep); color: var(--paper); font-size: 0.86rem; line-height: 1.45; }
+.beta-note strong { font-weight: 600; }
+.beta-note span { display: inline-block; margin-right: 0.35em; }
 .status-banner { position: fixed; left: 50%; bottom: 1.25rem; z-index: 40; width: min(92vw, 44rem); transform: translateX(-50%); padding: 0.85rem 1.1rem; border: 1px solid rgba(245, 239, 229, 0.16); border-radius: var(--radius-inner); background: rgba(13, 12, 11, 0.92); color: var(--soft-paper); font-size: 0.9rem; line-height: 1.45; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); backdrop-filter: blur(16px); }
 .status-banner[data-shown="true"] { animation: banner-in 0.4s var(--ease-out) both; }
 .status-banner[data-tone="error"] { border-color: transparent; background: var(--coral-deep); color: var(--paper); }

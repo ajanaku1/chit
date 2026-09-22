@@ -2398,3 +2398,17 @@ itself before it exits, with a fixed ninety-second delay. The first attempt
 left a funded campaign behind; closed by hand, and the headroom whose charge
 was lost donated back. The pool reads whole afterwards from public views:
 identity holds, shortfall zero, claimable 0.00898 ETH.
+
+## The beta note and the chain target, Phase 3 begun (2026-09-22, T054, T056, T057, T061)
+
+`app/chain-target.mjs` computes the app's chain from `FLEET_CHAIN_ID` at build
+time (the published caps per chain, which a test holds equal to
+`src/fleet/pool-caps.ts`, the FLEET_*_CAP_ETH overrides a deploy takes, and on
+4663 the beta note); `app/build.mjs` writes `chain-target.json` from it and
+puts the note into every page, so a deploy cannot say one chain in its pages
+and another in its json. The committed target file is gone and the redeploy
+script no longer writes one. The note is FR-006's three facts, each its own
+sentence in the specification's words, in a strip before the masthead that
+is sticky and holds no control; the deposit form repeats the whole statement
+beside the amount (FR-007), and off the beta neither is written. The test
+builds the app twice, for 4663 and 46630, and reads every page.
