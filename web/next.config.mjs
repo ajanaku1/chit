@@ -10,6 +10,9 @@ import { CAPS_UNTIL_AUDIT, GATE_SENTENCE, chainTargetFromEnv, sessionTargetFromE
 const target = chainTargetFromEnv(process.env);
 const sessions = sessionTargetFromEnv(process.env);
 const fleetApi = process.env.FLEET_API_ORIGIN || "https://chit.tools";
+// Where the app lives for this deploy. Empty means this site, which is the single-host
+// deploy; chit.tools is the site only, so it names the host that serves the app.
+const appOrigin = (process.env.FLEET_APP_ORIGIN || "").replace(/\/+$/, "");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -20,6 +23,7 @@ const nextConfig = {
   // Everything a page says about its chain is fixed here, at build time, and written into the HTML (components/chain.ts):
   // the FR-006 strip, the statement beside the deposit amount, the gate's sentence, the draw cap. None of it waits on a fetch.
   env: {
+    NEXT_PUBLIC_APP_ORIGIN: appOrigin,
     NEXT_PUBLIC_CHAIN_TARGET: JSON.stringify(target),
     NEXT_PUBLIC_SESSION_TARGET: JSON.stringify(sessions),
     NEXT_PUBLIC_BETA_STRIP: JSON.stringify(target.beta ? [...target.betaFacts, CAPS_UNTIL_AUDIT] : []),

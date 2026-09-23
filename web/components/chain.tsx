@@ -22,6 +22,11 @@ export const BETA_NOTE = TARGET.betaNote ?? "";
 export const BETA_STRIP = JSON.parse(process.env.NEXT_PUBLIC_BETA_STRIP ?? "[]") as string[];
 /** T058: the gate is the interface's only, said once beside the deposit form. */
 export const GATE_SENTENCE = process.env.NEXT_PUBLIC_GATE_SENTENCE ?? "";
+/** Where the app lives for this deploy: empty is this site, otherwise the host that serves it (FLEET_APP_ORIGIN). */
+export const APP_ORIGIN = (process.env.NEXT_PUBLIC_APP_ORIGIN ?? "").replace(/\/+$/, "");
+/** The app's entry, on whichever host serves it, so the site can be one host and the app another. */
+export const APP_HREF = `${APP_ORIGIN}/app/balance`;
+
 /** The draw cap a page states before the pool has answered (FR-001, T059). */
 export const DRAW_CAP = TARGET.caps?.draw ?? "";
 
