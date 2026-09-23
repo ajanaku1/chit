@@ -175,13 +175,23 @@ What remains is everything that is a secret, which Vercel stores write-only
 and no one can read back — from the dashboard, pasted by hand, never through
 a shell where it would land in history:
 
-- [ ] **its own `DATABASE_URL`**, a new database, never the beta's. The store
-      is not scoped by chain — `fleet_owed_spend`, `fleet_locks`,
-      `fleet_idempotency` have no chain column — so two hosts sharing one
-      database means the playground's sweep reads the beta's owed charges and
-      tries to post them against the testnet pool, and the two fight over one
-      operator lock. Separate databases, and the question never arises.
-- [ ] `CRON_SECRET` and `FLEET_NONCE_SECRET`, fresh values of its own
+- [x] `DATABASE_URL`: **the existing one**, connected 2026-09-23. A database
+      belongs to one chain. The store is not scoped by chain —
+      `fleet_owed_spend`, `fleet_sent`, `fleet_idempotency` are charges
+      against a pool and nothing in a row says which — so the host that
+      serves 46630 needs the rows already written for 46630, and the host
+      that serves 4663 needs a database that has never seen them. Today's
+      database is full of testnet rows, and the playground is the testnet
+      host from now on, so it keeps them and **the beta gets the new one**
+      (§ 4c). The other way round is the arrangement that fails quietly:
+      mainnet would inherit testnet charges by default, its sweep would
+      queue them against the mainnet pool, and only the contract's cap on
+      what a deposit backs would keep the loss at zero. Giving the
+      playground an empty database fails too, and sooner: a charge already
+      queued in the 46630 pool could never be posted, so it would age past
+      four hours and pause the testnet pool by itself.
+- [x] `CRON_SECRET` and `FLEET_NONCE_SECRET`, fresh values of its own, set
+      2026-09-23
 - [ ] `DEPLOYER_PRIVATE_KEY`, the same 46630 operator the pool records
 - [ ] `FLEET_LEDGER_KEY`, **the same value the current project has**: a
       different key cannot open the charges already sealed in the 46630 pool
@@ -221,7 +231,18 @@ started by hand. A soak begun before it did not soak with alerting on.
 
 ### 4c. The beta, `chit.tools`
 
-The existing project, switched to 4663 once § 3 has deployed the contracts:
+The existing project, switched to 4663 once § 3 has deployed the contracts.
+It changes chain, so it changes database:
+
+- [ ] **a new, empty `DATABASE_URL`**, and the old one disconnected from
+      this project. It is the same rule as § 4a from the other side: the
+      rows in it are charges against the 46630 pool, and a mainnet sweep
+      reading them would queue them against the mainnet pool. `_post` caps a
+      charge at what the depositor's deposit backs, so an unknown depositor
+      is charged nothing and no money is lost — but it spends gas and writes
+      phantom postings into the ledger the beta is judged on. Create the
+      database in the same step as the chain id, never after the first
+      deploy.
 
 - [ ] `FLEET_CHAIN_ID=4663`, `FLEET_RPC_URL=https://rpc.mainnet.chain.robinhood.com`
 - [ ] `FLEET_POOL_ADDRESS`, `FLEET_POLICY_ADDRESS`, `FLEET_FACTORY_ADDRESS`, `FLEET_ESCROW_ADDRESS`, `FLEET_ESCROW_BLOCK` from the script's output
