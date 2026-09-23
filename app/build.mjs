@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 // A URL's pathname is not a file path on Windows ("/D:/…"), and a Windows path
 // is not a URL; esbuild is given paths, so both crossings go through node:url.
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -20,6 +20,10 @@ const page = async (source) => writeFile(new URL(source.replace(/^\.\//, ""), ou
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await mkdir(new URL("styles/", output), { recursive: true });
+// The typefaces ship with the app (tokens.css reads them from ../fonts), so no page loads a third-party asset.
+await mkdir(new URL("fonts/", output), { recursive: true });
+const fonts = (await readdir(new URL("./fonts/", import.meta.url))).filter((name) => name.endsWith(".woff2"));
+await Promise.all(fonts.map((name) => copyFile(new URL(`./fonts/${name}`, import.meta.url), new URL(`fonts/${name}`, output))));
 await writeFile(new URL("chain-target.json", output), `${JSON.stringify(target, null, 2)}\n`);
 await Promise.all([
   page("./fleet.html"),
