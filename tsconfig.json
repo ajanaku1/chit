@@ -19,6 +19,7 @@
     "${configDir}/dist",
     "${configDir}/node_modules",
     "${configDir}/app",
-    "${configDir}/video"
+    "${configDir}/video",
+    "${configDir}/web"
   ]
 }
