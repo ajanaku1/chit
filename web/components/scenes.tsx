@@ -504,8 +504,8 @@ export function BurnScene() {
           <SupplyGrid burned={Math.max(1, Math.round(pct * 10))} />
           <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden rounded-inner border border-paper/10 bg-paper/10 sm:grid-cols-2">
             <div className="bg-surface p-4">
-              <p className="eyebrow text-paper/45">Next call opens in</p>
-              <p className="mt-1.5 font-mono text-[22px] tnum text-coral" suppressHydrationWarning>{mmss(secs)}</p>
+              <p className="eyebrow text-paper/45" suppressHydrationWarning>{secs === 0 ? "Next call" : "Next call opens in"}</p>
+              <p className="mt-1.5 font-mono text-[22px] tnum text-coral" suppressHydrationWarning>{secs === 0 ? "Open now" : mmss(secs)}</p>
               <p className="mt-1 text-[12.5px] text-paper/50">Once an hour, anyone can call it</p>
             </div>
             <div className="bg-surface p-4">
