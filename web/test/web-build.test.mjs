@@ -150,3 +150,21 @@ test("every element the app's logic finds by id is on the page it was on in app/
     }
   }
 });
+
+/**
+ * The site and the app can be two hosts (chit.tools is the site, the app is served
+ * elsewhere), so every "open the app" link is the configured origin and not this
+ * site's own path. A hardcoded /app/... sends a visitor to a host that may not serve
+ * the app at all, which is how the first deploy of this site shipped.
+ */
+test("no user-facing link to the app is hardcoded to this site", async () => {
+  const chain = await readFile(join(webRoot, "components/chain.tsx"), "utf8");
+  assert.match(chain, /NEXT_PUBLIC_APP_ORIGIN/, "the app's origin comes from the build's environment");
+  assert.match(chain, /export const APP_HREF/, "and the entry is named once");
+
+  for (const file of ["components/scenes.tsx", "components/chrome.tsx"]) {
+    const text = await readFile(join(webRoot, file), "utf8");
+    const hardcoded = [...text.matchAll(/href="\/app\/(?!logo|favicon)[^"]*"/g)].map((m) => m[0]);
+    assert.deepEqual(hardcoded, [], `${file} links into the app by path instead of APP_HREF`);
+  }
+});

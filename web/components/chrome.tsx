@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 
 import { Mark } from "./mark";
+import { APP_HREF } from "./chain";
 
 /* ---------- the scroll surface, shared with anything that reacts to scroll ---------- */
 
@@ -113,7 +114,7 @@ export function Header({ current }: { current: string }) {
             </Link>
           ))}
         </nav>
-        <a href="/app/balance" className="flex items-center gap-2 whitespace-nowrap rounded-full bg-coral py-2 pl-5 pr-2 text-[14px] font-medium text-ink transition-colors duration-200 hover:bg-coral-lift">
+        <a href={APP_HREF} className="flex items-center gap-2 whitespace-nowrap rounded-full bg-coral py-2 pl-5 pr-2 text-[14px] font-medium text-ink transition-colors duration-200 hover:bg-coral-lift">
           Launch app
           <span className="grid h-7 w-7 place-items-center rounded-full bg-ink text-paper" aria-hidden="true">→</span>
         </a>

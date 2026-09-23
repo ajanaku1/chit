@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { FACTS, useSceneExit } from "./chrome";
 import { ago, fmtChit, fmtEth, mmss, useLive, useSecondsTo, type Burn } from "./live";
 import { Mark, SEAM, leftOfSeam, rightOfSeam } from "./mark";
+import { APP_HREF } from "./chain";
 
 /* Every screen leaves room for the floating header above and the beta note below. */
 const PAD = "pt-[112px] pb-[40px]";
@@ -43,7 +44,7 @@ export function TornHero() {
                 <span className="text-coral">loud.</span>
               </h1>
               <div className="flex h-[5.5rem] flex-wrap content-start items-start gap-2 pt-5 md:h-[7.5rem] md:pt-7">
-                <a href="/app/balance" className="flex items-center gap-2 whitespace-nowrap rounded-full bg-coral py-2 pl-4 pr-2 text-[14px] font-medium text-ink transition-transform duration-200 hover:-translate-y-0.5 sm:py-2.5 sm:pl-6 sm:pr-2.5 sm:text-[15px]">
+                <a href={APP_HREF} className="flex items-center gap-2 whitespace-nowrap rounded-full bg-coral py-2 pl-4 pr-2 text-[14px] font-medium text-ink transition-transform duration-200 hover:-translate-y-0.5 sm:py-2.5 sm:pl-6 sm:pr-2.5 sm:text-[15px]">
                   <span className="sm:hidden">Open app</span>
                   <span className="hidden sm:inline">Open the app</span>
                   <span className="grid h-7 w-7 place-items-center rounded-full bg-ink text-paper" aria-hidden="true">→</span>
@@ -582,7 +583,7 @@ export function Launch({ tone = "surface" }: { tone?: "surface" | "void" }) {
             Every limit on this page is enforced by the contract, and the caps stay until a professional audit is complete.
           </p>
           <div className="mt-7 flex flex-wrap gap-2">
-            <a href="/app/balance" className="flex items-center gap-2 rounded-full bg-coral py-2.5 pl-6 pr-2.5 text-[15px] font-medium text-ink transition-colors hover:bg-coral-lift">
+            <a href={APP_HREF} className="flex items-center gap-2 rounded-full bg-coral py-2.5 pl-6 pr-2.5 text-[15px] font-medium text-ink transition-colors hover:bg-coral-lift">
               Open the app <span className="grid h-7 w-7 place-items-center rounded-full bg-ink text-paper" aria-hidden="true">→</span>
             </a>
             <a href="https://t.me/usechit_bot" className="rounded-full border border-paper/20 px-6 py-2.5 text-[15px] font-medium transition-colors hover:border-paper">
@@ -596,7 +597,7 @@ export function Launch({ tone = "surface" }: { tone?: "surface" | "void" }) {
 
         <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:pt-4">
           {[
-            ["Product", [["Home", "/"], ["The bot", "/bot"], ["Burn", "/burn"], ["Open the app", "/app/balance"]]],
+            ["Product", [["Home", "/"], ["The bot", "/bot"], ["Burn", "/burn"], ["Open the app", APP_HREF]]],
             ["Community", [["Telegram", "https://t.me/usechittools"], ["@usechit_bot", "https://t.me/usechit_bot"]]],
             ["On chain", [["Explorer", "https://robinhoodchain.blockscout.com"], ["$CHIT contract", "https://robinhoodchain.blockscout.com/token/0xD523A627030509021cC39B6d7C8543417D3E50D8"], ["Buyback contract", "https://robinhoodchain.blockscout.com/address/0xe5a7dbd4fd12edfb5b2c1e584b5d1ea9131f8b64"]]],
           ].map(([title, links]) => (
