@@ -3005,3 +3005,35 @@ The work was done from a checkout linked to the new project in a scratch
 directory, so the repository's own link to `chit-tools` was never at risk of
 being written to. What remains for the host is in runbook § 4a: its own
 database, the secrets, the A record, and a deployment.
+
+## 2026-09-23: a database belongs to one chain, and we had it backwards
+
+The playground host was written up as needing a new database, with the beta
+keeping the one that exists. Setting it up showed that inverted, and the
+inversion was the dangerous direction.
+
+The store is not scoped by chain. `fleet_owed_spend`, `fleet_sent` and
+`fleet_idempotency` hold charges against a pool, and no row says which chain
+it belongs to; `takeOwed` leases whatever is unqueued. So a database belongs
+to one chain, and the question is only which host keeps this one. Today's
+database is full of 46630 rows, and the playground is the 46630 host from
+now on, so it keeps them; the beta, which is the host that changes chain,
+gets the empty one.
+
+The other arrangement fails quietly: `chit.tools` flips to 4663 still
+holding testnet rows, its next sweep queues them against the mainnet pool,
+and nothing complains. No money is lost — `_post` caps a charge at what the
+depositor's deposit backs, so a depositor the mainnet pool has never seen is
+charged zero (FR-033, T031) — but it spends gas and writes phantom postings
+into the ledger the beta will be judged on. And an empty database on the
+playground fails sooner rather than more safely: a charge already queued in
+the 46630 pool could never be posted, so it would age past four hours and
+pause the testnet pool on its own.
+
+Done today: `chit-testnet` created and connected to the repository, the nine
+non-secret variables set from `deployments/fleet-46630.json`, the existing
+Neon resource connected to it, and `CRON_SECRET` and `FLEET_NONCE_SECRET`
+generated into it without passing through a terminal. What is left there is
+`DEPLOYER_PRIVATE_KEY` and `FLEET_LEDGER_KEY`, which Vercel stores
+write-only and nobody can copy between projects, the A record, and a deploy.
+Runbook § 4a and § 4c now say the rule from both sides.
