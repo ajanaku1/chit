@@ -17,8 +17,9 @@
  * a sale is one send.
  */
 
-import { type Address, type Hex, type PublicClient, type Transport, type WalletClient, createPublicClient, createWalletClient, defineChain, http } from "viem";
+import { type Address, type Hex, type PublicClient, type Transport, type WalletClient, createPublicClient, createWalletClient, http } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import { robinhoodChain } from "./chain-def.js";
 import { SESSION_ACCOUNT_ABI, decodeSessionView, encodeSell, encodeSessionExecute, type SessionSell, type SessionView } from "./session-keys.js";
 import { NATIVE_ETH, venuePoolKey, type PoolKey } from "./v4-swap.js";
 
@@ -87,12 +88,7 @@ export const sellPreflight = (token: Address, poolKey: PoolKey | undefined, minO
 };
 
 export const createSessionChain = (config: SessionChainConfig): SessionChain => {
-  const chain = defineChain({
-    id: config.chainId,
-    name: config.chainId === 4663 ? "Robinhood Chain" : "Robinhood Chain Testnet",
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: { default: { http: [config.rpcUrl] } },
-  });
+  const chain = robinhoodChain(config.chainId, config.rpcUrl);
   const transport = config.transport ?? http(config.rpcUrl, { retryCount: 3, retryDelay: 250, timeout: 20_000 });
   const pub = createPublicClient({ chain, transport }) as unknown as PublicClient;
   const account = privateKeyToAccount(config.signerKey);

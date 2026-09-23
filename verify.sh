@@ -156,7 +156,7 @@ checksh beta-contract "the pool reimburses fronted withdrawals and an outsider c
   'grep -q "totalPosted" contracts/fleet/FleetPool.sol && grep -q "function donate" contracts/fleet/FleetPool.sol && grep -q "function postQueuedBatch" contracts/fleet/FleetPool.sol && grep -q "everDeposited" contracts/fleet/FleetPool.sol && grep -q "exitsPaid" contracts/fleet/FleetPool.sol && ! grep -q "invariant_claimableIsGasOnly" test/fleet/FleetPoolInvariants.t.sol && npx hardhat test solidity'
 
 checksh beta-rails "the sweep has clocks, failures are counted, and the pool pauses itself" \
-  'grep -q "blockTime" src/fleet/service-runtime.ts && grep -q "maxDuration" vercel.json && grep -qE "multicall|Multicall3" src/fleet/chain-pool.ts && grep -qiE "alert" src/fleet/service-runtime.ts && grep -qiE "autopause|pauseOnTrigger|automatic pause" src/fleet/*.ts'
+  'grep -q "blockTime" src/fleet/chain-def.ts && grep -q "maxDuration" vercel.json && grep -qE "multicall|Multicall3" src/fleet/chain-pool.ts && grep -qiE "alert" src/fleet/service-runtime.ts && grep -qiE "autopause|pauseOnTrigger|automatic pause" src/fleet/*.ts'
 
 checksh beta-alerts "the service says what an outside reader cannot see, to the operator chat and not to the group" \
   'test -f src/fleet/alerts.ts && grep -q "MONITOR_CHAT_ID" src/fleet/alerts.ts && ! grep -q "TELEGRAM_CHAT_ID\"]" src/fleet/alerts.ts && ! grep -q "TELEGRAM_CHAT_ID" .github/workflows/sweep.yml && grep -q "if: failure()" .github/workflows/sweep.yml && grep -q "alerts" src/fleet/service-runtime.ts && npm run build:fleet && node --test dist-fleet/test/fleet/alerts.test.js dist-fleet/test/fleet/alert-routes.test.js dist-fleet/test/fleet/ci-workflows.test.js dist-fleet/test/fleet/store.test.js dist-fleet/test/fleet/store-neon.test.js'

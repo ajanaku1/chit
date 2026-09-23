@@ -9,10 +9,11 @@
  */
 
 import { neon } from "@neondatabase/serverless";
-import { createPublicClient, createWalletClient, defineChain, http, isHex, keccak256, stringToBytes, type PublicClient } from "viem";
+import { createPublicClient, createWalletClient, http, isHex, keccak256, stringToBytes, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { createAlertSink } from "./alerts.js";
+import { BLOCK_TIME_MS, robinhoodChain } from "./chain-def.js";
 import { CampaignRouter, type RouterDeps } from "./campaign-routes.js";
 import { CampaignService } from "./campaign-service.js";
 import { createFleetPool } from "./chain-pool.js";
@@ -41,7 +42,6 @@ const ORIGIN = process.env.FLEET_ORIGIN || "https://chit.tools";
  * the environment or the route answers 503 with the variable's name.
  */
 const FLEET_CHAIN_ID = Number(process.env.FLEET_CHAIN_ID || 46630);
-const CHAIN_NAME = FLEET_CHAIN_ID === 4663 ? "Robinhood Chain" : FLEET_CHAIN_ID === 46630 ? "Robinhood Chain Testnet" : `chain ${FLEET_CHAIN_ID}`;
 const DEFAULT_RPC = FLEET_CHAIN_ID === 4663 ? "https://rpc.mainnet.chain.robinhood.com" : "https://rpc.testnet.chain.robinhood.com";
 const rpcFromEnv = (): string => process.env.FLEET_RPC_URL || process.env.ROBINHOOD_TESTNET_RPC_URL || DEFAULT_RPC;
 const BALANCE_OF_SELECTOR = "0x70a08231";
@@ -222,17 +222,10 @@ const marketFromEnv = (): MarketPort | undefined => {
  * for every write the service waits on. Stated, it is viem's floor of half a
  * second, on either chain. test/fleet/sweep-timing.test.ts holds the figure.
  */
-export const FLEET_BLOCK_TIME_MS = 250;
+export const FLEET_BLOCK_TIME_MS = BLOCK_TIME_MS;
 
-/** The chain as every fleet client sees it. */
-export const fleetChain = (rpcUrl: string) =>
-  defineChain({
-    id: FLEET_CHAIN_ID,
-    name: CHAIN_NAME,
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: { default: { http: [rpcUrl] } },
-    blockTime: FLEET_BLOCK_TIME_MS,
-  });
+/** The chain as every fleet client sees it; the same definition the bot and the sponsor route build on (chain-def.ts). */
+export const fleetChain = (rpcUrl: string) => robinhoodChain(FLEET_CHAIN_ID, rpcUrl);
 
 /** One operator-signed client pair for the configured chain, shared by every chain adapter. */
 const clients = (key: `0x${string}`) => {
