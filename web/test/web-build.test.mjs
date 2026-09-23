@@ -161,6 +161,16 @@ test("no user-facing link to the app is hardcoded to this site", async () => {
   const chain = await readFile(join(webRoot, "components/chain.tsx"), "utf8");
   assert.match(chain, /NEXT_PUBLIC_APP_ORIGIN/, "the app's origin comes from the build's environment");
   assert.match(chain, /export const APP_HREF/, "and the entry is named once");
+  assert.match(chain, /APP_HREF = `\$\{APP_ORIGIN\}\/app\/balance`/, "the link a visitor sees carries no file name");
+  // The other host serves the built app as static pages (balance.html), so it rewrites the
+  // clean path to them; this site rewrites the other way. One spelling works on both, and
+  // the one a visitor reads is the clean one.
+  const root = JSON.parse(await readFile(join(webRoot, "../vercel.json"), "utf8"));
+  const rewrite = (root.rewrites ?? []).find((r) => r.destination === "/app/$1.html");
+  assert.ok(rewrite, "the host that serves the built app must rewrite /app/:page to the page");
+  for (const page of ["balance", "fleet", "fleet-dashboard", "fleet-privacy", "sessions", "trade"]) {
+    assert.match(rewrite.source, new RegExp(`\\b${page}\\b`), `${page} is not covered by the rewrite`);
+  }
 
   for (const file of ["components/scenes.tsx", "components/chrome.tsx"]) {
     const text = await readFile(join(webRoot, file), "utf8");
