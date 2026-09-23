@@ -149,16 +149,32 @@ real money. Playground first, then switch.
 
 ### 4a. The playground, `testnet.chit.tools` (T080)
 
-A new Vercel project from the same repository, on 46630, with the domain
-`testnet.chit.tools`. Its environment is what `chit.tools` uses today plus
-its own session factory:
+A second Vercel project from the same repository, on 46630, with the domain
+`testnet.chit.tools`. It exists as of 2026-09-23:
 
-- [ ] `FLEET_CHAIN_ID=46630`
-- [ ] `FLEET_SESSION_FACTORY=0xe6abb3aba7625c215f805ddc762e1148860796be`
-      — the factory deployed on 46630. It is written per chain now, never
-      copied, so a build that names the wrong chain ships no factory at all
-      rather than one that answers wrongly (`app/test/two-hosts.test.ts`).
-- [ ] `FLEET_RPC_URL=https://rpc.testnet.chain.robinhood.com`
+```
+project   chit-testnet   prj_IP8f07OAs0aMTMlohsdvHXQ6TL4S
+team      dahunsi-ajanakus-projects   team_xX0XGbdZx2CwP1duFPKDGVUe
+git       Chit-org/chit-fleet, connected
+dns       A  testnet  ->  76.76.21.21   (at the registrar; chit.tools is on
+                                         third-party nameservers)
+```
+
+Connecting a project in this organisation to git needs the Vercel GitHub app
+installed on `Chit-org`, not only on the personal account. Without it
+`vercel git connect` refuses with "make sure you have access", which reads
+like a typo and is not one.
+
+These are set already, copied from `deployments/fleet-46630.json`:
+`FLEET_CHAIN_ID=46630`, `FLEET_RPC_URL`, `FLEET_SESSION_FACTORY`,
+`FLEET_POOL_ADDRESS`, `FLEET_POLICY_ADDRESS`, `FLEET_FACTORY_ADDRESS`,
+`FLEET_ESCROW_ADDRESS`, `FLEET_ESCROW_BLOCK=120343548`,
+`FLEET_ORIGIN=https://testnet.chit.tools`.
+
+What remains is everything that is a secret, which Vercel stores write-only
+and no one can read back — from the dashboard, pasted by hand, never through
+a shell where it would land in history:
+
 - [ ] **its own `DATABASE_URL`**, a new database, never the beta's. The store
       is not scoped by chain — `fleet_owed_spend`, `fleet_locks`,
       `fleet_idempotency` have no chain column — so two hosts sharing one
@@ -169,8 +185,6 @@ its own session factory:
 - [ ] `DEPLOYER_PRIVATE_KEY`, the same 46630 operator the pool records
 - [ ] `FLEET_LEDGER_KEY`, **the same value the current project has**: a
       different key cannot open the charges already sealed in the 46630 pool
-- [ ] `FLEET_POOL_ADDRESS`, `FLEET_POLICY_ADDRESS`, `FLEET_FACTORY_ADDRESS`,
-      `FLEET_ESCROW_ADDRESS`, `FLEET_ESCROW_BLOCK`, today's testnet values
 - [ ] no `CHIT_FEE_THRESHOLD`: the playground is the free one, so no gate
 - [ ] and nothing else. In particular **not** `BUYBACK_KEEPER_KEY` or
       `BUYBACK_ADDRESS`. `vercel.json` is in the repository, so the new
@@ -181,8 +195,10 @@ its own session factory:
       would then run twice. Without the keys those crons fail every five
       minutes, in the logs and nowhere else, which is the correct failure.
 
-`chit.tools` sits on third-party nameservers, so `testnet.chit.tools` is a
-CNAME added at the registrar, from what Vercel shows when the domain is added.
+Then the A record above at the registrar, and a deployment. `vercel.json`
+turns off deployment on a push to `main` for every project built from this
+repository, so the playground is deployed by hand too — from the dashboard,
+or from a checkout linked to it.
 
 Check: the playground opens, says testnet 46630, and its cards link to
 itself. Nothing on it links to the beta.

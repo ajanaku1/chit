@@ -2982,3 +2982,26 @@ keeper on one account, on the one path that spends real ETH. The bot's
 `orders` and `watch` crons are the same shape. Without those keys the crons
 fail every five minutes into the logs and do nothing, which is the failure
 we want; runbook § 4a now lists what to leave out and why.
+
+## 2026-09-23: the playground host created (T080, in part)
+
+`chit-testnet` exists on Vercel (`prj_IP8f07OAs0aMTMlohsdvHXQ6TL4S`), built
+from this repository, connected to `Chit-org/chit-fleet`, with
+`testnet.chit.tools` added and the nine non-secret variables set from
+`deployments/fleet-46630.json` — the chain, the RPC, the session factory,
+the four addresses, the escrow block and the origin. Nothing was invented;
+every value is the record's.
+
+Two things worth keeping. Connecting a project in this organisation to git
+needs the Vercel GitHub app installed on `Chit-org` and not only on the
+personal account: without it `vercel git connect` refuses with "make sure
+there aren't any typos and that you have access", which reads like a typo
+and is not one. And the secrets cannot be moved between projects by anyone,
+including their owner: Vercel marks `FLEET_LEDGER_KEY` and
+`DEPLOYER_PRIVATE_KEY` sensitive, which is write-only, so they come from
+wherever they are kept and are pasted by hand.
+
+The work was done from a checkout linked to the new project in a scratch
+directory, so the repository's own link to `chit-tools` was never at risk of
+being written to. What remains for the host is in runbook § 4a: its own
+database, the secrets, the A record, and a deployment.
