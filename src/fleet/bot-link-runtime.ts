@@ -6,8 +6,9 @@
  * page can say "expired" before asking for a signature. Session mode only.
  */
 
-import { type Address, createPublicClient, defineChain, http } from "viem";
+import { type Address, createPublicClient, http } from "viem";
 import { neon } from "@neondatabase/serverless";
+import { robinhoodChain } from "./chain-def.js";
 import { LinkError, MemoryBotLinkStore, NeonBotLinkStore, NONCE_TTL_MS, verifyLink, type BotLinkStore } from "./bot-link.js";
 import { SESSION_ACCOUNT_ABI } from "./session-keys.js";
 
@@ -31,7 +32,7 @@ const ownerOf = (): ((account: Address) => Promise<Address | undefined>) => {
   if (ownerReader) return ownerReader;
   const chainId = chainIdFromEnv();
   const rpcUrl = process.env.FLEET_RPC_URL || (chainId === 4663 ? process.env.ROBINHOOD_MAINNET_RPC_URL || "https://rpc.mainnet.chain.robinhood.com" : process.env.ROBINHOOD_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com");
-  const chain = defineChain({ id: chainId, name: "Robinhood Chain", nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 }, rpcUrls: { default: { http: [rpcUrl] } } });
+  const chain = robinhoodChain(chainId, rpcUrl);
   const pub = createPublicClient({ chain, transport: http(rpcUrl, { retryCount: 2, timeout: 15_000 }) });
   return (ownerReader = (account) => pub.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "owner" }).catch(() => undefined));
 };

@@ -53,7 +53,8 @@
  * log queries in spans it tolerates, a 429 waited out and tried again.
  */
 
-import { createPublicClient, defineChain, http, parseAbiItem, type Address, type Hex, type PublicClient, type Transport } from "viem";
+import { createPublicClient, http, parseAbiItem, type Address, type Hex, type PublicClient, type Transport } from "viem";
+import { robinhoodChain } from "./chain-def.js";
 import { createPoolRegistry, type PoolRegistry } from "./pool-registry.js";
 import type { PoolKey } from "./v4-swap.js";
 
@@ -223,12 +224,7 @@ export type WatchPortConfig = {
 export const isEthInBuy = (amount0: bigint, amount1: bigint): boolean => amount0 < 0n && amount1 > 0n;
 
 export const createWatchPort = (config: WatchPortConfig): WatchPort => {
-  const chain = defineChain({
-    id: config.chainId,
-    name: config.chainId === 4663 ? "Robinhood Chain" : "Robinhood Chain Testnet",
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: { default: { http: [config.rpcUrl] } },
-  });
+  const chain = robinhoodChain(config.chainId, config.rpcUrl);
   // viem waits and retries a 429 on its own (600 ms doubling); the calls below are made one at a time so a run never bursts.
   const transport = config.transport ?? http(config.rpcUrl, { retryCount: 4, retryDelay: 600, timeout: 20_000 });
   const client = createPublicClient({ chain, transport }) as unknown as PublicClient;

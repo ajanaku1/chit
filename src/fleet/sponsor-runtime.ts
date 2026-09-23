@@ -26,10 +26,11 @@
  */
 
 import { neon } from "@neondatabase/serverless";
-import { createPublicClient, createWalletClient, defineChain, http, isHex, keccak256, stringToBytes, type PublicClient } from "viem";
+import { createPublicClient, createWalletClient, http, isHex, keccak256, stringToBytes, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
 import { CampaignService } from "./campaign-service.js";
+import { robinhoodChain } from "./chain-def.js";
 import { createSponsorChain } from "./sponsor-chain.js";
 import { SponsorRouter } from "./sponsor-routes.js";
 import { SponsorService } from "./sponsor-service.js";
@@ -96,12 +97,7 @@ const addressFromEnv = (name: string): Address | undefined => {
 
 const clients = (key: `0x${string}`) => {
   const rpcUrl = process.env.ROBINHOOD_TESTNET_RPC_URL || DEFAULT_RPC;
-  const chain = defineChain({
-    id: CHAIN_ID,
-    name: "Robinhood Chain Testnet",
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: { default: { http: [rpcUrl] } },
-  });
+  const chain = robinhoodChain(CHAIN_ID, rpcUrl);
   const transport = http(rpcUrl, { batch: true, retryCount: 5, retryDelay: 250, timeout: 20_000 });
   return {
     wallet: createWalletClient({ account: privateKeyToAccount(key), chain, transport }),

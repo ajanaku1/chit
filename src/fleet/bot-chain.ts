@@ -16,9 +16,10 @@
  * one against the live venue.
  */
 
-import { createPublicClient, createWalletClient, defineChain, encodeFunctionData, http, maxUint256, parseAbi, parseAbiItem, WaitForTransactionReceiptTimeoutError, type PublicClient, type Transport, type WalletClient } from "viem";
+import { createPublicClient, createWalletClient, encodeFunctionData, http, maxUint256, parseAbi, parseAbiItem, WaitForTransactionReceiptTimeoutError, type PublicClient, type Transport, type WalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
+import { robinhoodChain } from "./chain-def.js";
 import { quoteExactIn } from "./market.js";
 import { createPoolRegistry, type DiscoveredPool } from "./pool-registry.js";
 import type { Address, Hex } from "./types.js";
@@ -118,12 +119,7 @@ export type BotChainConfig = {
 const Q96 = 1n << 96n;
 
 export const createBotChain = (config: BotChainConfig): BotChain => {
-  const chain = defineChain({
-    id: config.chainId,
-    name: config.chainId === 4663 ? "Robinhood Chain" : "Robinhood Chain Testnet",
-    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-    rpcUrls: { default: { http: [config.rpcUrl] } },
-  });
+  const chain = robinhoodChain(config.chainId, config.rpcUrl);
   const transport = config.transport ?? http(config.rpcUrl, { retryCount: 3, retryDelay: 250, timeout: 20_000 });
   const publicClient = createPublicClient({ chain, transport }) as unknown as PublicClient;
   const walletFor = (key: Hex): WalletClient => createWalletClient({ account: privateKeyToAccount(key), chain, transport });
