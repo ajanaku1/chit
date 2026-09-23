@@ -84,6 +84,18 @@ const toJsx = (html) =>
     // ...but not the comments just made.
     .replace(/\{"\{"\}\/\*/g, "{/*").replace(/\*\/\{"\}"\}/g, "*/}");
 
+/**
+ * What app/build.mjs writes into a page for its chain (withBetaNote, withCaps), written here as
+ * expressions of components/chain.tsx, so the prerendered HTML already carries it: the statement
+ * beside the deposit amount and the gate's sentence on the beta, and the chain's own draw cap.
+ */
+const forChain = (jsx) =>
+  jsx
+    .replace(/<(\w+)([^>]*?) data-beta-note([^>]*?) hidden([^>]*)><\/\1>/g, (_, tag, a, b, c) => `<${tag}${a} data-beta-note${b} hidden={!BETA}${c}>{BETA ? BETA_NOTE : null}</${tag}>`)
+    .replace(/<(\w+)([^>]*?) data-beta-gate-note([^>]*?) hidden([^>]*)><\/\1>/g, (_, tag, a, b, c) => `<${tag}${a} data-beta-gate-note${b} hidden={!BETA}${c}>{BETA ? GATE_SENTENCE : null}</${tag}>`)
+    .replace(/data-led="[0-9.]+" data-unit="ETH" data-cap="draw">[0-9.]+ ETH/g, 'data-led={DRAW_CAP} data-unit="ETH" data-cap="draw">{`${DRAW_CAP} ETH`}')
+    .replace(/aria-label="This draw against the [0-9.]+ ETH cap"/g, "aria-label={`This draw against the ${DRAW_CAP} ETH cap`}");
+
 await mkdir(OUT, { recursive: true });
 for (const [page, component] of Object.entries(PAGES)) {
   const html = await readFile(new URL(`${page}.html`, SRC), "utf8");
@@ -92,10 +104,11 @@ for (const [page, component] of Object.entries(PAGES)) {
   const skip = /<a class="skip-link" href="#([^"]+)">([^<]+)<\/a>/.exec(html);
   const afterHeader = html.slice(html.indexOf("</header>") + "</header>".length, html.lastIndexOf("<script"));
   const inner = afterHeader.slice(0, afterHeader.lastIndexOf("</div>"));
-  const body = toJsx(inner).split("\n").map((l) => l.replace(/^ {6}/, "      ")).join("\n");
+  const body = forChain(toJsx(inner)).split("\n").map((l) => l.replace(/^ {6}/, "      ")).join("\n");
+  const used = ["BETA", "BETA_NOTE", "GATE_SENTENCE", "DRAW_CAP"].filter((name) => new RegExp(`\\b${name}\\b`).test(body));
   const tsx = `// Drawn from chit-fleet/app/${page}.html by scripts/app-pages.mjs; every id and class is the one the app's logic reads.
 /* eslint-disable */
-export const meta = { title: ${JSON.stringify(title)}, description: ${JSON.stringify(description)}, skip: ${JSON.stringify(skip ? { href: `#${skip[1]}`, label: skip[2] } : null)} };
+${used.length ? `import { ${used.join(", ")} } from "@/components/chain";\n\n` : ""}export const meta = { title: ${JSON.stringify(title)}, description: ${JSON.stringify(description)}, skip: ${JSON.stringify(skip ? { href: `#${skip[1]}`, label: skip[2] } : null)} };
 
 export function ${component}() {
   return (

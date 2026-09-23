@@ -2,11 +2,15 @@
 
 import { useEffect, type ReactNode } from "react";
 
+import { BetaStrip } from "./chain";
+
 /*
  * The app's frame around each page, and the one place its logic is started. The logic is
  * chit-fleet's own (chit-fleet/app/src), unchanged: each page script finds its elements by id and
  * wires itself up the moment it is imported, so it is imported once, after the page is on screen.
  * Links between app pages are plain links on purpose: a page script runs once per page load.
+ * What the page says about its chain (the beta strip, the notes, the caps) is rendered with it,
+ * from components/chain.tsx, so it is in the HTML before the script is.
  */
 
 export type AppPageName = "balance" | "fleet" | "fleet-dashboard" | "fleet-privacy" | "trade" | "sessions";
@@ -28,23 +32,6 @@ const NAV: ReadonlyArray<readonly [AppPageName, string]> = [
   ["fleet-privacy", "Boundary"],
   ["sessions", "Sessions"],
 ];
-
-type Target = { beta: boolean; betaNote: string; caps: { draw: string } };
-const target = JSON.parse(process.env.NEXT_PUBLIC_CHAIN_TARGET ?? "{}") as Target;
-const GATE_SENTENCE = "This gate is the interface's only: the contract accepts a deposit within its caps from anyone who finds it.";
-
-/** What chit-fleet's build writes into the pages for the chain they are built for, done here before the logic starts. */
-function prepareForChain(): void {
-  if (target.beta) {
-    document.querySelectorAll<HTMLElement>("[data-beta-note][hidden]").forEach((node) => { node.textContent = target.betaNote; node.hidden = false; });
-    document.querySelectorAll<HTMLElement>("[data-beta-gate-note][hidden]").forEach((node) => { node.textContent = GATE_SENTENCE; node.hidden = false; });
-  }
-  const draw = target.caps?.draw;
-  if (draw) {
-    document.querySelectorAll<HTMLElement>('[data-cap="draw"]').forEach((node) => { node.dataset["led"] = draw; node.textContent = `${draw} ETH`; });
-    document.querySelectorAll<HTMLElement>('[aria-label^="This draw against the"]').forEach((node) => node.setAttribute("aria-label", `This draw against the ${draw} ETH cap`));
-  }
-}
 
 function Masthead({ current }: { current: AppPageName }) {
   return (
@@ -76,7 +63,6 @@ function Masthead({ current }: { current: AppPageName }) {
 
 export function AppPage({ page, skip, children }: { page: AppPageName; skip: { href: string; label: string } | null; children: ReactNode }) {
   useEffect(() => {
-    prepareForChain();
     void LOAD[page]();
   }, [page]);
 
@@ -84,6 +70,7 @@ export function AppPage({ page, skip, children }: { page: AppPageName; skip: { h
     <>
       {skip && <a className="skip-link" href={skip.href}>{skip.label}</a>}
       <div className="fleet-shell">
+        <BetaStrip />
         <Masthead current={page} />
         {children}
       </div>

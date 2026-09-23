@@ -1,4 +1,5 @@
 .vercel
 .next
+.next-test-*
 node_modules
 *.tsbuildinfo

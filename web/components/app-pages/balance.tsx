@@ -1,5 +1,7 @@
 // Drawn from chit-fleet/app/balance.html by scripts/app-pages.mjs; every id and class is the one the app's logic reads.
 /* eslint-disable */
+import { BETA, BETA_NOTE, GATE_SENTENCE, DRAW_CAP } from "@/components/chain";
+
 export const meta = { title: "Chit Fleet · Your balance", description: "Your Chit balance: deposit ETH into the shared pool, fund fleets from it, and withdraw to an address you choose.", skip: {"href":"#balance","label":"Skip to your balance"} };
 
 export function BalanceMarkup() {
@@ -34,7 +36,7 @@ Your deposit goes into a pool shared with other traders and carries no fleet mar
 
         <aside className="limits" aria-label="Limits on your balance and fleets" data-reveal>
           <div className="card-warm limit"><p className="cardlabel">Funding delay</p><p className="limit__figure"><span data-led="15" data-unit="min">15 min</span></p><p className="limit__note">Chit waits up to 15 minutes before funding a fleet; the contract enforces at least a minute.</p></div>
-          <div className="card-warm limit"><p className="cardlabel">Draw cap</p><p className="limit__figure"><span data-led="0.2" data-unit="ETH" data-cap="draw">0.2 ETH</span></p><p className="limit__note">The most one fleet may draw. Refused on chain above this.</p></div>
+          <div className="card-warm limit"><p className="cardlabel">Draw cap</p><p className="limit__figure"><span data-led={DRAW_CAP} data-unit="ETH" data-cap="draw">{`${DRAW_CAP} ETH`}</span></p><p className="limit__note">The most one fleet may draw. Refused on chain above this.</p></div>
           <div className="card-warm limit"><p className="cardlabel">Self-serve exit</p><p className="limit__figure"><span data-led="24" data-unit="h">24 h</span></p><p className="limit__note">Recover your unspent deposit from the contract, with Chit offline.</p></div>
         </aside>
 
@@ -43,11 +45,11 @@ Your deposit goes into a pool shared with other traders and carries no fleet mar
           <p className="lead">{" "}
 Deposits come in fixed sizes so yours looks like everyone else's. Pick one.
 {" "}</p>
-          <p id="deposit-custody" className="callout" role="note" data-beta-note hidden></p>
+          <p id="deposit-custody" className="callout" role="note" data-beta-note hidden={!BETA}>{BETA ? BETA_NOTE : null}</p>
           <div id="deposit-sizes" className="quickpick" role="group" aria-labelledby="deposit-h"></div>
           <p id="deposit-note" className="fineprint" role="status" aria-live="polite"></p>
           <button id="deposit-submit" type="button" className="primary big" disabled>Add funds</button>
-          <p id="deposit-gate-note" className="fineprint" data-beta-gate-note hidden></p>
+          <p id="deposit-gate-note" className="fineprint" data-beta-gate-note hidden={!BETA}>{BETA ? GATE_SENTENCE : null}</p>
         </section>
 
         <section className="wstep" aria-labelledby="withdraw-h" data-reveal>

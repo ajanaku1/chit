@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 
-import { chainTargetFromEnv, sessionTargetFromEnv } from "../app/chain-target.mjs";
+import { CAPS_UNTIL_AUDIT, GATE_SENTENCE, chainTargetFromEnv, sessionTargetFromEnv } from "../app/chain-target.mjs";
 
 /*
  * The app's logic is ../app/src (wallet, deposits, fleets, sessions), imported as it is and
@@ -15,7 +15,16 @@ const fleetApi = process.env.FLEET_API_ORIGIN || "https://chit.tools";
 const nextConfig = {
   reactStrictMode: true,
   experimental: { externalDir: true },
-  env: { NEXT_PUBLIC_CHAIN_TARGET: JSON.stringify(target), NEXT_PUBLIC_SESSION_TARGET: JSON.stringify(sessions) },
+  // web/test builds each chain into its own folder, so the two builds can be held side by side.
+  distDir: process.env.NEXT_DIST_DIR || ".next",
+  // Everything a page says about its chain is fixed here, at build time, and written into the HTML (components/chain.ts):
+  // the FR-006 strip, the statement beside the deposit amount, the gate's sentence, the draw cap. None of it waits on a fetch.
+  env: {
+    NEXT_PUBLIC_CHAIN_TARGET: JSON.stringify(target),
+    NEXT_PUBLIC_SESSION_TARGET: JSON.stringify(sessions),
+    NEXT_PUBLIC_BETA_STRIP: JSON.stringify(target.beta ? [...target.betaFacts, CAPS_UNTIL_AUDIT] : []),
+    NEXT_PUBLIC_GATE_SENTENCE: GATE_SENTENCE,
+  },
   webpack(config, { webpack }) {
     config.resolve.extensionAlias = { ".js": [".ts", ".tsx", ".js"], ".mjs": [".mts", ".mjs"] };
     config.resolve.modules = [...(config.resolve.modules ?? ["node_modules"]), fileURLToPath(new URL("./node_modules", import.meta.url))];
