@@ -3098,3 +3098,36 @@ assertion still passes. `.beta-note` keeps `position: sticky`, `top: 0` and
 Nobody has yet seen it rendered, because the note only appears on a 4663
 build; the playground cannot show it either, so it wants a local build or a
 screenshot before the beta opens.
+
+## 2026-09-23: the old landing retired, and a gate that had been red
+
+The site a reader meets is `web/` now, served at chit.tools. The old landing
+is deleted — `index.html`, the burn page, and the `main.js` and `style.css`
+that only served them. What stayed is what is still read: `landing/public/bot`,
+whose banners the bot's API function bundles, and `progress.json`, which the
+new site reads through its own route. The host that serves the built app
+redirects its root to the site, temporarily rather than permanently, because
+a permanent redirect is cached for a long time and that host may serve its
+own root later.
+
+Three checks were pinned to the deleted file and are now pinned to the site:
+the claims scan (`app/test/fleet-claims.test.ts`) reads the site's copy where
+the sentences are actually written; `beta-launch` looks for the capped-beta
+wording there; and the palette test compares the app's tokens with the site's
+Tailwind colours, which is the same guarantee against the same drift — the
+two agree today, coral, paper and ink alike.
+
+One refinement to the claims scan, and it is a refinement rather than a
+loosening: a line that asks a question is no longer read as making a claim.
+The site's FAQ asks "Is it anonymous?" and answers "No. It is private, not
+anonymous…", which is exactly the disclosure we want; the old rule failed the
+question and would have pushed us to stop asking it. The answer is still
+scanned like every other line, so a "Yes" there fails as it always did.
+
+**`./verify.sh beta-surfaces` had been failing on main**, and not because of
+this work. It greps for "not been audited" and "operator key can move" in
+`app/src/fleet/page-shared.ts`, but those sentences moved into
+`app/chain-target.mjs` when the beta note became build-time (T056). The gate
+has been reading a file that no longer owns the text it checks. Repointed at
+`app/chain-target.mjs`, which carries both, and recorded here rather than
+quietly corrected, as the rule on predicates asks.

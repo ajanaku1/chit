@@ -162,13 +162,13 @@ checksh beta-alerts "the service says what an outside reader cannot see, to the 
   'test -f src/fleet/alerts.ts && grep -q "MONITOR_CHAT_ID" src/fleet/alerts.ts && ! grep -q "TELEGRAM_CHAT_ID\"]" src/fleet/alerts.ts && ! grep -q "TELEGRAM_CHAT_ID" .github/workflows/sweep.yml && grep -q "if: failure()" .github/workflows/sweep.yml && grep -q "alerts" src/fleet/service-runtime.ts && npm run build:fleet && node --test dist-fleet/test/fleet/alerts.test.js dist-fleet/test/fleet/alert-routes.test.js dist-fleet/test/fleet/ci-workflows.test.js dist-fleet/test/fleet/store.test.js dist-fleet/test/fleet/store-neon.test.js'
 
 checksh beta-surfaces "the gate, the beta note and the honest refusal are on the pages a depositor reads" \
-  'test -f app/src/fleet/holders-gate.ts && grep -q "chain-target.json" app/build.mjs && grep -qiE "not been audited|unaudited" app/src/fleet/page-shared.ts && grep -qiE "operator key can move|operator can move" app/src/fleet/page-shared.ts && npm --prefix app run verify'
+  'test -f app/src/fleet/holders-gate.ts && grep -q "chain-target.json" app/build.mjs && grep -qiE "not been audited|unaudited" app/chain-target.mjs && grep -qiE "operator key can move|operator can move" app/chain-target.mjs && npm --prefix app run verify'
 
 checksh beta-venue "every tradable token is pinned to its real pool and quoted against it" \
   'test -f src/fleet/token-registry.ts && test -f deployments/token-registry-4663.json && grep -q "poolId" deployments/token-registry-4663.json && grep -q "slippageBps" deployments/token-registry-4663.json && ! grep -q "venuePoolKey(token)" src/fleet/campaign-routes.ts && npm run build:fleet && node --test dist-fleet/test/fleet/v4-swap.test.js'
 
 checksh beta-launch "no published sentence claims an audit precedes mainnet, and sells stay out" \
-  'test -f README.md && ! grep -rqiE "audit (is )?(required |a )?(gate |precondition )?before (mainnet|real funds)" README.md ONBOARDING.md specs/002-private-funding-pool/spec.md landing/public/index.html && grep -qiE "capped|beta" landing/public/index.html'
+  'test -f README.md && ! grep -rqiE "audit (is )?(required |a )?(gate |precondition )?before (mainnet|real funds)" README.md ONBOARDING.md specs/002-private-funding-pool/spec.md web/components && grep -rqiE "capped|beta" web/components/scenes.tsx'
 
 # --- manual checks (not automatable; confirm before calling the build done) ---
 cat <<'MANUAL'

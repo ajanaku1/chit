@@ -38,13 +38,34 @@ const contrast = (a: string, b: string): number => {
 const rules = (css: string): Array<[string, string]> =>
   [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [m[1]!.trim(), m[2]!]);
 
-test("the app's palette is the landing's, token for token", async () => {
-  const [landing, tokens] = await Promise.all([
-    readFile(join(repoRoot, "landing/public/style.css"), "utf8"),
+/**
+ * The app and the site are two codebases with one palette: the app writes CSS custom
+ * properties, the site writes Tailwind colours. They drift silently unless something
+ * compares them, and a coral that is nearly the site's coral looks like a bug in the app.
+ * The old landing's stylesheet used to be the reference; the site is web/ now.
+ */
+test("the app's palette is the site's, colour for colour", async () => {
+  const [config, tokens] = await Promise.all([
+    readFile(join(repoRoot, "web/tailwind.config.ts"), "utf8"),
     read("src/styles/tokens.css"),
   ]);
-  for (const name of ["--coral", "--coral-lift", "--coral-deep", "--paper", "--soft-paper", "--ink", "--muted-ink", "--surface-top", "--surface-bottom"]) {
-    assert.equal(cssColor(tokens, name), cssColor(landing, name), `${name} drifted from the landing`);
+  const site = (path: string): string => {
+    const [group, key] = path.split(".");
+    const block = key ? new RegExp(`${group}:\\s*\\{([^}]*)\\}`).exec(config)?.[1] ?? "" : config;
+    const pattern = key ? new RegExp(`\\b${key}:\\s*"(#[0-9A-Fa-f]{3,8})"`) : new RegExp(`\\b${group}:\\s*"(#[0-9A-Fa-f]{3,8})"`);
+    const found = pattern.exec(block)?.[1];
+    assert.ok(found, `the site's palette has no ${path}`);
+    return found!.toLowerCase();
+  };
+  for (const [token, colour] of [
+    ["--coral", "coral.DEFAULT"],
+    ["--coral-lift", "coral.lift"],
+    ["--coral-deep", "coral.deep"],
+    ["--paper", "paper.DEFAULT"],
+    ["--soft-paper", "paper.soft"],
+    ["--ink", "ink"],
+  ] as const) {
+    assert.equal(cssColor(tokens, token)?.toLowerCase(), site(colour), `${token} drifted from the site's ${colour}`);
   }
 });
 

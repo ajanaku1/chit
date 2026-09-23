@@ -28,11 +28,18 @@ const NEVER = ["untraceable", "unlinkab", "no trail"];
 const ONLY_WHEN_DENIED = ["anonymous", "hidden trade", "mainnet"];
 const DENIAL = /\b(not|never|no|without|cannot|isn't|won't|will not|do not|does not|excludes?)\b/i;
 
+/**
+ * A question is not a claim. "Is it anonymous?" asks; the answer beneath it is what
+ * asserts, and the answer is scanned like every other line — so a "Yes" there still
+ * fails. Without this a page may not even raise the question it is obliged to answer.
+ */
+const ASKS = /\?\s*["'`]?\s*,?\s*$/;
+
 const overclaims = (text: string): string[] =>
   text
     .split(/\n/)
     .map((line) => line.trim())
-    .filter((line) => ONLY_WHEN_DENIED.some((word) => new RegExp(word, "i").test(line)) && !DENIAL.test(line));
+    .filter((line) => ONLY_WHEN_DENIED.some((word) => new RegExp(word, "i").test(line)) && !DENIAL.test(line) && !ASKS.test(line));
 
 test("the pool claim says what is hidden, what is not, and who can still see", () => {
   assert.match(POOL_PRIVACY_CLAIM, /operator knows/i, "the operator's view is disclosed, not buried");
@@ -61,7 +68,12 @@ test("no page claims anonymity or an absent trail", async () => {
     join(appRoot, "fleet-privacy.html"),
     join(appRoot, "balance.html"),
     join(appRoot, "fleet-dashboard.html"),
-    join(repoRoot, "landing/public/index.html"),
+    // The site a reader meets is web/ now; the old landing is retired. These are its copy,
+    // scanned as source because that is where the sentences are written.
+    join(repoRoot, "web/components/scenes.tsx"),
+    join(repoRoot, "web/components/botpage.tsx"),
+    join(repoRoot, "web/components/burn.tsx"),
+    join(repoRoot, "web/components/more.tsx"),
   ];
   for (const file of files) {
     const text = await readFile(file, "utf8");
