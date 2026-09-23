@@ -33,15 +33,23 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      # The service's own host, not the site. chit.tools serves the site and forwards
+      # /api/* to the service, which is right for a browser and wrong for this: a
+      # forwarded request is one more thing that can drop a header, and the first
+      # scheduled sweep after the hosts were split was refused 401 with no way to
+      # tell, from outside, whether the secret or the forward was at fault. The
+      # variable is set per environment, so moving the service moves this with it.
       - name: Start the sweep
         id: sweep
         env:
           FLEET_CRON_SECRET: ${{ secrets.FLEET_CRON_SECRET }}
+          SERVICE: ${{ vars.FLEET_SERVICE_ORIGIN || 'https://testnet.chit.tools' }}
         run: |
+          echo "sweeping $SERVICE"
           if [ -n "$FLEET_CRON_SECRET" ]; then
-            curl -fsS --max-time 240 -H "Authorization: Bearer $FLEET_CRON_SECRET" https://chit.tools/api/fleet/sweep
+            curl -fsS --max-time 240 -H "Authorization: Bearer $FLEET_CRON_SECRET" "$SERVICE/api/fleet/sweep"
           else
-            curl -fsS --max-time 240 https://chit.tools/api/fleet/sweep
+            curl -fsS --max-time 240 "$SERVICE/api/fleet/sweep"
           fi
 
       # A sweep that never started is the half of T049 the service cannot
