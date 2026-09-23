@@ -1,5 +1,5 @@
 /* The landing's palette and motion, copied token for token (landing/public/style.css).
-   Ink surface, paper type, one accent hue. The typefaces are the new site's, served from ../fonts. */
+   Ink surface, paper type, one accent hue. The typefaces are the new site's, served from ../fonts (src/fonts here, fonts/ beside styles/ in a build). */
 @font-face { font-family: "League Spartan"; src: url("../fonts/LeagueSpartan.woff2") format("woff2"); font-weight: 600 800; font-display: swap; }
 @font-face { font-family: "Poppins"; src: url("../fonts/Poppins-400.woff2") format("woff2"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "Poppins"; src: url("../fonts/Poppins-500.woff2") format("woff2"); font-weight: 500; font-display: swap; }

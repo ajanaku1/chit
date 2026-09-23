@@ -22,8 +22,8 @@ await mkdir(output, { recursive: true });
 await mkdir(new URL("styles/", output), { recursive: true });
 // The typefaces ship with the app (tokens.css reads them from ../fonts), so no page loads a third-party asset.
 await mkdir(new URL("fonts/", output), { recursive: true });
-const fonts = (await readdir(new URL("./fonts/", import.meta.url))).filter((name) => name.endsWith(".woff2"));
-await Promise.all(fonts.map((name) => copyFile(new URL(`./fonts/${name}`, import.meta.url), new URL(`fonts/${name}`, output))));
+const fonts = (await readdir(new URL("./src/fonts/", import.meta.url))).filter((name) => name.endsWith(".woff2"));
+await Promise.all(fonts.map((name) => copyFile(new URL(`./src/fonts/${name}`, import.meta.url), new URL(`fonts/${name}`, output))));
 await writeFile(new URL("chain-target.json", output), `${JSON.stringify(target, null, 2)}\n`);
 await Promise.all([
   page("./fleet.html"),
