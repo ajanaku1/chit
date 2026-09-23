@@ -3062,3 +3062,39 @@ chain id and the test holds the two apart.
 The live scripts under `scripts/` still define their own chains. They are run
 by hand, one at a time, under a person watching, and they have no tests; the
 guard covers the service, which is what runs unattended.
+
+## 2026-09-23: the soak, and the redeploy inside it
+
+The soak started 14:39:24 UTC on 2026-09-23 against the 46630 pool, sampled
+every ten minutes by `scripts/fleet-soak.ts`. It is the run T088 is judged
+on, so what happened inside it is written here rather than remembered.
+
+At about 19:05 UTC, roughly four and a half hours in, production was
+deployed again, by hand, from `a03974d`. It carried Boye's single chain
+definition (PR #42) and Lucian's restyle of the app (PR #43), and the
+decision to ship mid-soak was the founder's, taken with the cost stated.
+
+What that does and does not do to the claim. It does not reset the clock:
+the soak measures whether charges are recorded on time, whether the sweep
+keeps running, whether the pool stays whole and whether alerting is live,
+and none of those paths changed. PR #43 touches `web/` — a Next.js project
+that nothing serves yet, since `vercel.json` and `scripts/assemble-site.mjs`
+are untouched — and, in the app that is served, fonts and CSS. PR #42
+replaces five copies of `defineChain` with one that states a block time; the
+service already had its own, so its behaviour is unchanged and the other
+four paths only stop waiting four seconds for a receipt on a chain that
+seals in a quarter of a second.
+
+So the honest sentence for the decision record is not "this build ran
+forty-eight hours" but "the service ran forty-eight hours unchanged, and the
+styling changed at 19:05 on the first day". The second is longer and just as
+true.
+
+One thing was checked before the merge that no test could have caught.
+FR-006 wants the beta note impossible to close, hide or scroll past, and a
+restyle is exactly the layer that can break that while every markup
+assertion still passes. `.beta-note` keeps `position: sticky`, `top: 0` and
+`z-index: 50`; padding, border colour, size and centring are what changed.
+Nobody has yet seen it rendered, because the note only appears on a 4663
+build; the playground cannot show it either, so it wants a local build or a
+screenshot before the beta opens.
