@@ -15,9 +15,12 @@
 }
 #headroom-meter { margin-top: 1.25rem; }
 .limits { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 1rem; margin-block: 1.25rem; }
-.limit { display: grid; align-content: space-between; gap: 0.5rem; min-height: 12rem; margin: 0; }
-.limit__figure { margin: 0.5rem 0; font-size: 2.25rem; }
-.limit__note { margin: 0; font-size: 0.85rem; line-height: 1.45; }
+/* Three cards on the same rows (label, figure, note), so the figures and the notes start level whatever each note says. */
+.limit { display: grid; grid-template-rows: auto auto 1fr; align-content: start; gap: 0.75rem; min-height: 12rem; margin: 0; }
+.limit__figure { margin: 0.25rem 0 0.5rem; font-size: clamp(2.5rem, 5vw, 3.25rem); }
+.limit__note { margin: 0; font-size: 0.85rem; line-height: 1.5; }
+/* On the Balance page the three sit on the site's card ground with an ember at the top, not the warm wash. */
+.limits .card-warm { border-color: rgba(245, 239, 229, 0.1); background: radial-gradient(120% 70% at 0% 0%, rgba(255, 90, 60, 0.2), transparent 60%), var(--surface); --text-muted: rgba(245, 239, 229, 0.62); }
 /* Two long actions stack, as in Stow, rather than squeeze into one row. */
 #exit-card .wnav { flex-direction: column; }
 .callout { margin: 0 0 1rem; padding: 0.8rem 1rem; border: 1px solid rgba(245, 239, 229, 0.18); border-radius: var(--radius-inner); background: rgba(122, 36, 21, 0.35); color: var(--paper); font-size: 0.9rem; line-height: 1.45; }
