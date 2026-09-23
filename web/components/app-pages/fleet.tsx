@@ -1,5 +1,7 @@
 // Drawn from chit-fleet/app/fleet.html by scripts/app-pages.mjs; every id and class is the one the app's logic reads.
 /* eslint-disable */
+import { DRAW_CAP } from "@/components/chain";
+
 export const meta = { title: "Chit Fleet · Set up your fleet", description: "Chit Fleet: one private gas budget for all your trading wallets. Your keys stay with you; your main wallet stays out of sight.", skip: {"href":"#wizard","label":"Skip to setup"} };
 
 export function FleetMarkup() {
@@ -145,7 +147,7 @@ Keep this file safe. If you lose it and this browser's data, nobody can recover 
           <div className="field">
             <label htmlFor="a-draw">How much of your balance may this fleet spend? (ETH)</label>
             <input id="a-draw" name="draw" type="text" inputMode="decimal" defaultValue="0.02" />
-            <div className="meter" id="draw-meter" role="meter" aria-label="This draw against the 0.2 ETH cap" aria-valuemin={0} aria-valuemax={1} aria-valuenow={0}><span className="meter__fill" id="draw-fill"></span></div>
+            <div className="meter" id="draw-meter" role="meter" aria-label={`This draw against the ${DRAW_CAP} ETH cap`} aria-valuemin={0} aria-valuemax={1} aria-valuenow={0}><span className="meter__fill" id="draw-fill"></span></div>
             <p id="draw-note" className="fineprint" role="status" aria-live="polite"></p>
             <p className="fineprint">{" "}
 Your fleet spends from your Chit balance.
