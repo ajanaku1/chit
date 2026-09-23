@@ -168,3 +168,20 @@ test("no user-facing link to the app is hardcoded to this site", async () => {
     assert.deepEqual(hardcoded, [], `${file} links into the app by path instead of APP_HREF`);
   }
 });
+
+/**
+ * The site had no icon at all after it moved to web/: the old landing's files were served
+ * from landing/public, which this project does not build. Next serves app/icon.svg,
+ * app/favicon.ico and app/apple-icon.png by file convention and writes the links itself,
+ * so the test is that the files are there and the links reach the page.
+ */
+test("the site carries its icon, in the page and on disk", { timeout: 600_000 }, async () => {
+  for (const file of ["app/icon.svg", "app/favicon.ico", "app/apple-icon.png"]) {
+    await assert.doesNotReject(readFile(join(webRoot, file)), `${file} is missing, so the site has no icon`);
+  }
+  const dist = await buildFor("46630");
+  const html = await readFile(join(dist, "server/app/index.html"), "utf8");
+  assert.match(html, /<link rel="icon"[^>]*favicon\.ico/, "no .ico link in the page");
+  assert.match(html, /<link rel="icon"[^>]*icon\.svg/, "no svg icon link in the page");
+  assert.match(html, /<link rel="apple-touch-icon"/, "no apple touch icon in the page");
+});

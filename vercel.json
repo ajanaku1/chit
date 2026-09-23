@@ -76,9 +76,20 @@
   ],
   "redirects": [
     {
-      "source": "/app",
-      "destination": "/app/fleet.html",
+      "source": "/",
+      "destination": "https://chit.tools",
       "permanent": false
+    },
+    {
+      "source": "/app",
+      "destination": "/app/balance",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/app/(balance|fleet|fleet-dashboard|fleet-privacy|sessions|trade)",
+      "destination": "/app/$1.html"
     }
   ]
 }
