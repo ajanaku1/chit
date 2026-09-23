@@ -122,6 +122,11 @@ one deployment.
 ### 2E. The sweep (M3)
 
 - [x] T041 [P] [B] Add `blockTime` to the chain definition in `src/fleet/service-runtime.ts`
+  - The service had it from this task; five other clients of the same chain each had a definition of
+    their own and kept viem's four-second default: the sponsor route, the bot's chain, its link reader,
+    its session chain and its venue watcher. They all build on `src/fleet/chain-def.ts` now, and
+    `test/fleet/chain-def.test.ts` keeps it the only one in the service. The live scripts under
+    `scripts/` still define their own, deliberately: they are run by hand and have no tests.
 - [x] T042 [P] [B] Add `maxDuration` for `api/fleet/*` in `vercel.json`
 - [x] T043 [B] Read `ledgerInputs` through Multicall3 in `src/fleet/chain-pool.ts`, caching entries that can no longer change
 - [x] T044 [B] Log and count every failed posting with its reason in `src/fleet/pool-buy.ts`, and add the field to the sweep's report

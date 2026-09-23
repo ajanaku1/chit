@@ -3037,3 +3037,28 @@ generated into it without passing through a terminal. What is left there is
 `DEPLOYER_PRIVATE_KEY` and `FLEET_LEDGER_KEY`, which Vercel stores
 write-only and nobody can copy between projects, the A record, and a deploy.
 Runbook § 4a and § 4c now say the rule from both sides.
+
+## One chain, defined once (2026-09-23, Boye, branch fix/block-time-chains, T041's other half)
+
+viem takes its receipt-polling interval from the chain's `blockTime` and falls
+back to four seconds for a chain that states none. Robinhood Chain seals a
+block in about a quarter of a second, so a write that had already landed was
+still waited on for four, once per write. T041 gave the fleet service a block
+time. It did not give one to anything else, and there were five others: the
+sponsor route, the bot's chain, its link reader, its session chain and its
+venue watcher each carried a `defineChain` of their own, copied from the same
+original, and each kept the four seconds.
+
+`src/fleet/chain-def.ts` is now the one definition, and the test beside it
+keeps it the only one: it reads every file in `src/fleet` and fails on a
+second `defineChain`. A duplicate is not a style complaint here — every copy
+of it so far has been a copy without a block time.
+
+Found while doing it: `bot-link-runtime.ts` named chain 46630 "Robinhood
+Chain", the mainnet's name, so a testnet client announced itself as mainnet in
+logs and in whatever a wallet shows a user. The shared `chainName` answers per
+chain id and the test holds the two apart.
+
+The live scripts under `scripts/` still define their own chains. They are run
+by hand, one at a time, under a person watching, and they have no tests; the
+guard covers the service, which is what runs unattended.
