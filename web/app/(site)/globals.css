@@ -1,0 +1,120 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --beta-h: 0px;
+}
+
+html,
+body {
+  height: 100%;
+  background: #0a0908;
+  color: #f5efe5;
+}
+
+body {
+  font-family: var(--font-body), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* The one scroll surface. Full screens snap on wide viewports; phones scroll freely. */
+.stage {
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+}
+.stage::-webkit-scrollbar { display: none; }
+@media (min-width: 900px) {
+  .footer-snap { scroll-snap-align: end; }
+  .stage { scroll-snap-type: y mandatory; }
+  .scene { scroll-snap-align: start; scroll-snap-stop: always; }
+}
+.scene {
+  position: relative;
+  min-height: 100dvh;
+  width: 100%;
+  overflow: hidden;
+}
+@media (min-width: 900px) { .scene { height: 100dvh; } }
+
+.display {
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  line-height: 0.86;
+}
+
+.eyebrow {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.tnum { font-variant-numeric: tabular-nums; }
+
+/* The chit plate: chamfered like the mark, never a rounded rectangle. */
+.plate-cut {
+  clip-path: polygon(2.4% 0, 97.6% 0, 100% 3.6%, 100% 96.4%, 97.6% 100%, 2.4% 100%, 0 96.4%, 0 3.6%);
+}
+
+@keyframes rowIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.row-in { animation: rowIn 520ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes fillBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.fill-bar { transform-origin: left center; animation: fillBar linear both; }
+
+@keyframes pulseSeam { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+.seam-pulse { animation: pulseSeam 3.2s ease-in-out infinite; }
+
+/* The hero assembles on load: each half of the chit slides in from its own side and meets at the seam. */
+@keyframes fromLeft { from { transform: translate3d(-60vw, 0, 0) rotate(-4deg); } to { transform: none; } }
+@keyframes fromRight { from { transform: translate3d(60vw, 0, 0) rotate(4deg); } to { transform: none; } }
+.enter-left { animation: fromLeft 1100ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both; }
+.enter-right { animation: fromRight 1100ms cubic-bezier(0.16, 1, 0.3, 1) 220ms both; }
+@keyframes riseIn { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+.rise-in { animation: riseIn 800ms cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* The glow behind the tear breathes slowly; burned squares smoulder, each on its own beat. */
+@keyframes ember { 0%, 100% { opacity: 0.7; transform: translate(-50%, -50%) scale(1); } 50% { opacity: 0.95; transform: translate(-50%, -50%) scale(1.06); } }
+.ember { animation: ember 6s ease-in-out infinite; }
+@keyframes smoulder { 0%, 100% { box-shadow: 0 0 6px 1px rgba(255, 90, 60, 0.55); background: #ff5a3c; } 50% { box-shadow: 0 0 14px 3px rgba(255, 122, 92, 0.9); background: #ff7a5c; } }
+.cell-burn { animation: smoulder 2.4s ease-in-out infinite; }
+@keyframes sweep { to { transform: rotate(360deg); } }
+.sweep { transform-origin: 50% 50%; animation: sweep 12s linear infinite; }
+
+/* The live marker: a dot that pings, the way a reading that is still arriving should look. */
+.live-dot { position: relative; display: inline-block; width: 8px; height: 8px; border-radius: 999px; background: #4bd37b; }
+.live-dot::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: inherit; animation: ping 1.8s cubic-bezier(0, 0, 0.2, 1) infinite; }
+@keyframes ping { 75%, 100% { transform: scale(2.6); opacity: 0; } }
+
+/* Every screen after the first opens along the seam, the way the hero tears. */
+[data-tear="wait"] > * { clip-path: polygon(50.6% 0%, 47.0% 13%, 52.8% 26%, 47.0% 40%, 52.8% 54%, 47.0% 68%, 52.8% 82%, 49.2% 100%, 48.0% 100%, 51.6% 82%, 45.8% 68%, 51.6% 54%, 45.8% 40%, 51.6% 26%, 45.8% 13%, 49.4% 0%); }
+[data-tear="in"] > * { animation: tearOpen 1000ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes tearOpen {
+  0% { clip-path: polygon(50.6% 0%, 47.0% 13%, 52.8% 26%, 47.0% 40%, 52.8% 54%, 47.0% 68%, 52.8% 82%, 49.2% 100%, 48.0% 100%, 51.6% 82%, 45.8% 68%, 51.6% 54%, 45.8% 40%, 51.6% 26%, 45.8% 13%, 49.4% 0%); }
+  99% { clip-path: polygon(140% 0%, 140% 13%, 140% 26%, 140% 40%, 140% 54%, 140% 68%, 140% 82%, 140% 100%, -40% 100%, -40% 82%, -40% 68%, -40% 54%, -40% 40%, -40% 26%, -40% 13%, -40% 0%); }
+  100% { clip-path: none; }
+}
+
+/* A strip that never stops: two copies side by side, moved by exactly one copy's width. */
+@keyframes marquee { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-50%, 0, 0); } }
+.marquee { display: flex; width: max-content; animation: marquee var(--marquee-s, 38s) linear infinite; }
+.marquee-hover:hover .marquee { animation-play-state: paused; }
+.outline-text { color: transparent; -webkit-text-stroke: 1.5px rgba(245, 239, 229, 0.35); }
+
+:focus-visible { outline: 2px solid #ff5a3c; outline-offset: 3px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  .marquee { animation: none; }
+  .stage { scroll-behavior: auto; }
+}

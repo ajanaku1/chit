@@ -1,10 +1,11 @@
 /* Components shared by every app page. The pages layer refines them. */
 *, *::before, *::after { box-sizing: border-box; }
-html { background: var(--surface-bottom); }
+html { background: var(--void); }
+/* The site's ground: near-black, with the ember glow the landing's burn leaves behind, top right. */
 body.fleet-body {
   margin: 0;
   min-height: 100vh;
-  background: linear-gradient(180deg, var(--surface-top), var(--surface-bottom) 60%);
+  background: radial-gradient(60rem 40rem at 100% -10%, rgba(122, 36, 21, 0.32), transparent 70%), var(--void);
   color: var(--paper);
   font-family: var(--font-sans);
   letter-spacing: var(--track-narrow);
@@ -32,17 +33,19 @@ a { color: inherit; }
 .wizard, .dash, .privacy-page { display: flex; flex-direction: column; gap: 1.4rem; }
 
 .masthead {
-  position: relative;
+  position: relative; isolation: isolate;
   display: grid; grid-template-columns: auto 1fr auto;
   grid-template-areas: "brand nav action" "contract contract contract";
-  align-items: center; gap: 0.75rem 1.5rem; padding-block: 1.25rem 1rem;
+  align-items: center; gap: 1.1rem 1.5rem; padding-block: 1.1rem 1rem;
 }
-.brand-lockup { grid-area: brand; display: inline-flex; align-items: center; gap: 0.6rem; font-size: 1.25rem; letter-spacing: var(--track-snug); text-decoration: none; }
-.brand-lockup img { width: 1.75rem; height: 1.75rem; }
-.nav { grid-area: nav; display: flex; justify-content: center; gap: clamp(1rem, 3vw, 2.25rem); }
-.nav a { padding-block: 0.4rem; border-bottom: 1px solid transparent; color: var(--text-muted); font-size: 0.95rem; text-decoration: none; }
-.nav a[aria-current="page"] { color: var(--paper); border-bottom-color: var(--paper); }
-.wallet-btn { grid-area: action; padding: 0.55rem 1rem; border: 0; border-radius: var(--radius-control); background: var(--paper); color: var(--ink); font: inherit; font-size: 0.9rem; white-space: nowrap; cursor: pointer; }
+/* The pill: the site's floating bar, drawn behind the top row only, so the contract row sits under it. */
+.masthead::before { content: ""; grid-area: 1 / 1 / 2 / -1; align-self: stretch; z-index: -1; margin: -0.45rem -0.5rem -0.45rem -0.75rem; border: 1px solid rgba(245, 239, 229, 0.1); border-radius: var(--radius-pill); background: rgba(10, 9, 8, 0.72); backdrop-filter: blur(20px); }
+.brand-lockup { grid-area: brand; display: inline-flex; align-items: center; gap: 0.6rem; font-family: var(--font-display); font-size: 1.35rem; font-weight: 700; letter-spacing: var(--track-display); text-transform: lowercase; text-decoration: none; }
+.brand-lockup img { width: 2rem; height: 2rem; }
+.nav { grid-area: nav; display: flex; justify-content: center; gap: 0.25rem; }
+.nav a { padding: 0.5rem 0.95rem; border-radius: var(--radius-pill); color: var(--text-muted); font-size: 0.9rem; text-decoration: none; }
+.nav a[aria-current="page"] { background: rgba(245, 239, 229, 0.1); color: var(--paper); }
+.wallet-btn { grid-area: action; padding: 0.6rem 1.15rem; border: 0; border-radius: var(--radius-pill); background: var(--coral); color: var(--ink); font: inherit; font-size: 0.9rem; font-weight: 500; white-space: nowrap; cursor: pointer; }
 .wallet-btn[data-state="connected"] { display: inline-flex; align-items: center; gap: 0.55rem; padding: 0.45rem 0.6rem 0.45rem 0.5rem; border: 1px solid var(--glass-line); background: transparent; color: var(--paper); font-family: var(--font-mono); }
 .wallet-btn[data-state="error"] { background: var(--coral-deep); color: var(--paper); }
 .wallet-btn .wallet-mark { width: 1.15rem; height: 1.15rem; }
@@ -84,11 +87,12 @@ a { color: inherit; }
 
 @media (max-width: 720px) {
   .masthead { grid-template-columns: 1fr auto auto; grid-template-areas: "brand action burger" "nav nav nav" "contract contract contract"; }
-  .burger { grid-area: burger; display: grid; place-content: center; gap: 5px; width: 2.5rem; height: 2.5rem; border: 1px solid var(--glass-line); border-radius: var(--radius-control); background: transparent; }
+  .burger { grid-area: burger; display: grid; place-content: center; gap: 5px; width: 2.5rem; height: 2.5rem; border: 0; border-radius: var(--radius-pill); background: rgba(245, 239, 229, 0.08); }
   .burger span { display: block; width: 18px; height: 1.5px; background: var(--paper); }
   .nav { display: none; flex-direction: column; gap: 0; }
   .nav[data-open="true"] { display: flex; }
-  .nav a { padding-block: 0.8rem; border-bottom: 1px solid rgba(245, 239, 229, 0.08); }
+  .nav { margin-top: 0.5rem; padding: 0.4rem; border: 1px solid rgba(245, 239, 229, 0.1); border-radius: var(--radius-card); background: var(--surface); }
+  .nav a { padding: 0.85rem 1rem; border-radius: var(--radius-inner); font-family: var(--font-display); font-size: 1.35rem; font-weight: 700; letter-spacing: var(--track-snug); }
   /* Too little room right of the brand on a phone: the menu takes the full width under the top row. */
   .wallet-menu { grid-area: 1 / 1 / 2 / -1; left: 0; width: auto; max-width: none; }
 }
@@ -111,7 +115,7 @@ a { color: inherit; }
 .contract-row__icon--done, #copy-contract-address[data-state="copied"] .contract-row__icon--copy { display: none; }
 #copy-contract-address[data-state="copied"] .contract-row__icon--done { display: block; }
 
-.pill { display: inline-flex; align-items: center; gap: 0.5rem; margin-block: 0.5rem 1.5rem; padding: 0.55rem 0.75rem; border: 1px solid rgba(222, 214, 202, 0.12); border-radius: var(--radius-control); background: linear-gradient(90deg, rgba(255, 90, 60, 0.1), rgba(255, 90, 60, 0.24) 45%, rgba(255, 90, 60, 0.1)); font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
+.pill { display: inline-flex; align-items: center; gap: 0.5rem; margin-block: 0.5rem 1.5rem; padding: 0.55rem 0.95rem; border: 1px solid rgba(222, 214, 202, 0.12); border-radius: var(--radius-pill); font-family: var(--font-mono); background: linear-gradient(90deg, rgba(255, 90, 60, 0.1), rgba(255, 90, 60, 0.24) 45%, rgba(255, 90, 60, 0.1)); font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }
 .pill[data-live="false"] { background: rgba(122, 36, 21, 0.45); }
 .pill__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
 .pill[data-live="false"] .pill__dot { background: var(--soft-paper); }
@@ -122,13 +126,15 @@ a { color: inherit; }
 .fleet-foot .disclaimer { font-size: 0.72rem; }
 
 /* ---- Type ---- */
-h1, h2, h3 { margin: 0 0 0.75rem; font-weight: 500; line-height: 1.05; letter-spacing: var(--track-tight); text-wrap: balance; }
-h1 { font-size: clamp(2rem, 5vw, 3.25rem); }
-h2 { font-size: clamp(1.5rem, 3.5vw, 2.25rem); }
+h1, h2, h3 { margin: 0 0 0.75rem; font-family: var(--font-display); font-weight: 800; line-height: 0.95; letter-spacing: var(--track-display); text-wrap: balance; }
+h1 { font-size: clamp(2.5rem, 6vw, 4.25rem); }
+h2 { font-size: clamp(1.75rem, 4vw, 2.75rem); }
+h3 { font-weight: 700; letter-spacing: var(--track-snug); }
 /* Inside a card, titles are sized to the card, not the page. */
-.wstep h1, .dash-card h1 { font-size: clamp(1.75rem, 3vw, 2.1rem); }
-.wstep h2, .dash-card h2, .card-warm h2 { font-size: clamp(1.25rem, 2.2vw, 1.5rem); }
-.kicker { margin: 0 0 0.9rem; color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
+.wstep h1, .dash-card h1 { font-size: clamp(2.1rem, 4.2vw, 3.1rem); }
+.wstep h2, .dash-card h2, .card-warm h2 { font-size: clamp(1.25rem, 2.6vw, 1.85rem); font-weight: 700; letter-spacing: var(--track-snug); line-height: 1.05; }
+/* The site's eyebrow: a coral mono label over each section. */
+.kicker { margin: 0 0 0.9rem; color: var(--coral); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: 0.22em; text-transform: uppercase; }
 .lead { margin: 0 0 1.25rem; color: var(--text-muted); font-size: 1rem; line-height: 1.5; }
 .lead.small { font-size: 0.95rem; }
 .fineprint, .hint { margin: 0.75rem 0 0; color: var(--text-muted); font-size: 0.82rem; line-height: 1.5; }
@@ -137,15 +143,17 @@ h2 { font-size: clamp(1.5rem, 3.5vw, 2.25rem); }
 .eligibility-line { color: var(--soft-paper); font-size: 0.9rem; }
 .promises { display: grid; gap: 0.75rem; margin: 1.25rem 0 1.5rem; padding: 0; list-style: none; }
 .promises li { padding: 0.9rem 1.1rem; border: 1px solid rgba(245, 239, 229, 0.08); border-radius: 14px; background: var(--glass-fill); color: var(--text-muted); font-size: 0.92rem; line-height: 1.5; }
-.promises strong { display: block; margin-bottom: 0.1rem; color: var(--paper); font-size: 0.98rem; font-weight: 500; }
+.promises strong { display: block; margin-bottom: 0.15rem; color: var(--paper); font-family: var(--font-display); font-size: 1.1rem; font-weight: 700; letter-spacing: var(--track-snug); }
 
 /* ---- Buttons ---- */
 button, .linkbtn { font: inherit; cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: 0.45; }
+/* A main action that cannot run yet goes quiet instead of turning a muddy coral. */
+.primary:disabled { background: rgba(245, 239, 229, 0.1); color: var(--paper); opacity: 0.55; }
 /* Stow's actions: pills, text sized to the pill, the main action spanning its card. */
 .primary, .ghost, .back, .linkbtn { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.75rem; padding: 0.7rem 1.25rem; border-radius: var(--radius-pill); font-size: 0.9rem; letter-spacing: var(--track-narrow); text-decoration: none; }
-.primary { border: 0; background: var(--paper); color: var(--ink); font-weight: 500; }
-.ghost, .back { border: 1px solid rgba(245, 239, 229, 0.15); background: transparent; color: var(--paper); }
+.primary { border: 0; background: var(--coral); color: var(--ink); font-weight: 500; }
+.ghost, .back { border: 1px solid rgba(245, 239, 229, 0.2); background: transparent; color: var(--paper); font-weight: 500; }
 .big { width: 100%; min-height: 3rem; padding-block: 0.85rem; font-size: 1rem; }
 /* Back is a small pill; the step's main action fills the rest of the row. */
 .wnav { display: flex; align-items: stretch; gap: 0.5rem; margin-top: 1.5rem; }
@@ -153,7 +161,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .wnav .big { width: auto; }
 
 @media (hover: hover) and (pointer: fine) {
-  .primary:hover, .wallet-btn:hover { background: var(--soft-paper); }
+  .primary:hover, .wallet-btn:hover { background: var(--coral-lift); }
   .wallet-btn[data-state="connected"]:hover, .wallet-menu__actions button:hover { background: rgba(245, 239, 229, 0.08); }
   .wallet-menu__actions button:hover .wallet-icon { color: var(--paper); }
   .wallet-menu__actions .danger:hover { background: rgba(122, 36, 21, 0.45); }
@@ -174,7 +182,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 /* A secondary action inside a wizard field sizes to its label, so it never reads as the step's main button. */
 .wstep .field > .ghost { justify-self: start; }
 .field label, .bigfield label { color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
-.field input, .bigfield input, .bigfield select { width: 100%; padding: 0.75rem 0.95rem; border: 1px solid rgba(245, 239, 229, 0.12); border-radius: 12px; background: rgba(0, 0, 0, 0.35); color: var(--paper); font: inherit; font-family: var(--font-mono); font-size: 0.95rem; }
+.field input, .bigfield input, .bigfield select { width: 100%; padding: 0.8rem 1rem; border: 1px solid rgba(245, 239, 229, 0.12); border-radius: var(--radius-inner); background: var(--void); color: var(--paper); font: inherit; font-family: var(--font-mono); font-size: 0.95rem; }
 .bigfield input, .bigfield select { font-size: 1.25rem; }
 .field input::placeholder, .bigfield input::placeholder { color: rgba(245, 239, 229, 0.32); }
 .bigfield .unit { color: var(--text-muted); font-size: 0.8rem; }
@@ -191,8 +199,8 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 /* ---- Surfaces ---- */
 .card-glass, .card-warm, .card-solid, .wstep, .dash-card { position: relative; margin-block: 1.25rem; padding: clamp(1.25rem, 3vw, 1.75rem); border-radius: var(--radius-card); }
-.card-solid, .wstep, .dash-card { border: 1px solid rgba(245, 239, 229, 0.08); background: rgba(245, 239, 229, 0.04); }
-.card-glass { border: 1px solid rgba(222, 214, 202, 0.12); background: var(--glass-fill); backdrop-filter: blur(24px); }
+.card-solid, .wstep, .dash-card { border: 1px solid rgba(245, 239, 229, 0.1); background: var(--surface); }
+.card-glass { border: 1px solid rgba(222, 214, 202, 0.14); background: rgba(18, 17, 16, 0.72); backdrop-filter: blur(24px); }
 .card-warm { border: 1px solid rgba(245, 239, 229, 0.22); background: linear-gradient(160deg, rgba(222, 214, 202, 0.35), rgba(255, 122, 92, 0.55) 55%, rgba(122, 36, 21, 0.75)); color: var(--paper); --text-muted: var(--paper); }
 .cardlabel { margin: 0 0 0.75rem; color: var(--text-muted); font-family: var(--font-label); font-size: 0.7rem; letter-spacing: var(--track-label); text-transform: uppercase; }
 
@@ -208,7 +216,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 /* ---- Banners and warnings ---- */
 /* Fixed to the viewport: an action low on the page reports where the trader is looking, not at the top. */
 /* FR-006: on every page, above everything, and never off screen: sticky, with nothing that closes it. */
-.beta-note { position: sticky; top: 0; z-index: 50; margin: 0 0 1rem; padding: 0.7rem 1rem; border-bottom: 1px solid rgba(245, 239, 229, 0.18); background: var(--coral-deep); color: var(--paper); font-size: 0.86rem; line-height: 1.45; }
+.beta-note { position: sticky; top: 0; z-index: 50; margin: 0 0 1rem; padding: 0.6rem 1rem; border-bottom: 1px solid rgba(255, 122, 92, 0.4); background: var(--coral-deep); color: var(--paper); font-size: 0.8rem; line-height: 1.45; text-align: center; }
 .beta-note strong { font-weight: 600; }
 .beta-note span { display: inline-block; margin-right: 0.35em; }
 .status-banner { position: fixed; left: 50%; bottom: 1.25rem; z-index: 40; width: min(92vw, 44rem); transform: translateX(-50%); padding: 0.85rem 1.1rem; border: 1px solid rgba(245, 239, 229, 0.16); border-radius: var(--radius-inner); background: rgba(13, 12, 11, 0.92); color: var(--soft-paper); font-size: 0.9rem; line-height: 1.45; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45); backdrop-filter: blur(16px); }
@@ -222,7 +230,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .state-chip[data-live="true"]::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
 
 /* ---- Meters ---- */
-.budget-meter, .meter { display: flex; height: 0.5rem; overflow: hidden; border-radius: var(--radius-pill); background: rgba(245, 239, 229, 0.1); }
+.budget-meter, .meter { display: flex; height: 0.625rem; overflow: hidden; border-radius: var(--radius-pill); background: rgba(245, 239, 229, 0.1); }
 .budget-meter .seg, .meter__fill { height: 100%; }
 .meter__fill { width: 100%; transform: scaleX(var(--fill, 0)); transform-origin: left center; }
 .budget-meter .spent, .meter__fill { background: var(--coral); }
@@ -233,7 +241,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .wallet-gate p { margin: 0; color: var(--soft-paper); font-size: 0.9rem; line-height: 1.5; }
 
 /* ---- Dialogs ---- */
-.wallet-chooser, .confirm-dialog { width: min(24rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid rgba(222, 214, 202, 0.14); border-radius: var(--radius-card); background: rgba(13, 12, 11, 0.72); backdrop-filter: blur(28px); color: var(--paper); }
+.wallet-chooser, .confirm-dialog { width: min(24rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid rgba(222, 214, 202, 0.14); border-radius: var(--radius-card); background: rgba(18, 17, 16, 0.92); backdrop-filter: blur(28px); color: var(--paper); }
 /* The holders gate (FR-003): modal, no close, gone the moment the wallet is through. */
 .holders-gate { width: min(28rem, calc(100vw - 2rem)); padding: 1.5rem; border: 1px solid rgba(222, 214, 202, 0.14); border-radius: var(--radius-inner); background: var(--ink); color: var(--paper); }
 .holders-gate::backdrop { background: rgba(0, 0, 0, 0.7); backdrop-filter: blur(6px); }
@@ -244,7 +252,7 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .wallet-chooser h2, .confirm-dialog h2 { margin: 0 0 1rem; font-size: 1.15rem; }
 .confirm-dialog p { margin: 0; color: var(--text-muted); line-height: 1.5; }
 .wallet-chooser-list { display: grid; gap: 0.5rem; }
-.wallet-chooser-list button { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border: 1px solid rgba(245, 239, 229, 0.1); border-radius: var(--radius-control); background: rgba(245, 239, 229, 0.04); color: var(--paper); text-align: left; }
+.wallet-chooser-list button { display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem 1rem; border: 1px solid rgba(245, 239, 229, 0.1); border-radius: var(--radius-inner); background: rgba(245, 239, 229, 0.04); color: var(--paper); text-align: left; }
 .wallet-chooser-list button:disabled { cursor: progress; opacity: 0.55; }
 .wallet-chooser-list img { width: 28px; height: 28px; border-radius: 8px; }
 .wallet-chooser-status { min-height: 1.25em; margin: 0.75rem 0 0; color: var(--soft-paper); font-size: 0.88rem; }
@@ -282,3 +290,10 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
 }
+
+/* The site sets its figures in League Spartan, so the app's do too: the value the LED carries for
+   screen readers is the one shown, and the dot matrix stays in the markup, unshown. */
+.led { font-family: var(--font-display); font-weight: 800; letter-spacing: var(--track-display); line-height: 1; }
+.led .led__dots { display: none; }
+.led > .sr-only { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: nowrap; }
+.led__unit { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0; }

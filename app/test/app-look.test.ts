@@ -161,9 +161,10 @@ test("the status pill reads the cached balance and never signs for one", async (
   assert.match(await read("src/fleet/balance-read.ts"), /dispatchEvent\(new CustomEvent\("chit-balance-read"/, "pages are never told a fresh balance arrived");
 });
 
-const LIVE_OR_HAPPENED = /pill|data-live|data-done|aria-current="step"|data-tone="ok"|\.delta|meter__fill|gauge/;
+// The site's look (2026-09-23): coral also marks a card's main action, the wallet button and the section labels, as on chit.tools.
+const LIVE_OR_HAPPENED = /pill|data-live|data-done|aria-current="step"|data-tone="ok"|\.delta|meter__fill|gauge|^\.primary|\.wallet-btn|^\.kicker$/;
 
-test("coral marks only what is live or has happened", async () => {
+test("coral marks what is live or has happened, and the main actions and labels the site marks", async () => {
   for (const file of NEW_STYLES) {
     for (const [selector, body] of rules(await read(file))) {
       if (!/var\(--coral(?:-lift)?\)/.test(body)) continue;
@@ -172,10 +173,10 @@ test("coral marks only what is live or has happened", async () => {
   }
 });
 
-test("primary actions are paper, as on the landing", async () => {
+test("primary actions are coral pills, as on the site", async () => {
   const primary = rules(await read("src/styles/components.css")).find(([selector]) => selector === ".primary");
   assert.ok(primary, "no .primary rule");
-  assert.match(primary[1], /background:\s*var\(--paper\)/);
+  assert.match(primary[1], /background:\s*var\(--coral\)/);
   assert.match(primary[1], /color:\s*var\(--ink\)/);
 });
 
