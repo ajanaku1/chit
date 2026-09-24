@@ -132,3 +132,40 @@ describe("what the service reports that nobody outside can see", () => {
     assert.equal(flushes(), 1);
   });
 });
+
+describe("the four-hour promise is kept by the clock that holds", () => {
+  /**
+   * SC-010 gives an unrecorded charge four hours before it must be alerted. The
+   * monitor watches for the same thing, but it is a scheduled GitHub workflow and
+   * runs on a 4.7 hour median under load (measured 2026-09-24), which cannot keep
+   * a four-hour promise. The posting sweep is a Vercel cron every two hours, so
+   * the promise is kept there.
+   */
+  it("a charge past four hours is raised by the sweep, on the four-hour timescale", async () => {
+    const { router, raised } = makeRouter({
+      sweep: async () => ({ funded: [], posted: [], ageingSeconds: 4 * 3600 + 20 * 60 }),
+    });
+    await router.handle({ action: "sweep", body: { queueOwed: false } }, key("ageing"));
+    const alert = raised.find((a) => a.what === "charge-ageing");
+    assert.ok(alert, "nothing was raised for a charge four hours unposted");
+    assert.equal(alert!.timescale, "four-hours");
+    assert.equal(alert!.acts, "money-path");
+    assert.match(alert!.summary, /4h 20m/, "the age is said, not just that there is one");
+  });
+
+  it("a charge inside the four hours is not raised: the sweep is not a second alarm clock", async () => {
+    const { router, raised } = makeRouter({
+      sweep: async () => ({ funded: [], posted: [], ageingSeconds: 4 * 3600 - 60 }),
+    });
+    await router.handle({ action: "sweep", body: { queueOwed: false } }, key("young"));
+    assert.equal(raised.find((a) => a.what === "charge-ageing"), undefined);
+  });
+
+  it("nothing waiting raises nothing, whatever the sweep did", async () => {
+    const { router, raised } = makeRouter({
+      sweep: async () => ({ funded: [], posted: ["0xabc"], ageingSeconds: 0 }),
+    });
+    await router.handle({ action: "sweep", body: { queueOwed: false } }, key("quiet"));
+    assert.equal(raised.find((a) => a.what === "charge-ageing"), undefined);
+  });
+});
