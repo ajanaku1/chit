@@ -3163,3 +3163,32 @@ the backstop is the part that is slow.
 The fix belongs where the reliable clock already is: the ageing check wants to
 run inside the two-hourly posting sweep, or the monitor wants to move to a
 Vercel cron. Left for the alerting's author rather than taken here.
+
+## 2026-09-24: the four-hour promise moved to the clock that holds
+
+SC-010 gives an unrecorded charge four hours before someone must be told. The
+monitor raises `charge-ageing`, and the monitor is a scheduled GitHub
+workflow: `23 * * * *` by its cron, 4.7 hours by its runs, worst 6.3, six runs
+in a day instead of twenty-four. GitHub delays and drops schedules under load.
+An instrument on that clock cannot keep a four-hour promise, and the promise
+is the one FR-023 makes about money nobody can see going missing.
+
+The posting sweep is a Vercel cron every two hours, and Vercel's scheduler
+holds. So the sweep now measures what it already had in front of it — the
+oldest charge still unposted once it has done what it can, with the ones it
+just posted and the expired ones left out — and reports it as
+`ageingSeconds`. The route raises `charge-ageing` from that, on the four-hour
+timescale, using the monitor's own threshold rather than a second number that
+would drift from it.
+
+Both instruments may now raise it; the sink's repetition rules decide what is
+actually sent. The monitor keeps its job, which is to see the pool from
+outside the service — it is the thing that still speaks when the service is
+the part that is broken. What changed is that the promise no longer depends on
+it alone.
+
+Taken here rather than left for the alerting's author, who was unavailable and
+whose absence was holding the soak: it is his design, kept to his shapes, and
+worth his review.
+
+586 fleet tests. `beta-alerts` and `beta-rails` PASS.

@@ -209,6 +209,16 @@ export type SweepReport = {
   unreadable?: number;
   /** The automatic pause this sweep pulled (FR-026, FR-034), and what pulled it. Absent when nothing did. */
   paused?: { trigger: PauseTrigger; detail: string[] };
+  /**
+   * The oldest charge still unposted after this sweep, in seconds, or 0 when none
+   * is. Measured here because this is the one thing that runs on a clock that
+   * holds: the posting sweep is a Vercel cron every two hours, while the monitor
+   * is a scheduled GitHub workflow and is delayed for hours under load (measured
+   * 2026-09-24: hourly by its cron, 4.7 hours by its runs). SC-010 promises an
+   * unrecorded charge an alert within four hours, so the promise has to be kept
+   * by the reliable clock, not the convenient one.
+   */
+  ageingSeconds?: number;
 };
 
 /** The two machine-detectable triggers of FR-026. The third, a depositor losing money, needs a person to confirm. */
@@ -620,6 +630,15 @@ export const createPoolService = (
         }
       }
       sayWhatIsNew(expired, unreadable);
+      // What is still waiting once this sweep has done what it can. A charge it
+      // just posted is not ageing, and an expired one is a different alert.
+      const done = new Set([...posted, ...expired]);
+      const ageingSeconds = queuedNow.reduce((oldest, entry) => {
+        if (entry.posted || done.has(entry.id)) return oldest;
+        const age = Number(seconds - entry.queuedAt);
+        return age > oldest ? age : oldest;
+      }, 0);
+
       const pausedNow = options.queueOwed ? await pauseIfTriggered(expired, queuedNow, seconds) : undefined;
 
       const funded: Hex[] = [];
@@ -650,7 +669,7 @@ export const createPoolService = (
           console.error(`sweep: draw ${draw.campaign} not funded: ${messageOf(error)}`);
         }
       }
-      return { funded, posted, queued, failed, expired, unreadable, ...(pausedNow ? { paused: pausedNow } : {}) };
+      return { funded, posted, queued, failed, expired, unreadable, ageingSeconds, ...(pausedNow ? { paused: pausedNow } : {}) };
     },
 
     async buy({ campaign, depositor, target, buys }) {
