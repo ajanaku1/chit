@@ -11,6 +11,12 @@
  *
  * Every figure in a sample comes from the pool's own public views, so the
  * record an outside reader could have kept is the record we keep (SC-009).
+ *
+ * The sampler is not the only instrument. The monitor reads the same pool on
+ * its own schedule, in a place that does not sleep, and keeps its logs; its
+ * successful runs are passed in as `witnesses` and close a gap the sampler
+ * left. That is not a softening of the silence rule: the rule asks whether the
+ * pool was watched, and two instruments watching in turn is watched.
  */
 
 /** The four-hour bound of FR-023 and SC-004, in seconds: two missed posting runs. */
@@ -67,7 +73,7 @@ const iso = (ms: number): string => new Date(ms).toISOString();
  */
 export const soakVerdict = (
   samples: readonly Sample[],
-  options: { minMs?: number; maxGapMs?: number; limitSeconds?: number } = {},
+  options: { minMs?: number; maxGapMs?: number; limitSeconds?: number; witnesses?: readonly string[] } = {},
 ): SoakVerdict => {
   const minMs = options.minMs ?? SOAK_MS;
   const maxGapMs = options.maxGapMs ?? 30 * 60_000;
@@ -83,7 +89,18 @@ export const soakVerdict = (
   const spanMs = Math.max(...times) - Math.min(...times);
   if (spanMs < minMs) faults.push(`the run covers ${(spanMs / 3_600_000).toFixed(1)} h, short of the ${(minMs / 3_600_000).toFixed(0)} h FR-039 asks for`);
 
-  const ordered = [...times].sort((a, b) => a - b);
+  // The question a gap asks is whether the pool was watched, not whether this
+  // sampler was running. The monitor reads the same pool on its own schedule and
+  // keeps its logs, so a successful monitor run inside a gap is an observation
+  // like any other: both instruments go on one timeline, and what is measured is
+  // the longest stretch when neither was looking. A witness outside the run's
+  // span is ignored, so this cannot stretch a short run into a long one.
+  const first = Math.min(...times);
+  const last = Math.max(...times);
+  const seen = (options.witnesses ?? [])
+    .map((at) => Date.parse(at))
+    .filter((at) => !Number.isNaN(at) && at > first && at < last);
+  const ordered = [...times, ...seen].sort((a, b) => a - b);
   let worstGapMs = 0;
   for (let i = 1; i < ordered.length; i += 1) {
     const gap = ordered[i]! - ordered[i - 1]!;

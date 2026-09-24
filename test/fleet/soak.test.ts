@@ -76,3 +76,32 @@ test("no samples is a failure, not an empty pass", () => {
   assert.equal(v.pass, false);
   assert.deepEqual(v.faults, ["no samples: the soak never ran"]);
 });
+
+test("a gap the monitor covered is not silence: two instruments on one timeline", () => {
+  // Last night's shape: the laptop slept for about half an hour, and the monitor
+  // read the pool in the middle of it. Splicing three samples leaves a 40-minute
+  // gap, which is silence on its own and two 20-minute stretches with a witness.
+  const run = fullRun();
+  run.splice(50, 3);
+  const blindStart = Date.parse(run[49]!.at);
+  const blindEnd = Date.parse(run[50]!.at);
+
+  assert.equal(soakVerdict(run).pass, false, "with one instrument the hour is silence");
+
+  const midway = new Date(blindStart + (blindEnd - blindStart) / 2).toISOString();
+  const covered = soakVerdict(run, { witnesses: [midway] });
+  assert.equal(covered.pass, true, covered.faults.join("; "));
+  assert.ok(covered.worstGapMs <= 30 * 60_000, "the longest unwatched stretch is now half the gap");
+});
+
+test("a witness outside the run cannot stretch it, and one that is not inside a gap changes nothing", () => {
+  const short = fullRun().slice(0, 100);
+  const before = new Date(Date.parse(short[0]!.at) - 40 * 3_600_000).toISOString();
+  const after = new Date(Date.parse(short.at(-1)!.at) + 40 * 3_600_000).toISOString();
+  const v = soakVerdict(short, { witnesses: [before, after] });
+  assert.equal(v.pass, false);
+  assert.match(v.faults.join(" "), /covers 16\.5 h/, "the span is the sampler's own, never the witnesses'");
+
+  const full = fullRun();
+  assert.deepEqual(soakVerdict(full, { witnesses: [full[10]!.at] }).pass, soakVerdict(full).pass);
+});
