@@ -195,3 +195,24 @@ test("the site carries its icon, in the page and on disk", { timeout: 600_000 },
   assert.match(html, /<link rel="icon"[^>]*icon\.svg/, "no svg icon link in the page");
   assert.match(html, /<link rel="apple-touch-icon"/, "no apple touch icon in the page");
 });
+
+/**
+ * The site reads the chain through the service, never through itself. Naming
+ * chit.tools here was right when chit.tools was the host that read the chain; after
+ * the split it was this site, so the route fetched itself and Next served one
+ * answer forever — the burn page said "25 h ago" for a day while the chain was
+ * minutes old, and nothing errored, because a cache serving a stale truth looks
+ * exactly like a fresh one.
+ */
+test("no route in the site fetches the site: the chain is read through the service", async () => {
+  const routes = await readdir(join(webRoot, "app/api"), { withFileTypes: true, recursive: true });
+  const files = routes.filter((e) => e.isFile() && e.name === "route.ts").map((e) => join(e.parentPath ?? join(webRoot, "app/api"), e.name));
+  assert.ok(files.length > 0, "no route handlers found to check");
+  for (const file of files) {
+    const text = await readFile(file, "utf8");
+    assert.doesNotMatch(text, /fetch\(\s*["'`]https:\/\/chit\.tools/, `${file} fetches chit.tools, which is this site`);
+    if (/fetch\(/.test(text)) {
+      assert.match(text, /FLEET_API_ORIGIN/, `${file} fetches something without naming the service it reads from`);
+    }
+  }
+});
