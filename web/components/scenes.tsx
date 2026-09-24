@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { FACTS, useSceneExit } from "./chrome";
 import { ago, fmtChit, fmtEth, mmss, useLive, useSecondsTo, type Burn } from "./live";
 import { Mark, SEAM, leftOfSeam, rightOfSeam } from "./mark";
-import { APP_HREF } from "./chain";
+import { APP_HREF, BETA, TARGET } from "./chain";
 
 /* Every screen leaves room for the floating header above and the beta note below. */
 const PAD = "pt-[112px] pb-[40px]";
@@ -576,11 +576,16 @@ export function Launch({ tone = "surface" }: { tone?: "surface" | "void" }) {
         <div>
           <div className="flex items-center gap-4">
             <Mark className="h-14 w-14 rounded-[22%]" />
-            <p className="eyebrow text-paper/50">Capped beta · holders only</p>
+            {/* What the site says it is follows the chain it was built for, the way the app's pages do.
+                Before the beta opens this deploy is the free testnet, and saying otherwise would be a
+                claim that is not yet true (spec 003 FR-008, and the claims discipline in ONBOARDING §8). */}
+            <p className="eyebrow text-paper/50">{BETA ? "Capped beta · holders only" : "Free testnet · no real funds"}</p>
           </div>
           <h2 className="display mt-6 text-[clamp(48px,6.4vw,112px)]">Launch the app.</h2>
           <p className="mt-4 max-w-[48ch] text-[15px] leading-relaxed text-paper/60">
-            Every limit on this page is enforced by the contract, and the caps stay until a professional audit is complete.
+            {BETA
+              ? "Every limit on this page is enforced by the contract, and the caps stay until a professional audit is complete."
+              : `Running on ${TARGET.chainName || "Robinhood Chain Testnet"} with test ETH, so nothing here is real money. The capped beta on mainnet opens before the firm audit, not after it: holders only, and the caps stay until a professional audit is complete.`}
           </p>
           <div className="mt-7 flex flex-wrap gap-2">
             <a href={APP_HREF} className="flex items-center gap-2 rounded-full bg-coral py-2.5 pl-6 pr-2.5 text-[15px] font-medium text-ink transition-colors hover:bg-coral-lift">
