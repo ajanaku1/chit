@@ -18,14 +18,18 @@
  * watched.
  */
 
+import { execFile } from "node:child_process";
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
 
 import { createPublicClient, http, parseAbi, type Address } from "viem";
 
 import { poolIsWhole, type PoolCounters } from "../src/fleet/pool-solvency.js";
 import { soakSummary, soakVerdict, type Sample } from "../src/fleet/soak.js";
 
+const execFileAsync = promisify(execFile);
+const REPO = process.env.FLEET_REPO || "Chit-org/chit-fleet";
 const CHAIN_ID = Number(process.env.FLEET_CHAIN_ID || 46630);
 const RPC_URL = process.env.FLEET_RPC_URL || (CHAIN_ID === 4663 ? "https://rpc.mainnet.chain.robinhood.com" : "https://rpc.testnet.chain.robinhood.com");
 const INTERVAL_MS = Number(process.env.SOAK_INTERVAL_MS || 10 * 60_000);
@@ -99,6 +103,26 @@ const sample = async (pool: Address): Promise<Sample> => {
 
 const runFile = (): string => path.resolve(`incidents/soak-${CHAIN_ID}.jsonl`);
 
+/**
+ * The monitor's successful runs, as the second instrument. It reads the same pool
+ * on its own schedule, in a place that does not sleep, so a run inside a gap means
+ * the pool was watched even though this sampler was not. Read through `gh`, which
+ * the repository already depends on elsewhere; if it is absent or not logged in,
+ * the run simply has one instrument and says so.
+ */
+const witnesses = async (): Promise<string[]> => {
+  try {
+    const { stdout } = await execFileAsync("gh", [
+      "run", "list", "-R", REPO, "-w", "monitor.yml", "-L", "200",
+      "--json", "createdAt,conclusion",
+      "--jq", '.[] | select(.conclusion == "success") | .createdAt',
+    ], { maxBuffer: 8 * 1024 * 1024 });
+    return stdout.split("\n").filter((line) => line.trim() !== "");
+  } catch {
+    return [];
+  }
+};
+
 const readRun = async (): Promise<Sample[]> => {
   try {
     const text = await readFile(runFile(), "utf8");
@@ -141,8 +165,12 @@ const watch = async (): Promise<void> => {
 
 const report = async (): Promise<void> => {
   const samples = await readRun();
-  const verdict = soakVerdict(samples);
+  const seen = await witnesses();
+  const verdict = soakVerdict(samples, { witnesses: seen });
   console.log(soakSummary(verdict, samples));
+  console.log(seen.length > 0
+    ? `the monitor watched too: ${seen.length} successful runs, counted where this sampler was silent`
+    : "no monitor runs read (gh absent or not logged in): this sampler is the only instrument");
   if (verdict.pass) {
     console.log("\nT088 PASS: forty-eight hours covered, no charge unrecorded past four hours, the pool whole and running throughout.");
     return;

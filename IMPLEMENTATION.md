@@ -3131,3 +3131,35 @@ this work. It greps for "not been audited" and "operator key can move" in
 has been reading a file that no longer owns the text it checks. Repointed at
 `app/chain-target.mjs`, which carries both, and recorded here rather than
 quietly corrected, as the rule on predicates asks.
+
+## 2026-09-24: a second instrument for the soak, and a monitor that is not hourly
+
+The sampler is not the only thing watching the pool, so `soakVerdict` now takes
+`witnesses` — the monitor's successful runs — and measures the longest stretch
+when *neither* instrument was looking, rather than the longest stretch this
+sampler missed. That is not a softening of the silence rule. The rule asks
+whether the pool was watched; two instruments watching in turn is watched. A
+witness outside the run's span is ignored, so it cannot stretch a short run
+into a long one.
+
+It did not rescue the first night. The sampler slept for 33 minutes at 07:36
+on the 24th and no monitor run falls inside that window, so the gap stands.
+
+Measuring it turned up the thing that matters more. `monitor.yml` is scheduled
+hourly (`23 * * * *`) and does not run hourly: over the last fourteen
+scheduled runs the median interval is 4.7 hours and the worst is 6.3, with six
+runs in the last twenty-four instead of twenty-four. GitHub delays and drops
+scheduled workflows under load; this is not a fault in the workflow.
+
+That is a problem for SC-010 rather than for the soak. An unrecorded charge is
+promised an alert within four hours, and the monitor is the instrument that
+raises `charge-ageing`. An instrument that runs every 4.7 hours cannot keep a
+four-hour promise. What has saved us so far is that the posting sweep runs
+every two hours on Vercel's scheduler, which is reliable, and posts the
+charges before they age — measured overnight, the worst a charge waited was 96
+minutes. The four-hour alert is the backstop for when that posting fails, and
+the backstop is the part that is slow.
+
+The fix belongs where the reliable clock already is: the ageing check wants to
+run inside the two-hourly posting sweep, or the monitor wants to move to a
+Vercel cron. Left for the alerting's author rather than taken here.
