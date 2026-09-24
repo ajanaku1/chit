@@ -3192,3 +3192,30 @@ whose absence was holding the soak: it is his design, kept to his shapes, and
 worth his review.
 
 586 fleet tests. `beta-alerts` and `beta-rails` PASS.
+
+## 2026-09-24: the site was reading itself
+
+The burn page showed "25 h ago" for a day while the chain was minutes old, and
+nothing errored. `web/app/api/burn/route.ts` fetched `https://chit.tools/api/burn`,
+which was right when chit.tools was the host that read the chain and wrong from
+the moment the site and the service were split: the route fetched itself, Next
+served the first answer it ever got, and refreshed it against a copy of itself
+for twenty-five hours. A cache serving a stale truth looks exactly like a fresh
+one, which is why the page was wrong for a day without a single error anywhere.
+
+Both routes now read `FLEET_API_ORIGIN`, as the rewrites already do, and refuse
+outright when it is unset rather than falling back to a hostname. Measured while
+fixing it: the service's own reading was 0.3 hours old and complete at 177
+events; the site was serving 12 events and a reading 25.3 hours old.
+
+The test that holds it found the second one immediately. `progress.json` was
+being fetched from chit.tools too, which does not serve it at all — the site had
+been getting a 404 there since the split, unnoticed, because the route catches
+and the page simply shows nothing.
+
+This is the third fault of one shape in a day: the scheduled sweep calling the
+site instead of the service, the buyback keeper's cron landing on a host without
+its key, and now the site reading itself. Splitting one host into two moved every
+machine-to-machine call onto a name that no longer meant what it said. The rule
+worth keeping: a machine calls the service by the name of the service, never by
+the name of the site, and never by a name hardcoded in the source.
