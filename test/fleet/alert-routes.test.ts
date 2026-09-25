@@ -43,7 +43,7 @@ const sink = () => {
   return { raised, alerts, flushes: () => flushed };
 };
 
-const makeRouter = (over: { withdraw?: PoolPort["withdraw"]; sweep?: PoolPort["sweep"] } = {}) => {
+const makeRouter = (over: { withdraw?: PoolPort["withdraw"]; sweep?: PoolPort["sweep"]; now?: () => Date } = {}) => {
   const unused = () => { throw new Error("not part of this journey"); };
   const service = new CampaignService(serviceConfig);
   const pool: PoolPort = {
@@ -54,7 +54,7 @@ const makeRouter = (over: { withdraw?: PoolPort["withdraw"]; sweep?: PoolPort["s
     drawOf: async () => undefined, ownerOf: async () => undefined, buy: unused,
   };
   const spy = sink();
-  const deps: RouterDeps = { service, pool, alerts: spy.alerts };
+  const deps: RouterDeps = { service, pool, alerts: spy.alerts, ...(over.now ? { now: over.now } : {}) };
   return { router: new CampaignRouter(deps), service, ...spy };
 };
 
@@ -123,6 +123,42 @@ describe("what the service reports that nobody outside can see", () => {
     assert.equal(sooner[0]!.timescale, "four-hours");
     assert.equal(sooner[0]!.acts, "money-path");
     assert.equal(flushes(), 1, "every scheduled sweep offers to send the day's digest");
+  });
+
+  it("a charge unposted for over four hours is raised on the clock that ticks, once per charge per window", async () => {
+    // SC-010's four-hour promise used to rest on the outside monitor, which
+    // GitHub schedules hourly and runs every 4.7 hours in the median. The
+    // posting sweep runs every two hours on Vercel's clock, so the promise
+    // rests here now; the monitor still says it too when it runs.
+    let clock = new Date("2026-09-24T09:00:00Z");
+    const report: SweepReport = { funded: [], posted: [], ageing: [{ id: "q1", ageSeconds: 5 * 3_600 }] };
+    const { router, raised } = makeRouter({ sweep: async () => report, now: () => clock });
+
+    await router.handle({ action: "sweep", body: {} });
+    assert.equal(raised.length, 1, JSON.stringify(raised));
+    assert.equal(raised[0]!.what, "charge-ageing");
+    assert.equal(raised[0]!.timescale, "four-hours");
+    assert.equal(raised[0]!.acts, "money-path");
+    assert.match(raised[0]!.summary, /1 charge .*5h/);
+
+    clock = new Date("2026-09-24T11:00:00Z");
+    await router.handle({ action: "sweep", body: {} });
+    assert.equal(raised.length, 1, "the next sweep two hours later says nothing new about the same charge");
+
+    clock = new Date("2026-09-24T14:00:00Z");
+    await router.handle({ action: "sweep", body: {} });
+    assert.equal(raised.length, 2, "still unposted a window later, so it is said again");
+  });
+
+  it("a charge close to its deadline is raised at once, because after the deadline nobody can be charged at all", async () => {
+    const report: SweepReport = { funded: [], posted: [], ageing: [{ id: "q9", ageSeconds: 11 * 3_600 }] };
+    const { router, raised } = makeRouter({ sweep: async () => report });
+    await router.handle({ action: "sweep", body: {} });
+
+    assert.equal(raised.length, 1, JSON.stringify(raised));
+    assert.equal(raised[0]!.what, "charge-at-risk");
+    assert.equal(raised[0]!.timescale, "immediately");
+    assert.equal(raised[0]!.acts, "both", "it is one of the pause triggers");
   });
 
   it("a sweep with nothing wrong raises nothing, and still offers the digest", async () => {
