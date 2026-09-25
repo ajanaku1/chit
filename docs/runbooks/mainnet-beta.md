@@ -301,6 +301,47 @@ is the right amount of friction for a decision about who is invited.
 Whatever it becomes, it is also in the announcement (`marketing/CHIT-BETA-ANNOUNCEMENT.md`),
 and FR-042 wants the two to agree on the day.
 
+## 4e. The guardian, after pulling it
+
+Lucian holds the guardian (FR-009), reachable 10:00–02:00 UTC+3 daily at
+`@algo_cats`. What "bad" looks like is the alerting's own page, written by its
+author. This is the half that is chain mechanics: how to know the pause landed,
+and how to close the loop so nobody is left wondering whether it went through.
+
+**Pausing.** Send `pause()` to the pool from the guardian address. It takes no
+arguments and about 0.0000021 ETH of gas. It is refused from any address but
+the guardian, the operator and the admin.
+
+**Confirming it landed.** Three things, in order of how quickly they answer:
+
+1. the transaction has a receipt with `status: success`
+2. `paused()` on the pool reads `true` — this is the one that matters, because
+   it is the state everything else reads
+3. the pool emitted `PausedSet(true)` in that transaction
+
+Reading it takes no key and no permission:
+
+```bash
+FLEET_CHAIN_ID=4663 npm run fleet-pool:check      # prints paused, caps, counters
+```
+
+**Telling the operator.** Post in the monitor chat, not in a direct message, so
+the record of who pulled it and when is where everyone already looks:
+
+> paused at `<time UTC>`, tx `<hash>`, `paused()` reads true. what I saw: `<the
+> alert or the thing>`.
+
+**What stays working while paused**, so nobody escalates over the wrong thing:
+deposits stop, draws and buys stop, and **exits keep working** — a depositor can
+still take their money out, which is the whole point of the exit living in the
+contract rather than in a promise. The pool is not stuck; it is stopped.
+
+**Unpausing is not the guardian's.** Only the admin's cold key can, and only
+after the resume gate passes (`npm run fleet-resume-check`) and an account of
+what happened is published (FR-035). A guardian who pauses is never the person
+who decides when it ends, and that asymmetry is deliberate: pausing is cheap and
+reversible, resuming is not.
+
 ## 5. The first loop, by us
 
 Before anyone else: one deposit of 0.01, one fleet, one draw of 0.02, one

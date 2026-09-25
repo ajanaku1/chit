@@ -3423,3 +3423,25 @@ had also asked to change. It moves to the dev group all three are already in,
 which is two values and not one — the repository secret the hourly monitor
 reads and the Vercel variable the service reads — and wants Boye's page on
 what "bad" looks like, so a guardian pulls on facts rather than on vibes.
+
+## 2026-09-25: the guardian's loop closes
+
+Lucian asked for the half nobody had written: after a pause, how he confirms it
+landed and how he tells the operator, so the loop closes and nobody wonders
+whether it went through. A guardian who pulls the brake and cannot say whether
+it caught is not much better than one who did not pull it.
+
+Runbook § 4e is that half — the chain mechanics rather than the alerting policy,
+which stays with its author. Confirming a pause is three reads in order of how
+fast they answer: the receipt, then `paused()` on the pool, which is the one
+that matters because it is the state everything else reads, then the
+`PausedSet(true)` event. `npm run fleet-pool:check` prints it and needs no key.
+Telling the operator goes in the monitor chat rather than a direct message, so
+who pulled it and when is where everyone already looks.
+
+Two things it says on purpose. What keeps working while paused — deposits and
+draws stop, exits do not — so nobody escalates over a depositor being unable to
+leave, which is the failure the exit exists to prevent. And that unpausing is
+not the guardian's: only the admin's cold key, only after the resume gate
+passes and an account is published (FR-035). Pausing is cheap and reversible,
+resuming is neither, and the asymmetry is the design.
