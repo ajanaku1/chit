@@ -82,7 +82,9 @@ export type WatcherDeps = {
   port: WatchPort;
   store: WatchStore;
   chainId: number;
-  /** How far the cursor moves in one run at most; default 600 blocks. */
+  /** How far behind the head the watcher still reads; past it the gap is dropped. Default DEFAULT_MAX_LAG_BLOCKS. */
+  maxLagBlocks?: number;
+  /** How far the cursor moves in one run at most; default DEFAULT_BLOCKS_PER_RUN. */
   maxBlocksPerRun?: number;
   now?: () => Date;
   onBuy: (b: VenueBuy) => Promise<void>;
@@ -90,7 +92,30 @@ export type WatcherDeps = {
 
 export type WatchRun = { from: bigint; to: bigint; buys: number; delivered: number };
 
-export const DEFAULT_BLOCKS_PER_RUN = 600;
+/**
+ * How far the cursor moves in one pass. It has to cover what the chain seals
+ * between two passes, or the watcher loses ground every run and never catches
+ * up: 4663 seals a block about every tenth of a second (measured 0.101 s on
+ * 2026-09-25, some 855,000 a day), and the clock in vercel.json runs this
+ * every five minutes, which is about 3,000 blocks to read each time. This is
+ * that with room for a slow pass and for a chain that speeds up.
+ * test/fleet/bot-watch-pace.test.ts holds the two against each other.
+ */
+export const DEFAULT_BLOCKS_PER_RUN = 12_000;
+
+/**
+ * How far behind the head the watcher will still read. Past this, the buys in
+ * the gap are dropped rather than announced: an alert says "someone just
+ * bought" and the copy desk mirrors a leader's buy at the price of the moment
+ * it reads it, so a buy from hours ago is not a late alert, it is a wrong
+ * trade posted to a group as news.
+ *
+ * It is one window wide on purpose: a pass that skips then reads to the head
+ * in the same run, rather than landing short and crawling. One window is
+ * twenty minutes of 4663, so only an outage longer than that drops anything.
+ * Dropping is loud: the line says how many blocks went unread.
+ */
+export const DEFAULT_MAX_LAG_BLOCKS = DEFAULT_BLOCKS_PER_RUN;
 
 export class Watcher {
   readonly #d: WatcherDeps;
@@ -106,8 +131,15 @@ export class Watcher {
     const max = BigInt(this.#d.maxBlocksPerRun ?? DEFAULT_BLOCKS_PER_RUN);
     const head = await this.#d.port.latestBlock();
     const cursor = await this.#d.store.cursor(this.#d.chainId);
-    const from = cursor === undefined ? head : cursor + 1n;
+    let from = cursor === undefined ? head : cursor + 1n;
     if (from > head) return { from, to: head, buys: 0, delivered: 0 };
+    // A gap this wide is not caught up, it is abandoned: see DEFAULT_MAX_LAG_BLOCKS.
+    const lagLimit = BigInt(this.#d.maxLagBlocks ?? DEFAULT_MAX_LAG_BLOCKS);
+    if (head - from > lagLimit) {
+      const dropped = head - lagLimit - from;
+      console.warn(`bot watch: the cursor is ${head - from} blocks behind the head; skipping ${dropped} unread, because a buy that old is not news and must not be mirrored`);
+      from = head - lagLimit;
+    }
     const to = from + max - 1n < head ? from + max - 1n : head;
     const buys = await this.#d.port.buysBetween(from, to);
     let delivered = 0;
