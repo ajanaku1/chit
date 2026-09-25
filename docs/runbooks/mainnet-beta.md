@@ -258,6 +258,42 @@ if any address holds no code. And T081's own check, which needs both hosts
 up: each names its chain, neither offers the other's funds, and the only
 link between them is the beta's door to the free playground (FR-004).
 
+## 4d. Changing the threshold later
+
+`CHIT_FEE_THRESHOLD` is what a wallet must hold to be let in, in base units.
+It was set to 100,000 CHIT on 2026-09-25 — about $24 at $0.00023630, against a
+maximum deposit of 0.1 ETH (about $267). The intent is a holder's marker, not
+a paywall: the pool cap already limits the beta to roughly ten depositors, so
+the gate is not what creates scarcity.
+
+CHIT's price moves, so the number will want revisiting. It is one variable and
+a redeploy, never a code change:
+
+```bash
+vercel env rm CHIT_FEE_THRESHOLD production    # on the beta host
+vercel env add CHIT_FEE_THRESHOLD production   # the new figure, base units
+vercel --prod
+```
+
+The service reads it per request, but Vercel freezes an environment into a
+deployment, so the redeploy is what makes it take. Check it by quoting from a
+wallet under the line: it is told what it holds and what is needed, never an
+error (FR-004).
+
+The arithmetic: base units are the figure times 10^18, so 100,000 CHIT is
+`100000000000000000000000` — the number, then eighteen zeros. To aim at a
+dollar figure, divide it by the price and round to something sayable in an
+announcement.
+
+**Not tied to the live price on purpose.** A gate that computes itself from a
+feed makes who may deposit depend on that feed: a thin-liquidity tick or an
+outage changes who is let in, and nobody notices until someone complains. The
+threshold is a number the founder chose and can change in two minutes, which
+is the right amount of friction for a decision about who is invited.
+
+Whatever it becomes, it is also in the announcement (`marketing/CHIT-BETA-ANNOUNCEMENT.md`),
+and FR-042 wants the two to agree on the day.
+
 ## 5. The first loop, by us
 
 Before anyone else: one deposit of 0.01, one fleet, one draw of 0.02, one

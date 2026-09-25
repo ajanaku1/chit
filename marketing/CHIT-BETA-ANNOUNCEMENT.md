@@ -56,7 +56,7 @@ paragraph: the facts are the post.
 
 > 🟢 **the capped beta is open on robinhood chain mainnet.**
 >
-> holders only: a wallet with at least `<THRESHOLD>` $CHIT gets in, below that the page shows what you hold, what it takes, where to buy and where the free playground is. no error screen, no waitlist.
+> holders only: a wallet with at least `100,000` $CHIT gets in, below that the page shows what you hold, what it takes, where to buy and where the free playground is. no error screen, no waitlist.
 >
 > the numbers, enforced by the contract, not by us:
 > · pool cap **1 ETH**, all of it
@@ -74,7 +74,7 @@ paragraph: the facts are the post.
 
 1. the capped beta is open on robinhood chain mainnet. holders only, 1 ETH pool cap, a guardian on the brake, and we say what you are trusting before you deposit. 🧵
 
-2. who gets in: a wallet holding at least `<THRESHOLD>` $CHIT. below that, the page shows what you hold and where to get it, and the free playground stays open to everyone.
+2. who gets in: a wallet holding at least `100,000` $CHIT. below that, the page shows what you hold and where to get it, and the free playground stays open to everyone.
 
 3. the caps, enforced by the contract: 1 ETH for the whole pool, 0.1 ETH per depositor in fixed sizes, 0.05 ETH per draw to a fleet. a size that would breach a cap is not offered, and the pool refuses it if it arrives anyway.
 

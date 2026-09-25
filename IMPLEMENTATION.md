@@ -3320,3 +3320,28 @@ Not changed: the standing orders. A missed slot there does not stack — every
 write sets `nextAt` from the moment it fires — and a limit is checked against
 a fresh price at the send, so the two starved days cost their owners the slots
 that passed and nothing else. Restoring that cron is safe as it stands.
+## 2026-09-25: the threshold, the mainnet operator, and the beta's host
+
+The holders gate is 100,000 CHIT — about $24 at $0.00023630, against a maximum
+deposit of 0.1 ETH, about $267. The reasoning, since the number will be asked
+about: the pool cap already limits the beta to roughly ten depositors, so the
+gate is not what creates scarcity, and a threshold costing more than a person
+may deposit reads as a paywall rather than a holder's marker. Runbook § 4d has
+the operation for changing it — one variable and a redeploy, never a code
+change — and says why it is not wired to the live price: a gate that computes
+itself from a feed makes who may deposit depend on that feed, and a thin tick
+or an outage would change who is let in without anyone noticing.
+
+The mainnet operator is `0xE97c47BA6db83f691C2603Cb31c1930e8110A78d`, funded
+with 0.251 ETH. Fresh: zero transactions on either chain before today, and
+deliberately not the testnet operator, which has been on laptops, in `.env`
+and across hosts. The ledger key derives from it, so the two chains do not
+share one.
+
+`chit-app` exists on Vercel (`prj_LWOGpYxt31QZymPY5Vk67CjpFsv0`), connected to
+the repository, with `app.chit.tools` added and every mainnet value that is
+knowable before the deploy already set. What it still wants: the contract
+addresses, which come out of § 3; the new database; and the secrets only the
+founder holds. It has deliberately not been given `BUYBACK_KEEPER_KEY` — it
+inherits all six crons, so the keeper's key moves to it rather than being
+copied, or two hosts race one key on a path that spends real ETH.
