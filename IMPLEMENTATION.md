@@ -3219,3 +3219,39 @@ its key, and now the site reading itself. Splitting one host into two moved ever
 machine-to-machine call onto a name that no longer meant what it said. The rule
 worth keeping: a machine calls the service by the name of the service, never by
 the name of the site, and never by a name hardcoded in the source.
+## The four-hour promise moves to the clock that ticks (2026-09-24, Boye, branch fix/ageing-on-the-reliable-clock, SC-010)
+
+`monitor.yml` says hourly and GitHub means it as a suggestion: measured over
+fourteen scheduled runs, a median interval of 4.7 hours and six runs in a day
+at worst (the founder's numbers, PR #56). Nothing is wrong with the workflow.
+But SC-010 promises an alert within four hours of a charge going unrecorded,
+and the monitor raised that alert, so the promise rested on an instrument that
+cannot keep it.
+
+Two ways out were on the table: move the monitor to a Vercel cron, or measure
+the ageing where a reliable clock already runs. The first was refused, and the
+reason is the monitor's whole purpose. It lives in Actions because every other
+clock in this repo ends at a Vercel function; a monitor on Vercel goes dark in
+exactly the outage it exists to report, and nobody is told. An outside monitor
+that shares the fate of the thing it watches is not an outside monitor.
+
+So the posting sweep measures it: it runs every two hours on Vercel's clock —
+twice inside the promise — and it already reads every queued charge. The sweep
+reports `ageing` per charge with how long it has waited, and the router raises
+`charge-ageing` from it, once per charge per four hours through the nonce burn
+the instances share, so a charge that waits all day is one line every four
+hours rather than one every two. Past five sixths of `POST_WINDOW` the same
+charge is `charge-at-risk`, immediate and for both roles, because once that
+window closes nobody can be charged for it at all.
+
+The monitor keeps raising the same finding when it happens to run, and that is
+not redundancy to be tidied away: it is the only instrument that can see the
+accounting identity, the roles, the pool the site answers with, or a service
+that is down altogether. What changed is that no deadline rests on it any more.
+Two tests hold the arrangement: one fails if Vercel's posting clock is ever
+slowed past half the promise, and one holds the service's four hours equal to
+the monitor's, which are written twice because `monitor.ts` imports nothing.
+
+Measured while writing: the founder's overnight run had the worst charge wait
+96 minutes, so on today's testnet the alert is a backstop and not a daily
+event. It is on the beta's money path that it has to be right.

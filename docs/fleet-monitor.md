@@ -106,12 +106,38 @@ hour. A failure that cannot be classified takes the faster class.
 | `withdrawal-refused` | now | money path | A depositor asked for their money and did not get it. The reason travels with it (`operator_float_short`, `payout_reverted`, `OperatorLockLost()`). Never the payee, never the amount. | Read the reason. A short float is topped up; anything else is a refusal to explain before the next one. |
 | `sweep-failed` | 4h | operations | The scheduled sweep threw. Nothing was queued or posted this run; what it did not queue still has its deadline. | The function's logs. If the next sweep also fails, post by hand. |
 | `charges-unreadable` | 4h | money path | A due charge cannot be opened with this ledger key, so it will expire unposted whatever the next sweep does. | `FLEET_LEDGER_KEY` is wrong or was rotated. Nothing else will fix it. |
+| `charge-ageing` | 4h | money path | A queued charge has gone unposted for over four hours. Said once per charge per four hours, from the posting sweep. | The last sweeps' reports: something is refusing the posting. |
+| `charge-at-risk` | now | both | The same charge is past five sixths of `POST_WINDOW`. After the window nobody can be charged for it at all. | Post it by hand now; if it cannot be posted, it is a hole in the pool and FR-026's second trigger. |
 | `postings-failed` | daily | money path | Postings that failed and will be tried again while their window is open. | Read the reasons in the digest; if the same charge keeps failing, it becomes `charge-at-risk` here. |
 | `sweep-unreachable` | 4h | operations | The four-hourly workflow could not start a sweep at all: the function did not answer. Raised by `.github/workflows/sweep.yml`, because nothing inside the service runs when the service is the problem. | Vercel status, then the function logs. |
 
 The service needs `TELEGRAM_BOT_TOKEN` and `MONITOR_CHAT_ID` in its own
 environment, the same two values the monitor's workflow has. Without them the
 alerts are logged and not sent, which is what a preview and a local run want.
+
+### Which clock keeps which promise
+
+SC-010 promises an alert within four hours of a charge going unrecorded, and
+`charge-ageing` is that alert. It is raised in two places on purpose, and only
+one of them is a promise.
+
+The **posting sweep** runs every two hours on Vercel's scheduler, reads every
+queued charge, and raises it. That is the clock the promise rests on: it ticks
+twice inside the four hours, and `test/fleet/sweep-timing.test.ts` fails if a
+change ever slows it past that.
+
+The **outside monitor** raises the same finding when it runs, and its schedule
+is best effort. GitHub delays and drops scheduled workflows under load:
+measured on 2026-09-23, hourly in the file, a median of 4.7 hours in fact, six
+runs in a day at worst. That is fine for what only the monitor can see — the
+accounting identity, the roles, which pool the site answers with, a chain gone
+stale — none of which is promised inside four hours, and the pool's automatic
+pause (FR-026) does not wait for a person to read an alert. It is not fine as
+the only witness to a four-hour promise, which is why it no longer is.
+
+The monitor stays outside for the reason it was put there: every other clock
+in this repo ends at a Vercel function, so a Vercel outage that stops the
+posting would stop a monitor living beside it, and nobody would be told.
 
 ## After an expired charge
 
