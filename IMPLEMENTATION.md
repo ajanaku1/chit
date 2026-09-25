@@ -3345,3 +3345,27 @@ addresses, which come out of § 3; the new database; and the secrets only the
 founder holds. It has deliberately not been given `BUYBACK_KEEPER_KEY` — it
 inherits all six crons, so the keeper's key moves to it rather than being
 copied, or two hosts race one key on a path that spends real ETH.
+## The playground's front door led to the beta (2026-09-25, Boye, branch fix/playground-front-door, FR-019, T081)
+
+`vercel.json` redirected `/` to `https://chit.tools` with no condition on the
+host. With one deployment that was right: the root of a deployment URL sent a
+visitor to the site. With two it means the playground's own front door leads to
+the other host. Opening https://testnet.chit.tools today lands on chit.tools —
+measured, a 307 straight to it.
+
+Today both hosts serve 46630 and nothing is wrong. The moment chit.tools flips
+to 4663 it is a door from the free playground into the host that holds real
+money, which is the crossing T081 exists to refuse. It is the same shape as the
+three failures the split already caused: a name that no longer means what the
+rule assumed, in a rule nobody re-read.
+
+The playground's root now opens the playground's own app, and the rule that
+sends a root to the site sits after it, because Vercel takes the first rule
+that matches. The test reads the file and holds the order: if a rule leading to
+the beta ever comes first, the playground's root falls through to it and the
+test says so.
+
+Worth saying beside it: when `FLEET_TESTNET_URL` is set for the bot's door
+(T082), it should name a path on the playground rather than its root. With this
+change the root is safe either way, but a door that names the app says what it
+opens.
