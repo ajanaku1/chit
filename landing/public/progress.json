@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-25T09:41:53.351Z",
-  "commit": "002ccce",
-  "committedAt": "2026-09-25T10:29:55+01:00",
-  "commits": 682,
+  "generatedAt": "2026-09-25T09:49:21.687Z",
+  "commit": "7af2c3a",
+  "committedAt": "2026-09-25T10:46:27+01:00",
+  "commits": 684,
   "tasks": {
-    "done": 170,
+    "done": 171,
     "total": 176,
-    "percent": 96
+    "percent": 97
   },
   "stages": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 89,
+      "done": 90,
       "total": 95,
       "phases": [
         {
@@ -138,7 +138,7 @@
         },
         {
           "name": "US4 — Keep the free playground",
-          "done": 1,
+          "done": 2,
           "total": 3
         },
         {
@@ -149,12 +149,8 @@
       ],
       "open": [
         {
-          "id": "T080",
-          "text": "[US4] [F] Create the second Vercel deployment for 46630 with its own environment and the `testnet.chit.tools` domain"
-        },
-        {
           "id": "T082",
-          "text": "[US4] [B] Point the bot's playground button at the testnet host — done on `feat/playground-host`"
+          "text": "[US4] [B] Point the bot's playground button at the testnet host — the code is in and the host answers, but `FLEET_TESTNET_URL` is unset where the bot runs, so there is no door yet. That is the designed behaviour, not a bug; it ticks when the variable is set, naming a path on the playground rather than its root"
         },
         {
           "id": "T088",

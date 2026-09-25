@@ -44,14 +44,72 @@ description of intent.
 
 ## Before the word is written
 
-- [ ] T088: 48 h soak on testnet from the same code, alerting on, no charge
-      unrecorded beyond 4 h. Started by `npm run fleet-soak -- --watch` after the
-      deploy that turns alerting on; closed by `npm run fleet-soak` printing
-      PASS, whose output is the evidence for this row
+- [x] T088: soaked, with an exception recorded below rather than a pass.
+
+### The soak's exception (T088, SC-004), decided 2026-09-25
+
+The run that stands began 2026-09-24 22:15 UTC. It carries gaps — a laptop
+lid closed twice while its owner slept — so `npm run fleet-soak` ends on "not
+passed: silence", and it will say that however long the run goes, because a
+gap is permanent in a record. The founder decided to accept it rather than
+restart a fourth time, and to run an unbroken soak at the full mainnet
+launch instead. The reasoning, recorded so it can be argued with later:
+
+- the beta is capped at 1 ETH, so what an undetected slow failure can cost is
+  bounded by the cap rather than by how long it went unseen;
+- FR-026's pause fires inside the service and does not wait for a person to
+  read a line, so the watching is a second line of defence, not the first;
+- the monitor ran 17 times across the window and covers part of the silence;
+- the runs that came before it are archived and are not nothing: they found a
+  scheduled sweep that had silently stopped, a buyback keeper dead for two
+  days, a site serving its own 25-hour-old cache, and a monitor that runs
+  every 4.7 hours while scheduled hourly. Every one of those was invisible
+  from outside and all but one is fixed.
+
+What it does not cover: a slow failure that none of those runs happened to
+provoke. That is the cost of the decision and it is the founder's to carry.
 - [ ] T091: liquidity re-measured for every enabled entry on the day
 - [ ] T092: every deployed contract verified on the explorer (`npm run explorer:verify:mainnet`; by hand behind the explorer's challenge)
-- [ ] T080: the second Vercel deployment live at `testnet.chit.tools` (T081's
-      confirmation is met: `app/test/two-hosts.test.ts`, PR #30)
+- [x] T080: `testnet.chit.tools` is live and serves the app and the service.
+
+### What is left before the word is written, 2026-09-25
+
+Ordered by who can unblock it, because three of these are one person's alone.
+
+**The founder's, and nobody else can do them**
+
+- [ ] a **new mainnet operator key**, fresh rather than the testnet one, funded
+      with about 0.25 ETH — 0.02 for the deploys, 0.2 as the float, a little
+      margin. Separate on purpose: the testnet key has been on laptops, in
+      `.env` and across hosts, and mainnet should not inherit that history.
+      It must be neither the admin nor the guardian, or the deploy refuses.
+- [ ] the **CHIT threshold** for the holders gate, in base units. It is in the
+      gate and in the announcement, and both carry a placeholder until it is
+      decided. A positioning decision, not a technical one.
+- [ ] the **DNS record** for `app.chit.tools`, at the registrar.
+- [ ] the **deploy itself** (§ 3), which signs with the operator key.
+
+**Held elsewhere**
+
+- [ ] the **guardian key** (FR-009), held by someone who is not the operator.
+      Offered to Boye: if the founder holds it beside the admin key it is not a
+      second party, it is one person twice. It holds nothing, can only pause,
+      and is not the only brake — the operator and the admin can pause too.
+- [ ] a **new empty database** for mainnet, never used by testnet (§ 4c).
+- [ ] the **bot's scheduled jobs**, starved on the app host since the hosts
+      split: `orders` and `watch` have had no `TELEGRAM_BOT_TOKEN`,
+      `BOT_KEY_SECRET` or `BOT_USERNAME` there.
+
+**On the day, one command each**
+
+- [ ] T091 liquidity re-measured for every enabled entry
+- [ ] T092 every deployed contract verified on the explorer
+- [ ] T094 deploy with the guardian, and open
+
+**One trap to close before `app.chit.tools` exists.** It will build the same
+`vercel.json` and inherit all six crons, including the buyback keeper. If the
+playground still holds `BUYBACK_KEEPER_KEY` then, two hosts race one key on a
+path that spends real ETH. The key moves; it is not copied.
 - [ ] FR-043: the alert receiver named
 - [ ] The published promise deployed to production before the opening change (FR-008)
 

@@ -3369,3 +3369,26 @@ Worth saying beside it: when `FLEET_TESTNET_URL` is set for the bot's door
 (T082), it should name a path on the playground rather than its root. With this
 change the root is safe either way, but a door that names the app says what it
 opens.
+## 2026-09-25: the soak's exception, and one page of what is left
+
+The soak that stands began 2026-09-24 22:15 UTC and carries gaps: a laptop
+lid, closed twice by someone else while its owner slept. `npm run fleet-soak`
+will say "not passed: silence" however long it runs, because a gap is
+permanent in a record, and the founder decided to accept that rather than
+restart a fourth time, with an unbroken soak at the full mainnet launch. The
+reasoning is written into `specs/003-mainnet-beta/decision.md` beside the
+outcome it bears on, not left as an absence: the cap bounds what an undetected
+slow failure can cost, FR-026's pause does not wait for a person to read a
+line, the monitor covers part of the silence, and the earlier runs found four
+faults that were invisible from outside. What it does not cover is a slow
+failure none of those runs happened to provoke, and that is said too.
+
+The same file now carries what is left in one page, ordered by who can unblock
+it rather than by task number, because three of the seven are the founder's
+alone and no amount of engineering moves them: a fresh mainnet operator key
+funded with about 0.25 ETH, the CHIT threshold, the DNS record, and the deploy
+that signs with the operator key. The guardian is offered to Boye, since a
+founder holding it beside the admin key is one person twice rather than the
+second party FR-009 describes.
+
+T080 is ticked: `testnet.chit.tools` serves the app and the service.
