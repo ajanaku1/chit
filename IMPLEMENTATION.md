@@ -3255,3 +3255,36 @@ the monitor's, which are written twice because `monitor.ts` imports nothing.
 Measured while writing: the founder's overnight run had the worst charge wait
 96 minutes, so on today's testnet the alert is a backstop and not a daily
 event. It is on the beta's money path that it has to be right.
+
+## 2026-09-25: Boye's version of the four-hour clock, and mine removed
+
+Two implementations of the same fix existed: mine, taken while he was away
+because it was holding the soak, and his, written from the same measurement.
+His is better and is what stands; mine is removed rather than left beside it.
+
+What his does that mine did not. It reports every waiting charge rather than
+the oldest, so a line names what is actually stuck. It says each charge once
+per window through the nonce burn every instance shares, so a charge that
+waits all day is one line every four hours instead of one every two. Past five
+sixths of POST_WINDOW the same charge becomes `charge-at-risk`, immediate and
+both roles, because after the window nobody can be charged for it at all. And
+two tests hold the clocks themselves: one fails if Vercel's posting cron is
+ever slowed past half the promise, and one holds the service's four hours
+equal to the monitor's, written twice on purpose since `monitor.ts` imports
+nothing.
+
+He also corrected the reasoning, and the correction matters more than the
+code. I had offered moving the monitor to a Vercel cron as an option. It is
+not one: every other clock in this repository ends at a Vercel function, so a
+monitor there goes dark in exactly the outage it exists to report. Its drift
+is acceptable for what only it can see — the accounting identity, the roles,
+which pool the site answers with, a service that is down altogether — because
+none of those is promised inside four hours, and FR-026's pause fires inside
+the service without waiting for a person to read a line.
+
+Named and not fixed, in his words: the findings only the monitor can see still
+ride the drifting schedule. Putting those inside an hour needs a third runner
+that is neither GitHub's scheduler nor Vercel — any always-on box with node,
+since the monitor installs nothing. Not launch-blocking in his view, because
+the pause does not wait for it. It is a decision for the founder rather than a
+task.

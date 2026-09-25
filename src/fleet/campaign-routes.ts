@@ -9,7 +9,6 @@
  * wallet, a signature, or any credential material.
  */
 
-import { DEFAULT_THRESHOLDS } from "./monitor.js";
 import type { AlertSink } from "./alerts.js";
 import { BudgetError, CampaignBudget } from "./campaign-budget.js";
 import type { OnChainCampaign } from "./chain-campaign.js";
@@ -542,18 +541,6 @@ export class CampaignRouter {
       await alerts.raise({
         what: "charges-unreadable", acts: "money-path", timescale: "four-hours",
         summary: `${count(report.unreadable, "due charge")} cannot be opened with this ledger key and will expire unposted; check FLEET_LEDGER_KEY`,
-      });
-    }
-    // SC-010: an unrecorded charge is alerted within four hours. The monitor also
-    // watches for this, but it is a scheduled GitHub workflow and runs on a 4.7
-    // hour median under load, which cannot keep a four-hour promise; this sweep is
-    // a Vercel cron every two hours and can. Both may raise it, and the sink's own
-    // repetition rules decide what is sent.
-    const ageing = report.ageingSeconds ?? 0;
-    if (ageing > CHARGE_AGEING_SECONDS) {
-      await alerts.raise({
-        what: "charge-ageing", acts: "money-path", timescale: "four-hours",
-        summary: `a charge has been unposted for ${Math.floor(ageing / 3600)}h ${Math.floor((ageing % 3600) / 60)}m, past the ${Math.floor(CHARGE_AGEING_SECONDS / 3600)}h a charge may wait; the posting clock is not keeping up`,
       });
     }
     await alerts.flushDaily();
@@ -1401,13 +1388,6 @@ const restoredRecord = (id: string, owner: string, found: OnChainCampaign, now: 
 const isChainKey = (id: string): boolean => /^0x[0-9a-fA-F]{64}$/.test(id);
 
 /** Maps every thrown domain error onto the fleet-api.md status table. */
-/**
- * The four hours SC-010 gives a charge before it must be alerted, taken from the
- * monitor's own threshold so the two instruments watch for the same thing rather
- * than for two numbers that drift apart.
- */
-const CHARGE_AGEING_SECONDS = Number(DEFAULT_THRESHOLDS.chargeAgeingSeconds);
-
 const errorResult = (error: unknown, action = "?"): RouterResult => {
   if (error instanceof TradeValidationError) {
     return { status: 400, body: { code: error.reason, retryable: false } };
