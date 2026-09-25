@@ -154,7 +154,11 @@ one deployment.
     balance at half of `FLEET_OPERATOR_FLOAT_ETH`. The other half is reported where it happens: a sweep that
     threw and a withdrawal that was refused, from the router; postings that failed and a ledger key that
     cannot open a due charge, from the sweep's report; and a sweep that never started, from the workflow,
-    since nothing inside the service runs when the service is what failed. Open, and a setting rather than
+    since nothing inside the service runs when the service is what failed. The ageing charge is raised from the
+    posting sweep as well as from the monitor (2026-09-24): GitHub schedules the monitor hourly and runs it
+    every 4.7 hours in the median, which cannot keep SC-010's four-hour promise, while Vercel's posting clock
+    ticks every two hours and reads the queue anyway. Said once per charge per window; past five sixths of
+    `POST_WINDOW` it is `charge-at-risk` and immediate. Open, and a setting rather than
     code: the service needs `TELEGRAM_BOT_TOKEN` and `MONITOR_CHAT_ID` in its Vercel environment, the same
     two values the monitor's workflow already has, or the alerts are logged and not sent.
 - [x] T050 [F] Pause the pool automatically on the two machine-detectable triggers: a charge passing its deadline unrecorded, and an exit transaction failing

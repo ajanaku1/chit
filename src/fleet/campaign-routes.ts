@@ -9,7 +9,6 @@
  * wallet, a signature, or any credential material.
  */
 
-import { DEFAULT_THRESHOLDS } from "./monitor.js";
 import type { AlertSink } from "./alerts.js";
 import { BudgetError, CampaignBudget } from "./campaign-budget.js";
 import type { OnChainCampaign } from "./chain-campaign.js";
@@ -20,7 +19,7 @@ import { EligibilityError, OPEN_ACCESS_CHARGE, chargeQuote, createQuote, openQuo
 import type { MarketPort } from "./market.js";
 import { createMemoryStore, type StorePort } from "./store.js";
 import { orderId, planSlices, PlanError, windowFor, type Order, type Slice } from "./order-plan.js";
-import { DRAW_CAP, MIN_GAS_CEILING, WithdrawalRefused, createSweepGate, minimumDraw, type DrawSummary, type PoolPort, type PooledBuy, type SweepReport } from "./pool-buy.js";
+import { CHARGE_AGEING_SECONDS, DRAW_CAP, MIN_GAS_CEILING, POST_WINDOW_SECONDS, WithdrawalRefused, createSweepGate, minimumDraw, type AgeingCharge, type DrawSummary, type PoolPort, type PooledBuy, type SweepReport } from "./pool-buy.js";
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
 import { anyEntry, enabledTokens, type TokenRegistry } from "./token-registry.js";
@@ -170,6 +169,9 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const firstLine = (error: unknown): string => (error instanceof Error ? error.message : String(error)).split("\n")[0]?.trim() ?? "";
 
 const count = (n: number, one: string): string => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+/** Whole hours, for a line a person reads at a glance; under one hour says so rather than rounding to zero. */
+const hours = (seconds: number): string => (seconds < 3_600 ? `${Math.max(1, Math.round(seconds / 60))}m` : `${Math.floor(seconds / 3_600)}h`);
 
 /**
  * The wire shape of an order carries `entropy` where `Order` carries `seed`.
@@ -534,25 +536,52 @@ export class CampaignRouter {
         detail: [...new Set(failed.map((f) => f.reason))].slice(0, 3),
       });
     }
+    await this.#reportAgeing(report.ageing ?? []);
     if (report.unreadable) {
       await alerts.raise({
         what: "charges-unreadable", acts: "money-path", timescale: "four-hours",
         summary: `${count(report.unreadable, "due charge")} cannot be opened with this ledger key and will expire unposted; check FLEET_LEDGER_KEY`,
       });
     }
-    // SC-010: an unrecorded charge is alerted within four hours. The monitor also
-    // watches for this, but it is a scheduled GitHub workflow and runs on a 4.7
-    // hour median under load, which cannot keep a four-hour promise; this sweep is
-    // a Vercel cron every two hours and can. Both may raise it, and the sink's own
-    // repetition rules decide what is sent.
-    const ageing = report.ageingSeconds ?? 0;
-    if (ageing > CHARGE_AGEING_SECONDS) {
-      await alerts.raise({
-        what: "charge-ageing", acts: "money-path", timescale: "four-hours",
-        summary: `a charge has been unposted for ${Math.floor(ageing / 3600)}h ${Math.floor((ageing % 3600) / 60)}m, past the ${Math.floor(CHARGE_AGEING_SECONDS / 3600)}h a charge may wait; the posting clock is not keeping up`,
-      });
-    }
     await alerts.flushDaily();
+  }
+
+  /**
+   * The four-hour promise (SC-010, FR-023). It used to rest on the outside
+   * monitor alone, which GitHub schedules hourly and runs every 4.7 hours in
+   * the median, dropping to six runs in a day under load (measured
+   * 2026-09-23). An instrument that slow cannot keep a four-hour promise, so
+   * the check rides the posting sweep, which runs every two hours on Vercel's
+   * scheduler and reads every queued charge anyway. The monitor still raises
+   * it when it runs: two instruments saying the same thing is the point of
+   * one of them being outside.
+   *
+   * Said once per charge per window, through the nonce burn every instance
+   * shares, so a charge that waits all day is one line every four hours and
+   * not one line every two.
+   */
+  async #reportAgeing(ageing: readonly AgeingCharge[]): Promise<void> {
+    const alerts = this.#deps.alerts;
+    if (!alerts || ageing.length === 0) return;
+    const now = this.#now().getTime();
+    const fresh: AgeingCharge[] = [];
+    for (const charge of ageing) {
+      // A key of its own, so it cannot collide with a challenge nonce.
+      if (await this.#store.burnNonce(`alert|charge-ageing|${charge.id}`, now + CHARGE_AGEING_SECONDS * 1_000, now)) fresh.push(charge);
+    }
+    if (fresh.length === 0) return;
+    const oldest = fresh.reduce((most, c) => (c.ageSeconds > most.ageSeconds ? c : most));
+    // Past five sixths of the window the monitor calls it critical, and it is:
+    // once the window closes nobody can be charged for it at all, which is the
+    // loss FR-023 says to raise at once and FR-026's second pause trigger.
+    const atRisk = oldest.ageSeconds * 6 >= POST_WINDOW_SECONDS * 5;
+    await alerts.raise({
+      what: atRisk ? "charge-at-risk" : "charge-ageing",
+      acts: atRisk ? "both" : "money-path",
+      timescale: atRisk ? "immediately" : "four-hours",
+      summary: `${count(fresh.length, "charge")} unposted for over ${hours(oldest.ageSeconds)}${atRisk ? `, and the oldest has under ${hours(POST_WINDOW_SECONDS - oldest.ageSeconds)} before it can never be posted` : ""}`,
+      detail: fresh.map((c) => `${c.id} · ${hours(c.ageSeconds)}`),
+    });
   }
 
   /**
@@ -1359,13 +1388,6 @@ const restoredRecord = (id: string, owner: string, found: OnChainCampaign, now: 
 const isChainKey = (id: string): boolean => /^0x[0-9a-fA-F]{64}$/.test(id);
 
 /** Maps every thrown domain error onto the fleet-api.md status table. */
-/**
- * The four hours SC-010 gives a charge before it must be alerted, taken from the
- * monitor's own threshold so the two instruments watch for the same thing rather
- * than for two numbers that drift apart.
- */
-const CHARGE_AGEING_SECONDS = Number(DEFAULT_THRESHOLDS.chargeAgeingSeconds);
-
 const errorResult = (error: unknown, action = "?"): RouterResult => {
   if (error instanceof TradeValidationError) {
     return { status: 400, body: { code: error.reason, retryable: false } };

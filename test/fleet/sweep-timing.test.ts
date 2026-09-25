@@ -7,7 +7,8 @@ import { createPublicClient, http } from "viem";
 
 import { CampaignRouter, type RouterDeps } from "../../src/fleet/campaign-routes.js";
 import { CampaignService } from "../../src/fleet/campaign-service.js";
-import type { PoolPort } from "../../src/fleet/pool-buy.js";
+import { CHARGE_AGEING_SECONDS, type PoolPort } from "../../src/fleet/pool-buy.js";
+import { DEFAULT_THRESHOLDS } from "../../src/fleet/monitor.js";
 import { FLEET_BLOCK_TIME_MS, fleetChain } from "../../src/fleet/service-runtime.js";
 
 /**
@@ -107,6 +108,24 @@ describe("how often a due charge can be posted", () => {
     const posting = crons.filter((c) => c.path === QUEUEING_PATH || c.path === POSTING_PATH).flatMap((c) => firings(c.schedule));
     const window = await postWindowMinutes();
     assert.ok(largestGap(posting) <= window / 3, `the longest wait is ${largestGap(posting)} minutes against a window of ${window}`);
+  });
+
+  it("the four-hour promise rests on a clock that ticks twice inside it (SC-010)", async () => {
+    // The outside monitor raises charge-ageing too, but GitHub schedules it
+    // hourly and runs it every 4.7 hours in the median, six times in a day
+    // under load (measured 2026-09-23, PR #56). The promise rests on Vercel's
+    // posting clock, which is the one this asserts; if that clock is ever
+    // slowed past two hours, the promise goes with it and this fails.
+    const crons = (await vercel()).crons ?? [];
+    const posting = crons.filter((c) => c.path === QUEUEING_PATH || c.path === POSTING_PATH).flatMap((c) => firings(c.schedule));
+    const gap = largestGap(posting);
+    assert.ok(gap * 2 <= CHARGE_AGEING_SECONDS / 60, `the ageing check runs every ${gap} minutes against a promise of ${CHARGE_AGEING_SECONDS / 60}`);
+  });
+
+  it("the service and the monitor mean the same four hours, though neither imports the other", () => {
+    // monitor.ts imports nothing on purpose: it runs as TypeScript on a bare
+    // node, with no install. So the figure is written twice and held equal here.
+    assert.equal(BigInt(CHARGE_AGEING_SECONDS), DEFAULT_THRESHOLDS.chargeAgeingSeconds);
   });
 
   it("the clock that queues did not move: its cadence is the size of the batch a charge hides in", async () => {

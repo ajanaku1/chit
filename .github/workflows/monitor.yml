@@ -18,6 +18,14 @@ name: Watch the pool from outside
 # one billed minute an hour. An `npm ci` here would be two or three, every
 # hour, out of the same minutes the sweep and the keeper run on.
 #
+# Hourly here is best effort, and known to be: GitHub delays and drops
+# scheduled workflows under load (measured 2026-09-23: a median interval of
+# 4.7 hours, six runs in a day at worst). Nothing that carries a deadline
+# rests on this schedule. The four-hour promise of SC-010 is kept by the
+# posting sweep on Vercel's clock, which raises charge-ageing itself; this
+# run says it again when it happens to be looking, and is the only witness
+# to what cannot be seen from inside the service at all.
+#
 # A critical finding fails the run. With TELEGRAM_BOT_TOKEN and MONITOR_CHAT_ID
 # set, findings also go to the operator chat, each line saying who is expected
 # to act: critical ones every run, warnings every sixth hour, and once a day a

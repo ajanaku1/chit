@@ -83,6 +83,47 @@ const sweepQuietly = async (service: ReturnType<typeof makeService>["service"]) 
   }
 };
 
+describe("the sweep measures how long a charge has waited", () => {
+  /**
+   * SC-010 promises an alert within four hours of a charge going unrecorded.
+   * The outside monitor raises that alert, and GitHub's scheduler runs it
+   * every 4.7 hours in the median and dropped it to six runs in a day
+   * (measured 2026-09-23, PR #56), so the promise cannot rest on it. The
+   * posting sweep runs on Vercel's clock every two hours, which does tick, and
+   * it already reads every queued charge. It measures the age here; the router
+   * raises the alert (campaign-routes.ts).
+   */
+  it("reports a charge unposted for over four hours, and stays quiet about a fresh one", async () => {
+    const fresh = entry(1, { queuedAt: NOW - 600n });
+    const old = entry(2, { queuedAt: NOW - 5n * 3_600n });
+    const { service } = makeService([fresh, old], (entryId) => (entryId === id(2) ? revert("NotDue", entryId) : undefined));
+    const { report } = await sweepQuietly(service);
+
+    assert.deepEqual(report.ageing?.map((c) => c.id), [id(2)], "only the one past four hours");
+    assert.equal(report.ageing?.[0]?.ageSeconds, 5 * 3_600);
+  });
+
+  it("does not count a posted charge, nor one already past the window: that one is expired, and expired is its own report", async () => {
+    const posted = entry(3, { queuedAt: NOW - 6n * 3_600n, posted: true });
+    const expired = entry(4, { queuedAt: NOW - BigInt(POST_WINDOW_SECONDS) - 60n });
+    const { service } = makeService([posted, expired]);
+    const { report } = await sweepQuietly(service);
+
+    assert.deepEqual(report.expired, [id(4)]);
+    assert.deepEqual(report.ageing, [], "a charge that can no longer be posted is not ageing, it is lost");
+  });
+
+  it("measures every queued charge, not only the ones this sweep tried to post", async () => {
+    // Not due yet, so the posting loop skips it; it has still been waiting.
+    const waiting = entry(5, { dueAt: NOW + 600n, queuedAt: NOW - 5n * 3_600n });
+    const { service, tried } = makeService([waiting]);
+    const { report } = await sweepQuietly(service);
+
+    assert.deepEqual(tried, [], "nothing was posted");
+    assert.deepEqual(report.ageing?.map((c) => c.id), [id(5)]);
+  });
+});
+
 describe("a sweep accounts for every due charge", () => {
   it("says so when there is nothing to say: empty lists and a zero, not missing fields", async () => {
     const { service } = makeService([entry(1)]);

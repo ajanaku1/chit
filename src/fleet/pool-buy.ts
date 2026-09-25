@@ -29,6 +29,14 @@ export const EXIT_DELAY_SECONDS = 24 * 60 * 60;
 export const POST_WINDOW_SECONDS = 12 * 60 * 60;
 
 /**
+ * How long a queued charge may go unposted before someone is told (FR-023,
+ * SC-010). The outside monitor uses the same figure (`chargeAgeingSeconds` in
+ * monitor.ts, which imports nothing on purpose, so the two are held equal by
+ * test/fleet/sweep-timing.test.ts instead of by an import).
+ */
+export const CHARGE_AGEING_SECONDS = 4 * 60 * 60;
+
+/**
  * The random window that separates a settlement from the charge it causes.
  * The contract refuses anything under 60 seconds; the service floor sits
  * above it so a block that lands late never turns an activation into a
@@ -207,19 +215,18 @@ export type SweepReport = {
   expired?: string[];
   /** Due charges whose depositor this ledger key cannot open. Anything but zero means the key is wrong. */
   unreadable?: number;
+  /**
+   * Charges queued longer than CHARGE_AGEING_SECONDS and still unposted, with
+   * how long each has waited. Measured on every sweep because this is the
+   * clock that actually ticks; the alert is raised by the router.
+   */
+  ageing?: AgeingCharge[];
   /** The automatic pause this sweep pulled (FR-026, FR-034), and what pulled it. Absent when nothing did. */
   paused?: { trigger: PauseTrigger; detail: string[] };
-  /**
-   * The oldest charge still unposted after this sweep, in seconds, or 0 when none
-   * is. Measured here because this is the one thing that runs on a clock that
-   * holds: the posting sweep is a Vercel cron every two hours, while the monitor
-   * is a scheduled GitHub workflow and is delayed for hours under load (measured
-   * 2026-09-24: hourly by its cron, 4.7 hours by its runs). SC-010 promises an
-   * unrecorded charge an alert within four hours, so the promise has to be kept
-   * by the reliable clock, not the convenient one.
-   */
-  ageingSeconds?: number;
 };
+
+/** A charge that has waited too long, and for how long: seconds since it was queued. */
+export type AgeingCharge = { id: string; ageSeconds: number };
 
 /** The two machine-detectable triggers of FR-026. The third, a depositor losing money, needs a person to confirm. */
 export type PauseTrigger = "charge-expired" | "exit-failed";
@@ -629,16 +636,12 @@ export const createPoolService = (
           console.error(`sweep: charge ${entry.id} not posted (${reason}): ${messageOf(error)}`);
         }
       }
+      // Every queued charge, not only the ones this sweep tried: one that is
+      // not due yet has still been waiting, and the promise is about the wait.
+      const ageing = queuedNow
+        .filter((entry) => !entry.posted && seconds >= entry.queuedAt + BigInt(CHARGE_AGEING_SECONDS) && seconds <= entry.queuedAt + BigInt(POST_WINDOW_SECONDS))
+        .map((entry) => ({ id: entry.id, ageSeconds: Number(seconds - entry.queuedAt) }));
       sayWhatIsNew(expired, unreadable);
-      // What is still waiting once this sweep has done what it can. A charge it
-      // just posted is not ageing, and an expired one is a different alert.
-      const done = new Set([...posted, ...expired]);
-      const ageingSeconds = queuedNow.reduce((oldest, entry) => {
-        if (entry.posted || done.has(entry.id)) return oldest;
-        const age = Number(seconds - entry.queuedAt);
-        return age > oldest ? age : oldest;
-      }, 0);
-
       const pausedNow = options.queueOwed ? await pauseIfTriggered(expired, queuedNow, seconds) : undefined;
 
       const funded: Hex[] = [];
@@ -669,7 +672,7 @@ export const createPoolService = (
           console.error(`sweep: draw ${draw.campaign} not funded: ${messageOf(error)}`);
         }
       }
-      return { funded, posted, queued, failed, expired, unreadable, ageingSeconds, ...(pausedNow ? { paused: pausedNow } : {}) };
+      return { funded, posted, queued, failed, expired, unreadable, ageing, ...(pausedNow ? { paused: pausedNow } : {}) };
     },
 
     async buy({ campaign, depositor, target, buys }) {
