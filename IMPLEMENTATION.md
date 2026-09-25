@@ -3392,3 +3392,34 @@ founder holding it beside the admin key is one person twice rather than the
 second party FR-009 describes.
 
 T080 is ticked: `testnet.chit.tools` serves the app and the service.
+
+## 2026-09-25: the guardian, and the gas it needs to be one
+
+Boye declined the guardian and was right to: a guardian who is late is worse
+than one who is absent, he is one person in one timezone with no on-call
+arrangement, and accepting would have bought a name in a document rather than
+a second pair of hands. FR-009 is not a documentation requirement.
+
+Lucian holds it, and answered with an arrangement rather than a name:
+reachable 10:00–02:00 UTC+3 daily at `@algo_cats`, asleep outside those hours;
+pauses first and discusses after if asked; pauses on his own judgement if he
+sees something bad and cannot reach the founder. The hours are written into
+the decision record as a fact rather than a footnote, so nobody assumes cover
+that does not exist.
+
+He also found an error that had been in this repository's own documents since
+they were written. Both the runbook and the decision record said the guardian
+holds nothing. `pause()` is a transaction, so a guardian with no ETH cannot
+pause — the late guardian by another route, and it would have been discovered
+exactly once, at the worst moment. Measured on 4663 today: gas at 0.036 gwei,
+a pause about 0.0000021 ETH, so 0.005 ETH covers roughly two thousand calls
+and survives a hundredfold spike. Dust rather than a relayer or a signed
+message for someone else to broadcast: at the moment it is needed, the fewest
+moving parts wins. It is the only ETH that key ever holds.
+
+Still open from his reply: he cannot pause on his own judgement without seeing
+what the operator sees. The monitor posts to the founder's own DM, which Boye
+had also asked to change. It moves to the dev group all three are already in,
+which is two values and not one — the repository secret the hourly monitor
+reads and the Vercel variable the service reads — and wants Boye's page on
+what "bad" looks like, so a guardian pulls on facts rather than on vibes.

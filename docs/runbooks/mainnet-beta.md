@@ -42,6 +42,13 @@ the page and in the announcement.
 - [ ] A **guardian key** that is not the operator's: a hardware wallet or a
       second key kept apart. It can only `pause()`. Its address goes in
       `FLEET_GUARDIAN_ADDRESS`.
+- [ ] **Dust on the guardian, about 0.005 ETH.** `pause()` is a transaction and
+      a guardian that cannot pay for it is the late guardian, which is worse
+      than an absent one. Measured on 4663 on 2026-09-25: gas at 0.036 gwei, a
+      pause about 0.0000021 ETH, so 0.005 covers roughly two thousand calls and
+      survives a hundredfold spike. Dust rather than a relayer or a signed
+      message someone else broadcasts: at the moment it is needed, the fewest
+      moving parts wins. It is the only ETH that key ever holds.
 - [ ] The CHIT threshold for access, decided (in CHIT base units; the token
       has 18 decimals, so 1,000 CHIT is `1000000000000000000000`).
 

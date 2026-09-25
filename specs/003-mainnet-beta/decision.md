@@ -91,10 +91,27 @@ Ordered by who can unblock it, because three of these are one person's alone.
 
 **Held elsewhere**
 
-- [ ] the **guardian key** (FR-009), held by someone who is not the operator.
-      Offered to Boye: if the founder holds it beside the admin key it is not a
-      second party, it is one person twice. It holds nothing, can only pause,
-      and is not the only brake — the operator and the admin can pause too.
+- [x] the **guardian key** (FR-009). Boye declined, for the right reason: a
+      guardian who is late is worse than one who is absent, and he is one
+      person in one timezone with no on-call arrangement, so naming him would
+      have bought a name in a document rather than a second pair of hands.
+      **Lucian holds it**, and gave an arrangement rather than a name:
+
+      - reachable 10:00–02:00 UTC+3, daily, at `@algo_cats`; asleep outside those
+      - he pauses first and discusses after, if asked
+      - he pauses on his own judgement if he sees something bad and cannot reach
+        the founder
+
+      It is not the only brake and nothing is uncovered while he sleeps: the two
+      machine-detectable triggers pause the pool inside the service without
+      waiting for a person, and the operator and the admin can pause too. The
+      guardian is the separation of the pause from the operator, not the cover.
+
+      **It holds about 0.005 ETH, and that is deliberate.** An earlier draft of
+      this file said it holds nothing, which was wrong: `pause()` is a
+      transaction. Measured on 4663, a pause costs about 0.0000021 ETH, so the
+      dust covers roughly two thousand calls. A guardian that cannot pay for
+      its own call is the late guardian by another route.
 - [ ] a **new empty database** for mainnet, never used by testnet (§ 4c).
 - [ ] the **bot's scheduled jobs**, starved on the app host since the hosts
       split: `orders` and `watch` have had no `TELEGRAM_BOT_TOKEN`,
