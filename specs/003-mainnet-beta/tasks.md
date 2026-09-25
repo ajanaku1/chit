@@ -197,6 +197,7 @@ This alone is a viable beta.
 ## Phase 4: US2 — Trade a listed token (P2)
 
 - [x] T062 [US2] [F] Choose the launch candidates: CHIT plus at most three memes on 4663, named and recorded before any checking begins
+- [x] T062 [US2] [F] Choose the launch candidates: CHIT plus at most three memes on 4663, named and recorded before any checking begins — CHIT, HOODCAT, HEY, ORUS named in `deployments/token-registry-4663.json` before checking; HOODCAT ruled out (its pool is quoted in HOOD, its ETH pools are traps), the other three are entries with their checks measured on the fork
   - Named 2026-09-22 (Lucian, in the registry file): CHIT, then HOODCAT, HEY and ORUS. CHIT is checked and enabled; HOODCAT is not an entry (its real pool is quoted in HOOD, its ETH pools are traps); HEY and ORUS wait on their addresses and the fork's measure. Closed for CHIT; the other two stay the founder's call.
 - [x] T063 [US2] [F] Add `src/fleet/token-registry.ts` loading and validating the reviewed list per `contracts/token-registry.md`, failing hard when a `poolId` does not match its key
 - [x] T064 [US2] [F] Create `deployments/token-registry-4663.json` with CHIT's real pool key, its measured bound and its checks
@@ -228,8 +229,8 @@ This alone is a viable beta.
 ## Phase 6: US4 — Keep the free playground (P3)
 
 - [ ] T080 [US4] [F] Create the second Vercel deployment for 46630 with its own environment and the `testnet.chit.tools` domain
-- [ ] T081 [US4] [F] Confirm each host names its chain and neither offers the other's funds
-- [ ] T082 [US4] [B] Point the bot's playground button at the testnet host
+- [x] T081 [US4] [F] Confirm each host names its chain and neither offers the other's funds — `app/test/two-hosts.test.ts` builds both from one source; it found the session target copied into every build and the bundles' compiled-in testnet default, both fixed
+- [ ] T082 [US4] [B] Point the bot's playground button at the testnet host — done on `feat/playground-host` (FLEET_TESTNET_URL: the testnet floor's own siteUrl, and the mainnet floor's door when the playground is not a room in this bot); ticks when that merges
 
 ---
 
