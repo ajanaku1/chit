@@ -228,9 +228,9 @@ This alone is a viable beta.
 
 ## Phase 6: US4 — Keep the free playground (P3)
 
-- [ ] T080 [US4] [F] Create the second Vercel deployment for 46630 with its own environment and the `testnet.chit.tools` domain
-- [x] T081 [US4] [F] Confirm each host names its chain and neither offers the other's funds — `app/test/two-hosts.test.ts` builds both from one source; it found the session target copied into every build and the bundles' compiled-in testnet default, both fixed
-- [ ] T082 [US4] [B] Point the bot's playground button at the testnet host — done on `feat/playground-host` (FLEET_TESTNET_URL: the testnet floor's own siteUrl, and the mainnet floor's door when the playground is not a room in this bot); ticks when that merges
+- [x] T080 [US4] [F] Create the second Vercel deployment for 46630 with its own environment and the `testnet.chit.tools` domain — live, serving the app and the service
+- [x] T081 [US4] [F] Confirm each host names its chain and neither offers the other's funds — `app/test/two-hosts.test.ts` builds both from one source; it found the session target copied into every build and the bundles' compiled-in testnet default, both fixed. Completed by `fix/playground-front-door`: the root redirect had no host condition, so the playground's own front door led to the host that will hold real money
+- [ ] T082 [US4] [B] Point the bot's playground button at the testnet host — the code is in and the host answers, but `FLEET_TESTNET_URL` is unset where the bot runs, so there is no door yet. That is the designed behaviour, not a bug; it ticks when the variable is set, naming a path on the playground rather than its root
 
 ---
 
