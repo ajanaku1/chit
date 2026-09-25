@@ -223,8 +223,15 @@ their own, and close leader stops it any time.
 
 The venue's tokens are watched. A second cron (`api/bot/watch.js`, every
 five minutes, the same `CRON_SECRET` bearer) reads the pool manager's own
-Swap logs since the block it last reached, at most 600 blocks a pass so a
-watcher that fell behind catches up in steps the public RPC answers, and
+Swap logs since the block it last reached, at most one window a pass
+(`BOT_WATCH_BLOCKS_PER_RUN`, 12,000 by default) so the reads stay inside
+what the public RPC answers. The window has to outrun the chain: 4663 seals
+a block about every tenth of a second, some 855,000 a day, and a pass every
+five minutes at the old 600 blocks read 172,800 — a watcher that could only
+fall further behind, for good. A cursor more than one window behind the head
+is not caught up but skipped, loudly, to one window back: these alerts say
+"someone just bought" and the copy desk mirrors a leader's buy at the price
+it reads, so an old buy is not a late alert but a wrong trade. The pass
 hands on every ETH buy of a watched token once: what a transaction left
 bought of $CHIT or a token on `FLEET_TOKEN_ALLOWLIST`, every swap of the
 transaction in the token's pools summed with its sign, so that ETH was

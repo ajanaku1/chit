@@ -3288,3 +3288,35 @@ that is neither GitHub's scheduler nor Vercel — any always-on box with node,
 since the monitor installs nothing. Not launch-blocking in his view, because
 the pause does not wait for it. It is a decision for the founder rather than a
 task.
+
+## The watcher could not keep up with the chain (2026-09-25, Boye, branch fix/watcher-keeps-up-with-the-chain)
+
+Looking into the bot crons that have been starved on the new host since the
+hosts split, the starvation turned out to be the smaller half.
+
+`api/bot/watch.js` runs every five minutes and moved the cursor by at most 600
+blocks a pass: 172,800 blocks a day. Robinhood Chain seals a block every tenth
+of a second on 4663 — measured 0.101 s against the live RPC today, about
+855,000 a day. So the watcher read a fifth of the chain it was watching and
+lost the rest, every day, from the day it was switched on. Not a lag that
+settles: the gap grows by some nineteen hours of chain a day.
+
+Two changes. The window is 12,000 blocks, which is twenty minutes of 4663 read
+every five, so a pass that is slow or a chain that speeds up still leaves the
+watcher at the head. And a cursor further behind than one window is skipped
+forward rather than crawled over, with a line saying how many blocks went
+unread, because of what these buys are used for: the alert says "someone just
+bought", and the copy desk mirrors a leader's buy into other people's accounts
+at the price it reads. A two-day-old buy announced now is not a late alert, it
+is a wrong trade. Turning the crons back on after the host split would have
+done exactly that, from a cursor 1.7 million blocks behind.
+
+The test holds the pass against the chain's own pace: the window times the
+passes in a day, read from `vercel.json`'s clock, against the blocks the chain
+seals in a day, read from the block time the service already states. If either
+number moves the wrong way, it fails with both figures in the message.
+
+Not changed: the standing orders. A missed slot there does not stack — every
+write sets `nextAt` from the moment it fires — and a limit is checked against
+a fresh price at the send, so the two starved days cost their owners the slots
+that passed and nothing else. Restoring that cron is safe as it stands.
