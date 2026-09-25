@@ -33,10 +33,19 @@ test("what the app and the bot still need is kept", async () => {
   }
 });
 
-test("this host sends a visitor at its root to the site, and does not claim the root for itself", async () => {
+test("the root rules are ordered so the playground keeps its own front door", async () => {
   const vercel = JSON.parse(await readFile(join(repoRoot, "vercel.json"), "utf8"));
-  const root = (vercel.redirects ?? []).find((r) => r.source === "/");
-  assert.ok(root, "the root of the app host must redirect");
-  assert.equal(root.destination, "https://chit.tools");
-  assert.equal(root.permanent, false, "temporary: a permanent redirect is cached hard and this host may serve its own root later");
+  const roots = (vercel.redirects ?? []).filter((r) => r.source === "/");
+  assert.ok(roots.length >= 2, "there should be a rule for the playground's root and a rule for every other host");
+
+  // First match wins, so the host-matched rule has to come before the catch-all:
+  // the playground's front door must not lead to the host that will hold real money.
+  const [first, ...rest] = roots;
+  assert.ok(first.has?.some((h) => h.type === "host"), "the first root rule must name the host it is for");
+  assert.match(first.destination, /^\/app/, "the playground's root stays on the playground");
+
+  const catchAll = rest.find((r) => !r.has);
+  assert.ok(catchAll, "a host without its own rule still needs somewhere to go");
+  assert.equal(catchAll.destination, "https://chit.tools");
+  assert.equal(catchAll.permanent, false, "temporary: a permanent redirect is cached hard and a host may serve its own root later");
 });
