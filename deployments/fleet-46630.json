@@ -21,8 +21,8 @@
     "operator": "0x34b0Ba20669f3ec4F1056853780c381e5e35F724",
     "deployTx": "0xb479ab618ba86010b2b35774f5d13a2efabda50a42d143ec957aa3c4640c718d",
     "setPoolTx": "0x8c88794b6de2ae0cf182b042a544f49109e730dfe568c6bd8ed339d30113c90f",
-    "guardian": "0x0000000000000000000000000000000000000000",
-    "guardianTx": null,
+    "guardian": "0x2aab3900127F2E96605B1868F3C5546dceDBD20f",
+    "guardianTx": "0x42b874863a54435560cdcb6aaadc2e2f5cc8e586e65712b41d8d4496dc1d98a7",
     "admin": "0xCb70EfEfC73f241047262d4FACe6D21d052F6946",
     "adminHandoverTx": "0xdcfbcb38402a51d890b77e08b26a6ecdc850eea224b9fc76dade506c716c193b",
     "caps": {
@@ -34,7 +34,9 @@
     "maxPostBatch": "256",
     "beta": false,
     "deployedAt": "2026-09-21T10:44:00.000Z",
-    "note": "read back from the chain on 2026-09-21 after the redeploy script landed every transaction and then failed to write this record (its `previous` handling; fixed in the same commit). The admin accepted ownership of the policy and the pool on 2026-09-22 (acceptOwnership from 0xCb70\u20266946; owner() reads it back, pendingOwner() is zero)."
+    "note": "read back from the chain on 2026-09-21 after the redeploy script landed every transaction and then failed to write this record (its `previous` handling; fixed in the same commit). The admin accepted ownership of the policy and the pool on 2026-09-22 (acceptOwnership from 0xCb70\u20266946; owner() reads it back, pendingOwner() is zero).",
+    "guardianSetAt": "2026-09-26",
+    "guardianNote": "Lucian, reachable 10:00-02:00 UTC+3 at @algo_cats (FR-009). Set from the admin key on 2026-09-26, twice with the same address: the first send was repeated, which the contract takes without complaint. The monitor raised `roles` as CRITICAL between the chain changing and this line being written, which is the check working: a guardian the record does not name is a guardian nobody can verify from outside."
   },
   "venue": {
     "poolManager": "0x8366a39cc670b4001a1121b8f6a443a643e40951",
