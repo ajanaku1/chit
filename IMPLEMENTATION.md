@@ -3473,3 +3473,26 @@ it.
 
 The page grants nothing the contract does not. It is a spelling of calldata
 that a person can read at two in the morning.
+
+## 2026-09-26: the monitor caught the guardian it could not verify
+
+The guardian was set on chain from the admin key and the deployment record was
+not updated, so `roles` went CRITICAL: "the guardian on chain is not the one
+the deployment record names". That is the check working rather than failing.
+The record is what an outsider compares the chain against; a role the record
+does not name is a role nobody can verify, and the whole point of writing the
+addresses down is that someone can hold them to it.
+
+Recorded now, with the transaction and the arrangement beside it — Lucian,
+10:00–02:00 UTC+3, at `@algo_cats`. Two `GuardianSet` events carry the same
+address, because the send was repeated; the contract takes that without
+complaint and the second is the one recorded.
+
+Worth keeping the pattern in view. Of the monitor's criticals this week, the
+two about the admin and the pool were historical and cleared when the record
+caught up after the redeploy, and this one was live and mine. Every one was a
+disagreement between what is true on chain and what is written down, which is
+the only class of fault an outside monitor can see at all — it cannot know
+whether the service is confused, only whether the world matches the record.
+That is also why it stays outside, on a clock that drifts, rather than moving
+to the scheduler that would go dark with the service it watches.
