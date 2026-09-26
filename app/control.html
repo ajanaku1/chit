@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="The pool's brake. Connect the guardian, operator or admin key and pause the pool, or resume it if you are the admin."
+    />
+    <title>Chit · The brake</title>
+    <link rel="icon" href="./favicon.svg" />
+    <link rel="stylesheet" href="./fleet.css" />
+  </head>
+  <body class="fleet-body">
+    <p data-beta-note hidden></p>
+    <div class="shell">
+      <header class="masthead">
+        <a class="brand-lockup" href="/" aria-label="Chit home">
+          <img src="./logo.svg" alt="" width="28" height="28" />
+          <span>Chit</span>
+        </a>
+        <button id="hdr-wallet" type="button" class="wallet-btn" data-state="disconnected" aria-label="Connect wallet">Connect</button>
+      </header>
+
+      <main class="page">
+        <section class="dash-card">
+          <p class="cardlabel">The pool</p>
+          <h1 class="lead">The brake</h1>
+          <p class="lead small" id="pool-line">reading the pool…</p>
+          <p class="fineprint" id="role-line">connect the wallet that holds the key</p>
+        </section>
+
+        <section class="dash-card" id="acts" hidden>
+          <p class="cardlabel">What this wallet may do</p>
+          <div class="wnav">
+            <button type="button" class="primary" id="pause" disabled>Pause the pool</button>
+            <button type="button" class="ghost" id="resume" disabled>Resume (admin only)</button>
+          </div>
+          <p class="fineprint" id="act-note"></p>
+        </section>
+
+        <section class="dash-card" id="admin-acts" hidden>
+          <p class="cardlabel">Admin</p>
+          <label class="fineprint" for="new-guardian">The guardian's address. Only the admin may set it, and it can be changed at any time.</label>
+          <input id="new-guardian" type="text" inputmode="text" spellcheck="false" placeholder="0x…" />
+          <div class="wnav">
+            <button type="button" class="ghost" id="set-guardian" disabled>Set guardian</button>
+          </div>
+        </section>
+
+        <section class="dash-card">
+          <p class="cardlabel">What a pause does</p>
+          <p class="fineprint">
+            Deposits stop and draws stop. <strong>Exits keep working</strong>: anyone who has asked to
+            leave can still take their money out, which is why the exit lives in the contract rather
+            than in a promise. The pool is stopped, not stuck.
+          </p>
+          <p class="fineprint">
+            Only the admin can resume, and only after the resume gate passes and an account of what
+            happened is published. Pausing is cheap and reversible; resuming is neither.
+          </p>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="./control-page.js"></script>
+  </body>
+</html>

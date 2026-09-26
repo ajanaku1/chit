@@ -1,5 +1,6 @@
 /** Types for chain-target.mjs, which the build runs as plain JavaScript. */
 export type ChainTarget = {
+  pool?: string;
   chainId: number;
   chainName: string;
   rpcUrls: string[];

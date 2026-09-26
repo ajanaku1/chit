@@ -72,6 +72,9 @@ export const chainTargetFromEnv = (env = process.env) => {
     betaNote: published.beta ? `Beta on ${published.chainName}. ${facts.join(" ")} ${CAPS_UNTIL_AUDIT}` : "",
     betaFacts: facts,
     // Where the holders gate sends a wallet below the line: to buy CHIT, and to the free testnet. Empty means no link.
+    // The pool this build's pages act on. The brake page needs it without asking the
+    // service, since the service being unreachable is one reason to pull the brake.
+    pool: env.FLEET_POOL_ADDRESS || "",
     buyChitUrl: env.CHIT_BUY_URL || "",
     testnetUrl: env.FLEET_TESTNET_URL || "",
   };

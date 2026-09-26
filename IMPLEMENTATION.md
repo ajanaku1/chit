@@ -3445,3 +3445,31 @@ leave, which is the failure the exit exists to prevent. And that unpausing is
 not the guardian's: only the admin's cold key, only after the resume gate
 passes and an account is published (FR-035). Pausing is cheap and reversible,
 resuming is neither, and the asymmetry is the design.
+
+## 2026-09-26: the brake, with a button on it
+
+Verifying the pool gave the explorer a write tab and the write tab cannot sign:
+neither Robinhood explorer has a wallet connector configured, so the button is
+dead however well the contract is verified. What that left the guardian was
+pasting calldata into a wallet from memory, at whatever hour a pause is needed,
+which is how a person fumbles the one thing they are there for.
+
+`app/control.html` is the route instead. Connect, and it says what this wallet
+may do before anything is pressed: the admin, the guardian, the operator, or
+none of them — and a wallet that is none is told so rather than shown a button
+that would revert. Pause is offered to exactly the three the contract allows,
+resume only to the admin and only when it is paused, setting the guardian only
+to the admin.
+
+Two things it is careful about. It reads the pool from the build's own
+`chain-target.json` and never through the service, because the service being
+unreachable is one of the reasons to pull the brake; `FLEET_POOL_ADDRESS` now
+travels into the chain target for that. And it says, where the person pressing
+it will read it, that a pause stops deposits and draws but **not exits** — a
+depositor can still take their money out — and that only the admin resumes,
+after the gate and a published account. A test refuses the words "freeze" and
+"locked funds" on that page, because a pause is neither and must not read like
+it.
+
+The page grants nothing the contract does not. It is a spelling of calldata
+that a person can read at two in the morning.
