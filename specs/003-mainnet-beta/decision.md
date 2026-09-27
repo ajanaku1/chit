@@ -18,7 +18,7 @@ description of intent.
 | SC-001 | No depositor charged for a buy that did not happen, none charged twice | Sign→record→broadcast→wait lifecycle with `mined`/`reverted`/`unknown` outcomes and `resolve` for the unknown (`chain-pool-writes.test.ts`); sent state per hash and nonce, `resolveSent` confirmed/owed/void (`pool-sweep.test.ts`); idempotency keys scoped per action (`campaign-routes.ts`) | met in code; observed across the beta |
 | SC-002 | Every depositor who asks to leave is paid within the delay, with or without Chit | `requestExit`/`executeExit` on the contract, 24 h, no operator path (`fleet-pool-exit.test.ts`); an exit completes while paused and with the operator's nonce unchanged (`mainnet-rehearsal.test.ts`, PR #26) | met |
 | SC-003 | Every withdrawal ends paid or refused in the same session, none left owed | Record before pay, refusal before anything is recorded (`WithdrawalRefused`, `pool-sweep.test.ts` "withdraw"); the refused state on the Balance page with the exit beneath it (`withdrawal-refused.test.ts`, PR #22) | met in code; observed across the beta |
-| SC-004 | No charge expires unrecorded | Automatic pause on `charge-expired` from the scheduled sweep, bounded by the last resume (`pool-sweep.test.ts` T050; on the real contract in `mainnet-rehearsal.test.ts`). Alerting is in (PR #35, `./verify.sh beta-alerts` PASS). The soak's own predicate is `npm run fleet-soak`, which samples the pool and refuses to pass a run that is short, broken by silence, paused, short of what it owes, or carrying a charge past four hours | **pending**: the 48 h run itself, which starts at the next production deploy |
+| SC-004 | No charge expires unrecorded | Automatic pause on `charge-expired` from the scheduled sweep, bounded by the last resume (`pool-sweep.test.ts` T050; on the real contract in `mainnet-rehearsal.test.ts`). Alerting is in (PR #35, `./verify.sh beta-alerts` PASS). The soak's own predicate is `npm run fleet-soak`, which samples the pool and refuses to pass a run that is short, broken by silence, paused, short of what it owes, or carrying a charge past four hours | **the run is done**: 2026-09-24T22:15:29Z → 2026-09-27T00:00:00Z, 552 samples over 49.7 h, worst unrecorded charge **0 min of 240 allowed**, the pool whole and running throughout, 29 monitor runs counted where the sampler was silent. One fault stands and is accepted here: a 60-minute silence when the sampling laptop slept, with two 31-minute gaps beside it, all three in the first night. The predicate still returns not-passed on that silence and is left saying so rather than tuned to agree. The pause at 2026-09-27T08:34Z is the guardian rehearsal, after this run ended; `npm run fleet-soak -- --until 2026-09-27T00:00:00Z` is the command that judges the run and prints what it left out |
 | SC-005 | The most a depositor can lose to a contract fault is the pool cap, said on every page before depositing | Caps immutable at construction (`FleetPool.sol`, `FleetPool.t.sol` BadCaps); FR-006's three facts and the caps-until-audit sentence on every page and beside the deposit amount (`beta-note.test.ts`, PR #17, PR #25) | met |
 | SC-006 | Each listed token's buy lands within its bound, checked on the real pool | All three enabled entries on the 4663 fork at block 69,746,534 (`token-registry.test.ts`, reproduced founder-side 2026-09-22): CHIT 2.00 % under a 300 bps bound, HEY and ORUS 3.00 % under a 400 bps bound — the bound is each pool's hook fee plus 100 bps of real slippage; `price_moved` refusal per slice before any send (PR #21) | met for the enabled set; re-run on the day |
 | SC-007 | Every launch token holds ≥ 50× the draw cap, confirmed on the day | `npm run registry:liquidity` (PR #28) is the day's one command and exits 1 under the floor. Fork measure 2026-09-22, all three at least 3× clear of the floor: CHIT 8.71 ETH (174×), HEY 8.12 (162×), ORUS 8.79 (176×) | met on the day: T091 |
@@ -68,6 +68,20 @@ launch instead. The reasoning, recorded so it can be argued with later:
 
 What it does not cover: a slow failure that none of those runs happened to
 provoke. That is the cost of the decision and it is the founder's to carry.
+
+**Closed 2026-09-27.** The run ended at 2026-09-27 00:00 UTC, declared: 552
+samples over 49.7 hours, worst unrecorded charge 0 minutes of the 240 allowed,
+the pool whole and unpaused in every sample, 29 monitor runs counted where the
+sampler was silent. Only the silence above stands against it.
+
+The sampler kept running after the run ended, which is how the guardian
+rehearsal's pause at 08:34 came to sit in the same file. A soak is a period and
+periods end, so `--until` was added to say where this one stopped; it prints the
+cut and how many samples it left out, and the duration check runs on the cut
+run, so a window trimmed below forty-eight hours fails on length. The verdict
+is left saying "not passed" on the silence rather than tuned to agree with the
+decision to accept it. A predicate that is edited until it approves of us is
+not a predicate.
 - [ ] T091: liquidity re-measured for every enabled entry on the day
 - [ ] T092: every deployed contract verified on the explorer (`npm run explorer:verify:mainnet`; by hand behind the explorer's challenge)
 - [x] T080: `testnet.chit.tools` is live and serves the app and the service.
