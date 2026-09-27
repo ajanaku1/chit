@@ -58,6 +58,8 @@ export type Sale = {
   /** The swap in flight or done, and the nonce it was signed under, so an unseen outcome is resolved, never resent. */
   saleTx?: Hex;
   saleNonce?: number;
+  /** The quote the swap was sent against: the most the payout may be, since a quote never sees a hook's fee. */
+  quotedOut?: Uint;
   ethOut?: Uint;
   payoutDueAt?: number;
   /** The payout (or, after three misses, the tokens' return) in flight or done, and its nonce. */

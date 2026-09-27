@@ -32,6 +32,8 @@ export type MarketPort = {
   holdings(wallets: readonly Address[], tokens: readonly Address[]): Promise<Holding[]>;
   /** Campaign keys this owner registered on the escrow, oldest first. */
   campaignsOf(owner: Address): Promise<Hex[]>;
+  /** ETH out for `amountIn` of the token through this pool, fee and impact included (docs/design-sell.md). Optional so fakes that predate selling still type-check. */
+  sellQuote?(token: Address, amountIn: bigint, poolKey: PoolKey): Promise<bigint>;
 };
 
 const POOLS_SLOT = 6n;
@@ -101,10 +103,24 @@ const ERC20_ABI = parseAbi([
 ]);
 const ESCROW_EVENTS = parseAbi(["event CampaignRegistered(bytes32 indexed campaign, address indexed owner)"]);
 
+/** A pool's price and in-range liquidity, read from the PoolManager's storage. */
+const poolState = async (client: PublicClient, poolManager: Address, id: Hex): Promise<{ sqrtPriceX96: bigint; liquidity: bigint }> => {
+  const [word, liq] = await Promise.all([
+    client.readContract({ address: poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slot0Slot(id)] }),
+    client.readContract({ address: poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [liquiditySlot(id)] }).catch(() => "0x0" as Hex),
+  ]);
+  return { sqrtPriceX96: decodeSlot0(word).sqrtPriceX96, liquidity: BigInt(liq) & ((1n << 128n) - 1n) };
+};
+
 export const createMarket = (
   client: PublicClient,
   addresses: { poolManager: Address; escrow: Address; escrowFromBlock: bigint },
 ): MarketPort => ({
+  // The sell side: token (currency1) in, ETH (currency0) out. No spot fallback: a sale with no liquidity to quote is not sold.
+  async sellQuote(token, amountIn, poolKey) {
+    const { sqrtPriceX96, liquidity } = await poolState(client, addresses.poolManager, poolIdFor(token, poolKey));
+    return quoteExactIn(amountIn, sqrtPriceX96, liquidity, false, poolKey.fee);
+  },
   async tokenQuote(token, amountInWei, poolKey) {
     const id = poolIdFor(token, poolKey);
     const key = poolKey ?? venuePoolKey(token);

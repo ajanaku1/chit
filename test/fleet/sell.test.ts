@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { advancePending, advanceSale, openSale, type SellChain, type SellDeps } from "../../src/fleet/sell.js";
+import { OWNER_GAS_WEI, advancePending, advanceSale, openSale, topUpOwners, type SellChain, type SellDeps } from "../../src/fleet/sell.js";
 import { createMemoryStore } from "../../src/fleet/store.js";
 import type { TokenRegistry } from "../../src/fleet/token-registry.js";
 import type { WriteOutcome } from "../../src/fleet/chain-pool.js";
@@ -32,7 +32,7 @@ const registry: TokenRegistry = { chainId: 4663, tokens: [{
 type Sent = { to: Address; data?: Hex; value?: bigint; hash: Hex };
 
 /** A chain that shows the transfers it is given, quotes `quote`, and answers each send with the next outcome. */
-const chainOf = (over: { transfers?: Record<string, { from: Address; to: Address; amount: bigint; token?: Address }>; outcomes?: WriteOutcome["status"][]; quote?: bigint; received?: bigint } = {}) => {
+const chainOf = (over: { transfers?: Record<string, { from: Address; to: Address; amount: bigint; token?: Address }>; outcomes?: WriteOutcome["status"][]; quote?: bigint; received?: bigint; balances?: Record<string, bigint> } = {}) => {
   const sent: Sent[] = [];
   const recorded: Hex[] = [];
   const outcomes = [...(over.outcomes ?? [])];
@@ -54,6 +54,7 @@ const chainOf = (over: { transfers?: Record<string, { from: Address; to: Address
     },
     async resolve(h) { return { status: "mined", hash: h }; },
     async ethReceived() { return over.received ?? 980n; },
+    async balance(address) { return over.balances?.[address.toLowerCase()] ?? 0n; },
   };
   return { chain, sent, recorded };
 };
@@ -187,5 +188,25 @@ describe("sweeping sales", () => {
     const done = await advancePending(deps);
     assert.equal(done.length, 1, "the good sale still advanced");
     assert.match(said.join("\n"), /broken could not advance/);
+  });
+});
+
+describe("what a sale owes", () => {
+  it("is what the operator received, but never more than the quote the swap was sent against", async () => {
+    const { chain } = chainOf({ transfers: good, quote: 1_000n, received: 5_000n });
+    const deps = depsOf(chain);
+    const sold = await advanceSale(deps, await openSale(deps, request()));
+    assert.equal(sold.ethOut, "1000", "an unrelated inflow in the swap's block is not the depositor's");
+  });
+});
+
+describe("gas for the owner keys", () => {
+  it("tops each key up to what one transfer needs, and sends nothing to a key that already has it", async () => {
+    const low = `0x${"c1".repeat(20)}` as Address;
+    const full = `0x${"c2".repeat(20)}` as Address;
+    const { chain, sent } = chainOf({ balances: { [low]: 5n, [full]: OWNER_GAS_WEI } });
+    const topped = await topUpOwners(depsOf(chain), [low, full]);
+    assert.deepEqual(topped, [low]);
+    assert.deepEqual(sent.map((s) => ({ to: s.to, value: s.value })), [{ to: low, value: OWNER_GAS_WEI - 5n }]);
   });
 });

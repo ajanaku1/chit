@@ -42,6 +42,10 @@
       "maxDuration": 60,
       "includeFiles": "deployments/token-registry-4663.json"
     },
+    "api/fleet/sales.js": {
+      "maxDuration": 180,
+      "includeFiles": "deployments/token-registry-4663.json"
+    },
     "api/fleet/sponsor.js": {
       "maxDuration": 180,
       "includeFiles": "deployments/token-registry-4663.json"
@@ -82,6 +86,10 @@
     },
     {
       "path": "/api/bot/watch",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/fleet/sales",
       "schedule": "*/5 * * * *"
     }
   ],

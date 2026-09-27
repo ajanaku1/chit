@@ -517,8 +517,13 @@ export const createPoolService = (
       // The operator's own balance pays this. Short of the payout and the gas
       // to send it, the answer is a refusal that recorded nothing and can be
       // retried, never a charge for a payout that could not happen (M1, T021).
-      const [balance, gasPrice] = await Promise.all([publicClient.getBalance({ address: operator }), publicClient.getGasPrice().catch(() => 0n)]);
-      if (balance < value + 21_000n * gasPrice * 2n) throw new WithdrawalRefused("operator_float_short");
+      const [balance, gasPrice, proceeds] = await Promise.all([
+        publicClient.getBalance({ address: operator }),
+        publicClient.getGasPrice().catch(() => 0n),
+        // Sale proceeds sit in the operator's balance until their payout (docs/design-sell.md); they are depositors' money, not float.
+        store.sales.proceedsOwed().then(BigInt),
+      ]);
+      if (balance - proceeds < value + 21_000n * gasPrice * 2n) throw new WithdrawalRefused("operator_float_short");
       // The charge is recorded before the payout, then named by the payout's
       // hash before the broadcast: a failure between the two leaves a charge
       // that the next sweep resolves by that hash and voids if nothing was

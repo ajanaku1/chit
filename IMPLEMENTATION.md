@@ -3535,3 +3535,28 @@ The assertion's meaning is unchanged: one CREATE per table, all created at
 the failure counter (T069) and the alert digest (T048). The alternative, creating
 the table lazily outside the schema list, would have kept the number and broken
 the property the test exists to hold.
+
+## 2026-09-27: FR-022 amended, and the T087 tests that held it
+
+FR-022 read "Selling through Chit MUST remain out of the beta". The first real
+buy on mainnet showed what that left. The deployed policy lets a fleet make one
+call, the buy, and the pool has no way to credit proceeds, so a fleet's tokens
+could only come back by importing its owner keys by hand. The founder decided,
+before the beta opened, to ship selling through the operator
+(docs/design-sell.md). FR-022 now says selling goes only through that flow and
+never through a fleet account's sponsored path; the spec keeps the old wording
+beside the new.
+
+`test/fleet/no-sell-path.test.ts` enforced the old rule and failed when the sale
+actions landed, which is what it was for. With the founder's go-ahead it was
+rewritten to pin the new line rather than dropped:
+
+- the pooled buy, the router, the runtime and the sale's chain adapter still
+  never reach the sell encoder; only `sell.ts` does
+- the only sell-named actions are `sell` and `sellGas`, and a sale is opened
+  only by `openSale` from `sell.ts`
+- Balance, Fleet and the dashboard still carry no sell control; Trade may,
+  because the sale flow lives there
+
+`app/test/no-sell.test.ts`, the Sessions page's guarded toggle, is unchanged:
+session keys are a different product and still never sell on the beta.

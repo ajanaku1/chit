@@ -28,6 +28,7 @@ export type SellChain = {
   resolve(hash: Hex, nonce: number): Promise<WriteOutcome>;
   /** The ETH the operator gained in this transaction's block, gas paid added back. */
   ethReceived(hash: Hex): Promise<bigint>;
+  balance(address: Address): Promise<bigint>;
 };
 
 export type SellDeps = {
@@ -52,6 +53,8 @@ export class SellRefused extends Error {
 }
 
 export const MAX_ATTEMPTS = 3;
+/** Gas an owner key needs for one `withdrawToken`, with room: 0.00002 ETH, a pause-sized call being ~0.0000021 on 4663. */
+export const OWNER_GAS_WEI = 20_000_000_000_000n;
 const WAIT_MIN_MS = 10 * 60_000;
 const WAIT_MAX_MS = 30 * 60_000;
 const SWAP_DEADLINE_S = 600;
@@ -112,6 +115,22 @@ export const advancePending = async (deps: SellDeps): Promise<Sale[]> => {
   return done;
 };
 
+/**
+ * Tops each owner key up to OWNER_GAS_WEI from the operator, so it can send its
+ * account's tokens (docs/design-sell.md). The chain already shows Chit funding
+ * fleets, so this links nothing new. Returns the keys it sent to.
+ */
+export const topUpOwners = async (deps: SellDeps, owners: readonly Address[]): Promise<Address[]> => {
+  const topped: Address[] = [];
+  for (const owner of owners) {
+    const held = await deps.chain.balance(owner);
+    if (held >= OWNER_GAS_WEI) continue;
+    const outcome = await deps.chain.send({ to: owner, value: OWNER_GAS_WEI - held, record: async () => undefined });
+    if (outcome.status === "mined") topped.push(owner);
+  }
+  return topped;
+};
+
 /** One sweep's worth of progress: sell, settle a send already made, pay out when due, or give the tokens back. */
 export const advanceSale = async (deps: SellDeps, sale: Sale): Promise<Sale> => {
   if (sale.state === "sold") return payOut(deps, sale);
@@ -131,7 +150,8 @@ const miss = async (deps: SellDeps, sale: Sale, reason: string): Promise<Sale> =
 const trySell = async (deps: SellDeps, sale: Sale): Promise<Sale> => {
   const entry = anyEntry(deps.registry, sale.token)!;
   const amountIn = BigInt(sale.amountIn);
-  const minOut = leastOut(await deps.chain.sellQuote(sale.token, amountIn, entry.poolKey), entry.slippageBps);
+  const quoted = await deps.chain.sellQuote(sale.token, amountIn, entry.poolKey);
+  const minOut = leastOut(quoted, entry.slippageBps);
   if (minOut === 0n) return miss(deps, sale, "no_quote");
   const expiry = Math.floor(deps.now() / 1000) + SWAP_DEADLINE_S;
   // Exactly this sale's amount, never an open allowance on the operator's tokens.
@@ -141,14 +161,17 @@ const trySell = async (deps: SellDeps, sale: Sale): Promise<Sale> => {
   }
   const data = encodeV4TokenSell({ token: sale.token, amountIn, minOut, deadline: BigInt(expiry), poolKey: entry.poolKey });
   let recorded = sale;
-  const outcome = await deps.chain.send({ to: deps.router, data, record: async (hash, nonce) => { recorded = await save(deps, { ...sale, saleTx: hash, saleNonce: nonce }); } });
+  const outcome = await deps.chain.send({ to: deps.router, data, record: async (hash, nonce) => { recorded = await save(deps, { ...sale, saleTx: hash, saleNonce: nonce, quotedOut: quoted.toString() }); } });
   return settleSwap(deps, recorded, outcome);
 };
 
 const settleSwap = async (deps: SellDeps, sale: Sale, outcome: WriteOutcome): Promise<Sale> => {
   if (outcome.status === "unknown") return sale;
   if (outcome.status !== "mined") return miss(deps, sale, "swap_did_not_fill");
-  const ethOut = await deps.chain.ethReceived(outcome.hash);
+  // Never more than the quote: an unrelated inflow to the operator in the swap's block is not the depositor's.
+  const received = await deps.chain.ethReceived(outcome.hash);
+  const cap = sale.quotedOut === undefined ? received : BigInt(sale.quotedOut);
+  const ethOut = received < cap ? received : cap;
   const payoutDueAt = deps.now() + WAIT_MIN_MS + Math.floor(deps.random() * (WAIT_MAX_MS - WAIT_MIN_MS));
   const { reason: _reason, ...rest } = sale;
   return save(deps, { ...rest, state: "sold", saleTx: outcome.hash, ethOut: ethOut.toString(), payoutDueAt });

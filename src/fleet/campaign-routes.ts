@@ -23,6 +23,8 @@ import { CHARGE_AGEING_SECONDS, DRAW_CAP, MIN_GAS_CEILING, POST_WINDOW_SECONDS, 
 import { PolicyRejection, authorize, type SessionKey } from "./session-policy.js";
 import { buildPackedUserOp, encodeExecuteCall, type UserOperationSubmitter } from "./user-operation.js";
 import { anyEntry, enabledTokens, type TokenRegistry } from "./token-registry.js";
+import { SellRefused, advanceSale, openSale, topUpOwners, type SellDeps } from "./sell.js";
+import type { Sale } from "./store.js";
 import { BPS, UNIVERSAL_ROUTER_EXECUTE, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, encodeBuyCall, minOutFor, type PoolKey } from "./v4-swap.js";
 import {
   FleetValidationError,
@@ -44,6 +46,8 @@ import {
 
 export type RouterDeps = {
   service: CampaignService;
+  /** Selling a fleet's tokens through the operator (docs/design-sell.md); absent, the sale actions answer 503. */
+  sell?: SellDeps;
   /** Published CHIT fee facts; absent means open access (no gate, no fee). */
   feeConfig?: FeeConfig;
   /** Read-only mainnet CHIT balance for one wallet, in base units. */
@@ -127,6 +131,9 @@ type CampaignRecord = {
   /** Stage 2: this campaign's claim on the trader's pool balance. */
   draw?: DrawSummary;
 };
+
+/** What a depositor is told about a sale: everything but the nonces and the quote the operator keeps for itself. */
+const saleView = ({ saleNonce: _s, payoutNonce: _p, quotedOut: _q, ...view }: Sale): Omit<Sale, "saleNonce" | "payoutNonce" | "quotedOut"> => view;
 
 const STATUS: Record<string, number> = {
   challenge_invalid: 401,
@@ -282,6 +289,10 @@ export class CampaignRouter {
     if (action === "order") return this.#order(wallet, body);
     if (action === "list") return this.#list(wallet);
     if (action === "holdings") return this.#holdings(wallet, body);
+    // Selling (docs/design-sell.md). Not behind an idempotency key: a transfer hash counts once ever, and gas is once an hour per fleet and token.
+    if (action === "sellGas") return this.#sellGas(wallet, body);
+    if (action === "sell") return this.#sell(wallet, body);
+    if (action === "sales") return this.#sales(wallet);
 
     if (typeof idempotencyKey !== "string") {
       throw new ServiceError("idempotency_conflict", "key_required");
@@ -674,6 +685,43 @@ export class CampaignRouter {
   }
 
   /** `campaignKey(record.id)`, except for a record `list` restored by its escrow key, which has no inverse. */
+  #seller(): SellDeps {
+    const sell = this.#deps.sell;
+    if (!sell) throw new ServiceError("dependency_evidence_invalid", "selling_unconfigured");
+    return sell;
+  }
+
+  /** Where to send, and gas for a fleet's owner keys to send one listed token there: the gas once an hour per fleet and token. */
+  async #sellGas(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const sell = this.#seller();
+    const record = await this.#campaign(wallet, body);
+    const token = String(body["token"] ?? "").toLowerCase();
+    if (!/^0x[0-9a-f]{40}$/.test(token) || !anyEntry(sell.registry, token as Address)) throw new SellRefused("token_not_listed");
+    const now = sell.now();
+    // Once an hour per fleet and token: a second sale inside the hour still learns where to send, and gets no more gas.
+    const fresh = await sell.store.burnNonce(`sellgas:${record.id}:${token}`, now + 60 * 60_000, now);
+    const owners = record.accounts.map((a) => a.ownerAddress as Address);
+    return { status: 200, body: { operator: sell.operator, topped: fresh ? await topUpOwners(sell, owners) : [] } };
+  }
+
+  /** Opens a sale from the fleet's transfers to the operator and starts it at once; the sweep finishes what this does not. */
+  async #sell(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const sell = this.#seller();
+    const record = await this.#campaign(wallet, body);
+    const transfers = Array.isArray(body["transfers"]) ? body["transfers"].map((h) => String(h) as Hex) : [];
+    const opened = await openSale(sell, {
+      campaign: this.#key(record), owner: wallet as Address, token: String(body["token"] ?? "") as Address,
+      payout: String(body["payout"] ?? "") as Address, transfers,
+    });
+    const advanced = await sell.store.withLock(`sale:${opened.id}`, async () => advanceSale(sell, (await sell.store.sales.get(opened.id)) ?? opened));
+    return { status: 200, body: { sale: saleView(advanced) } };
+  }
+
+  async #sales(wallet: string): Promise<RouterResult> {
+    const sell = this.#seller();
+    return { status: 200, body: { sales: (await sell.store.sales.forOwner(wallet as Address)).map(saleView) } };
+  }
+
   #key(record: CampaignRecord): Hex {
     return record.chainKey ?? campaignKey(record.id);
   }
@@ -1402,6 +1450,10 @@ const errorResult = (error: unknown, action = "?"): RouterResult => {
     reason = (error as { reason?: string }).reason;
   } else if (error instanceof WithdrawalRefused) {
     code = error.code;
+    reason = error.reason;
+  } else if (error instanceof SellRefused) {
+    code = "policy_rejected";
+    status = POLICY_REJECTED_STATUS;
     reason = error.reason;
   } else if (error instanceof PolicyRejection) {
     code = "policy_rejected";

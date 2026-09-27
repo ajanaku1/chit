@@ -5,7 +5,7 @@ import { parseEther, type Address, type Hex, type PublicClient, type WalletClien
 import type { FleetPool, PoolDraw, PoolQueued } from "../../src/fleet/chain-pool.js";
 import { DRAW_STATE } from "../../src/fleet/chain-pool.js";
 import { ledgerKey, openDepositor, sealDepositor } from "../../src/fleet/pool-ledger.js";
-import { BATCH_LIMIT, CHARGE_GRAIN, GAS_HEADROOM, MIN_DELAY_SECONDS, coarseCharge, createPoolService, minimumDraw } from "../../src/fleet/pool-buy.js";
+import { BATCH_LIMIT, CHARGE_GRAIN, GAS_HEADROOM, MIN_DELAY_SECONDS, coarseCharge, createPoolService, minimumDraw, WithdrawalRefused } from "../../src/fleet/pool-buy.js";
 import { createMemoryStore } from "../../src/fleet/store.js";
 
 /**
@@ -410,6 +410,21 @@ describe("withdraw", () => {
     assert.deepEqual(await o.store.sentBatches(), [], "the payout mined: the charge stands as plain owed, for a later batch");
     assert.equal(await o.store.owedFor(ALICE), coarseCharge(parseEther("0.01")).toString());
     assert.equal(calls.filter((c) => c.fn === "queueSpendBatch").length, 0, "the payout and the charge never share the operator's transaction window");
+  });
+
+  it("never fronts a withdrawal out of sale proceeds: they are depositors' money waiting for their payout, not float", async () => {
+    const { pool, calls } = makePool([]);
+    const o = opts();
+    // The operator holds 1 ETH, 0.995 of it proceeds owed on a sale (docs/design-sell.md).
+    await o.store.sales.put({
+      id: "s", campaign: campaign(1), owner: BOB, token: account(7), payout: account(8), amountIn: "1", transfers: [],
+      state: "sold", attempts: 0, createdAt: 0, ethOut: parseEther("0.995").toString(),
+    });
+    const service = createPoolService(wallet, publicClient, pool, KEY, o);
+
+    await assert.rejects(service.withdraw({ depositor: ALICE, amount: parseEther("0.01").toString(), destination: BOB }), (e: Error) => e instanceof WithdrawalRefused && e.message.includes("operator_float_short"));
+    assert.equal(calls.filter((c) => c.fn === "transfer").length, 0, "nothing was paid");
+    assert.equal(await o.store.owedFor(ALICE), "0", "and nothing was charged");
   });
 });
 
