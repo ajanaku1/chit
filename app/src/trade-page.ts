@@ -35,6 +35,7 @@ import { forgetSignedReads, readSigned, recentSigned } from "./fleet/signed-read
 import { orderTrade, RequestFailed, SignatureMissing, signedFleetApi } from "./fleet/signed-request.js";
 import { readStatus } from "./fleet/status-read.js";
 import { orderErrorText } from "./fleet/order-errors.js";
+import { acceptedFor } from "./fleet/order-quote.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -63,6 +64,8 @@ class TradePage {
   #fleet: Fleet | undefined;
   #store: OrderStore | undefined;
   #quote: Quote | undefined;
+  /** The total #quote was asked for; an order for any other total is quoted again first. */
+  #quotedTotal: string | undefined;
   #timer: number | undefined;
   #quoteTimer: number | undefined;
   /** The poll in flight, if any; a second request waits for it and runs once more. */
@@ -86,7 +89,12 @@ class TradePage {
       this.#quoteTimer = window.setTimeout(() => void this.#quoteToken(), 400);
     });
     void this.#bindPicker();
-    el<HTMLInputElement>("o-total").addEventListener("input", () => this.#preview());
+    el<HTMLInputElement>("o-total").addEventListener("input", () => {
+      this.#preview();
+      // The estimate belongs to the total: a new amount is quoted again, as a new token is.
+      if (this.#quoteTimer !== undefined) window.clearTimeout(this.#quoteTimer);
+      this.#quoteTimer = window.setTimeout(() => void this.#quoteToken(), 400);
+    });
     el<HTMLFormElement>("order-form").addEventListener("submit", (event) => void this.#place(event));
     window.addEventListener("chit-wallet-changed", () => void this.#onWallet());
     if (getConnectedWallet()) void this.#onWallet();
@@ -290,6 +298,7 @@ class TradePage {
       // Typing then leaving the field asks twice for the same quote; a recent answer serves both.
       const quote = (await readSigned(wallet, "tokenQuote", { campaign: fleet.campaign, token, totalWei }, { maxAgeMs: 60_000 })) as Quote;
       this.#quote = quote;
+      this.#quotedTotal = totalWei;
       // The bound in force, as the least the fleet will receive, beside the estimate (FR-013, T068).
       const least = quote.hasPool && quote.minOut && quote.boundBps !== undefined
         ? ` · at least ${toEth(quote.minOut)} ${quote.symbol} (the bound is ${quote.boundBps / 100}%; a fill under it is refused)`
@@ -344,17 +353,24 @@ class TradePage {
     event.preventDefault();
     const wallet = this.#wallet;
     const fleet = this.#fleet;
-    const quote = this.#quote;
     const store = this.#store;
     const errorLine = el<HTMLParagraphElement>("trade-error");
     errorLine.hidden = true;
-    if (!wallet || !fleet || !quote || !quote.hasPool || !store) return;
+    if (!wallet || !fleet || !this.#quote || !store) return;
     const token = el<HTMLInputElement>("o-token").value.trim();
     let totalWei: string;
     try {
       totalWei = parseEth(el<HTMLInputElement>("o-total").value);
     } catch {
       errorLine.textContent = "Enter a valid ETH amount.";
+      errorLine.hidden = false;
+      return;
+    }
+    // The fill accepted is the estimate for this total; one quoted for another total is asked again first.
+    if (acceptedFor(this.#quote, this.#quotedTotal, totalWei) === undefined) await this.#quoteToken();
+    const quote = this.#quote;
+    if (!quote || !quote.hasPool || acceptedFor(quote, this.#quotedTotal, totalWei) === undefined) {
+      errorLine.textContent = "Couldn't get a current estimate for this amount. Nothing was placed; try again.";
       errorLine.hidden = false;
       return;
     }
