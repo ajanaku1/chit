@@ -29,6 +29,20 @@ export function TradeMarkup() {
             <button id="o-place" type="submit" className="primary big" disabled>Place order</button>
           </form>
         </section>
+        <section className="dash-card" aria-labelledby="sell-h">
+          <h2 id="sell-h">Sell back to ETH</h2>
+          <p className="lead">Selling goes through Chit. Your fleet sends the tokens to Chit&apos;s operator, which sells them and pays the ETH to the payout wallet you name, 10 to 30 minutes later. Between the sale and the payout, Chit holds your proceeds, and the pool&apos;s cap and the 24-hour exit do not cover them.</p>
+          <form id="sell-form" noValidate>
+            <div className="field"><label htmlFor="s-token">Token</label><select id="s-token" name="token"></select></div>
+            <div className="field"><label htmlFor="s-payout">Payout wallet</label><input id="s-payout" name="payout" type="text" inputMode="text" placeholder="0x…" autoComplete="off" /></div>
+            <p className="fineprint">Use a wallet that has never sent to or received from your main wallet. Paying out to your main wallet would link it to your fleet, so it is not allowed. If you later move the ETH to your main wallet yourself, that creates the link.</p>
+            <div className="field"><label htmlFor="s-backup">Your fleet&apos;s backup file</label><input id="s-backup" name="backup" type="file" accept="application/json,.json" /></div>
+            <p className="fineprint">The file you saved when you set up the fleet. Your wallet signs once to open it; the keys inside never leave this page.</p>
+            <p id="s-status" className="fineprint" role="status" aria-live="polite"></p>
+            <p id="s-error" className="field-error" role="alert" hidden></p>
+            <button id="s-sell" type="submit" className="primary big" disabled>Sell</button>
+          </form>
+        </section>
         <section className="dash-card" aria-labelledby="orders-h">
           <h2 id="orders-h">Orders</h2>
           <p className="cardlabel">Running</p>

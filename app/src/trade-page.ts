@@ -36,6 +36,8 @@ import { orderTrade, RequestFailed, SignatureMissing, signedFleetApi } from "./f
 import { readStatus } from "./fleet/status-read.js";
 import { orderErrorText } from "./fleet/order-errors.js";
 import { acceptedFor } from "./fleet/order-quote.js";
+import { SellFlowError, runSale, type SellStep } from "./fleet/sell-flow.js";
+import { chainSellPorts } from "./fleet/sell-ports.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -56,6 +58,52 @@ const randomEntropy = (): Hex => {
   return `0x${[...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("")}` as Hex;
 };
 
+const SELL_STEPS: Record<SellStep, string> = {
+  unlocking: "Opening your backup: your wallet asks you to sign.",
+  gas: "Getting your fleet ready to send.",
+  sending: "Your fleet is sending the tokens to Chit's operator.",
+  selling: "Selling.",
+};
+
+/** What a sale says once the service has it: sold and when the payout lands, or still selling. */
+const saleLine = (sale: { state?: string; ethOut?: string; payoutDueAt?: number }): string =>
+  sale.state === "sold" && sale.ethOut
+    ? `Sold for ${toEth(sale.ethOut)} ETH. It reaches your payout wallet around ${new Date(sale.payoutDueAt ?? Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`
+    : "Your tokens are with Chit's operator. The sale finishes within a few minutes; the ETH follows 10 to 30 minutes later.";
+
+/**
+ * Transfers sent to the operator whose sale was not yet confirmed, per fleet
+ * and token, so a failed last step is retried with them (sell-flow.ts). Only a
+ * convenience: the service counts each hash once whatever this remembers.
+ */
+const readPending = (key: string): Hex[] => {
+  try {
+    const stored = JSON.parse(localStorage.getItem(key) ?? "[]") as unknown;
+    return Array.isArray(stored) ? stored.filter((h): h is Hex => typeof h === "string" && /^0x[0-9a-fA-F]{64}$/.test(h)) : [];
+  } catch {
+    return [];
+  }
+};
+
+const writePending = (key: string, transfers: readonly Hex[]): void => {
+  try {
+    if (transfers.length === 0) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(transfers));
+  } catch {
+    // Private windows refuse storage; the sale still runs, and a retry then starts from what the fleet holds.
+  }
+};
+
+const sellErrorText = (error: unknown): string => {
+  const coded = (error as { code?: unknown } | null)?.code;
+  const reason = error instanceof SellFlowError ? error.reason : error instanceof RequestFailed ? (error.reason ?? error.code) : typeof coded === "string" ? coded : "";
+  if (reason === "payout_is_main_wallet") return "That is your main wallet. Paying out there would link it to your fleet; name a different wallet.";
+  if (reason === "payout_invalid") return "Enter the payout wallet's address, starting 0x.";
+  if (reason === "nothing_to_sell") return "Your fleet holds none of that token right now.";
+  if (reason === "vault_decryption_failed") return "That backup could not be opened with this wallet. Check it is this fleet's file.";
+  return `The sale did not start (${reason || "unexpected"}). Nothing was sold; anything already sent to Chit is sold or returned to your payout wallet.`;
+};
+
 const shortHash = (hash: string): string => (hash.length > 12 ? `${hash.slice(0, 6)}…${hash.slice(-4)}` : hash);
 
 class TradePage {
@@ -64,6 +112,8 @@ class TradePage {
   #fleet: Fleet | undefined;
   #store: OrderStore | undefined;
   #quote: Quote | undefined;
+  /** The fleet's accounts, from the last holdings read: the ones a sale sends from. */
+  #sellAccounts: Hex[] = [];
   /** The total #quote was asked for; an order for any other total is quoted again first. */
   #quotedTotal: string | undefined;
   #timer: number | undefined;
@@ -96,6 +146,7 @@ class TradePage {
       this.#quoteTimer = window.setTimeout(() => void this.#quoteToken(), 400);
     });
     el<HTMLFormElement>("order-form").addEventListener("submit", (event) => void this.#place(event));
+    el<HTMLFormElement>("sell-form").addEventListener("submit", (event) => void this.#sell(event));
     window.addEventListener("chit-wallet-changed", () => void this.#onWallet());
     if (getConnectedWallet()) void this.#onWallet();
   }
@@ -211,6 +262,7 @@ class TradePage {
       }
     }
     if (tokens.size === 0) return;
+    this.#fillSellTokens(tokens, totals, (body.holdings ?? []).map((holding) => holding.wallet as Hex));
     const dl = el("holdings");
     dl.replaceChildren();
     for (const [token, symbol] of tokens) {
@@ -221,6 +273,46 @@ class TradePage {
       dd.textContent = `${toEth((totals.get(token) ?? 0n).toString())} ${symbol}`;
       row.append(dt, dd);
       dl.append(row);
+    }
+  }
+
+  /** The Sell form offers what the fleet holds, and remembers which accounts hold it (docs/design-sell.md). */
+  #fillSellTokens(tokens: Map<string, string>, totals: Map<string, bigint>, accounts: Hex[]): void {
+    this.#sellAccounts = accounts;
+    const select = el<HTMLSelectElement>("s-token");
+    const held = [...tokens].filter(([token]) => (totals.get(token) ?? 0n) > 0n);
+    select.replaceChildren(...held.map(([token, symbol]) => Object.assign(document.createElement("option"), { value: token, textContent: `${symbol} · ${toEth((totals.get(token) ?? 0n).toString())}` })));
+    el<HTMLButtonElement>("s-sell").disabled = held.length === 0;
+  }
+
+  async #sell(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    const wallet = this.#wallet;
+    const fleet = this.#fleet;
+    const status = el("s-status");
+    const errorLine = el("s-error");
+    const file = el<HTMLInputElement>("s-backup").files?.[0];
+    errorLine.hidden = true;
+    if (!wallet || !fleet) return;
+    if (!file) { errorLine.textContent = "Choose your fleet's backup file first."; errorLine.hidden = false; return; }
+    const button = el<HTMLButtonElement>("s-sell");
+    button.disabled = true;
+    try {
+      const token = el<HTMLSelectElement>("s-token").value as Hex;
+      const pendingKey = `chit-sell-pending:${fleet.campaign}:${token.toLowerCase()}`;
+      const sale = (await runSale(chainSellPorts(wallet), {
+        campaign: fleet.campaign, token, payout: el<HTMLInputElement>("s-payout").value.trim() as Hex,
+        main: wallet, envelopeJson: await file.text(), accounts: this.#sellAccounts, pending: readPending(pendingKey),
+        keep: (transfers) => { writePending(pendingKey, transfers); },
+      }, (step) => { status.textContent = SELL_STEPS[step]; })) as { state?: string; ethOut?: string; payoutDueAt?: number };
+      writePending(pendingKey, []);
+      status.textContent = saleLine(sale);
+    } catch (error) {
+      status.textContent = "";
+      errorLine.textContent = sellErrorText(error);
+      errorLine.hidden = false;
+    } finally {
+      button.disabled = false;
     }
   }
 
