@@ -9,7 +9,7 @@
  */
 import { randomUUID } from "node:crypto";
 
-import { COOLDOWN_MS, FAILURE_LIMIT, FAILURE_WINDOW_MS, LOCK_TTL_MS, type Lease, type IdempotencyRecord, type OwedSpend, type SentBatch, type StorePort } from "./store.js";
+import { COOLDOWN_MS, FAILURE_LIMIT, FAILURE_WINDOW_MS, LOCK_TTL_MS, type Lease, type IdempotencyRecord, type OwedSpend, type Sale, type SentBatch, type StorePort } from "./store.js";
 import type { Address, Hex, Uint } from "./types.js";
 
 /** What `neon(url)` provides; typed here so tests can hand in a fake. */
@@ -68,6 +68,16 @@ const SCHEMA = [
      held_at BIGINT NOT NULL,
      line TEXT NOT NULL
    )`,
+  // Sales (docs/design-sell.md). The record is the whole sale; the columns
+  // beside it are the ones the queries filter and sum on.
+  `CREATE TABLE IF NOT EXISTS fleet_sales (
+     id TEXT PRIMARY KEY,
+     owner TEXT NOT NULL,
+     state TEXT NOT NULL,
+     eth_out NUMERIC,
+     record JSONB NOT NULL,
+     created_at BIGINT NOT NULL
+   )`,
 ];
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -78,6 +88,10 @@ const owedRow = (row: Record<string, unknown>): OwedSpend => ({
   amount: String(row["amount"]),
   incurredAt: row["incurred_at"] instanceof Date ? row["incurred_at"].toISOString() : String(row["incurred_at"]),
 });
+
+/** Neon hands JSONB back parsed; a driver that returns text is parsed here. */
+const saleRow = (row: Record<string, unknown>): Sale =>
+  (typeof row["record"] === "string" ? JSON.parse(row["record"]) : row["record"]) as Sale;
 
 export const createNeonStore = (
   sql: StoreSql,
@@ -240,6 +254,31 @@ export const createNeonStore = (
         // hour cannot both read the same lines and send the digest twice.
         const rows = await sql.query("DELETE FROM fleet_alerts RETURNING held_at, line");
         return rows.map((row) => ({ at: Number(row["held_at"]), line: String(row["line"]) })).sort((a, b) => a.at - b.at).map((row) => row.line);
+      },
+    },
+    sales: {
+      async put(sale) {
+        await sql.query(
+          `INSERT INTO fleet_sales (id, owner, state, eth_out, record, created_at) VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+           ON CONFLICT (id) DO UPDATE SET state = $3, eth_out = $4, record = $5::jsonb`,
+          [sale.id, sale.owner.toLowerCase(), sale.state, sale.ethOut ?? null, JSON.stringify(sale), sale.createdAt],
+        );
+      },
+      async get(id) {
+        const [row] = await sql.query("SELECT record FROM fleet_sales WHERE id = $1", [id]);
+        return row ? saleRow(row) : undefined;
+      },
+      async forOwner(owner) {
+        const rows = await sql.query("SELECT record FROM fleet_sales WHERE owner = $1 ORDER BY created_at DESC", [owner.toLowerCase()]);
+        return rows.map(saleRow);
+      },
+      async pending() {
+        const rows = await sql.query("SELECT record FROM fleet_sales WHERE state IN ('awaiting', 'sold') ORDER BY created_at");
+        return rows.map(saleRow);
+      },
+      async proceedsOwed(): Promise<Uint> {
+        const [row] = await sql.query("SELECT COALESCE(SUM(eth_out), 0)::text AS owed FROM fleet_sales WHERE state = 'sold'");
+        return String(row?.["owed"] ?? "0");
       },
     },
   };

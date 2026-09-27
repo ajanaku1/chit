@@ -43,7 +43,7 @@ describe("Neon store", () => {
     });
     const store = createNeonStore(sql);
     await store.initialize();
-    assert.equal(sql.calls.filter((c) => c.query.includes("CREATE TABLE")).length, 8, "one statement per table");
+    assert.equal(sql.calls.filter((c) => c.query.includes("CREATE TABLE")).length, 9, "one statement per table");
 
     assert.equal(await store.claimSlice("o|1"), true);
     assert.equal(await store.claimSlice("o|1"), false);
