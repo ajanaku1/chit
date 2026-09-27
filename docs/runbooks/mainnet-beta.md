@@ -119,11 +119,28 @@ goes in `specs/003-mainnet-beta/decision.md` against SC-004.
 FLEET_CHAIN_ID=4663 FLEET_ADMIN_ADDRESS=0x…admin… FLEET_GUARDIAN_ADDRESS=0x…guardian… npm run fleet-redeploy:live
 ```
 
-- [ ] commit `deployments/fleet-4663.json` and `app/chain-target.json`:
-      `git commit -am "chore(deploy): the capped beta set on Robinhood Chain mainnet"`
+- [ ] commit the record, on a branch and through a pull request, since main
+      takes nothing else:
+      `git add deployments/fleet-4663.json && git commit -m "chore(deploy): the capped beta set on Robinhood Chain mainnet"`
 
-The record and the chain target are the two files that make the app and the
-docs say mainnet. Nothing else in the repo names the chain.
+The record is new, so `git commit -am` would leave it out and commit nothing.
+`app/chain-target.json` is not committed: it is gitignored and written by
+`app/build.mjs` from the host's environment at every build (T054), so on
+`chit-app` it follows from § 4c's variables.
+
+**If the script dies partway, it writes no record.** Rehearsed on a fork on
+2026-09-27, a dropped request from the public RPC stopped it after the escrow
+and the policy were deployed, and nothing on disk named them. On mainnet that
+means contracts with the operator's gas spent and no record: they hold no
+money and nothing points at them. Save the addresses it printed before
+running again, since a second run starts a whole new set.
+
+- [ ] the admin accepts: `acceptOwnership()` from the admin on the policy and
+      on the pool, the two addresses the script prints last. Until then the
+      deployer holds both roles.
+- [ ] `./verify.sh beta-deployed` passes: code at every address, the caps,
+      the admin on both, the guardian, running. It reads the chain, not the
+      record, so it is the answer to "is § 3 done".
 
 - [ ] verify every contract's source on the explorer (T092), from the same
       checkout that deployed:
@@ -267,6 +284,13 @@ chain means a separate database:
 - [ ] `FLEET_CHAIN_ID=4663`, `FLEET_RPC_URL=https://rpc.mainnet.chain.robinhood.com`
 - [ ] `FLEET_POOL_ADDRESS`, `FLEET_POLICY_ADDRESS`, `FLEET_FACTORY_ADDRESS`, `FLEET_ESCROW_ADDRESS`, `FLEET_ESCROW_BLOCK` from the script's output
 - [ ] `FLEET_LEDGER_KEY` (32 bytes hex, now, before the first draw), `FLEET_NONCE_SECRET`, `FLEET_TOKEN_ALLOWLIST` (the tokens the beta may buy)
+- [ ] `CRON_SECRET`, fresh: without it the service refuses to start on 4663
+      (T047), and the six crons have no bearer to call it with
+- [ ] `DEPLOYER_PRIVATE_KEY`, the mainnet operator the pool records: the
+      service signs every sweep, draw and payout with it. Pasted in the
+      dashboard as Sensitive, never through a shell or a chat
+- [ ] `TELEGRAM_BOT_TOKEN` and `MONITOR_CHAT_ID`: without the token the
+      service's alerts are logged and never sent (T049)
 - [ ] holders only: `CHIT_FEE_THRESHOLD=<threshold>`, `CHIT_BASE_FEE=0`, `CHIT_FEE_DISCOUNT=0`, `CHIT_FEE_RECIPIENT=<operator>`, `CHIT_RPC_URL=https://rpc.mainnet.chain.robinhood.com`, `CHIT_TOKEN_ADDRESS=0xd523a627030509021cc39b6d7c8543417d3e50d8`
 - [ ] no `FLEET_SESSION_FACTORY`: 4663 has none until one is deployed there,
       and the Sessions page says so rather than offering the testnet's
