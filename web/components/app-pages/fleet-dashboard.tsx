@@ -30,7 +30,7 @@ export function DashboardMarkup() {
           <p className="kicker">Dashboard</p>
           <h1 id="nf-h">No fleet yet.</h1>
           <p className="lead">Set one up in about two minutes — connect, size it, save your backup, launch.</p>
-          <a className="primary big linkbtn" href="./fleet.html">Set up a fleet</a>
+          <a className="primary big linkbtn" href="./fleet">Set up a fleet</a>
         </section>
 
         <section id="fleet-view" hidden aria-labelledby="dash-h">
@@ -68,14 +68,14 @@ export function DashboardMarkup() {
             <p className="cardlabel">Wallets and what they hold</p>
             <p className="lead small" id="wallets-note">Each wallet makes its trades in public; the link back to you stays off the chain. Balances are read from the chain each time this page refreshes.</p>
             <ul id="fleet-accounts" className="account-list" aria-label="Fleet wallets"></ul>
-            <a id="run-buy" className="primary linkbtn" href="./trade.html">Trade from these wallets</a>
+            <a id="run-buy" className="primary linkbtn" href="./trade">Trade from these wallets</a>
             <p className="hint" id="buy-note">Buys are placed as orders on the Trade page: a token, a total, and slices spread across the fleet and over time.</p>
           </div>
         </section>
       </main>
 
       <footer className="fleet-foot">
-        <p>Testnet demonstration on Robinhood Chain. <a href="./fleet-privacy.html">Exactly what's private →</a></p>
+        <p>Testnet demonstration on Robinhood Chain. <a href="./fleet-privacy">Exactly what's private →</a></p>
         <p className="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
       </footer>
     

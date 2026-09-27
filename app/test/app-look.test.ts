@@ -105,13 +105,14 @@ test("the app is dark-only: no theme switch, ink browser chrome", async () => {
   assert.doesNotMatch(await read("fleet.css"), /data-theme|prefers-color-scheme/, "the old stylesheet still switches themes");
 });
 
+// The pages are linked by their clean addresses; the host serves each from its .html (vercel.json rewrites, 2026-09-27).
 const NAV: ReadonlyArray<readonly [string, string]> = [
-  ["./balance.html", "Balance"],
-  ["./fleet.html", "Set up"],
-  ["./trade.html", "Trade"],
-  ["./fleet-dashboard.html", "Control Room"],
-  ["./fleet-privacy.html", "Boundary"],
-  ["./sessions.html", "Sessions"],
+  ["./balance", "Balance"],
+  ["./fleet", "Set up"],
+  ["./trade", "Trade"],
+  ["./fleet-dashboard", "Control Room"],
+  ["./fleet-privacy", "Boundary"],
+  ["./sessions", "Sessions"],
 ];
 
 test("every page wears the landing's masthead and the same nav", async () => {
@@ -123,7 +124,7 @@ test("every page wears the landing's masthead and the same nav", async () => {
     assert.ok(nav, `${page} has no fleet nav`);
     const links = [...nav[1]!.matchAll(/<a href="([^"]+)"( aria-current="page")?>([^<]+)<\/a>/g)];
     assert.deepEqual(links.map((m) => [m[1], m[3]]), NAV.map(([href, label]) => [href, label]), `${page} nav differs from the landing's labels`);
-    assert.deepEqual(links.filter((m) => m[2]).map((m) => m[1]), [`./${page}`], `${page} marks the wrong page as current`);
+    assert.deepEqual(links.filter((m) => m[2]).map((m) => m[1]), [`./${page.replace(/\.html$/, "")}`], `${page} marks the wrong page as current`);
     assert.match(html, /<button class="burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="fleet-nav">/, `${page} has no phone menu`);
     assert.doesNotMatch(html, /chain-mark|class="fleet-top"/, `${page} still carries the old header`);
   }
@@ -144,6 +145,9 @@ test("no app page loads third-party assets", async () => {
 });
 
 test("every link on every app page reaches a page or an element that exists", async () => {
+  // A clean page link resolves twice: its .html exists here, and the host's rewrite names it, so the address is served.
+  const vercel = JSON.parse(await readFile(join(appRoot, "..", "vercel.json"), "utf8")) as { rewrites?: { source: string }[] };
+  const served = new Set((/\(([a-z|-]+)\)/.exec(vercel.rewrites?.find((r) => r.source.startsWith("/app/("))?.source ?? "")?.[1] ?? "").split("|"));
   for (const page of PAGES) {
     const html = await read(page);
     for (const [, target] of html.matchAll(/<a\b[^>]*\shref="([^"]+)"/g)) {
@@ -152,8 +156,9 @@ test("every link on every app page reaches a page or an element that exists", as
         assert.match(html, new RegExp(`id="${target!.slice(1)}"`), `${page}: ${target} points at nothing`);
         continue;
       }
-      assert.match(target!, /^\.\/[a-z-]+\.html$/, `${page}: unexpected link ${target}`);
-      await assert.doesNotReject(access(join(appRoot, target!)), `${page}: ${target} does not exist`);
+      assert.match(target!, /^\.\/[a-z-]+$/, `${page}: unexpected link ${target}`);
+      await assert.doesNotReject(access(join(appRoot, `${target!}.html`)), `${page}: ${target} does not exist`);
+      assert.ok(served.has(target!.slice(2)), `${page}: ${target} is not an address the host serves`);
     }
   }
 });

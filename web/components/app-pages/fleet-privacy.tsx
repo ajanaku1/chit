@@ -44,7 +44,7 @@ Private, not anonymous. We are not a mixer and we do not try to make you disappe
         <p className="lead small">These are design decisions, not missing features:</p>
         <p className="exclusions" id="exclusions"></p>
 
-        <a className="primary big linkbtn" href="./fleet.html">Set up a fleet</a>
+        <a className="primary big linkbtn" href="./fleet">Set up a fleet</a>
       </main>
 
       <footer className="fleet-foot">

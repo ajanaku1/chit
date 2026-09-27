@@ -114,6 +114,11 @@
       "source": "/app",
       "destination": "/app/balance",
       "permanent": false
+    },
+    {
+      "source": "/app/:page(balance|fleet|fleet-dashboard|fleet-privacy|sessions|trade).html",
+      "destination": "/app/:page",
+      "permanent": true
     }
   ],
   "rewrites": [

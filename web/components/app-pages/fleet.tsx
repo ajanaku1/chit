@@ -32,10 +32,10 @@ export function FleetMarkup() {
           <button id="start" type="button" className="primary big">Get started</button>
           <p className="fineprint">{" "}
 Before you start: launching needs ETH in your Chit balance
-            (<a href="./balance.html" target="_blank" rel="noopener">add it in a new tab</a>). Setup asks your wallet for a
+            (<a href="./balance" target="_blank" rel="noopener">add it in a new tab</a>). Setup asks your wallet for a
             few free signatures and sends no transactions from it.
 {" "}</p>
-          <p className="fineprint">Testnet demonstration. <a href="./fleet-privacy.html">Exactly what's private →</a></p>
+          <p className="fineprint">Testnet demonstration. <a href="./fleet-privacy">Exactly what's private →</a></p>
         </section>{" "}
 {/* STEP 1: Connect */}
 {" "}<section className="wstep" data-wstep="connect" hidden aria-labelledby="connect-h">
@@ -52,7 +52,7 @@ Before you start: launching needs ETH in your Chit balance
           <h2 id="size-h">Size your fleet</h2>
           <p id="balance-first" className="warnbox" role="status" hidden>{" "}
 Your Chit balance is 0 ETH, and a fleet spends from it.
-{" "}<a href="./balance.html" target="_blank" rel="noopener">Add ETH in a new tab</a>, then carry on here: this setup
+{" "}<a href="./balance" target="_blank" rel="noopener">Add ETH in a new tab</a>, then carry on here: this setup
             stays where it is.
 {" "}</p>
           <form id="size-form" noValidate>
@@ -151,7 +151,7 @@ Keep this file safe. If you lose it and this browser's data, nobody can recover 
             <p id="draw-note" className="fineprint" role="status" aria-live="polite"></p>
             <p className="fineprint">{" "}
 Your fleet spends from your Chit balance.
-{" "}<a href="./balance.html" target="_blank" rel="noopener">Add ETH in a new tab →</a> Your setup here stays put.
+{" "}<a href="./balance" target="_blank" rel="noopener">Add ETH in a new tab →</a> Your setup here stays put.
 {" "}</p>
             <button id="recheck-balance" type="button" className="ghost">I've added ETH: check my balance</button>
           </div>
@@ -170,7 +170,7 @@ Your fleet spends from your Chit balance.
           </div>
           <p id="funding-wait" className="fineprint" role="status" aria-live="polite"></p>
           <p className="lead">Watch the budget, pause or stop anytime, and get unused ETH back whenever you close.</p>
-          <a className="primary big linkbtn" href="./fleet-dashboard.html">Open the dashboard</a>
+          <a className="primary big linkbtn" href="./fleet-dashboard">Open the dashboard</a>
         </section>
 
       </main>

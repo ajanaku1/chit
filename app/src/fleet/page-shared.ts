@@ -774,7 +774,7 @@ export const initHeaderWallet = (): void => {
       chitFigure.textContent = `${toEth(cached.available)} ETH`;
     } else {
       const link = make("a", undefined, "See balance");
-      link.href = "./balance.html";
+      link.href = "./balance";
       chitFigure.replaceChildren(link);
     }
   };

@@ -3560,3 +3560,22 @@ rewritten to pin the new line rather than dropped:
 
 `app/test/no-sell.test.ts`, the Sessions page's guarded toggle, is unchanged:
 session keys are a different product and still never sell on the beta.
+
+## 2026-09-27: clean page addresses, and the four tests that spelled them
+
+The founder asked for the app's pages without ".html": `app.chit.tools/app/trade`,
+not `/app/trade.html`. The host already served the clean addresses (vercel.json
+rewrites them to the files), but every page linked to the files, so the
+address bar showed `.html` after the first click. The links are now the clean
+addresses on the six app pages, the page script and the site's copies, and
+a permanent redirect sends an old `.html` address to its clean form.
+
+Four app tests spelled the old links and were updated with the founder's
+go-ahead. None of them was about ".html"; each keeps its property:
+
+- the nav matches the landing's labels and order (app-look)
+- every link reaches something real (app-look). This one is stronger now: a
+  clean link must have its `.html` beside it and be named in the host's rewrite
+  list, so a clean link the host would not serve fails.
+- every fleet page, and the blocked launch step, links to Balance
+  (fleet-wallet-wiring)

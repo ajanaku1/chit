@@ -283,7 +283,7 @@ test("the wizard prepares the same state however the wallet arrived", async () =
 test("every fleet page can reach the Balance page", async () => {
   for (const page of ["fleet.html", "fleet-dashboard.html", "fleet-privacy.html", "balance.html"]) {
     const html = await readFile(join(appRoot, page), "utf8");
-    assert.match(html, /href="\.\/balance\.html"/, `${page} has no way to reach the Balance page`);
+    assert.match(html, /href="\.\/balance"/, `${page} has no way to reach the Balance page`);
   }
 });
 
@@ -291,7 +291,7 @@ test("a blocked launch links to the page that unblocks it", async () => {
   const html = await readFile(join(appRoot, "fleet.html"), "utf8");
   const step = /data-wstep="launch"[\s\S]*?<\/section>/.exec(html);
   assert.ok(step, "no launch step to inspect");
-  assert.match(step![0], /href="\.\/balance\.html"/, "the launch step names the Balance page but does not link it");
+  assert.match(step![0], /href="\.\/balance"/, "the launch step names the Balance page but does not link it");
 });
 
 /**
