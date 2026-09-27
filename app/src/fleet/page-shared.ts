@@ -1059,6 +1059,7 @@ export const initShell = ({ pill = true }: { pill?: boolean } = {}): void => {
           if (!wallet) throw new Error("no wallet");
           return fleetApi("quote", { action: "quote", body: { primaryWallet: wallet } });
         },
+        disconnectWallet,
       );
       const current = getConnectedWallet();
       if (current) window.dispatchEvent(new CustomEvent("chit-wallet-changed", { detail: { address: current } }));

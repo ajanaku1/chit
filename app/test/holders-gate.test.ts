@@ -35,6 +35,13 @@ test("above the threshold the gate is open; below it, closed with what is held a
   assert.doesNotMatch(noLinks, /<a /);
 });
 
+test("a wallet below the line can leave the gate for another wallet: the header that has one is behind it", () => {
+  const closed = gateMarkup({ state: "closed", holdings: "0", threshold: "100000000000000000000000" }, target);
+  assert.match(closed, /<button type="button"[^>]*data-gate-switch[^>]*>Use another wallet<\/button>/);
+  assert.match(closed, /switch accounts in your wallet/i, "says how, since disconnecting alone brings back the same account");
+  assert.doesNotMatch(gateMarkup({ state: "unknown", reason: "x" }, target), /data-gate-switch/, "a failed read offers a retry, not a way out");
+});
+
 test("a read that failed is unknown: a retry, never a rejection", () => {
   for (const answer of [{ error: "network down" }, { status: 503, body: {} }, { status: 200, body: {} }] as const) {
     const state = gateState(answer);
