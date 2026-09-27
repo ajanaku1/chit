@@ -127,10 +127,12 @@ Ordered by who can unblock it, because three of these are one person's alone.
       dust covers roughly two thousand calls. A guardian that cannot pay for
       its own call is the late guardian by another route.
 - [x] a **new empty database** for mainnet, never used by testnet (§ 4c): `chit-mainnet`, its own Neon project in us-east-1, connected to `chit-app` for Production only, so previews cannot reach it.
-- [ ] the **bot's scheduled jobs**, starved on the app host since the hosts
-      split: `orders` and `watch` have had no `TELEGRAM_BOT_TOKEN`,
-      `BOT_KEY_SECRET` or `BOT_USERNAME` there. `TELEGRAM_BOT_TOKEN` is on
-      `chit-app` since 2026-09-27; the other two are not, so this stays open.
+- [x] ~~the **bot's scheduled jobs** on the app host~~, taken off this list
+      2026-09-27. Those jobs read the bot's own database: on `chit-app` they
+      would read the empty mainnet one and find nothing, and pointing them at
+      the bot's would put testnet and mainnet rows on one host, which § 4c
+      exists to prevent. They belong with whichever host runs the bot, and
+      they do not touch deposits or the pool.
 
 **On the day, one command each**
 
