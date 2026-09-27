@@ -3496,3 +3496,28 @@ the only class of fault an outside monitor can see at all — it cannot know
 whether the service is confused, only whether the world matches the record.
 That is also why it stays outside, on a clock that drifts, rather than moving
 to the scheduler that would go dark with the service it watches.
+
+## A fork test inherited a stranger's ETH (2026-09-27)
+
+`fleet-venue` went red on main with a deterministic figure: the fleet account
+ended holding 9655457605476637 wei where 500000000000000 was expected. Identical
+to the wei locally and in CI, at three different fork blocks, which rules out
+the flakiness this suite is retried three times for.
+
+The account already held 9155457605476637 wei before the test funded it. A fork
+starts deployment from the live deployer's nonce, so the accounts land on
+addresses that exist on testnet, and this one — `0x5243df…beed`, no code — had
+been funded by somebody else. The buy was correct throughout: 0.001 in, 0.0005
+out, the escrow paid exactly the gas and the operator's ETH never touched the
+account.
+
+The assertion was the fixture's, not the product's: it read the account's whole
+balance and assumed a fresh account starts at zero. It now reads the balance
+before funding and asserts the movement, which is the property the test is
+named for and is stronger, because it holds whatever the address happened to
+contain. The number is quoted in the comment so the next person meets the
+explanation rather than the mystery.
+
+Worth stating plainly, because the opposite reading was available and cheaper:
+this was a test asserting the wrong thing, not a test to be relaxed. The
+difference is that the new assertion fails on every fault the old one caught.
