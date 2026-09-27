@@ -55,6 +55,8 @@ export const createSellChain = ({ publicClient, pool, store, operator, policy, m
 
   resolve: (hash, nonce) => pool.resolve(hash, nonce, operator),
 
+  balance: (address) => publicClient.getBalance({ address }),
+
   /**
    * The operator's balance across the swap's block, with the swap's gas added
    * back. The operator lock keeps its own sends one at a time; an unrelated

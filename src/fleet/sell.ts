@@ -28,6 +28,7 @@ export type SellChain = {
   resolve(hash: Hex, nonce: number): Promise<WriteOutcome>;
   /** The ETH the operator gained in this transaction's block, gas paid added back. */
   ethReceived(hash: Hex): Promise<bigint>;
+  balance(address: Address): Promise<bigint>;
 };
 
 export type SellDeps = {
@@ -52,6 +53,8 @@ export class SellRefused extends Error {
 }
 
 export const MAX_ATTEMPTS = 3;
+/** Gas an owner key needs for one `withdrawToken`, with room: 0.00002 ETH, a pause-sized call being ~0.0000021 on 4663. */
+export const OWNER_GAS_WEI = 20_000_000_000_000n;
 const WAIT_MIN_MS = 10 * 60_000;
 const WAIT_MAX_MS = 30 * 60_000;
 const SWAP_DEADLINE_S = 600;
@@ -110,6 +113,22 @@ export const advancePending = async (deps: SellDeps): Promise<Sale[]> => {
     }
   }
   return done;
+};
+
+/**
+ * Tops each owner key up to OWNER_GAS_WEI from the operator, so it can send its
+ * account's tokens (docs/design-sell.md). The chain already shows Chit funding
+ * fleets, so this links nothing new. Returns the keys it sent to.
+ */
+export const topUpOwners = async (deps: SellDeps, owners: readonly Address[]): Promise<Address[]> => {
+  const topped: Address[] = [];
+  for (const owner of owners) {
+    const held = await deps.chain.balance(owner);
+    if (held >= OWNER_GAS_WEI) continue;
+    const outcome = await deps.chain.send({ to: owner, value: OWNER_GAS_WEI - held, record: async () => undefined });
+    if (outcome.status === "mined") topped.push(owner);
+  }
+  return topped;
 };
 
 /** One sweep's worth of progress: sell, settle a send already made, pay out when due, or give the tokens back. */

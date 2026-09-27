@@ -12,16 +12,20 @@ import { neon } from "@neondatabase/serverless";
 import { createPublicClient, createWalletClient, http, isHex, keccak256, stringToBytes, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 
-import { createAlertSink } from "./alerts.js";
+import { createAlertSink, type AlertSink } from "./alerts.js";
 import { BLOCK_TIME_MS, robinhoodChain } from "./chain-def.js";
 import { CampaignRouter, type RouterDeps } from "./campaign-routes.js";
 import { CampaignService } from "./campaign-service.js";
 import { createFleetPool } from "./chain-pool.js";
 import { createFleetChain, type FleetChain } from "./chain-service.js";
+import { ROBINHOOD_TESTNET_ROUTER } from "./deploy.js";
 import { createMarket, type MarketPort } from "./market.js";
 import { ledgerKey } from "./pool-ledger.js";
 import { createPoolService, type PoolPort } from "./pool-buy.js";
 import { createNeonReadCache } from "./pool-reads-neon.js";
+import { advancePending, type SellDeps } from "./sell.js";
+import { sweepTriggerAllowed } from "./sweep-trigger.js";
+import { createSellChain } from "./sell-chain.js";
 import { mainnetPreflight } from "./service-preflight.js";
 import { readTokenRegistry, type TokenRegistry } from "./token-registry.js";
 import { readFileSync } from "node:fs";
@@ -161,6 +165,27 @@ const poolFromEnv = (store: StorePort): PoolPort | undefined => {
   // The same store the router uses: owed spend recorded by a buy on one
   // instance is queued by a sweep on another.
   return createPoolService(wallet, publicClient, fleetPool, ledgerKeyFromEnv(key), { store });
+};
+
+/**
+ * Selling (docs/design-sell.md): the operator sells what fleets send it, for
+ * registry tokens only, through the same Universal Router buys use (the
+ * `router` in deployments/fleet-4663.json is this address). Without the key,
+ * the pool, the policy, the market or a registry, selling answers 503.
+ */
+const sellFromEnv = (store: StorePort, market: MarketPort | undefined, registry: TokenRegistry | undefined, alerts: AlertSink): SellDeps | undefined => {
+  const key = operatorKeyFromEnv();
+  const address = poolAddressFromEnv();
+  const policy = process.env.FLEET_POLICY_ADDRESS;
+  if (!key || !address || !isAddress(policy) || !market || !registry) return undefined;
+  const { wallet, publicClient } = clients(key);
+  const operator = privateKeyToAccount(key).address;
+  const fleetPool = createFleetPool(wallet, publicClient, address);
+  return {
+    store, operator, router: ROBINHOOD_TESTNET_ROUTER, registry, now: () => Date.now(), random: Math.random,
+    chain: createSellChain({ publicClient, pool: fleetPool, store, operator, policy, market }),
+    alert: (summary) => alerts.raise({ what: "sale", summary, acts: "money-path", timescale: "immediately" }),
+  };
 };
 
 /**
@@ -333,6 +358,8 @@ export const configurationFault = (): string | undefined => addressFault;
 // Campaign records live for the instance's lifetime in this MVP; durable
 // storage is a later, separately-evidenced step.
 let router: CampaignRouter | undefined;
+/** The sale machinery the router was built with; the sales clock (api/fleet/sales.js) advances it. */
+let sellDeps: SellDeps | undefined;
 
 /** Shared Vercel handler body for the three fleet routes. */
 export const handleFleetRequest = async (
@@ -398,6 +425,9 @@ export const getFleetRouter = (): CampaignRouter => {
   const maxSlippageBps = maxSlippageFromEnv();
   if (!allowedTokens) console.warn("FLEET_TOKEN_ALLOWLIST is not set: sponsored buys may target any token");
   void verifyDeployedAddresses();
+  const alerts = createAlertSink({ env: process.env, fetch, store });
+  const sell = sellFromEnv(store, market, registry, alerts);
+  sellDeps = sell;
   const deps: RouterDeps = {
     // Ten minutes, not five: signing means leaving the browser for the wallet
     // app, and a trader who takes longer than the TTL comes back to an expired
@@ -407,7 +437,7 @@ export const getFleetRouter = (): CampaignRouter => {
     // The operator chat, for the two failures the outside monitor cannot see
     // (T048, T049). Without TELEGRAM_BOT_TOKEN and MONITOR_CHAT_ID the sink
     // logs instead of sending, so a local run and a preview need no secrets.
-    alerts: createAlertSink({ env: process.env, fetch, store }),
+    alerts,
     ...(feeConfig ? { feeConfig, chitBalanceOf } : {}),
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
@@ -422,7 +452,28 @@ export const getFleetRouter = (): CampaignRouter => {
     ...(pool && poolAddress ? { poolAddress } : {}),
     // Without the market, tokenQuote, order, list and holdings answer 503 too.
     ...(market ? { market } : {}),
+    // Without it, the sale actions answer 503 (docs/design-sell.md).
+    ...(sell ? { sell } : {}),
   };
   router = new CampaignRouter(deps);
   return router;
+};
+
+/**
+ * The sales clock (docs/design-sell.md): Vercel calls it every five minutes
+ * with the CRON_SECRET bearer, and it advances every sale with work left:
+ * sells what is awaiting, pays out what is due, returns what missed three times.
+ * Unlike the sweep it never runs open when the secret is unset.
+ */
+export const handleSalesSweep = async (request: Request): Promise<Response> => {
+  const secret = process.env.CRON_SECRET;
+  if (!secret || !sweepTriggerAllowed(request, secret)) {
+    return Response.json({ code: "unauthorized", retryable: false, reason: "cron_secret" }, { status: 401 });
+  }
+  getFleetRouter();
+  if (addressFault || !sellDeps) {
+    return Response.json({ code: "dependency_evidence_invalid", retryable: false, reason: addressFault ? "misconfigured" : "selling_unconfigured" }, { status: 503 });
+  }
+  const advanced = await advancePending(sellDeps);
+  return Response.json({ advanced: advanced.map((sale) => ({ id: sale.id, state: sale.state })) });
 };
