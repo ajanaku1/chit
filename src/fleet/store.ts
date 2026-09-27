@@ -55,10 +55,14 @@ export type Sale = {
   state: SaleState;
   attempts: number;
   createdAt: number;
+  /** The swap in flight or done, and the nonce it was signed under, so an unseen outcome is resolved, never resent. */
   saleTx?: Hex;
+  saleNonce?: number;
   ethOut?: Uint;
   payoutDueAt?: number;
+  /** The payout (or, after three misses, the tokens' return) in flight or done, and its nonce. */
   payoutTx?: Hex;
+  payoutNonce?: number;
   reason?: string;
 };
 
