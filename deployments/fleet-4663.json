@@ -30,5 +30,36 @@
     "beta": true,
     "deployedAt": "2026-09-27T12:00:53.140Z"
   },
-  "redeployedAt": "2026-09-27T12:00:53.140Z"
+  "redeployedAt": "2026-09-27T12:00:53.140Z",
+  "firstBuy": {
+    "at": "2026-09-27",
+    "note": "The founder's first loop on the capped beta (runbook \u00a7 5), fleet side only: the deposit and the withdrawal are left out on purpose, so this record ties no main wallet to the fleet. Checked on chain 2026-09-27.",
+    "api": "https://app.chit.tools",
+    "key": "0xec47bcd93d75f5286f03812fb753895ab79f479f2cd0dd156fa8c03b7493109f",
+    "token": "0xb33eb16782776b4d738c0fd643577cb0284db610",
+    "drawTx": "0x22f81f6a2fb9055bf2fca2f46caf02b0c2bd2767584af2cdae93c951ff44b1c9",
+    "fundTx": "0x0b6ec5a7ba9ad12f6a3111aef1e84d215f8a146cfb0f1f1b3942b5fa7c92a736",
+    "buyTxs": [
+      "0xbf21bfbbd58f859d82d632c5db9f3c6b37a3dce3f037d58b24bfd71a87398d8a",
+      "0x2d07dd2c828abbbb6ed8451128411d49c1c15fd37d83ecd4495afea0be465afd",
+      "0xfe31015be24ad79c63378b4cf7bf302f730f77d5260b44d9d5dc90babdd2a697",
+      "0x1e4385777ff9bae985939121d1c59aa1341c8188ce4f02ba9f54dd4737a70fb7",
+      "0x0fc71202eaf88332f31f23de29e6bfab43f9b67e88fc7fdb47f8d4224b9e2819"
+    ],
+    "sale": {
+      "transferTxs": [
+        "0xfbbb383aac226894e904d2937b8498333e47e0c65c63699c0a521238f4e1d7b1",
+        "0x916407c34e9c644ba8c99d2b823afab33622299f9dc5a6e168809fa180a8a35a",
+        "0x1eb1044fd32c74a67f9b5423873589d701e8e106139ead5fd84fc9d9b9056b31",
+        "0xa5b52baa2b6ed3c6f2080735b04a4b36f27872d1cc9ce522af1ddedcba3c7dc0",
+        "0xfb4715c1440ca023c5847d86de609653a603c06c045bd09cc7960777c8262af8"
+      ],
+      "amountIn": "11017069408025320799535",
+      "swapTx": "0xb7d0ff8754f83fb3b8bade15670df94faf6598796da48a6b38fc84fa6a9479bc",
+      "ethOut": "786502288423078",
+      "soldAt": "2026-09-27T22:59:31Z",
+      "paidBy": "2026-09-27T23:30:42Z"
+    },
+    "closeTx": "0x067f4bd9e154748fdfe5adf882d7c684838cf1b4973182de72da7b25bab7e64f"
+  }
 }
