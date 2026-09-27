@@ -312,12 +312,33 @@ and how to close the loop so nobody is left wondering whether it went through.
 arguments and about 0.0000021 ETH of gas. It is refused from any address but
 the guardian, the operator and the admin.
 
+**Check the network before signing, every time.** Rehearsing on testnet
+(2026-09-27), MetaMask's send flow opened on Robinhood Chain **mainnet** with the
+testnet pool address filled in. Lucian caught it on the confirm screen, where the
+network line read "Robinhood Chain" and not "Robinhood Chain Testnet", and
+rejected it. Nothing was sent.
+
+The danger is not that such a transaction fails. It is that it **succeeds**.
+There is no contract at the testnet pool's address on 4663 (`eth_getCode` returns
+`0x`), and a call carrying data to an address with no code is an ordinary
+transfer: it mines with `status: success` and does nothing at all. A guardian
+reading only the receipt would believe the pool was stopped while it kept
+running. This is exactly the case the two confirmations below are for, and the
+reason `paused()` outranks the receipt.
+
+So: pick the ETH on the chain you mean, and read the network line on the confirm
+screen before you sign. The brake page does this check for you and sends nothing
+when the wallet will not switch; sent by hand, the check is yours.
+
 **Confirming it landed.** Three things, in order of how quickly they answer:
 
-1. the transaction has a receipt with `status: success`
+1. the transaction has a receipt with `status: success` — necessary, and on its
+   own worth nothing, for the reason above
 2. `paused()` on the pool reads `true` — this is the one that matters, because
    it is the state everything else reads
-3. the pool emitted `PausedSet(true)` in that transaction
+3. the pool emitted `PausedSet(true)` in that transaction — the receipt of a
+   pause sent to the wrong chain carries no logs at all, so an event is the
+   cheapest proof that a real contract answered
 
 Reading it takes no key and no permission:
 
