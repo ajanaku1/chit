@@ -691,16 +691,17 @@ export class CampaignRouter {
     return sell;
   }
 
-  /** Gas for a fleet's owner keys to send one listed token to the operator: once an hour per fleet and token. */
+  /** Where to send, and gas for a fleet's owner keys to send one listed token there: the gas once an hour per fleet and token. */
   async #sellGas(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const sell = this.#seller();
     const record = await this.#campaign(wallet, body);
     const token = String(body["token"] ?? "").toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(token) || !anyEntry(sell.registry, token as Address)) throw new SellRefused("token_not_listed");
     const now = sell.now();
-    if (!(await sell.store.burnNonce(`sellgas:${record.id}:${token}`, now + 60 * 60_000, now))) throw new SellRefused("sell_gas_recent");
+    // Once an hour per fleet and token: a second sale inside the hour still learns where to send, and gets no more gas.
+    const fresh = await sell.store.burnNonce(`sellgas:${record.id}:${token}`, now + 60 * 60_000, now);
     const owners = record.accounts.map((a) => a.ownerAddress as Address);
-    return { status: 200, body: { operator: sell.operator, topped: await topUpOwners(sell, owners) } };
+    return { status: 200, body: { operator: sell.operator, topped: fresh ? await topUpOwners(sell, owners) : [] } };
   }
 
   /** Opens a sale from the fleet's transfers to the operator and starts it at once; the sweep finishes what this does not. */

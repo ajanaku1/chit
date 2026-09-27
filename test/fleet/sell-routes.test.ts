@@ -99,7 +99,7 @@ test("gas for the owner keys is once an hour per fleet and token, and only for a
   assert.equal(first.status, 200);
   assert.equal((first.body as { topped: unknown[] }).topped.length, 5, "every owner key, which held nothing");
   const again = await router.handle(await signed(service, "sellGas", { campaign, token: TOKEN }));
-  assert.deepEqual(again.body, { code: "policy_rejected", retryable: false, reason: "sell_gas_recent" });
+  assert.deepEqual(again.body, { operator: OPERATOR, topped: [] }, "inside the hour: where to send, and no more gas");
   const other = await router.handle(await signed(service, "sellGas", { campaign, token: addr(0x99) }));
   assert.deepEqual(other.body, { code: "policy_rejected", retryable: false, reason: "token_not_listed" });
 });
