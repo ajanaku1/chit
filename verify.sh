@@ -170,6 +170,9 @@ checksh beta-venue "every tradable token is pinned to its real pool and quoted a
 checksh beta-launch "no published sentence claims an audit precedes mainnet, and sells stay out" \
   'test -f README.md && ! grep -rqiE "audit (is )?(required |a )?(gate |precondition )?before (mainnet|real funds)" README.md ONBOARDING.md specs/002-private-funding-pool/spec.md web/components && grep -rqiE "capped|beta" web/components/scenes.tsx'
 
+checksh beta-deployed "the beta is on 4663 as specified: code at every address, the beta's caps, the admin accepted on both, a guardian, running" \
+  'node scripts/beta-deployed-check.mjs'
+
 # --- manual checks (not automatable; confirm before calling the build done) ---
 cat <<'MANUAL'
 
