@@ -3521,3 +3521,17 @@ explanation rather than the mystery.
 Worth stating plainly, because the opposite reading was available and cheaper:
 this was a test asserting the wrong thing, not a test to be relaxed. The
 difference is that the new assertion fails on every fault the old one caught.
+
+## 2026-09-27: a ninth table, and the count that pins it
+
+Selling (docs/design-sell.md) records each sale in the store, so the Neon
+adapter creates `fleet_sales` beside the other eight tables.
+`test/fleet/store-neon.test.ts` counts the CREATE statements `initialize()`
+runs, "one statement per table", and was pinned at 8. It now reads 9, changed
+with the founder's go-ahead, since the rule is never to edit a test to pass it.
+
+The assertion's meaning is unchanged: one CREATE per table, all created at
+`initialize()`. The count went up because a real table was added, as it did for
+the failure counter (T069) and the alert digest (T048). The alternative, creating
+the table lazily outside the schema list, would have kept the number and broken
+the property the test exists to hold.

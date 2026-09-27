@@ -33,6 +33,35 @@ export type SentKind = "batch" | "payout";
 /** Where a resolved `sent` row goes: the chain's (confirmed), the next batch's (owed), or nobody's (void: a charge for a payout that never happened). */
 export type SentResolution = "confirmed" | "owed" | "void";
 
+/**
+ * A fleet's tokens sold through the operator (docs/design-sell.md). `awaiting`:
+ * the transfers are verified and the tokens are the operator's to sell.
+ * `sold`: the ETH is the operator's to pay out, and counts as proceeds owed.
+ * `paid`, `returned` (the tokens went to the payout wallet after three misses)
+ * and `failed` are done.
+ */
+export type SaleState = "awaiting" | "sold" | "paid" | "returned" | "failed";
+
+export type Sale = {
+  id: string;
+  campaign: string;
+  /** The depositor's main wallet: who may ask about the sale, never paid. */
+  owner: Address;
+  token: Address;
+  /** Where the ETH goes: never the owner (the page and the router both refuse it). */
+  payout: Address;
+  amountIn: Uint;
+  transfers: Hex[];
+  state: SaleState;
+  attempts: number;
+  createdAt: number;
+  saleTx?: Hex;
+  ethOut?: Uint;
+  payoutDueAt?: number;
+  payoutTx?: Hex;
+  reason?: string;
+};
+
 export type StorePort = {
   /** Creates what the adapter needs; idempotent. */
   initialize(): Promise<void>;
@@ -97,6 +126,20 @@ export type StorePort = {
     /** Takes every held line, oldest first, and leaves none: the caller sends them or they are lost with it. */
     takeHeld(): Promise<string[]>;
   };
+  /**
+   * Sales (docs/design-sell.md): each written whole before the transaction it
+   * leads to, so a sale is resumed from its record, never repeated.
+   */
+  sales: {
+    put(sale: Sale): Promise<void>;
+    get(id: string): Promise<Sale | undefined>;
+    /** The owner's sales, newest first. */
+    forOwner(owner: Address): Promise<Sale[]>;
+    /** Sales with work left: `awaiting` a sale or `sold` and awaiting a payout. */
+    pending(): Promise<Sale[]>;
+    /** The ETH the operator holds for depositors: every `sold` sale's `ethOut`. Float checks subtract it. */
+    proceedsOwed(): Promise<Uint>;
+  };
 };
 
 /** Three gas-spending failures inside an hour close a campaign for an hour (FR-0xx, the spec's clarification). */
@@ -134,6 +177,7 @@ export const createMemoryStore = (): StorePort => {
   const failures = new Map<string, number[]>();
   const cooldowns = new Map<string, number>();
   const held: { at: number; line: string }[] = [];
+  const sales = new Map<string, Sale>();
 
   const pruneNonces = (now: number): void => {
     for (const [nonce, expiresAt] of nonces) if (expiresAt <= now) nonces.delete(nonce);
@@ -233,6 +277,25 @@ export const createMemoryStore = (): StorePort => {
         const lines = [...held].sort((a, b) => a.at - b.at).map((entry) => entry.line);
         held.length = 0;
         return lines;
+      },
+    },
+    sales: {
+      async put(sale) { sales.set(sale.id, structuredClone(sale)); },
+      async get(id) {
+        const sale = sales.get(id);
+        return sale ? structuredClone(sale) : undefined;
+      },
+      async forOwner(owner) {
+        const mine = [...sales.values()].filter((sale) => sale.owner.toLowerCase() === owner.toLowerCase());
+        return mine.sort((a, b) => b.createdAt - a.createdAt).map((sale) => structuredClone(sale));
+      },
+      async pending() {
+        return [...sales.values()].filter((sale) => sale.state === "awaiting" || sale.state === "sold").map((sale) => structuredClone(sale));
+      },
+      async proceedsOwed() {
+        let owedWei = 0n;
+        for (const sale of sales.values()) if (sale.state === "sold") owedWei += BigInt(sale.ethOut ?? "0");
+        return owedWei.toString();
       },
     },
   };
