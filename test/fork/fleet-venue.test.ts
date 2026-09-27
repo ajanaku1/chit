@@ -60,6 +60,13 @@ describe("Fleet venue on Uniswap v4 (46630 fork)", () => {
     await escrow.write.registerCampaign([CAMPAIGN, owner!.account.address]);
     await escrow.write.fund([CAMPAIGN], { account: owner!.account, value: parseEther("0.1") });
     // Stage 1: the trade principal is the account's own ETH, not the escrow's.
+    //
+    // Read what the account holds before funding it rather than assuming zero. A fork
+    // deploys from the live deployer's nonce, so these accounts land on addresses that
+    // exist on testnet, and one of them holds 0.009155457605476637 ETH put there by
+    // somebody else (0x5243df…beed, no code, seen 2026-09-27). Inheriting a stranger's
+    // balance is not this test's subject; what the buy moves is.
+    const before = await publicClient.getBalance({ address: account.address });
     await owner!.sendTransaction({ to: account.address, value: parseEther("0.001") });
 
     const amountIn = parseEther("0.0005");
@@ -76,7 +83,11 @@ describe("Fleet venue on Uniswap v4 (46630 fork)", () => {
     const bought = await token.read.balanceOf([account.address]);
     assert.ok(bought > 0n, "fleet account holds FLEET after the buy");
     assert.ok(bought < amountIn * 1000n, "price roughly 1000 FLEET/ETH minus fee and slippage");
-    assert.equal(await publicClient.getBalance({ address: account.address }), parseEther("0.001") - amountIn, "principal came from the account");
+    assert.equal(
+      await publicClient.getBalance({ address: account.address }),
+      before + parseEther("0.001") - amountIn,
+      "principal came from the account: it is down exactly the trade, and the operator's gas never touched it",
+    );
     assert.equal(report.budget.spent, report.results[0]?.gasCost, "escrow paid exactly the gas");
     assert.equal(report.budget.reserved, 0n);
   });
