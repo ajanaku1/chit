@@ -29,6 +29,8 @@ export type SellChain = {
   /** The ETH the operator gained in this transaction's block, gas paid added back. */
   ethReceived(hash: Hex): Promise<bigint>;
   balance(address: Address): Promise<bigint>;
+  /** A fleet account's owner key, read from the account itself. Optional so fakes that predate it still type-check. */
+  ownerOf?(account: Address): Promise<Address>;
 };
 
 export type SellDeps = {
@@ -125,6 +127,9 @@ export const topUpOwners = async (deps: SellDeps, owners: readonly Address[]): P
   for (const owner of owners) {
     const held = await deps.chain.balance(owner);
     if (held >= OWNER_GAS_WEI) continue;
+    // Once an hour per key, counted only when gas is actually sent: a key that needed none, or an ask that failed before sending, costs nothing.
+    const now = deps.now();
+    if (!(await deps.store.burnNonce(`sellgas:${owner.toLowerCase()}`, now + 60 * 60_000, now))) continue;
     const outcome = await deps.chain.send({ to: owner, value: OWNER_GAS_WEI - held, record: async () => undefined });
     if (outcome.status === "mined") topped.push(owner);
   }

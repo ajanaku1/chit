@@ -110,3 +110,50 @@ test("without the sale machinery the actions answer 503, never a guess", async (
   assert.equal(result.status, 503);
   assert.match(JSON.stringify(result.body), /selling_unconfigured/);
 });
+
+test("a fleet reloaded from the chain, with no owner list, still gets gas: owners are read from its enrolled accounts on chain", async () => {
+  const service = new CampaignService(serviceConfig);
+  const topped: Address[] = [];
+  const enrolled = new Set([addr(0xa1), addr(0xa2)].map((x) => x.toLowerCase()));
+  const sell: SellDeps = {
+    ...sellDeps(),
+    chain: {
+      ...chain,
+      async enrolled(_c, account) { return enrolled.has(account.toLowerCase()); },
+      async ownerOf(account) { return addr(Number(`0x${account.slice(-2)}`) + 0x100); },
+      async send(step) { topped.push(step.to); return chain.send(step); },
+    },
+  };
+  const router = new CampaignRouter({ service, sell });
+  const create = await router.handle(await signed(service, "create", {
+    quoteId: "q-1", policy: policy(), recoveryVaultCommitment: `0x${"3".repeat(64)}`,
+    accounts: Array.from({ length: 5 }, (_, i) => ({ ownerAddress: addr(0x100 + i), salt: salt(i + 1) })),
+  }), "fleet-create0000000000");
+  const campaign = (create.body as { campaign: string }).campaign;
+  // What a reload from the chain looks like: the record knows no owner keys.
+  const reloaded = await router.handle(await signed(service, "sellGas", { campaign, token: TOKEN, accounts: [addr(0xa1), addr(0xa2), addr(0xbb)] }));
+  assert.equal(reloaded.status, 200);
+  const sentTo = topped.map((t) => t.toLowerCase());
+  assert.ok(sentTo.includes(addr(0x1a1).toLowerCase()) && sentTo.includes(addr(0x1a2).toLowerCase()), "the enrolled accounts' owners, read from the chain, got gas");
+  assert.ok(!sentTo.includes(addr(0x1bb).toLowerCase()), "an account not enrolled in this fleet gets nothing");
+});
+
+test("gas is once an hour per owner key, and only counts when it is sent: a key that needed none can get it later", async () => {
+  const service = new CampaignService(serviceConfig);
+  let funded = true;
+  const topped: Address[] = [];
+  const sell: SellDeps = { ...sellDeps(), chain: { ...chain, async balance() { return funded ? 10n ** 18n : 0n; }, async send(step) { topped.push(step.to); return chain.send(step); } } };
+  const router = new CampaignRouter({ service, sell });
+  const create = await router.handle(await signed(service, "create", {
+    quoteId: "q-1", policy: policy(), recoveryVaultCommitment: `0x${"3".repeat(64)}`,
+    accounts: Array.from({ length: 5 }, (_, i) => ({ ownerAddress: addr(0x100 + i), salt: salt(i + 1) })),
+  }), "fleet-create0000000000");
+  const campaign = (create.body as { campaign: string }).campaign;
+  await router.handle(await signed(service, "sellGas", { campaign, token: TOKEN }));
+  assert.equal(topped.length, 0, "the keys had gas, so none was sent and nothing was spent from the hour");
+  funded = false;
+  await router.handle(await signed(service, "sellGas", { campaign, token: TOKEN }));
+  assert.equal(topped.length, 5, "the next ask, inside the same hour, still tops them up");
+  await router.handle(await signed(service, "sellGas", { campaign, token: TOKEN }));
+  assert.equal(topped.length, 5, "and a third inside the hour sends no more");
+});
