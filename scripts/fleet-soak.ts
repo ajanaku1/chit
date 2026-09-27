@@ -4,6 +4,7 @@
  *   npm run fleet-soak -- --watch      # sample every 10 minutes, append to the run
  *   npm run fleet-soak -- --once       # one sample and exit, for a cron
  *   npm run fleet-soak                 # read the run and answer the predicate
+ *   npm run fleet-soak -- --until <iso> # answer it for the run that ended then
  *
  * The watcher appends one JSON line per sample to
  * `incidents/soak-<chainId>.jsonl`; the reader answers FR-039 and SC-004 from
@@ -35,6 +36,30 @@ const RPC_URL = process.env.FLEET_RPC_URL || (CHAIN_ID === 4663 ? "https://rpc.m
 const INTERVAL_MS = Number(process.env.SOAK_INTERVAL_MS || 10 * 60_000);
 const WATCH = process.argv.includes("--watch");
 const ONCE = process.argv.includes("--once");
+/*
+ * A soak is a period, and periods end. The sampler usually outlives the run it
+ * was started for — it goes on reading while the pool is used for other things
+ * — so the verdict needs to be told where the run stopped, or it judges a
+ * forty-eight hour soak on a week of samples and reports whatever happened
+ * afterwards as a fault of the soak.
+ *
+ * This cannot be used to manufacture a pass. The duration check runs on the cut
+ * run, so any window shorter than FR-039's forty-eight hours fails on length,
+ * and the cut is printed with the verdict so what was judged is on the record
+ * beside the answer. Choosing an end is a claim about when the soak finished,
+ * and it belongs in the decision record with a reason.
+ */
+const untilArg = ((): number | null => {
+  const i = process.argv.indexOf("--until");
+  if (i < 0) return null;
+  const raw = process.argv[i + 1];
+  const at = raw ? Date.parse(raw) : Number.NaN;
+  if (Number.isNaN(at)) {
+    console.error("--until needs an ISO timestamp, e.g. --until 2026-09-26T22:15:29Z");
+    process.exit(2);
+  }
+  return at;
+})();
 
 const ABI = parseAbi([
   "function paused() view returns (bool)",
@@ -164,9 +189,13 @@ const watch = async (): Promise<void> => {
 };
 
 const report = async (): Promise<void> => {
-  const samples = await readRun();
+  const all = await readRun();
+  const samples = untilArg === null ? all : all.filter((s) => Date.parse(s.at) <= untilArg);
   const seen = await witnesses();
   const verdict = soakVerdict(samples, { witnesses: seen });
+  if (untilArg !== null) {
+    console.log(`the run judged ends at ${new Date(untilArg).toISOString()}: ${samples.length} of ${all.length} samples, ${all.length - samples.length} taken after it and not counted`);
+  }
   console.log(soakSummary(verdict, samples));
   console.log(seen.length > 0
     ? `the monitor watched too: ${seen.length} successful runs, counted where this sampler was silent`
