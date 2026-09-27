@@ -148,11 +148,23 @@ from main, the paymaster and the session factory from their own commits.
 
 ## 4. The hosts
 
-Two deploys of one app, one per chain (T080, T081, FR-019). The order below
-is not arbitrary: **the playground is created first**. The existing project
-holds `chit.tools` and is on 46630 today, so switching it to 4663 before the
-playground exists leaves every testnet user pointed at an app that spends
-real money. Playground first, then switch.
+Three Vercel projects, not two. This section was written when there were two
+and the beta was to be `chit.tools` itself; the split on 2026-09-23 moved
+things, and the old order would now have you switch the marketing site to
+mainnet. What is live today:
+
+| project | domain | what it is | chain |
+|---|---|---|---|
+| `chit-tools` | `chit.tools` | the site people read, root dir `web` | none; it asks the service |
+| `chit-testnet` | `testnet.chit.tools` | the free playground, app and service | 46630 |
+| `chit-app` | `app.chit.tools` | **the capped beta** | 4663 |
+
+So § 4c below is about `chit-app`, and nothing in § 3 or § 4 changes the chain
+of `chit-tools` or `chit-testnet`. The playground stays on 46630 permanently;
+it is not switched over after launch.
+
+The original ordering rule still holds in its new form: **the playground
+exists before the beta points anywhere.** It does, since 2026-09-23.
 
 ### 4a. The playground, `testnet.chit.tools` (T080)
 
@@ -236,10 +248,11 @@ started by hand. A soak begun before it did not soak with alerting on.
       change that opens the beta, never in it.
 - [ ] then, and only then, `npm run fleet-soak -- --watch` (§ 2b).
 
-### 4c. The beta, `chit.tools`
+### 4c. The beta, `app.chit.tools` (the `chit-app` project)
 
-The existing project, switched to 4663 once § 3 has deployed the contracts.
-It changes chain, so it changes database:
+Its own project, set to 4663 once § 3 has deployed the contracts. Not
+`chit-tools`: that is the site, and it has no chain of its own. A separate
+chain means a separate database:
 
 - [ ] **a new, empty `DATABASE_URL`**, and the old one disconnected from
       this project. It is the same rule as § 4a from the other side: the
