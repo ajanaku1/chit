@@ -97,7 +97,7 @@ export type SignedStep = {
   value?: bigint;
   gas?: bigint;
   record: (hash: Hex, nonce: number) => Promise<void>;
-} & ({ functionName: string; args: readonly unknown[]; to?: undefined } | { to: Address; functionName?: undefined; args?: undefined });
+} & ({ functionName: string; args: readonly unknown[]; to?: undefined; data?: undefined } | { to: Address; data?: Hex; functionName?: undefined; args?: undefined });
 
 export type FleetPool = {
   readonly address: Address;
@@ -207,7 +207,8 @@ export const createFleetPool = (
     const request = await wallet.prepareTransactionRequest({
       ...ctx(wallet),
       to: step.to ?? address,
-      ...(step.to ? {} : { data: encodeFunctionData({ abi: POOL_ABI, functionName: step.functionName, args: step.args } as never) }),
+      // A `to` step is a plain transfer, or with `data` a call elsewhere (a sale's approvals and swap, docs/design-sell.md).
+      ...(step.to ? (step.data ? { data: step.data } : {}) : { data: encodeFunctionData({ abi: POOL_ABI, functionName: step.functionName, args: step.args } as never) }),
       ...(step.value === undefined ? {} : { value: step.value }),
       ...(step.gas === undefined ? {} : { gas: step.gas }),
       nonce: step.nonce,
