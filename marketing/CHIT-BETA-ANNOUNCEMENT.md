@@ -63,12 +63,15 @@ paragraph: the facts are the post.
 > · **0.1 ETH** per depositor, in fixed sizes: 0.01, 0.05, 0.1
 > · **0.05 ETH** per draw to a fleet
 > · a **guardian key** that is not the operator's can pause the pool; a paused pool still lets you exit
+> · you can always leave without us: ask the contract to exit, and 24 hours later take your deposit out yourself
+>
+> the pool, source verified on the explorer: `0x02e7f51caa9aa17ba18f3c5252962396dace5eb1`
 >
 > what you are trusting, said plainly: the contracts have not been audited by a firm. chit's operator key can move what is in the pool, up to that cap. the operator can link your deposit to your fleet; the public chain cannot. the caps stay until the audit report.
 >
 > what stays true: your main wallet never funds the fleet. the chain shows a deposit into chit and fleets funded by chit, and no transaction linking them.
 >
-> `<APP LINK>` · the playground stays free at `<TESTNET LINK>`
+> https://app.chit.tools · the playground stays free at https://testnet.chit.tools
 
 ## X, the thread on the day
 
@@ -78,13 +81,17 @@ paragraph: the facts are the post.
 
 3. the caps, enforced by the contract: 1 ETH for the whole pool, 0.1 ETH per depositor in fixed sizes, 0.05 ETH per draw to a fleet. a size that would breach a cap is not offered, and the pool refuses it if it arrives anyway.
 
-4. the brake: a guardian key that is not the operator's can pause the pool. the pool also pauses itself on a charge past its deadline or an exit that would fail. paused, you can still leave with your deposit.
+4. the brake: a guardian key that is not the operator's can pause the pool. the pool also pauses itself on a charge past its deadline or an exit that would fail. paused, you can still leave with your deposit, and without us: ask the contract, take it out 24 hours later.
 
 5. what you are trusting, in our words: the contracts have not been audited by a firm. chit's operator key can move what is in the pool, up to that cap. the operator can link a deposit to a fleet; the public chain cannot. the caps stay until the audit report.
 
 6. what is private, exactly: your main wallet never funds the fleet. the chain shows a deposit into chit and fleets funded by chit with no transaction linking them. amounts and timing may be guessed at while the pool is small. private, not anonymous.
 
-7. `<APP LINK>`. holders first. the numbers are the product.
+7. https://app.chit.tools
+
+   the pool, source verified: robinhoodchain.blockscout.com/address/0x02e7f51caa9aa17ba18f3c5252962396dace5eb1
+
+   holders first. the numbers are the product.
 
 ## Not in either announcement, on purpose
 
