@@ -691,17 +691,30 @@ export class CampaignRouter {
     return sell;
   }
 
-  /** Where to send, and gas for a fleet's owner keys to send one listed token there: the gas once an hour per fleet and token. */
+  /** Where to send, and gas for a fleet's owner keys to send one listed token there: at most once an hour per key (topUpOwners). */
   async #sellGas(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
     const sell = this.#seller();
     const record = await this.#campaign(wallet, body);
     const token = String(body["token"] ?? "").toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(token) || !anyEntry(sell.registry, token as Address)) throw new SellRefused("token_not_listed");
-    const now = sell.now();
-    // Once an hour per fleet and token: a second sale inside the hour still learns where to send, and gets no more gas.
-    const fresh = await sell.store.burnNonce(`sellgas:${record.id}:${token}`, now + 60 * 60_000, now);
-    const owners = record.accounts.map((a) => a.ownerAddress as Address);
-    return { status: 200, body: { operator: sell.operator, topped: fresh ? await topUpOwners(sell, owners) : [] } };
+    // A fleet reloaded from the chain knows no owner keys, so they are also read from the accounts the page names,
+    // each one only once the policy confirms it is enrolled in this fleet: nothing the page sends is taken on trust.
+    const fromRecord = record.accounts.map((a) => a.ownerAddress.toLowerCase());
+    const fromChain = await this.#enrolledOwners(sell, this.#key(record), body["accounts"]);
+    const owners = [...new Set([...fromRecord, ...fromChain])] as Address[];
+    return { status: 200, body: { operator: sell.operator, topped: await topUpOwners(sell, owners) } };
+  }
+
+  /** The owner keys of the named accounts that are enrolled in this fleet, read from the chain; at most a fleet's fifty. */
+  async #enrolledOwners(sell: SellDeps, campaign: Hex, named: unknown): Promise<string[]> {
+    const ownerOf = sell.chain.ownerOf;
+    if (!ownerOf || !Array.isArray(named)) return [];
+    const accounts = named.map(String).filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a)).slice(0, 50) as Address[];
+    const owners: string[] = [];
+    for (const account of accounts) {
+      if (await sell.chain.enrolled(campaign, account)) owners.push((await ownerOf(account)).toLowerCase());
+    }
+    return owners;
   }
 
   /** Opens a sale from the fleet's transfers to the operator and starts it at once; the sweep finishes what this does not. */
