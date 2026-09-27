@@ -28,6 +28,8 @@ export type SellInput = {
   pending?: readonly Hex[];
   /** Called with every transfer before the service is asked to sell, so a failed ask loses none of them. */
   keep?: (transfers: Hex[]) => void;
+  /** How many of the wallets that hold the token have sent it: first with 0, then as each transfer lands. */
+  progress?: (sent: number, of: number) => void;
 };
 
 export class SellFlowError extends Error {
@@ -39,15 +41,29 @@ export class SellFlowError extends Error {
 
 const same = (x: string, y: string): boolean => x.toLowerCase() === y.toLowerCase();
 
-/** Each account that holds the token sends all of it to the operator, signed by its own key; one without its key in the backup is skipped. */
-const sendAll = async (ports: SellFlowPorts, input: SellInput, keys: { ownerAddress: Hex; privateKey: Hex }[], operator: Hex): Promise<Hex[]> => {
-  const hashes: Hex[] = [];
+type Holder = { account: Hex; privateKey: Hex; amount: bigint };
+
+/** The accounts that hold the token and whose key is in the backup; one without its key is skipped, never guessed. */
+const holdersOf = async (ports: SellFlowPorts, input: SellInput, keys: { ownerAddress: Hex; privateKey: Hex }[]): Promise<Holder[]> => {
+  const holders: Holder[] = [];
   for (const account of input.accounts) {
     const owner = await ports.ownerOf(account);
     const key = keys.find((k) => same(k.ownerAddress, owner));
     if (!key) continue;
     const amount = await ports.tokenBalance(input.token, account);
-    if (amount > 0n) hashes.push(await ports.withdraw(key.privateKey, account, input.token, operator, amount));
+    if (amount > 0n) holders.push({ account, privateKey: key.privateKey, amount });
+  }
+  return holders;
+};
+
+/** Each holder sends all of it to the operator, signed by its own key, counted as it lands. */
+const sendAll = async (ports: SellFlowPorts, input: SellInput, keys: { ownerAddress: Hex; privateKey: Hex }[], operator: Hex): Promise<Hex[]> => {
+  const holders = await holdersOf(ports, input, keys);
+  const hashes: Hex[] = [];
+  input.progress?.(0, holders.length);
+  for (const holder of holders) {
+    hashes.push(await ports.withdraw(holder.privateKey, holder.account, input.token, operator, holder.amount));
+    input.progress?.(hashes.length, holders.length);
   }
   return hashes;
 };

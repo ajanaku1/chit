@@ -70,6 +70,11 @@
             <p id="s-error" class="field-error" role="alert" hidden></p>
             <button id="s-sell" type="submit" class="primary big" disabled>Sell</button>
           </form>
+          <div id="s-result" class="sale-receipt" role="status" aria-live="polite" hidden>
+            <p id="s-result-title" class="sale-receipt__title"></p>
+            <p id="s-result-lines" class="sale-receipt__lines"></p>
+            <p class="sale-receipt__actions"><a id="s-result-link" target="_blank" rel="noopener" hidden></a><button id="s-check" type="button" class="ghost" hidden>Check the payout</button></p>
+          </div>
         </section>
         <section class="dash-card" aria-labelledby="orders-h">
           <h2 id="orders-h">Orders</h2>

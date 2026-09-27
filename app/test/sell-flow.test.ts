@@ -80,3 +80,10 @@ test("transfers already sent are kept before the sale is asked for, and sent aga
   assert.deepEqual((sale as { transfers: Hex[] }).transfers, earlier, "a fleet already emptied still sells what it sent last time");
   assert.deepEqual(kept, [earlier], "kept before the service was asked");
 });
+
+test("progress counts the wallets that actually hold the token, as each one's transfer lands", async () => {
+  const { ports } = portsOf({ balances: { [a(0xa2)]: 0n } });
+  const seen: [number, number][] = [];
+  await runSale(ports, input({ progress: (sent, of) => { seen.push([sent, of]); } }));
+  assert.deepEqual(seen, [[0, 2], [1, 2], [2, 2]], "two of the three hold it: 0 of 2 before, then each as it lands");
+});

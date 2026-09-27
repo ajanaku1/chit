@@ -30,13 +30,14 @@ import {
   type SliceRecord,
   type WireOrder,
 } from "./fleet/orders.js";
-import { askBeforeSigning, confirmDialog, dropSigningAsk, fleetApi, getConnectedWallet, initHeaderWallet, initShell, loadFleetSnapshot, parseEth, toEth } from "./fleet/page-shared.js";
+import { askBeforeSigning, chainTarget, confirmDialog, dropSigningAsk, fleetApi, getConnectedWallet, initHeaderWallet, initShell, loadFleetSnapshot, parseEth, toEth } from "./fleet/page-shared.js";
 import { forgetSignedReads, readSigned, recentSigned } from "./fleet/signed-read.js";
 import { orderTrade, RequestFailed, SignatureMissing, signedFleetApi } from "./fleet/signed-request.js";
 import { readStatus } from "./fleet/status-read.js";
 import { orderErrorText } from "./fleet/order-errors.js";
 import { acceptedFor } from "./fleet/order-quote.js";
 import { SellFlowError, runSale, type SellStep } from "./fleet/sell-flow.js";
+import { saleReceipt, sendingLine, type SaleView } from "./fleet/sell-receipt.js";
 import { chainSellPorts } from "./fleet/sell-ports.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
@@ -58,18 +59,13 @@ const randomEntropy = (): Hex => {
   return `0x${[...bytes].map((byte) => byte.toString(16).padStart(2, "0")).join("")}` as Hex;
 };
 
-const SELL_STEPS: Record<SellStep, string> = {
-  unlocking: "Opening your backup: your wallet asks you to sign.",
-  gas: "Getting your fleet ready to send.",
-  sending: "Your fleet is sending the tokens to Chit's operator.",
-  selling: "Selling.",
-};
-
-/** What a sale says once the service has it: sold and when the payout lands, or still selling. */
-const saleLine = (sale: { state?: string; ethOut?: string; payoutDueAt?: number }): string =>
-  sale.state === "sold" && sale.ethOut
-    ? `Sold for ${toEth(sale.ethOut)} ETH. It reaches your payout wallet around ${new Date(sale.payoutDueAt ?? Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`
-    : "Your tokens are with Chit's operator. The sale finishes within a few minutes; the ETH follows 10 to 30 minutes later.";
+/** Where the sale is, in the words a depositor needs: which signature is asked for, and where the tokens are. */
+const sellStepLine = (step: SellStep, symbol: string): string => ({
+  unlocking: "Step 1 of 3: your wallet asks you to sign, to open your backup.",
+  gas: "Step 2 of 3: your wallet asks you to sign, so Chit can give your fleet's wallets gas to send.",
+  sending: `Sending ${symbol} from your fleet's wallets to Chit's operator.`,
+  selling: `Step 3 of 3: your wallet asks you to sign, then your ${symbol} is sold. This can take up to a minute; please keep this page open.`,
+})[step];
 
 /**
  * Transfers sent to the operator whose sale was not yet confirmed, per fleet
@@ -118,6 +114,9 @@ class TradePage {
   #quote: Quote | undefined;
   /** The fleet's accounts, from the last holdings read: the ones a sale sends from. */
   #sellAccounts: Hex[] = [];
+  #lastHoldings: HoldingsReply | undefined;
+  /** The sale this page last made, so "Check the payout" knows which one to read. */
+  #lastSale: { id: string; symbol: string } | undefined;
   /** The total #quote was asked for; an order for any other total is quoted again first. */
   #quotedTotal: string | undefined;
   #timer: number | undefined;
@@ -151,6 +150,7 @@ class TradePage {
     });
     el<HTMLFormElement>("order-form").addEventListener("submit", (event) => void this.#place(event));
     el<HTMLFormElement>("sell-form").addEventListener("submit", (event) => void this.#sell(event));
+    el<HTMLButtonElement>("s-check").addEventListener("click", () => void this.#checkPayout());
     window.addEventListener("chit-wallet-changed", () => void this.#onWallet());
     if (getConnectedWallet()) void this.#onWallet();
   }
@@ -254,6 +254,7 @@ class TradePage {
   }
 
   #renderHoldings(body: HoldingsReply): void {
+    this.#lastHoldings = body;
     const fleet = this.#fleet;
     if (!fleet) return;
     const tokens = this.#orderTokens(fleet);
@@ -301,22 +302,69 @@ class TradePage {
     if (!file) { errorLine.textContent = "Choose your fleet's backup file first."; errorLine.hidden = false; return; }
     const button = el<HTMLButtonElement>("s-sell");
     button.disabled = true;
+    el("s-result").hidden = true;
+    const select = el<HTMLSelectElement>("s-token");
+    const token = select.value as Hex;
+    const symbol = select.selectedOptions[0]?.textContent?.split(" · ")[0] ?? "tokens";
     try {
-      const token = el<HTMLSelectElement>("s-token").value as Hex;
       const pendingKey = `chit-sell-pending:${fleet.campaign}:${token.toLowerCase()}`;
       const sale = (await runSale(chainSellPorts(wallet), {
         campaign: fleet.campaign, token, payout: el<HTMLInputElement>("s-payout").value.trim() as Hex,
         main: wallet, envelopeJson: await file.text(), accounts: this.#sellAccounts, pending: readPending(pendingKey),
         keep: (transfers) => { writePending(pendingKey, transfers); },
-      }, (step) => { status.textContent = SELL_STEPS[step]; })) as { state?: string; ethOut?: string; payoutDueAt?: number };
+        progress: (sent, of) => { status.textContent = sendingLine(symbol, sent, of); },
+      }, (step) => { status.textContent = sellStepLine(step, symbol); })) as SaleView & { id?: string };
       writePending(pendingKey, []);
-      status.textContent = saleLine(sale);
+      status.textContent = "";
+      this.#lastSale = { id: sale.id ?? "", symbol };
+      this.#showReceipt(sale, symbol);
+      this.#clearSold(token, wallet);
     } catch (error) {
       status.textContent = "";
       errorLine.textContent = sellErrorText(error);
       errorLine.hidden = false;
     } finally {
       button.disabled = false;
+    }
+  }
+
+  /** The sale's receipt, kept in the card until read: what sold, for how much, where the ETH goes and when. */
+  #showReceipt(sale: SaleView, symbol: string): void {
+    const receipt = saleReceipt(sale, { symbol, now: Date.now(), chainId: chainTarget.chainId });
+    el("s-result-title").textContent = receipt.title;
+    el("s-result-lines").textContent = receipt.lines.join(" ");
+    const link = el<HTMLAnchorElement>("s-result-link");
+    link.hidden = !receipt.link;
+    if (receipt.link) { link.href = receipt.link.href; link.textContent = receipt.link.label; }
+    el("s-check").hidden = sale.state !== "sold";
+    const box = el("s-result");
+    if (sale.state === "sold" || sale.state === "paid") box.dataset["tone"] = "ok";
+    else delete box.dataset["tone"];
+    box.hidden = false;
+  }
+
+  /** Every holder sent all of the token, so the page stops offering it; the cached read goes, so the next one is live. */
+  #clearSold(token: Hex, wallet: Hex): void {
+    forgetSignedReads(wallet);
+    const last = this.#lastHoldings;
+    if (!last) return;
+    const key = token.toLowerCase();
+    const holdings = (last.holdings ?? []).map((h) => ({ ...h, tokens: Object.fromEntries(Object.entries(h.tokens).map(([t, v]) => [t, t.toLowerCase() === key ? "0" : v])) }));
+    this.#renderHoldings({ ...last, holdings });
+  }
+
+  /** One signed read of the depositor's sales, to see whether this sale's payout has landed. */
+  async #checkPayout(): Promise<void> {
+    const wallet = this.#wallet;
+    const last = this.#lastSale;
+    if (!wallet || !last) return;
+    try {
+      const body = await signedFleetApi(wallet, "sales", {});
+      const sale = ((body["sales"] as (SaleView & { id?: string })[] | undefined) ?? []).find((s) => s.id === last.id);
+      if (sale) this.#showReceipt(sale, last.symbol);
+    } catch (error) {
+      el("s-error").textContent = sellErrorText(error);
+      el("s-error").hidden = false;
     }
   }
 
