@@ -224,6 +224,14 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .status-banner[data-tone="error"] { border-color: transparent; background: var(--coral-deep); color: var(--paper); }
 .status-banner[data-tone="ok"] { border-color: var(--coral); color: var(--paper); }
 .warnbox { padding: 0.9rem 1.1rem; border-radius: var(--radius-inner); background: var(--coral-deep); color: var(--paper); }
+/* A sale's receipt stays in the card until read: what sold, for how much, where the ETH goes and when (docs/design-sell.md). */
+.sale-receipt { margin-top: 1.25rem; padding: 1rem 1.15rem; border: 1px solid rgba(245, 239, 229, 0.2); border-radius: var(--radius-inner); background: rgba(245, 239, 229, 0.04); color: var(--paper); }
+/* Coral only once the sale has happened: sold or paid, as the rest of the app marks what is done. */
+.sale-receipt[data-tone="ok"] { border-color: var(--coral); background: rgba(255, 90, 60, 0.08); }
+.sale-receipt__title { margin: 0 0 0.4rem; font-size: 1.05rem; font-weight: 600; }
+.sale-receipt__lines { margin: 0 0 0.75rem; color: var(--soft-paper); line-height: 1.5; }
+.sale-receipt__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin: 0; }
+.sale-receipt__actions a { color: var(--paper); }
 
 /* ---- State chips ---- */
 .state-chip { display: inline-flex; align-items: center; gap: 0.45rem; padding: 0.35rem 0.7rem; border: 1px solid rgba(245, 239, 229, 0.16); border-radius: var(--radius-pill); color: var(--soft-paper); font-size: 0.72rem; letter-spacing: var(--track-wide); text-transform: uppercase; }

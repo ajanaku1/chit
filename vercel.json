@@ -35,7 +35,7 @@
       "includeFiles": "deployments/token-registry-4663.json"
     },
     "api/fleet/campaign.js": {
-      "maxDuration": 60,
+      "maxDuration": 180,
       "includeFiles": "deployments/token-registry-4663.json"
     },
     "api/fleet/control.js": {

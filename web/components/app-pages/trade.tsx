@@ -42,6 +42,11 @@ export function TradeMarkup() {
             <p id="s-error" className="field-error" role="alert" hidden></p>
             <button id="s-sell" type="submit" className="primary big" disabled>Sell</button>
           </form>
+          <div id="s-result" className="sale-receipt" role="status" aria-live="polite" hidden>
+            <p id="s-result-title" className="sale-receipt__title"></p>
+            <p id="s-result-lines" className="sale-receipt__lines"></p>
+            <p className="sale-receipt__actions"><a id="s-result-link" target="_blank" rel="noopener" hidden></a><button id="s-check" type="button" className="ghost" hidden>Check the payout</button></p>
+          </div>
         </section>
         <section className="dash-card" aria-labelledby="orders-h">
           <h2 id="orders-h">Orders</h2>
