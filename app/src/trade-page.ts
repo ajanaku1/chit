@@ -100,8 +100,12 @@ const sellErrorText = (error: unknown): string => {
   if (reason === "payout_is_main_wallet") return "That is your main wallet. Paying out there would link it to your fleet; name a different wallet.";
   if (reason === "payout_invalid") return "Enter the payout wallet's address, starting 0x.";
   if (reason === "nothing_to_sell") return "Your fleet holds none of that token right now.";
-  if (reason === "vault_decryption_failed") return "That backup could not be opened with this wallet. Check it is this fleet's file.";
-  return `The sale did not start (${reason || "unexpected"}). Nothing was sold; anything already sent to Chit is sold or returned to your payout wallet.`;
+  if (reason === "vault_decryption_failed") return "That backup could not be opened with this wallet. Check it is this fleet's file, and that your wallet is on the same account as this page.";
+  // A sale asks for three signatures: one opens the backup, then one each for the gas and the sale itself.
+  if (error instanceof SignatureMissing) return "Your wallet did not sign, so the sale stopped there. Try again and approve each signature, on the same account as this page.";
+  // Anything else says what it was, in a line, so a failure can be told apart from the next one.
+  const said = reason || (error instanceof Error ? ((error as { shortMessage?: string }).shortMessage ?? error.message).split("\n")[0]!.slice(0, 160) : "unexpected");
+  return `The sale did not finish (${said}). Nothing is lost: tokens already sent to Chit are sold, or returned to your payout wallet.`;
 };
 
 const shortHash = (hash: string): string => (hash.length > 12 ? `${hash.slice(0, 6)}…${hash.slice(-4)}` : hash);
