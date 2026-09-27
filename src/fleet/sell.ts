@@ -131,7 +131,8 @@ const miss = async (deps: SellDeps, sale: Sale, reason: string): Promise<Sale> =
 const trySell = async (deps: SellDeps, sale: Sale): Promise<Sale> => {
   const entry = anyEntry(deps.registry, sale.token)!;
   const amountIn = BigInt(sale.amountIn);
-  const minOut = leastOut(await deps.chain.sellQuote(sale.token, amountIn, entry.poolKey), entry.slippageBps);
+  const quoted = await deps.chain.sellQuote(sale.token, amountIn, entry.poolKey);
+  const minOut = leastOut(quoted, entry.slippageBps);
   if (minOut === 0n) return miss(deps, sale, "no_quote");
   const expiry = Math.floor(deps.now() / 1000) + SWAP_DEADLINE_S;
   // Exactly this sale's amount, never an open allowance on the operator's tokens.
@@ -141,14 +142,17 @@ const trySell = async (deps: SellDeps, sale: Sale): Promise<Sale> => {
   }
   const data = encodeV4TokenSell({ token: sale.token, amountIn, minOut, deadline: BigInt(expiry), poolKey: entry.poolKey });
   let recorded = sale;
-  const outcome = await deps.chain.send({ to: deps.router, data, record: async (hash, nonce) => { recorded = await save(deps, { ...sale, saleTx: hash, saleNonce: nonce }); } });
+  const outcome = await deps.chain.send({ to: deps.router, data, record: async (hash, nonce) => { recorded = await save(deps, { ...sale, saleTx: hash, saleNonce: nonce, quotedOut: quoted.toString() }); } });
   return settleSwap(deps, recorded, outcome);
 };
 
 const settleSwap = async (deps: SellDeps, sale: Sale, outcome: WriteOutcome): Promise<Sale> => {
   if (outcome.status === "unknown") return sale;
   if (outcome.status !== "mined") return miss(deps, sale, "swap_did_not_fill");
-  const ethOut = await deps.chain.ethReceived(outcome.hash);
+  // Never more than the quote: an unrelated inflow to the operator in the swap's block is not the depositor's.
+  const received = await deps.chain.ethReceived(outcome.hash);
+  const cap = sale.quotedOut === undefined ? received : BigInt(sale.quotedOut);
+  const ethOut = received < cap ? received : cap;
   const payoutDueAt = deps.now() + WAIT_MIN_MS + Math.floor(deps.random() * (WAIT_MAX_MS - WAIT_MIN_MS));
   const { reason: _reason, ...rest } = sale;
   return save(deps, { ...rest, state: "sold", saleTx: outcome.hash, ethOut: ethOut.toString(), payoutDueAt });

@@ -189,3 +189,12 @@ describe("sweeping sales", () => {
     assert.match(said.join("\n"), /broken could not advance/);
   });
 });
+
+describe("what a sale owes", () => {
+  it("is what the operator received, but never more than the quote the swap was sent against", async () => {
+    const { chain } = chainOf({ transfers: good, quote: 1_000n, received: 5_000n });
+    const deps = depsOf(chain);
+    const sold = await advanceSale(deps, await openSale(deps, request()));
+    assert.equal(sold.ethOut, "1000", "an unrelated inflow in the swap's block is not the depositor's");
+  });
+});
