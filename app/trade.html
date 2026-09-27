@@ -57,6 +57,20 @@
             <button id="o-place" type="submit" class="primary big" disabled>Place order</button>
           </form>
         </section>
+        <section class="dash-card" aria-labelledby="sell-h">
+          <h2 id="sell-h">Sell back to ETH</h2>
+          <p class="lead">Selling goes through Chit. Your fleet sends the tokens to Chit's operator, which sells them and pays the ETH to the payout wallet you name, 10 to 30 minutes later. Between the sale and the payout, Chit holds your proceeds, and the pool's cap and the 24-hour exit do not cover them.</p>
+          <form id="sell-form" novalidate>
+            <div class="field"><label for="s-token">Token</label><select id="s-token" name="token"></select></div>
+            <div class="field"><label for="s-payout">Payout wallet</label><input id="s-payout" name="payout" type="text" inputmode="text" placeholder="0x…" autocomplete="off" /></div>
+            <p class="fineprint">Use a wallet that has never sent to or received from your main wallet. Paying out to your main wallet would link it to your fleet, so it is not allowed. If you later move the ETH to your main wallet yourself, that creates the link.</p>
+            <div class="field"><label for="s-backup">Your fleet's backup file</label><input id="s-backup" name="backup" type="file" accept="application/json,.json" /></div>
+            <p class="fineprint">The file you saved when you set up the fleet. Your wallet signs once to open it; the keys inside never leave this page.</p>
+            <p id="s-status" class="fineprint" role="status" aria-live="polite"></p>
+            <p id="s-error" class="field-error" role="alert" hidden></p>
+            <button id="s-sell" type="submit" class="primary big" disabled>Sell</button>
+          </form>
+        </section>
         <section class="dash-card" aria-labelledby="orders-h">
           <h2 id="orders-h">Orders</h2>
           <p class="cardlabel">Running</p>
