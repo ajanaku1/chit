@@ -55,6 +55,9 @@ export const gateMarkup = (state: GateState, target: GateTarget): string => {
     `<h2>Chit's mainnet beta is open to CHIT holders</h2>`,
     `<p>You hold <strong>${escapeHtml(formatChit(state.holdings))}</strong>. You need <strong>${escapeHtml(formatChit(state.threshold))}</strong>.</p>`,
     `<p class="holders-gate__links">${buy}${testnet ? ` · ${testnet}` : ""}</p>`,
+    // The header's wallet menu is behind this modal, so the way out is here: a wrong wallet is not a dead end.
+    `<p>Holding CHIT in another wallet? Switch accounts in your wallet, or disconnect here and connect it.</p>`,
+    `<button type="button" class="ghost" data-gate-switch>Use another wallet</button>`,
     `<p class="fineprint">${escapeHtml(GATE_SENTENCE)}</p>`,
   ].join("");
 };
@@ -64,8 +67,10 @@ type Quote = () => Promise<{ status: number; body: Record<string, unknown> }>;
 /**
  * Wires the gate to the page: a modal that cannot be dismissed while the gate
  * is closed or unknown, removed the moment it opens or the wallet disconnects.
+ * `useAnother` is the page's disconnect; the gate closes on the disconnect it
+ * announces, and the next wallet is checked when it connects.
  */
-export const initHoldersGate = (target: GateTarget, quote: Quote): void => {
+export const initHoldersGate = (target: GateTarget, quote: Quote, useAnother?: () => void): void => {
   let dialog: HTMLDialogElement | undefined;
   const drop = (): void => { dialog?.close(); dialog?.remove(); dialog = undefined; };
   const show = (state: GateState): void => {
@@ -80,6 +85,7 @@ export const initHoldersGate = (target: GateTarget, quote: Quote): void => {
     }
     dialog.innerHTML = gateMarkup(state, target).replace("<h2>", '<h2 id="holders-gate-title">');
     dialog.querySelector("[data-gate-retry]")?.addEventListener("click", () => void check());
+    dialog.querySelector("[data-gate-switch]")?.addEventListener("click", () => useAnother?.());
     if (!dialog.open) dialog.showModal();
   };
   const check = async (): Promise<void> => {
