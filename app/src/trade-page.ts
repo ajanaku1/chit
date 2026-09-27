@@ -34,6 +34,7 @@ import { askBeforeSigning, confirmDialog, dropSigningAsk, fleetApi, getConnected
 import { forgetSignedReads, readSigned, recentSigned } from "./fleet/signed-read.js";
 import { orderTrade, RequestFailed, SignatureMissing, signedFleetApi } from "./fleet/signed-request.js";
 import { readStatus } from "./fleet/status-read.js";
+import { orderErrorText } from "./fleet/order-errors.js";
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
@@ -55,13 +56,6 @@ const randomEntropy = (): Hex => {
 };
 
 const shortHash = (hash: string): string => (hash.length > 12 ? `${hash.slice(0, 6)}…${hash.slice(-4)}` : hash);
-
-const ERROR_TEXT: Record<string, string> = {
-  no_pool: "No ETH pool for this token.",
-  over_draw: "More than this fleet has left.",
-  over_cap: "A slice would pass the per-trade cap.",
-  exit_pending: "You have an exit in progress; nothing new can leave the pool.",
-};
 
 class TradePage {
   #wallet: Hex | undefined;
@@ -305,7 +299,7 @@ class TradePage {
         : "No ETH pool for this token on the venue.";
     } catch (error) {
       this.#quote = undefined;
-      line.textContent = error instanceof RequestFailed ? this.#errorText(error.code) : "Couldn't reach Chit's API.";
+      line.textContent = error instanceof RequestFailed ? orderErrorText(error.code, error.reason) : "Couldn't reach Chit's API.";
     }
     this.#preview();
   }
@@ -402,7 +396,7 @@ class TradePage {
       this.#render();
       void this.#poll();
     } catch (error) {
-      errorLine.textContent = error instanceof RequestFailed ? this.#errorText(error.code) : "Something went wrong. Nothing was placed.";
+      errorLine.textContent = error instanceof RequestFailed ? orderErrorText(error.code, error.reason) : "Something went wrong. Nothing was placed.";
       errorLine.hidden = false;
     }
   }
@@ -656,11 +650,6 @@ class TradePage {
     return wrap;
   }
 
-  #errorText(code: string): string {
-    if (code in ERROR_TEXT) return ERROR_TEXT[code]!;
-    if (code.startsWith("state_not_sponsorable:")) return "This fleet is not active.";
-    return `Something went wrong: ${code}`;
-  }
 }
 
 initHeaderWallet();
