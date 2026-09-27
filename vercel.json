@@ -23,6 +23,9 @@
     "api/bot/watch.js": {
       "maxDuration": 300
     },
+    "api/fleet/alert-test.js": {
+      "maxDuration": 30
+    },
     "api/fleet/balance.js": {
       "maxDuration": 60,
       "includeFiles": "deployments/token-registry-4663.json"
