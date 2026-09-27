@@ -24,28 +24,36 @@
       "maxDuration": 300
     },
     "api/fleet/balance.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "deployments/token-registry-4663.json"
     },
     "api/fleet/buy.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "deployments/token-registry-4663.json"
     },
     "api/fleet/campaign.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "deployments/token-registry-4663.json"
     },
     "api/fleet/control.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "deployments/token-registry-4663.json"
     },
     "api/fleet/sponsor.js": {
-      "maxDuration": 180
+      "maxDuration": 180,
+      "includeFiles": "deployments/token-registry-4663.json"
     },
     "api/fleet/sweep-posting.js": {
-      "maxDuration": 180
+      "maxDuration": 180,
+      "includeFiles": "deployments/token-registry-4663.json"
     },
     "api/fleet/sweep.js": {
-      "maxDuration": 180
+      "maxDuration": 180,
+      "includeFiles": "deployments/token-registry-4663.json"
     },
     "api/fleet/trade.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "deployments/token-registry-4663.json"
     }
   },
   "crons": [
