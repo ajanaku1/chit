@@ -1,0 +1,34 @@
+{
+  "network": "robinhood-mainnet",
+  "chainId": 4663,
+  "operator": "0xE97c47BA6db83f691C2603Cb31c1930e8110A78d",
+  "entryPoint": "0x0000000071727de22e5e9d8baf0edac6f37da032",
+  "router": "0x8876789976decbfcbbbe364623c63652db8c0904",
+  "campaignEscrow": "0xe520550946601f334c2872c092452e9c4bc7e1da",
+  "campaignEscrowTx": "0x26613cecdc02cd10183363035a9d16f2d9b5f6c83493b3fd309bb64709c80e53",
+  "deployedAt": "2026-09-27T12:00:53.140Z",
+  "sessionPolicy": "0x2596f877b13ece99a296e396c24edee05885ba28",
+  "sessionPolicyTx": "0xa9298fe6f1d22ef48af781cf523b5193b0087b2af3cddda68f5f944ee1371d8d",
+  "sessionPolicyAdminHandoverTx": "0x7a36d0e8eccfc28a554105156a3328e4f9a99f3b99901df53128695512ccd215",
+  "accountFactory": "0x08c53b7b3ab4f13981e33cf8d418e11c49351493",
+  "accountFactoryTx": "0x8e46087477e343b14715588656c1a452afde0a67a12c4a39b88af6e138c99073",
+  "pool": {
+    "address": "0x02e7f51caa9aa17ba18f3c5252962396dace5eb1",
+    "operator": "0xE97c47BA6db83f691C2603Cb31c1930e8110A78d",
+    "deployTx": "0x83da349d78d68ee9206e5a5647a45cabe12ca8b30a5004d19704527c05ebdf1b",
+    "setPoolTx": "0xb28f5f6e10bd21137788ad111660e998e83d32539f8bc9e480c955eb63d1c708",
+    "guardian": "0x2aab3900127F2E96605B1868F3C5546dceDBD20f",
+    "guardianTx": "0x004eab9cb39c33148c16b6bd62cadfe69383ff39d1e5d9761581c1d8fc5291d9",
+    "admin": "0xcb70efefc73f241047262d4face6d21d052f6946",
+    "adminHandoverTx": "0x5b4a34ee414fe7531079e58c8f5a1f8aa9358aab84bf516bf8dc07ccc195b08e",
+    "caps": {
+      "perDepositor": "100000000000000000",
+      "perDraw": "50000000000000000",
+      "pool": "1000000000000000000",
+      "gasHeadroom": "200000000000000"
+    },
+    "beta": true,
+    "deployedAt": "2026-09-27T12:00:53.140Z"
+  },
+  "redeployedAt": "2026-09-27T12:00:53.140Z"
+}
