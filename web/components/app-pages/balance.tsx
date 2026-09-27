@@ -30,7 +30,7 @@ export function BalanceMarkup() {
 Your deposit goes into a pool shared with other traders and carries no fleet marker, so
             the chain does not show your wallet funding your fleet. Chit's operator can still see
             which balance paid for which fleet, and we say so plainly.
-{" "}<a href="./fleet-privacy.html">Exactly what's private →</a>
+{" "}<a href="./fleet-privacy">Exactly what's private →</a>
           </p>
         </section>
 

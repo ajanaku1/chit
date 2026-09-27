@@ -54,7 +54,7 @@ export function TradeMarkup() {
       </main>
 
       <footer className="fleet-foot">
-        <p>Testnet demonstration on Robinhood Chain. <a href="./fleet-privacy.html">Exactly what's private →</a></p>
+        <p>Testnet demonstration on Robinhood Chain. <a href="./fleet-privacy">Exactly what's private →</a></p>
         <p className="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
       </footer>
     
