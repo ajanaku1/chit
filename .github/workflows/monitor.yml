@@ -73,4 +73,9 @@ jobs:
           MONITOR_OPERATOR_CRITICAL_ETH: ${{ vars.MONITOR_OPERATOR_CRITICAL_ETH }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           MONITOR_CHAT_ID: ${{ secrets.MONITOR_CHAT_ID }}
+          # Which hour (UTC) carries the daily digest. Default 7. It is here so the
+          # chat the digest lands in can be proved without waiting for that hour:
+          # move it to the current hour, dispatch, watch it arrive, move it back.
+          # A chat id that is wrong is otherwise silent until something is wrong.
+          MONITOR_DIGEST_HOUR_UTC: ${{ vars.MONITOR_DIGEST_HOUR_UTC }}
         run: node src/fleet/monitor-cli.ts
