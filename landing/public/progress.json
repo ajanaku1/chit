@@ -1,13 +1,13 @@
 {
   "rule": "PROGRESS.md",
-  "generatedAt": "2026-09-26T20:22:55.883Z",
-  "commit": "901ea46",
-  "committedAt": "2026-09-26T11:35:54+01:00",
-  "commits": 692,
+  "generatedAt": "2026-09-28T14:30:26.862Z",
+  "commit": "109fdae",
+  "committedAt": "2026-09-28T15:22:54+01:00",
+  "commits": 769,
   "tasks": {
-    "done": 171,
+    "done": 174,
     "total": 176,
-    "percent": 97
+    "percent": 98
   },
   "stages": [
     {
@@ -108,7 +108,7 @@
     {
       "id": "003-mainnet-beta",
       "title": "The capped mainnet beta on Robinhood Chain",
-      "done": 90,
+      "done": 93,
       "total": 95,
       "phases": [
         {
@@ -143,7 +143,7 @@
         },
         {
           "name": "Launch",
-          "done": 8,
+          "done": 11,
           "total": 12
         }
       ],
@@ -151,18 +151,6 @@
         {
           "id": "T082",
           "text": "[US4] [B] Point the bot's playground button at the testnet host — the code is in and the host answers, but `FLEET_TESTNET_URL` is unset where the bot runs, so there is no door yet. That is the designed behaviour, not a bug; it ticks when the variable is set, naming a path on the playground rather than its root"
-        },
-        {
-          "id": "T088",
-          "text": "[F] Soak on testnet for forty-eight hours with alerting on; no charge unrecorded beyond four hours"
-        },
-        {
-          "id": "T091",
-          "text": "[F] Re-measure every listed token's liquidity on the day of launch"
-        },
-        {
-          "id": "T092",
-          "text": "[F] Verify contract source on the explorer for every deployed contract"
         },
         {
           "id": "T094",
