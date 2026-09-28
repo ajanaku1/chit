@@ -405,6 +405,41 @@ what happened is published (FR-035). A guardian who pauses is never the person
 who decides when it ends, and that asymmetry is deliberate: pausing is cheap and
 reversible, resuming is not.
 
+## 4f. The two bots (written 2026-09-28)
+
+Two bots, two hosts, one codebase (`src/fleet/bot-runtime.ts` is the rule;
+this is the list). Names only here; secrets are pasted by the founder.
+
+**`@usechit_bot`, mainnet, on `chit-app`, `BOT_MODE=session`.** It holds no
+user keys: owners grant its signer a session on the Sessions page.
+
+| Variable | State |
+|---|---|
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`, `BOT_SIGNER_PRIVATE_KEY` | set (checked 2026-09-28) |
+| `DATABASE_URL`, `FLEET_CHAIN_ID=4663`, `FLEET_ORIGIN` | set |
+| `BOT_MODE=session`, `BOT_USERNAME=usechit_bot`, `BOT_DAILY_GAS_ETH=0.02` | to add |
+| `BOT_GROUP_CHAT_ID` | to add, pasted by the founder; unset means no group feed |
+| `FLEET_SESSION_FACTORY` | to add once the 4663 factory is deployed; the app build writes it into the Sessions page |
+| `ORUS_PARTNER_API_KEY` | from Lucian; without it no safety line on the card and every mirrored buy is skipped |
+| `HEY_API_KEY` | from Lucian, optional; without it HEY is asked anonymously |
+| `BOT_FAUCET_PRIVATE_KEY` | must stay unset: session mode refuses to start with it |
+| `BOT_KEY_SECRET` | not read in session mode; remove, so nobody takes it for a live seal |
+
+**The playground bot, testnet, on `chit-testnet`, `BOT_MODE=playground`.**
+It holds throwaway keys on 46630 and says so.
+
+| Variable | State |
+|---|---|
+| `DATABASE_URL`, `FLEET_CHAIN_ID=46630`, `FLEET_ORIGIN` | set |
+| `TELEGRAM_BOT_TOKEN`, `BOT_USERNAME` | to add, from BotFather (the founder) |
+| `TELEGRAM_WEBHOOK_SECRET`, `BOT_KEY_SECRET` | to add, fresh values, never the mainnet bot's; `BOT_KEY_SECRET` is never rotated once wallets exist |
+| `BOT_MODE=playground`, `BOT_ORDERS_OFF=1`, `BOT_WATCH_OFF=1` | to add |
+| `FLEET_SESSION_FACTORY` | set to the 19 Sept factory, which predates "let it sell"; replace with a fresh one |
+| `BOT_FAUCET_PRIVATE_KEY` | optional, a throwaway key with test ETH; unset, new wallets get none |
+
+Then, per bot: redeploy the host, `setWebhook` to `<host>/api/bot` with that
+bot's `TELEGRAM_WEBHOOK_SECRET` as `secret_token`, and `/start` answers.
+
 ## 5. The first loop, by us
 
 Before anyone else: one deposit of 0.01, one fleet, one draw of 0.02, one
