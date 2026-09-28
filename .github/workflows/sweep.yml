@@ -1,11 +1,18 @@
 name: Sweep the pool
 
-# Starts the scheduled sweep on chit.tools every four hours. This is the sweep
+# Starts the scheduled sweep every four hours on every host that runs the
+# service: the playground on 46630 and the beta on 4663. This is the sweep
 # that queues owed charges in one batch, posts what is due and funds fleets
 # whose wait is over; its cadence bounds how long a charge can wait before it
 # is queued (see PROGRESS.md's neighbour, IMPLEMENTATION.md "Operator
 # hardening"). It lives here because Vercel's Hobby plan runs a cron at most
 # once a day; the two daily crons in vercel.json stay as a fallback.
+#
+# One matrix entry per host, never a variable naming one host: the variable
+# this file read before defaulted to the playground, so on the beta's first
+# day its charges waited for Vercel's two daily crons, up to twelve hours
+# before queueing where FR-018 allows twelve in all. Each host has its own
+# bearer, because each Vercel project has its own CRON_SECRET.
 #
 # This is the queueing clock, and it does not tick faster for safety's sake:
 # how often it runs is the size of the batch a charge hides in. Beating the
@@ -13,9 +20,13 @@ name: Sweep the pool
 # every two hours from vercel.json, posts and funds and never queues.
 # test/fleet/sweep-timing.test.ts holds both.
 #
-# One repository secret, optional: FLEET_CRON_SECRET, the same value as
-# CRON_SECRET on Vercel. With it set on both sides, only this workflow and
-# Vercel's own crons can start a sweep. Without it the endpoint is open.
+# Two repository secrets, one per host: FLEET_CRON_SECRET, the same value as
+# CRON_SECRET on the playground's project, and FLEET_CRON_SECRET_4663, the
+# beta's. With a secret set on both sides, only this workflow and Vercel's
+# own crons can start that host's sweep. Without one the call goes out open:
+# the playground answers as it is configured, and the beta refuses (the
+# service requires CRON_SECRET on 4663), so a missing FLEET_CRON_SECRET_4663
+# is a red run and an alert every four hours, which is the correct failure.
 
 on:
   schedule:
@@ -30,22 +41,34 @@ concurrency:
 
 jobs:
   sweep:
+    name: sweep ${{ matrix.chain }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      # A host that did not answer fails its own job, and must not cancel the other host's sweep.
+      fail-fast: false
+      matrix:
+        include:
+          - chain: 46630
+            host: https://testnet.chit.tools
+            secret: FLEET_CRON_SECRET
+          - chain: 4663
+            host: https://app.chit.tools
+            secret: FLEET_CRON_SECRET_4663
     steps:
       # The service's own host, not the site. chit.tools serves the site and forwards
-      # /api/* to the service, which is right for a browser and wrong for this: a
+      # /api/* to one service, which is right for a browser and wrong for this: a
       # forwarded request is one more thing that can drop a header, and the first
       # scheduled sweep after the hosts were split was refused 401 with no way to
-      # tell, from outside, whether the secret or the forward was at fault. The
-      # variable is set per environment, so moving the service moves this with it.
+      # tell, from outside, whether the secret or the forward was at fault.
       - name: Start the sweep
         id: sweep
         env:
-          FLEET_CRON_SECRET: ${{ secrets.FLEET_CRON_SECRET }}
-          SERVICE: ${{ vars.FLEET_SERVICE_ORIGIN || 'https://testnet.chit.tools' }}
+          # This host's bearer, by the name the matrix gives it.
+          FLEET_CRON_SECRET: ${{ secrets[matrix.secret] }}
+          SERVICE: ${{ matrix.host }}
         run: |
-          echo "sweeping $SERVICE"
+          echo "sweeping $SERVICE (chain ${{ matrix.chain }})"
           if [ -n "$FLEET_CRON_SECRET" ]; then
             curl -fsS --max-time 240 -H "Authorization: Bearer $FLEET_CRON_SECRET" "$SERVICE/api/fleet/sweep"
           else
@@ -63,14 +86,15 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           MONITOR_CHAT_ID: ${{ secrets.MONITOR_CHAT_ID }}
+          SERVICE: ${{ matrix.host }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$MONITOR_CHAT_ID" ]; then
             echo "not sent: TELEGRAM_BOT_TOKEN and MONITOR_CHAT_ID are not both set"
             exit 0
           fi
-          TEXT="Chit fleet service · alert · the scheduled sweep
-          4H sweep-unreachable (operations): the four-hourly sweep did not start; /api/fleet/sweep did not answer
+          TEXT="Chit fleet service · alert · the scheduled sweep · chain ${{ matrix.chain }}
+          4H sweep-unreachable (operations): the four-hourly sweep did not start; $SERVICE/api/fleet/sweep did not answer
               $RUN_URL"
           # No --max-time here: the smallest one in this file is how long the
           # sweep is given (test/fleet/sweep-timing.test.ts reads it), and a

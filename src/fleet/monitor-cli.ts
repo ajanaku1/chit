@@ -38,7 +38,7 @@ const NOBODY = `0x${"0".repeat(40)}`;
 
 type Env = Record<string, string | undefined>;
 type Fetch = (url: string | URL | Request, init?: RequestInit) => Promise<Response>;
-type Record_ = { chainId?: number; operator?: string; admin?: string; pool?: { address?: string; guardian?: string } };
+type Record_ = { chainId?: number; operator?: string; admin?: string; pool?: { address?: string; guardian?: string; admin?: string } };
 export type Config = { chainId: number; rpcUrl: string; expected: Expected; thresholds: Partial<Thresholds>; site?: string };
 
 const firstLine = (error: unknown): string => (error instanceof Error ? error.message : String(error)).split("\n")[0]?.trim() ?? "";
@@ -63,13 +63,16 @@ export const configFrom = (env: Env, record: Record_): Config => {
   const float = wei(env, "FLEET_OPERATOR_FLOAT_ETH");
   const [operatorWarn, operatorCritical] = [float === undefined ? wei(env, "MONITOR_OPERATOR_WARN_ETH") : float / 2n, wei(env, "MONITOR_OPERATOR_CRITICAL_ETH")];
   const site = env["MONITOR_SITE_URL"]?.replace(/\/+$/, "");
+  // The beta's record (deployments/fleet-4663.json) names the admin under the pool and nowhere else; read it
+  // there too, or the cold key that can unpause is the one role the monitor never holds the chain to.
+  const admin = record.admin ?? record.pool?.admin;
   return {
     chainId,
     rpcUrl,
     expected: {
       pool: pool as Address,
       ...(record.operator ? { operator: record.operator as Address } : {}),
-      ...(record.admin ? { admin: record.admin as Address } : {}),
+      ...(admin ? { admin: admin as Address } : {}),
       ...(record.pool?.guardian ? { guardian: record.pool.guardian as Address } : {}),
     },
     thresholds: { ...(operatorWarn === undefined ? {} : { operatorWarn }), ...(operatorCritical === undefined ? {} : { operatorCritical }) },
