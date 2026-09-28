@@ -3579,3 +3579,26 @@ go-ahead. None of them was about ".html"; each keeps its property:
   list, so a clean link the host would not serve fails.
 - every fleet page, and the blocked launch step, links to Balance
   (fleet-wallet-wiring)
+
+## 2026-09-28: session sells on the beta, and the Sessions test that kept them off
+
+The founder decided the web beta and the Telegram bot open together, with the
+bot selling through sessions on 4663. FR-022, as amended the day before, allowed
+selling only through the operator's sale flow, and `app/test/no-sell.test.ts`
+(T087) kept the Sessions page's "let it sell" switch off the beta altogether.
+The contract has always let an owner allow selling per key; the beta simply
+never drew the switch, so the bot's sell could not be turned on.
+
+FR-022 now allows a session account to sell only through a key its owner has
+let sell. The switch is drawn on every host, and the test was rewritten, with
+the founder's go-ahead, to pin what makes that safe rather than dropped:
+
+- one sell control on the page, the switch beside the key
+- checked only when the chain says the key may sell; disabled once the key is
+  revoked and on an account that predates the flag
+- changed only by a transaction from the owner's wallet to the account (the
+  contract refuses anyone else), with the page reading back the chain's answer
+
+What this trusts: a key let sell may sell that position within the pool and
+floor it was granted. That makes the bot's signing key one that can move users'
+positions once they allow it, so it is kept like the operator key.

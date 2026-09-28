@@ -141,6 +141,9 @@ Ordered by who can unblock it, because three of these are one person's alone.
 - [x] the first loop (runbook § 5), 2026-09-27, checked on chain: deposit, a fleet, five HEY buys, the sale through the operator (11,017.07 HEY for 0.000786502 ETH) and its payout, the fleet closed, and a withdrawal. The fleet side is under `firstBuy` in `deployments/fleet-4663.json` (PR #96).
 - [x] selling, per FR-022 as amended 2026-09-27 (docs/design-sell.md): built in PRs #87–#95 and proven by that loop's sale.
 - [ ] the announcement carries the selling sentences from docs/design-sell.md (custody between sale and payout; a payout wallet that is not the main wallet), before it is posted.
+- [x] session sells, per FR-022 as amended again 2026-09-28: the Sessions page shows the owner's "let it sell" switch on the beta too.
+- [ ] the bot on 4663, opening together with the web beta (the founder, 2026-09-28): the session factory deployed and recorded under `sessionKeys`, a fresh `BOT_SIGNER_PRIVATE_KEY` funded for gas and kept apart like the operator key, and the bot answering on its host.
+- [ ] the bot's testnet run (docs/bot-mainnet-mode.md) passed: link, grant, buy, positions, "let it sell" on and off, revoke, and a refused buy.
 - [ ] T094 deploy with the guardian (done 2026-09-27), and open
 
 **One trap to close before `app.chit.tools` exists.** It will build the same
