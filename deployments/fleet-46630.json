@@ -158,10 +158,15 @@
     }
   ],
   "sessionKeys": {
-    "factory": "0xe6abb3aba7625c215f805ddc762e1148860796be",
-    "deployTx": "0x057fefee2ecec166f14cf1822789842054df019cd9fd73d086c3492086076c28",
-    "deployer": "0x6c4bdD9d9ec762d9ca86e91CAC1Ec87A98059254",
-    "deployedAt": "2026-09-19T09:46:07.691Z"
+    "factory": "0xb2b2913c07344e60c2ca25caf5580972f3aaecda",
+    "deployTx": "0xb1fb3c43a2012a33cc54222ce9ae2faaa08a908c427c6933fb04e9d3123245b2",
+    "deployer": "0x16686882B445cf860cBe28EDfd1881c2DD5cE8EE",
+    "deployedAt": "2026-09-28T17:24:43.352Z",
+    "previous": {
+      "factory": "0xe6abb3aba7625c215f805ddc762e1148860796be",
+      "deployTx": "0x057fefee2ecec166f14cf1822789842054df019cd9fd73d086c3492086076c28",
+      "note": "predates the sell flag (setSellAllowed); replaced 2026-09-28"
+    }
   },
   "sessionPolicyAdminHandoverTx": "0xfb5b3242e22b0b511241faca94a212d389d9abe37a7dca85378cb2c8e0034d82",
   "redeployedAt": "2026-09-21T10:44:00.000Z",
