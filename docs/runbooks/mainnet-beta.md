@@ -227,7 +227,9 @@ a shell where it would land in history:
       queued in the 46630 pool could never be posted, so it would age past
       four hours and pause the testnet pool by itself.
 - [x] `CRON_SECRET` and `FLEET_NONCE_SECRET`, fresh values of its own, set
-      2026-09-23
+      2026-09-23. The GitHub secret `FLEET_CRON_SECRET` carries this project's
+      `CRON_SECRET`, so the four-hourly sweep (`sweep.yml`) can start the
+      playground's sweep.
 - [ ] `DEPLOYER_PRIVATE_KEY`, the same 46630 operator the pool records
 - [ ] `FLEET_LEDGER_KEY`, **the same value the current project has**: a
       different key cannot open the charges already sealed in the 46630 pool
@@ -285,7 +287,10 @@ chain means a separate database:
 - [ ] `FLEET_POOL_ADDRESS`, `FLEET_POLICY_ADDRESS`, `FLEET_FACTORY_ADDRESS`, `FLEET_ESCROW_ADDRESS`, `FLEET_ESCROW_BLOCK` from the script's output
 - [ ] `FLEET_LEDGER_KEY` (32 bytes hex, now, before the first draw), `FLEET_NONCE_SECRET`, `FLEET_TOKEN_ALLOWLIST` (the tokens the beta may buy)
 - [ ] `CRON_SECRET`, fresh: without it the service refuses to start on 4663
-      (T047), and the six crons have no bearer to call it with
+      (T047), and the six crons have no bearer to call it with. The same
+      value goes into GitHub as `FLEET_CRON_SECRET_4663`, so the four-hourly
+      sweep (`sweep.yml`) can start this host's sweep too; without it that
+      job is red, and says so in the operator chat, every four hours
 - [ ] `DEPLOYER_PRIVATE_KEY`, the mainnet operator the pool records: the
       service signs every sweep, draw and payout with it. Pasted in the
       dashboard as Sensitive, never through a shell or a chat

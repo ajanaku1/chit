@@ -3602,3 +3602,34 @@ the founder's go-ahead, to pin what makes that safe rather than dropped:
 What this trusts: a key let sell may sell that position within the pool and
 floor it was granted. That makes the bot's signing key one that can move users'
 positions once they allow it, so it is kept like the operator key.
+
+## 2026-09-28: the monitor and the four-hourly sweep reach the beta
+
+The final review before opening found both of this repository's outside clocks
+still aimed at the playground. `monitor.yml` ran `monitor-cli.ts` with no
+`--record`, so it read `deployments/fleet-46630.json` and asked `chit.tools`,
+which forwards `/api` to the testnet service; the run log said "chain 46630".
+`sweep.yml` called a repository variable with the playground as its default,
+and the variable was never set. So for the beta's first day the pool holding
+real money had no outside witness, no half-float warning (FR-032 lives in the
+monitor and nowhere else), and its charges waited for Vercel's two daily crons
+to be queued.
+
+Both workflows now run a matrix over the hosts: the playground on 46630 at
+`testnet.chit.tools` and the beta on 4663 at `app.chit.tools`, with
+`fail-fast: false` so one chain's red never cancels the other's job. The
+monitor asks the host that serves its chain, not the site: the site forwards
+to one service, and which one is not the monitor's business. The sweep carries
+one bearer per host, `FLEET_CRON_SECRET` for the playground and
+`FLEET_CRON_SECRET_4663` for the beta, because each Vercel project has its own
+`CRON_SECRET`; a missing secret on the beta is a 401, a red job and an alert
+every four hours, which is the correct failure. Every alert line names its
+chain.
+
+One more thing the dry run against 4663 showed: the beta's record names the
+admin under `pool.admin` and nowhere else, and `configFrom` read only the
+top-level field, so on mainnet the monitor would have held the chain to no
+admin at all, and a moved cold key would have passed in silence. It reads both
+now, the top-level one winning. The tests pin the matrix entries, the sites,
+the bearers and the admin's second home; the dry runs against both chains
+report nothing, as they should today.
