@@ -1,22 +1,29 @@
 name: Watch the pool from outside
 
-# Once an hour, from outside the service: the pool's public state, read at one
-# block and held against the deployment record. What it looks for is what goes
-# wrong here without a sound: a charge ageing toward POST_WINDOW, a pool that
-# holds less than its counters allow, an operator short of ETH, a fleet left
-# unfunded, roles that moved, a hosted service configured with another pool.
-# src/fleet/monitor.ts is the rule, docs/fleet-monitor.md what each finding
-# means and what to do about it.
+# Once an hour, from outside the service, once per deployment record: the
+# pool's public state, read at one block and held against that record. What
+# it looks for is what goes wrong here without a sound: a charge ageing toward
+# POST_WINDOW, a pool that holds less than its counters allow, an operator
+# short of ETH, a fleet left unfunded, roles that moved, a hosted service
+# configured with another pool. src/fleet/monitor.ts is the rule,
+# docs/fleet-monitor.md what each finding means and what to do about it.
+#
+# Two records, two runs: the playground's pool on 46630 and the beta's on
+# 4663, each asked at the host that serves its chain. For the beta's first
+# day only the playground's record was read here, so the pool holding real
+# money had no outside witness and no float warning at all (the half-float
+# warning of FR-032 lives in this monitor and nowhere else). The matrix is
+# the record of that: a chain is watched under its own record or not at all.
 #
 # It lives here and not on Vercel on purpose. Every other clock in this repo
 # ends at a Vercel function, this workflow's sibling sweep.yml included, so an
 # outage there stops the posting and would stop a monitor beside it too. This
-# one reads the chain directly and asks the site one public question.
+# one reads the chain directly and asks the service one public question.
 #
 # No install. The runner is three TypeScript files that import no package, and
 # node runs them as they are, so a run is a sparse checkout and a few seconds:
-# one billed minute an hour. An `npm ci` here would be two or three, every
-# hour, out of the same minutes the sweep and the keeper run on.
+# one billed minute an hour per record. An `npm ci` here would be two or
+# three, every hour, out of the same minutes the sweep and the keeper run on.
 #
 # Hourly here is best effort, and known to be: GitHub delays and drops
 # scheduled workflows under load (measured 2026-09-23: a median interval of
@@ -29,8 +36,8 @@ name: Watch the pool from outside
 # A critical finding fails the run. With TELEGRAM_BOT_TOKEN and MONITOR_CHAT_ID
 # set, findings also go to the operator chat, each line saying who is expected
 # to act: critical ones every run, warnings every sixth hour, and once a day a
-# digest whether or not anything is wrong, so silence means something. The
-# group's chat id is not given to this job.
+# digest whether or not anything is wrong, so silence means something. Every
+# line names its chain. The group's chat id is not given to this job.
 
 on:
   schedule:
@@ -46,8 +53,20 @@ concurrency:
 
 jobs:
   watch:
+    name: watch ${{ matrix.chain }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      # A critical finding on one chain fails that run, and must not cancel the other's.
+      fail-fast: false
+      matrix:
+        include:
+          - chain: 46630
+            record: deployments/fleet-46630.json
+            site: https://testnet.chit.tools
+          - chain: 4663
+            record: deployments/fleet-4663.json
+            site: https://app.chit.tools
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,9 +84,13 @@ jobs:
 
       - name: Read the pool and report
         env:
-          # Optional. Without it the public RPC is read, which is enough for six requests an hour.
+          # Optional, one per chain. Without them the public RPC is read, which is enough for six requests an hour.
           ROBINHOOD_TESTNET_RPC_URL: ${{ secrets.ROBINHOOD_TESTNET_RPC_URL }}
-          MONITOR_SITE_URL: https://chit.tools
+          ROBINHOOD_MAINNET_RPC_URL: ${{ secrets.ROBINHOOD_MAINNET_RPC_URL }}
+          # The host that serves this chain, asked which pool it is configured with.
+          # Not chit.tools: that is the site, and it forwards /api to one service,
+          # which is not the beta's.
+          MONITOR_SITE_URL: ${{ matrix.site }}
           # One figure for the service and the monitor; the warning sits at half of it.
           FLEET_OPERATOR_FLOAT_ETH: ${{ vars.FLEET_OPERATOR_FLOAT_ETH }}
           MONITOR_OPERATOR_CRITICAL_ETH: ${{ vars.MONITOR_OPERATOR_CRITICAL_ETH }}
@@ -78,4 +101,4 @@ jobs:
           # move it to the current hour, dispatch, watch it arrive, move it back.
           # A chat id that is wrong is otherwise silent until something is wrong.
           MONITOR_DIGEST_HOUR_UTC: ${{ vars.MONITOR_DIGEST_HOUR_UTC }}
-        run: node src/fleet/monitor-cli.ts
+        run: node src/fleet/monitor-cli.ts --record ${{ matrix.record }}

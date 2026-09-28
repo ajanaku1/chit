@@ -16,8 +16,9 @@ means and what to do first.
 ## Run it
 
 ```
-node src/fleet/monitor-cli.ts                      # the testnet pool, from deployments/fleet-46630.json
-node src/fleet/monitor-cli.ts --record <record>    # another deployment record
+node src/fleet/monitor-cli.ts                                        # the playground's pool, from deployments/fleet-46630.json
+node src/fleet/monitor-cli.ts --record deployments/fleet-4663.json   # the beta's pool on mainnet
+node src/fleet/monitor-cli.ts --record <record>                      # any other deployment record
 ```
 
 Node 22.18 or newer, and nothing else: no install, no build. The three files
@@ -26,7 +27,10 @@ package, and node runs the TypeScript as it is. A run is six requests and
 under two seconds on the pool of 16 September. Exit code 1 when a finding is
 critical or when the monitor could not read; 0 otherwise.
 
-`.github/workflows/monitor.yml` runs it at 23 past every hour. It is on GitHub
+`.github/workflows/monitor.yml` runs it at 23 past every hour, once per
+deployment record: the playground's (46630, asked at `testnet.chit.tools`) and
+the beta's (4663, asked at `app.chit.tools`), each in its own job, so one
+chain's critical finding never cancels the other's run. It is on GitHub
 and not on Vercel on purpose: every other clock in the repo ends at a Vercel
 function, so an outage there stops the posting and would stop a monitor beside
 it too. Any other machine with node can be a second clock.
@@ -34,7 +38,7 @@ it too. Any other machine with node can be a second clock.
 | Variable | What it does |
 |---|---|
 | `MONITOR_RPC_URL` | The RPC to read. Otherwise `ROBINHOOD_TESTNET_RPC_URL` or `ROBINHOOD_MAINNET_RPC_URL`, by the record's chain id, then the public endpoint. |
-| `MONITOR_SITE_URL` | For example `https://chit.tools`. Asks the hosted service which pool it is configured with. Left out, the site is not checked. |
+| `MONITOR_SITE_URL` | The host that serves the record's chain, for example `https://app.chit.tools` for 4663. It is asked which pool it is configured with. Not the site that forwards `/api` to a service: which service that is, is not the monitor's business. Left out, the host is not checked. |
 | `FLEET_OPERATOR_FLOAT_ETH` | The operator's float, the one variable the service reads too (0.2 for the beta's 1 ETH pool). The warning sits at half of it. Left out, the warning falls back to 0.05, which only means "can still pay gas". |
 | `MONITOR_OPERATOR_CRITICAL_ETH` | The balance under which the finding is critical, 0.01 by default: the operator can barely pay gas. |
 | `TELEGRAM_BOT_TOKEN`, `MONITOR_CHAT_ID` | Where findings go: the operator chat. Critical ones every run, warnings alone every sixth hour. Never `TELEGRAM_CHAT_ID`: that is the group, and the monitor refuses to know it. Without both, the run prints, and a critical finding still fails it. |
