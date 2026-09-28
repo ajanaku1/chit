@@ -1,6 +1,6 @@
 # The decision to open the beta (FR-040, T093)
 
-**Decision: NOT TAKEN.** Nothing here says the beta may open. It opens when
+**Decision: TAKEN, 2026-09-28** (the last line of this file). Before it, nothing here said the beta may open. It opens when
 every row below reads *met* or *met on the day* with its evidence filled in,
 and the founder writes the date and the word in the last line of this file.
 Until that line is written, the answer to "is the beta cleared to open" is
@@ -30,7 +30,7 @@ description of intent.
 | SC-013 | No campaign costs more than three failed buys' gas in an hour; no lock-out from a refusal that spent nothing | Failure counter: three gas-spending failures in an hour close a campaign for an hour, refusals that spent nothing do not count (`campaign-cooldown.test.ts`, PR #21) | met in code; observed across the beta |
 | SC-014 | Every pause automatic or within 15 min; every resume preceded by a published account | Automatic pause (above); resume gate refuses without an incident record and a whole pool (`resume-gate.test.ts`, `incidents/README.md`) | met in code; observed across the beta |
 | SC-015 | The operator never owed more than its float without an alert | Float 0.2 ETH, alert at 0.1 (`FLEET_OPERATOR_FLOAT_ETH`, spec clarification); a payout the float cannot cover is refused, never fronted (`operator_float_short`, `pool-buy.ts`) | **met**: the float refusal in code (T049), and the alert path from `app.chit.tools` proved as in SC-010 |
-| SC-016 | The announcement says who may deposit exactly as the product enforces | Holders-only in the Telegram post and X thread (`marketing/CHIT-BETA-ANNOUNCEMENT.md`, PR #25); the gate reads `CHIT_FEE_THRESHOLD` | threshold matches: the announcement says 100,000 $CHIT and the live host quotes a threshold of `100000000000000000000000` (2026-09-27). **Open**: the announcement does not yet carry the pool address § 6 asks for. Read both back again on the day, before posting |
+| SC-016 | The announcement says who may deposit exactly as the product enforces | Holders-only in the Telegram post and X thread (`marketing/CHIT-BETA-ANNOUNCEMENT.md`, PR #25); the gate reads `CHIT_FEE_THRESHOLD` | **met**: the announcement says 100,000 $CHIT and the live host quotes `100000000000000000000000` (2026-09-27); it names the pool, the links and the 24-hour exit since PR #79. Read the threshold back again before posting |
 
 ## The fork rehearsal FR-040 names
 
@@ -138,6 +138,9 @@ Ordered by who can unblock it, because three of these are one person's alone.
 
 - [x] T091 liquidity re-measured for every enabled entry
 - [x] T092 every deployed contract verified on the explorer
+- [x] the first loop (runbook § 5), 2026-09-27, checked on chain: deposit, a fleet, five HEY buys, the sale through the operator (11,017.07 HEY for 0.000786502 ETH) and its payout, the fleet closed, and a withdrawal. The fleet side is under `firstBuy` in `deployments/fleet-4663.json` (PR #96).
+- [x] selling, per FR-022 as amended 2026-09-27 (docs/design-sell.md): built in PRs #87–#95 and proven by that loop's sale.
+- [ ] the announcement carries the selling sentences from docs/design-sell.md (custody between sale and payout; a payout wallet that is not the main wallet), before it is posted.
 - [ ] T094 deploy with the guardian (done 2026-09-27), and open
 
 **One trap to close before `app.chit.tools` exists.** It will build the same
@@ -157,6 +160,8 @@ path that spends real ETH. The key moves; it is not copied.
 
 **The decision, written by the founder when the list above is empty:**
 
-> Date: __________  Decision: __________  Signed: __________
+> Date: 2026-09-28  Decision: open the capped beta on Robinhood Chain mainnet (4663) to CHIT holders, at caps of 0.1 / 0.05 / 1 ETH, with selling only through the operator's sale flow, once the announcement carries the selling sentences above  Signed: Bambam, founder
+
+Written by Claude at the founder's instruction in chat on 2026-09-28, the founder approving the edit, from the evidence above as it stood that day.
 
 Unsigned, this file is a status board, not a clearance.
