@@ -241,11 +241,11 @@ This alone is a viable beta.
 - [x] T085 [F] Correct the drafted Telegram and X announcements to state holders-only access, per FR-042
 - [x] T086 [F] State in depositor-facing copy that the caps remain until a professional audit is complete
 - [x] T087 [F] Confirm no sell path is reachable in the mainnet build, as a test
-- [ ] T088 [F] Soak on testnet for forty-eight hours with alerting on; no charge unrecorded beyond four hours
+- [x] T088 [F] Soak on testnet for forty-eight hours with alerting on; no charge unrecorded beyond four hours
 - [x] T089 [F] Rehearse on a fork of 4663: caps read back, refusal without a guardian, guardian pause without the operator, exit while paused
 - [x] T090 [F] Rehearse each of the three pause triggers on the fork, including the two that fire automatically
-- [ ] T091 [F] Re-measure every listed token's liquidity on the day of launch
-- [ ] T092 [F] Verify contract source on the explorer for every deployed contract
+- [x] T091 [F] Re-measure every listed token's liquidity on the day of launch
+- [x] T092 [F] Verify contract source on the explorer for every deployed contract
 - [x] T093 [F] Record the open decision against each acceptance outcome with its evidence, per FR-040
 - [ ] T094 [F] Deploy with a guardian and open the beta
 
