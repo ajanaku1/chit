@@ -39,6 +39,10 @@ export type SellChain = {
   balance(address: Address): Promise<bigint>;
   /** A fleet account's owner key, read from the account itself. Optional so fakes that predate it still type-check. */
   ownerOf?(account: Address): Promise<Address>;
+  /** Whether code lives at the address. Optional; without it a contract payout is not caught before the payout fails. */
+  isContract?(address: Address): Promise<boolean>;
+  /** The token an account holds. Optional; without it every owner key gets gas, holding or not. */
+  tokenBalance?(token: Address, account: Address): Promise<bigint>;
 };
 
 export type SellDeps = {
@@ -67,6 +71,8 @@ export const MAX_ATTEMPTS = 3;
 export const OWNER_GAS_WEI = 20_000_000_000_000n;
 const WAIT_MIN_MS = 10 * 60_000;
 const WAIT_MAX_MS = 30 * 60_000;
+/** Past this a sale is late: the longest wait is 30 minutes, and the sweep runs every 5. */
+const HELD_MS = 60 * 60_000;
 const SWAP_DEADLINE_S = 600;
 const FOREVER = Number.MAX_SAFE_INTEGER;
 const ERC20_TRANSFER = parseAbi(["function transfer(address to, uint256 amount) returns (bool)"]);
@@ -91,6 +97,8 @@ export const openSale = async (deps: SellDeps, req: SaleRequest): Promise<Sale> 
   if (same(req.payout, req.owner)) throw new SellRefused("payout_is_main_wallet");
   if (!/^0x[0-9a-fA-F]{40}$/.test(req.payout) || /^0x0{40}$/.test(req.payout)) throw new SellRefused("payout_invalid");
   if (!anyEntry(deps.registry, req.token)) throw new SellRefused("token_not_listed");
+  // A contract may refuse plain ETH, and then the payout fails every sweep with the tokens already sold.
+  if (await deps.chain.isContract?.(req.payout)) throw new SellRefused("payout_is_contract");
   const claimed: Hex[] = [];
   let total = 0n;
   for (const hash of new Set(req.transfers.map((h) => h.toLowerCase() as Hex))) {
@@ -118,11 +126,20 @@ export const advancePending = async (deps: SellDeps): Promise<Sale[]> => {
         return fresh ? advanceSale(deps, fresh) : undefined;
       });
       if (advanced) done.push(advanced);
+      await warnIfHeld(deps, advanced ?? pending);
     } catch (error) {
       await deps.alert?.(`sale ${pending.id} could not advance: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   return done;
+};
+
+/** Says once an hour that a sale has been open over an hour, so a person looks before the depositor asks. */
+const warnIfHeld = async (deps: SellDeps, sale: Sale): Promise<void> => {
+  const now = deps.now();
+  if (sale.state === "paid" || sale.state === "returned" || now - sale.createdAt < HELD_MS) return;
+  if (!(await deps.store.burnNonce(`sale:held:${sale.id}`, now + HELD_MS, now))) return;
+  await deps.alert?.(`sale ${sale.id} held ${Math.floor((now - sale.createdAt) / 60_000)} min (${sale.state}${sale.reason ? `, ${sale.reason}` : ""}); look at it`);
 };
 
 /**

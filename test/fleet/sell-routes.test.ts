@@ -157,3 +157,40 @@ test("gas is once an hour per owner key, and only counts when it is sent: a key 
   await router.handle(await signed(service, "sellGas", { campaign, token: TOKEN }));
   assert.equal(topped.length, 5, "and a third inside the hour sends no more");
 });
+
+test("gas goes only to the owner keys whose accounts hold the token", async () => {
+  const service = new CampaignService(serviceConfig);
+  const topped: Address[] = [];
+  const holders = new Set([addr(0xa1)].map((x) => x.toLowerCase()));
+  const sell: SellDeps = {
+    ...sellDeps(),
+    chain: {
+      ...chain,
+      async enrolled() { return true; },
+      async ownerOf(account) { return addr(Number(`0x${account.slice(-2)}`) + 0x100); },
+      async tokenBalance(_token, account) { return holders.has(account.toLowerCase()) ? 5n : 0n; },
+      async send(step) { topped.push(step.to); return chain.send(step); },
+    },
+  };
+  const router = new CampaignRouter({ service, sell });
+  const create = await router.handle(await signed(service, "create", {
+    quoteId: "q-1", policy: policy(), recoveryVaultCommitment: `0x${"3".repeat(64)}`,
+    accounts: Array.from({ length: 5 }, (_, i) => ({ ownerAddress: addr(0x100 + i), salt: salt(i + 1) })),
+  }), "fleet-create0000000000");
+  const campaign = (create.body as { campaign: string }).campaign;
+  await router.handle(await signed(service, "sellGas", { campaign, token: TOKEN, accounts: [addr(0xa1), addr(0xa2)] }));
+  assert.deepEqual(topped.map((t) => t.toLowerCase()), [addr(0x1a1).toLowerCase()], "the holder's key, and not the empty account's, nor the record's other keys");
+});
+
+test("a contract payout is refused when gas is asked, before any token leaves the fleet", async () => {
+  const service = new CampaignService(serviceConfig);
+  const sell: SellDeps = { ...sellDeps(), chain: { ...chain, async isContract() { return true; } } };
+  const router = new CampaignRouter({ service, sell });
+  const create = await router.handle(await signed(service, "create", {
+    quoteId: "q-1", policy: policy(), recoveryVaultCommitment: `0x${"3".repeat(64)}`,
+    accounts: Array.from({ length: 5 }, (_, i) => ({ ownerAddress: addr(0x100 + i), salt: salt(i + 1) })),
+  }), "fleet-create0000000000");
+  const campaign = (create.body as { campaign: string }).campaign;
+  const result = await router.handle(await signed(service, "sellGas", { campaign, token: TOKEN, payout: PAYOUT }));
+  assert.deepEqual(result.body, { code: "policy_rejected", retryable: false, reason: "payout_is_contract" });
+});

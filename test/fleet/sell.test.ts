@@ -238,3 +238,27 @@ describe("settling a swap whose block the RPC no longer keeps", () => {
     assert.match(said.join("\n"), /minimum/, "and the difference is flagged for a person");
   });
 });
+
+describe("the smaller guards (Boye's review, 2026-09-28)", () => {
+  it("refuses a payout address that is a contract: the pool itself cannot take ETH, and the payout would fail for good", async () => {
+    const { chain } = chainOf({ transfers: good });
+    const deps = depsOf({ ...chain, async isContract(address) { return address.toLowerCase() === PAYOUT.toLowerCase(); } });
+    await assert.rejects(openSale(deps, request()), /payout_is_contract/);
+  });
+
+  it("says once an hour when a sale has waited more than an hour", async () => {
+    const said: string[] = [];
+    const at = { t: 1_000_000 };
+    const { chain } = chainOf({ transfers: good, outcomes: Array<WriteOutcome["status"]>(20).fill("unknown") });
+    const deps: SellDeps = { ...depsOf({ ...chain, async resolve(h) { return { status: "unknown", hash: h, nonce: 1 }; } }, at), alert: async (s) => { said.push(s); } };
+    await openSale(deps, request());
+    await advancePending(deps);
+    at.t += 61 * 60_000;
+    await advancePending(deps);
+    await advancePending(deps);
+    assert.equal(said.filter((s) => /held/.test(s)).length, 1, "once in the hour, however many sweeps");
+    at.t += 60 * 60_000;
+    await advancePending(deps);
+    assert.equal(said.filter((s) => /held/.test(s)).length, 2, "and again the next hour");
+  });
+});

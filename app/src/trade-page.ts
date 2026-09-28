@@ -94,6 +94,7 @@ const sellErrorText = (error: unknown): string => {
   const coded = (error as { code?: unknown } | null)?.code;
   const reason = error instanceof SellFlowError ? error.reason : error instanceof RequestFailed ? (error.reason ?? error.code) : typeof coded === "string" ? coded : "";
   if (reason === "payout_is_main_wallet") return "That is your main wallet. Paying out there would link it to your fleet; name a different wallet.";
+  if (reason === "payout_is_contract") return "That address is a contract, which may not accept ETH. Name a plain wallet for the payout.";
   if (reason === "payout_invalid") return "Enter the payout wallet's address, starting 0x.";
   if (reason === "nothing_to_sell") return "Your fleet holds none of that token right now.";
   if (reason === "vault_decryption_failed") return "That backup could not be opened with this wallet. Check it is this fleet's file, and that your wallet is on the same account as this page.";

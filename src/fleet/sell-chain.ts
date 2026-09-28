@@ -16,6 +16,7 @@ import type { Address, Hex } from "./types.js";
 const TRANSFER = parseAbi(["event Transfer(address indexed from, address indexed to, uint256 value)"]);
 const POLICY = parseAbi(["function isEnrolled(bytes32 campaign, address account) view returns (bool)"]);
 const ACCOUNT = parseAbi(["function owner() view returns (address)"]);
+const ERC20 = parseAbi(["function balanceOf(address owner) view returns (uint256)"]);
 
 export type SellChainDeps = {
   publicClient: PublicClient;
@@ -75,6 +76,8 @@ export const createSellChain = ({ publicClient, pool, store, operator, policy, m
   balance: (address) => publicClient.getBalance({ address }),
 
   ownerOf: (account) => publicClient.readContract({ address: account, abi: ACCOUNT, functionName: "owner" }),
+  isContract: async (address) => ((await publicClient.getCode({ address })) ?? "0x") !== "0x",
+  tokenBalance: (token, account) => publicClient.readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [account] }),
 
   /**
    * The operator's balance across the swap's block, with the swap's gas added

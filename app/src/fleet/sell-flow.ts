@@ -76,7 +76,7 @@ export const runSale = async (ports: SellFlowPorts, input: SellInput, step: (s: 
   const keys = await ports.recover(input.envelopeJson);
   step("gas");
   // The fleet's accounts go with the ask: a fleet the service reloaded from the chain knows no owner keys until it reads them there.
-  const operator = String((await ports.api("sellGas", { campaign: input.campaign, token: input.token, accounts: input.accounts }))["operator"] ?? "") as Hex;
+  const operator = String((await ports.api("sellGas", { campaign: input.campaign, token: input.token, payout: input.payout, accounts: input.accounts }))["operator"] ?? "") as Hex;
   if (!/^0x[0-9a-fA-F]{40}$/.test(operator)) throw new SellFlowError("operator_unknown");
   step("sending");
   const transfers = [...(input.pending ?? []), ...(await sendAll(ports, input, keys, operator))];

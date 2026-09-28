@@ -697,21 +697,26 @@ export class CampaignRouter {
     const record = await this.#campaign(wallet, body);
     const token = String(body["token"] ?? "").toLowerCase();
     if (!/^0x[0-9a-f]{40}$/.test(token) || !anyEntry(sell.registry, token as Address)) throw new SellRefused("token_not_listed");
+    // Asked here too, before any token moves: a payout the sale would refuse is better named while the tokens are still home.
+    if (typeof body["payout"] === "string" && (await sell.chain.isContract?.(body["payout"] as Address))) throw new SellRefused("payout_is_contract");
     // A fleet reloaded from the chain knows no owner keys, so they are also read from the accounts the page names,
     // each one only once the policy confirms it is enrolled in this fleet: nothing the page sends is taken on trust.
-    const fromRecord = record.accounts.map((a) => a.ownerAddress.toLowerCase());
-    const fromChain = await this.#enrolledOwners(sell, this.#key(record), body["accounts"]);
+    // When the chain can say who holds the token, only those accounts' keys get gas: a key with nothing to send needs none.
+    const holding = sell.chain.tokenBalance && Array.isArray(body["accounts"]);
+    const fromRecord = holding ? [] : record.accounts.map((a) => a.ownerAddress.toLowerCase());
+    const fromChain = await this.#enrolledOwners(sell, this.#key(record), body["accounts"], holding ? (token as Address) : undefined);
     const owners = [...new Set([...fromRecord, ...fromChain])] as Address[];
     return { status: 200, body: { operator: sell.operator, topped: await topUpOwners(sell, owners) } };
   }
 
-  /** The owner keys of the named accounts that are enrolled in this fleet, read from the chain; at most a fleet's fifty. */
-  async #enrolledOwners(sell: SellDeps, campaign: Hex, named: unknown): Promise<string[]> {
+  /** The owner keys of the named accounts enrolled in this fleet (and holding `token`, when given), read from the chain; at most a fleet's fifty. */
+  async #enrolledOwners(sell: SellDeps, campaign: Hex, named: unknown, token?: Address): Promise<string[]> {
     const ownerOf = sell.chain.ownerOf;
     if (!ownerOf || !Array.isArray(named)) return [];
     const accounts = named.map(String).filter((a) => /^0x[0-9a-fA-F]{40}$/.test(a)).slice(0, 50) as Address[];
     const owners: string[] = [];
     for (const account of accounts) {
+      if (token && (await sell.chain.tokenBalance!(token, account)) === 0n) continue;
       if (await sell.chain.enrolled(campaign, account)) owners.push((await ownerOf(account)).toLowerCase());
     }
     return owners;
