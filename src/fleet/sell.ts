@@ -17,6 +17,8 @@ import { anyEntry, leastOut, type TokenRegistry } from "./token-registry.js";
 import type { Address, Hex } from "./types.js";
 import { encodeV4TokenSell, sellApprovals, type PoolKey } from "./v4-swap.js";
 
+export type SendStep = { to: Address; data?: Hex; value?: bigint; record: (hash: Hex, nonce: number) => Promise<void> };
+
 export type SellChain = {
   /** The ERC-20 transfers a mined transaction emitted; `mined: false` when it has no successful receipt. */
   transfersIn(hash: Hex): Promise<{ mined: boolean; transfers: { token: Address; from: Address; to: Address; amount: bigint }[] }>;
@@ -24,10 +26,16 @@ export type SellChain = {
   /** ETH out for `amountIn` of the token through this pool, fee and impact included (a hook's own fee is not seen). */
   sellQuote(token: Address, amountIn: bigint, poolKey: PoolKey): Promise<bigint>;
   /** One operator transaction: sign, `record`, broadcast, wait (chain-pool.ts `signAndBroadcast`). */
-  send(step: { to: Address; data?: Hex; value?: bigint; record: (hash: Hex, nonce: number) => Promise<void> }): Promise<WriteOutcome>;
+  send(step: SendStep): Promise<WriteOutcome>;
   resolve(hash: Hex, nonce: number): Promise<WriteOutcome>;
-  /** The ETH the operator gained in this transaction's block, gas paid added back. */
+  /** The ETH the operator gained in this transaction's block, gas paid added back. Needs that block's state, which a public RPC keeps for minutes. */
   ethReceived(hash: Hex): Promise<bigint>;
+  /**
+   * A send that also measures what it brought: the operator's balance just before the broadcast and just after the
+   * receipt, both inside the operator lock and both "latest", so no old state is needed. Optional; without it the
+   * swap is measured afterwards with ethReceived.
+   */
+  swap?(step: SendStep): Promise<{ outcome: WriteOutcome; received?: bigint }>;
   balance(address: Address): Promise<bigint>;
   /** A fleet account's owner key, read from the account itself. Optional so fakes that predate it still type-check. */
   ownerOf?(account: Address): Promise<Address>;
@@ -166,15 +174,32 @@ const trySell = async (deps: SellDeps, sale: Sale): Promise<Sale> => {
   }
   const data = encodeV4TokenSell({ token: sale.token, amountIn, minOut, deadline: BigInt(expiry), poolKey: entry.poolKey });
   let recorded = sale;
-  const outcome = await deps.chain.send({ to: deps.router, data, record: async (hash, nonce) => { recorded = await save(deps, { ...sale, saleTx: hash, saleNonce: nonce, quotedOut: quoted.toString() }); } });
-  return settleSwap(deps, recorded, outcome);
+  const step: SendStep = { to: deps.router, data, record: async (hash, nonce) => { recorded = await save(deps, { ...sale, saleTx: hash, saleNonce: nonce, quotedOut: quoted.toString(), minOut: minOut.toString() }); } };
+  const { outcome, received } = deps.chain.swap ? await deps.chain.swap(step) : { outcome: await deps.chain.send(step), received: undefined };
+  return settleSwap(deps, recorded, outcome, received);
 };
 
-const settleSwap = async (deps: SellDeps, sale: Sale, outcome: WriteOutcome): Promise<Sale> => {
+/**
+ * What a mined swap brought: measured at send time when it could be, else read from its block, else, once the RPC no
+ * longer keeps that block, the least the swap could have returned (it landed, so it met its minimum), with an alert so
+ * a person pays the rest. A sale is never left waiting on state that will not come back.
+ */
+const receivedBy = async (deps: SellDeps, sale: Sale, hash: Hex, measured: bigint | undefined): Promise<bigint> => {
+  if (measured !== undefined) return measured;
+  try {
+    return await deps.chain.ethReceived(hash);
+  } catch (error) {
+    const floor = BigInt(sale.minOut ?? "0");
+    await deps.alert?.(`sale ${sale.id} settled at its guaranteed minimum (${floor} wei): the swap's block is no longer readable (${error instanceof Error ? error.message.split("\n")[0] : String(error)}); pay the difference by hand`);
+    return floor;
+  }
+};
+
+const settleSwap = async (deps: SellDeps, sale: Sale, outcome: WriteOutcome, measured?: bigint): Promise<Sale> => {
   if (outcome.status === "unknown") return sale;
   if (outcome.status !== "mined") return miss(deps, sale, "swap_did_not_fill");
   // Never more than the quote: an unrelated inflow to the operator in the swap's block is not the depositor's.
-  const received = await deps.chain.ethReceived(outcome.hash);
+  const received = await receivedBy(deps, sale, outcome.hash, measured);
   const cap = sale.quotedOut === undefined ? received : BigInt(sale.quotedOut);
   const ethOut = received < cap ? received : cap;
   const payoutDueAt = deps.now() + WAIT_MIN_MS + Math.floor(deps.random() * (WAIT_MAX_MS - WAIT_MIN_MS));
