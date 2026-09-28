@@ -58,3 +58,23 @@ test("no workflow commits to main: none holds contents: write or pushes, and the
     assert.doesNotMatch(text, /^\s+git push\b/m, `${name} pushes`);
   }
 });
+
+/**
+ * The sweep runs on every host that runs the service. A variable naming one
+ * host, with the playground as its default, is how the beta went unswept from
+ * here on its first day: its charges waited for Vercel's two daily crons.
+ * Each host has its own bearer, because each Vercel project has its own
+ * CRON_SECRET, and a red run names the chain so the reader knows which.
+ */
+test("sweep.yml starts the sweep on both hosts, each with its own bearer, and a red run names its chain", async () => {
+  const text = (await workflow("sweep.yml")).split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+  const hosts = [...text.matchAll(/host: (https:\/\/\S+)/g)].map((m) => m[1]).sort();
+  assert.deepEqual(hosts, ["https://app.chit.tools", "https://testnet.chit.tools"], "the beta and the playground are both swept");
+  assert.doesNotMatch(text, /FLEET_SERVICE_ORIGIN/, "a variable that picks one host is how the beta went unswept");
+  const secrets = [...text.matchAll(/secret: (FLEET_CRON_SECRET\w*)/g)].map((m) => m[1]);
+  assert.equal(new Set(secrets).size, hosts.length, "one bearer per host: the projects do not share a CRON_SECRET, so the workflow cannot either");
+  assert.match(text, /FLEET_CRON_SECRET: \$\{\{ secrets\[matrix\.secret\] \}\}/, "the bearer is the matrix's, read by its name");
+  assert.match(text, /SERVICE: \$\{\{ matrix\.host \}\}/, "the sweep is started on the matrix's host");
+  assert.match(text, /fail-fast: false/, "a host that did not answer must not cancel the other host's sweep");
+  assert.match(text, /chain \$\{\{ matrix\.chain \}\}/, "the alert says which chain's sweep did not start");
+});

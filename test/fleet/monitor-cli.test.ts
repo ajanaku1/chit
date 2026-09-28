@@ -186,4 +186,26 @@ describe("the monitor's runner", () => {
     assert.doesNotMatch(workflow, /TELEGRAM_CHAT_ID/, "the group's chat id has no business in this workflow");
     assert.match(workflow, /cron: '\d+ \* \* \* \*'/, "hourly: the ageing warning leaves six hours, the monitor must not use them up");
   });
+
+  it("reads the admin from under the pool when the record keeps it there, as the beta's record does", () => {
+    // deployments/fleet-4663.json names the admin as pool.admin and nowhere else; a monitor that reads only the
+    // top-level field holds the chain to no admin at all on mainnet, and a moved cold key passes in silence.
+    const record = { chainId: 4663, operator: RECORD.operator, pool: { address: RECORD.pool.address, admin: RECORD.admin, guardian: "0x00000000000000000000000000000000000000aa" } };
+    assert.deepEqual(configFrom({}, record).expected, { pool: RECORD.pool.address, operator: RECORD.operator, admin: RECORD.admin, guardian: "0x00000000000000000000000000000000000000aa" });
+    assert.equal(configFrom({}, { ...record, admin: "0x00000000000000000000000000000000000000bb" }).expected.admin, "0x00000000000000000000000000000000000000bb", "a record naming both names one admin: the top-level field, as before");
+    const live = JSON.parse(readFileSync(join(ROOT, "deployments/fleet-4663.json"), "utf8")) as Parameters<typeof configFrom>[1];
+    assert.ok(configFrom({}, live).expected.admin, "the beta's own record yields an admin to hold the chain to");
+  });
+
+  it("is run once per deployment record, each asked at the host that serves its chain, and one chain's finding never cancels the other's run", { skip: existsSync(join(ROOT, ".github/workflows")) ? false : "no .github/workflows here" }, () => {
+    const workflow = readFileSync(WORKFLOW, "utf8").split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+    const records = [...workflow.matchAll(/record: (deployments\/fleet-\d+\.json)/g)].map((m) => m[1]).sort();
+    assert.deepEqual(records, ["deployments/fleet-4663.json", "deployments/fleet-46630.json"], "both chains are watched, each from its own record: the beta ran a day with no outside witness because only the playground's record was read");
+    assert.match(workflow, /run: node src\/fleet\/monitor-cli\.ts --record \$\{\{ matrix\.record \}\}/, "the record is the matrix's, so no chain is watched under another's record");
+    assert.match(workflow, /MONITOR_SITE_URL: \$\{\{ matrix\.site \}\}/, "the host asked is the matrix's too");
+    const sites = Object.fromEntries([...workflow.matchAll(/record: deployments\/fleet-(\d+)\.json\n\s+site: (\S+)/g)].map((m) => [m[1], m[2]]));
+    assert.deepEqual(sites, { 46630: "https://testnet.chit.tools", 4663: "https://app.chit.tools" }, "each monitor asks the host that serves its chain, never the site that forwards to whichever service it forwards to");
+    assert.match(workflow, /fail-fast: false/, "a critical finding on one chain must not cancel the other chain's run");
+    assert.match(workflow, /ROBINHOOD_MAINNET_RPC_URL: \$\{\{ secrets\.ROBINHOOD_MAINNET_RPC_URL \}\}/, "a private mainnet RPC, once there is one, reaches the mainnet run the way the testnet's does");
+  });
 });
