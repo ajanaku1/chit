@@ -60,6 +60,8 @@ export type Sale = {
   saleNonce?: number;
   /** The quote the swap was sent against: the most the payout may be, since a quote never sees a hook's fee. */
   quotedOut?: Uint;
+  /** The least the swap could return and still land (the quote less the bound): what is paid when its block can no longer be read. */
+  minOut?: Uint;
   ethOut?: Uint;
   payoutDueAt?: number;
   /** The payout (or, after three misses, the tokens' return) in flight or done, and its nonce. */

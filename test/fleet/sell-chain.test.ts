@@ -75,3 +75,25 @@ describe("the sale's chain adapter", () => {
     assert.equal(await adapter(client).ethReceived(H), 500_000n + 2_000_000n);
   });
 });
+
+describe("measuring a swap at send time", () => {
+  it("is the balance just after the receipt less just before the broadcast, gas added back, with no old block read", async () => {
+    const reads: (bigint | undefined)[] = [];
+    let balance = 1_000_000n;
+    const client = {
+      getBalance: async ({ blockNumber }: { blockNumber?: bigint }) => { reads.push(blockNumber); return balance; },
+      getTransactionReceipt: async () => ({ status: "success", gasUsed: 200_000n, effectiveGasPrice: 10n, blockNumber: 100n, logs: [] }),
+      readContract: async () => true,
+    } as unknown as PublicClient;
+    const pool = {
+      nextNonce: async () => 7,
+      signAndBroadcast: async (step: SignedStep) => { await step.record(H, step.nonce); balance += 500_000n - 2_000_000n; return { status: "mined", hash: H }; },
+      resolve: async () => ({ status: "mined", hash: H }),
+    } as unknown as FleetPool;
+    const chain = createSellChain({ publicClient: client, pool, store: createMemoryStore(), operator: OPERATOR, policy: `0x${"99".repeat(20)}` as Address, market: { tokenQuote: async () => { throw new Error("unused"); }, holdings: async () => [], campaignsOf: async () => [] } });
+    const { outcome, received } = await chain.swap!({ to: TOKEN, data: "0x12", record: async () => undefined });
+    assert.equal(outcome.status, "mined");
+    assert.equal(received, 500_000n, "the 500,000 the swap brought, its 2,000,000 of gas added back");
+    assert.deepEqual(reads, [undefined, undefined], "both reads at latest");
+  });
+});

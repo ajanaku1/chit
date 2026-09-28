@@ -210,3 +210,31 @@ describe("gas for the owner keys", () => {
     assert.deepEqual(sent.map((s) => ({ to: s.to, value: s.value })), [{ to: low, value: OWNER_GAS_WEI - 5n }]);
   });
 });
+
+describe("settling a swap whose block the RPC no longer keeps", () => {
+  it("measures the swap at send time, inside the lock, when the chain can, and never asks for history", async () => {
+    const { chain } = chainOf({ transfers: good, quote: 1_000n });
+    let historical = 0;
+    const deps = depsOf({
+      ...chain,
+      async ethReceived() { historical += 1; throw new Error("historical state is not available"); },
+      async swap(step) { const outcome = await chain.send(step); return { outcome, received: 990n }; },
+    });
+    const sold = await advanceSale(deps, await openSale(deps, request()));
+    assert.equal(sold.state, "sold");
+    assert.equal(sold.ethOut, "990");
+    assert.equal(historical, 0, "no read of an old block");
+  });
+
+  it("pays the guaranteed minimum and says so when a late swap's block is gone, rather than staying stuck", async () => {
+    const said: string[] = [];
+    const { chain } = chainOf({ transfers: good, quote: 1_000n, outcomes: ["mined", "mined", "unknown"] });
+    const deps: SellDeps = { ...depsOf({ ...chain, async ethReceived() { throw new Error("historical state is not available"); } }), alert: async (s) => { said.push(s); } };
+    const pending = await advanceSale(deps, await openSale(deps, request()));
+    assert.equal(pending.state, "awaiting", "the swap's outcome was not seen at send time");
+    const settled = await advanceSale(deps, pending);
+    assert.equal(settled.state, "sold", "resolved later, it still settles");
+    assert.equal(settled.ethOut, "960", "the least the swap could have returned: the quote less the 4% bound");
+    assert.match(said.join("\n"), /minimum/, "and the difference is flagged for a person");
+  });
+});

@@ -9,8 +9,8 @@ import { parseAbi, parseEventLogs, type PublicClient } from "viem";
 import type { FleetPool } from "./chain-pool.js";
 import type { MarketPort } from "./market.js";
 import { LeaseLost } from "./pool-buy.js";
-import type { SellChain } from "./sell.js";
-import type { StorePort } from "./store.js";
+import type { SellChain, SendStep } from "./sell.js";
+import type { Lease, StorePort } from "./store.js";
 import type { Address, Hex } from "./types.js";
 
 const TRANSFER = parseAbi(["event Transfer(address indexed from, address indexed to, uint256 value)"]);
@@ -24,6 +24,20 @@ export type SellChainDeps = {
   operator: Address;
   policy: Address;
   market: MarketPort;
+};
+
+/** One operator send at the pending nonce, broadcasting nothing once the lease is lost (pool-buy.ts's guard). */
+const broadcast = async (pool: FleetPool, operator: Address, lease: Lease, step: SendStep) => {
+  const nonce = await pool.nextNonce(operator);
+  return pool.signAndBroadcast({
+    to: step.to, nonce,
+    ...(step.data ? { data: step.data } : {}),
+    ...(step.value === undefined ? {} : { value: step.value }),
+    record: async (hash, signedNonce) => {
+      if (!(await lease.held())) throw new LeaseLost();
+      await step.record(hash, signedNonce);
+    },
+  });
 };
 
 export const createSellChain = ({ publicClient, pool, store, operator, policy, market }: SellChainDeps): SellChain => ({
@@ -41,17 +55,19 @@ export const createSellChain = ({ publicClient, pool, store, operator, policy, m
     return market.sellQuote(token, amountIn, poolKey);
   },
 
-  send: (step) => store.withLock("operator", async (lease) => {
-    const nonce = await pool.nextNonce(operator);
-    return pool.signAndBroadcast({
-      to: step.to, nonce,
-      ...(step.data ? { data: step.data } : {}),
-      ...(step.value === undefined ? {} : { value: step.value }),
-      record: async (hash, signedNonce) => {
-        if (!(await lease.held())) throw new LeaseLost();
-        await step.record(hash, signedNonce);
-      },
-    });
+  send: (step) => store.withLock("operator", (lease) => broadcast(pool, operator, lease, step)),
+
+  /**
+   * The swap, measured where the answer is still readable: the operator's balance at latest just before the
+   * broadcast and just after the receipt, inside the operator lock, so no other operator send falls between them.
+   * A public RPC keeps minutes of old state; this needs none.
+   */
+  swap: (step) => store.withLock("operator", async (lease) => {
+    const before = await publicClient.getBalance({ address: operator });
+    const outcome = await broadcast(pool, operator, lease, step);
+    if (outcome.status !== "mined") return { outcome };
+    const [receipt, after] = await Promise.all([publicClient.getTransactionReceipt({ hash: outcome.hash }), publicClient.getBalance({ address: operator })]);
+    return { outcome, received: after - before + receipt.gasUsed * receipt.effectiveGasPrice };
   }),
 
   resolve: (hash, nonce) => pool.resolve(hash, nonce, operator),
