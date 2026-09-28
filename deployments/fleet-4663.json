@@ -61,5 +61,12 @@
       "paidBy": "2026-09-27T23:30:42Z"
     },
     "closeTx": "0x067f4bd9e154748fdfe5adf882d7c684838cf1b4973182de72da7b25bab7e64f"
+  },
+  "sessionKeys": {
+    "factory": "0xb2b2913c07344e60c2ca25caf5580972f3aaecda",
+    "deployTx": "0x5aabda60c9dd81c0271bbc4e08dfbb6e90f5472f61573ed52cbe6efbc5c50139",
+    "deployer": "0x16686882B445cf860cBe28EDfd1881c2DD5cE8EE",
+    "deployedAt": "2026-09-28T17:20:21.000Z",
+    "block": 74972040
   }
 }
