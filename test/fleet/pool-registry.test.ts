@@ -208,3 +208,24 @@ test("the bot's chain adapter: tokenInfo says poolOnRecord for the recorded pool
   assert.equal(nowhere.poolOnRecord, undefined);
   assert.equal(nowhere.poolKey, undefined);
 });
+
+/**
+ * A keyed RPC (found 2026-09-28 on the playground's host) refuses log queries far
+ * narrower than the pieces: every card said "RPC Request failed". Discovery now
+ * narrows its pieces when a piece is refused, within a budget of queries, and a
+ * node that takes no log query at all still leaves the common keys to read.
+ */
+test("discovery narrows its pieces on a node that refuses them, and never fails the card for want of logs", async () => {
+  const recent = decoy(PEPE, 500, 10);
+  const narrow = scriptedChain([{ key: recent, block: HEAD - 5n, liquidity: 10n ** 18n }], { maxSpan: 9_999n });
+  const found = await createPoolRegistry(narrow.client, POOL_MANAGER, { chainId: 4663 }).find(PEPE);
+  assert.deepEqual(found!.key, recent, "found through narrower pieces");
+  const spans = narrow.logQueries().slice(1).map((q) => BigInt(q.toBlock) - BigInt(q.fromBlock));
+  assert.ok(spans.some((s) => s <= 9_999n), "a piece the node takes");
+  assert.ok(narrow.logQueries().length <= 64, `a bounded number of queries, not ${narrow.logQueries().length}`);
+
+  const common = decoy(PEPE, 10_000, 200);
+  const none = scriptedChain([{ key: common, block: 100n, liquidity: 10n ** 18n }], { maxSpan: -1n });
+  const byStorage = await createPoolRegistry(none.client, POOL_MANAGER, { chainId: 4663 }).find(PEPE);
+  assert.deepEqual(byStorage!.key, common, "no log query taken, and the common key is still read from storage");
+});
