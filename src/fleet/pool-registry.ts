@@ -88,6 +88,9 @@ export const recordedPoolsFromEnv = (refuse: (why: string) => never): PoolKey[] 
 /** How far back the pieced scan looks when the node refuses the whole chain in one query: a few days of either chain. */
 const SCAN_BLOCKS = 2_000_000n;
 const LOG_SPAN = 100_000n;
+/** The narrowest piece asked for, and how many queries one discovery may spend in all. */
+const MIN_SPAN = 1_000n;
+const MAX_PIECES = 60;
 const CACHE_MS = 10 * 60_000;
 
 export type DiscoveredPool = {
@@ -153,10 +156,20 @@ export const createPoolRegistry = (publicClient: PublicClient, poolManager: Addr
     } catch {
       // The node would not take the span; the recent chain in pieces it will.
     }
+    // A refused piece is asked again at half the span, down to MIN_SPAN; within MAX_PIECES queries, whatever was found
+    // is the answer. A keyed RPC can refuse even small spans, and then the common keys below still stand.
     const floor = head > scanBlocks ? head - scanBlocks : 0n;
-    for (let to = head; to > floor; to -= LOG_SPAN) {
-      const from = to - LOG_SPAN + 1n > floor ? to - LOG_SPAN + 1n : floor;
-      add(await publicClient.getLogs({ address: poolManager, event: INITIALIZE, args: { currency0: NATIVE_ETH, currency1: token }, fromBlock: from, toBlock: to }));
+    let span = LOG_SPAN;
+    let asked = 0;
+    for (let to = head; to > floor && asked < MAX_PIECES; asked++) {
+      const from = to - span + 1n > floor ? to - span + 1n : floor;
+      try {
+        add(await publicClient.getLogs({ address: poolManager, event: INITIALIZE, args: { currency0: NATIVE_ETH, currency1: token }, fromBlock: from, toBlock: to }));
+        to = from - 1n;
+      } catch {
+        if (span <= MIN_SPAN) break;
+        span /= 2n;
+      }
     }
     return [...keys.values()];
   };
