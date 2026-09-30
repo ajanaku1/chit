@@ -80,3 +80,20 @@ test("a grant for a key that already had a session on this account is refused be
   assert.match(page, /functionName: "sessionOf", args: \[key as Hex\] \}\)[\s\S]{0,200}already had a session on this account/);
   assert.match(page, /const BETA_GRANT = \{ perCall: "0\.05", cap: "0\.5", hours: "720" \}/);
 });
+
+/**
+ * Tokens the bot bought sit in the account, and an account whose bot key is
+ * spent can no longer sell through the bot; the owner's own way out for them
+ * is withdrawToken, which the page now offers beside the ETH withdraw.
+ */
+test("a token withdraw: the token's address, what the account holds of it, an amount or all of it, to the connected wallet through withdrawToken", async () => {
+  const html = await read("sessions.html");
+  assert.match(html, /<form id="wtoken-form" class="withdraw-form">/);
+  assert.match(html, /<input id="wtoken-address"[^>]*placeholder="0x…"/);
+  assert.match(html, /<input id="wtoken-amount"[^>]*placeholder="all"/, "blank is all of it");
+  assert.match(html, /<button id="wtoken-submit" type="submit" class="ghost" disabled>Withdraw token to my wallet<\/button>/);
+  const page = await read("src/sessions-page.ts");
+  assert.match(page, /const owner = wallet, from = account;[\s\S]{0,900}encodeWithdrawToken\(token as Hex, owner, units\)/, "to the connected wallet, the owner's");
+  assert.match(page, /functionName: "balanceOf", args: \[account!?\]/, "what the account holds is read from the token");
+  assert.match(page, /button\("wtoken-submit"\)\.disabled = !deployed/, "enabled with the account, like the ETH withdraw");
+});
