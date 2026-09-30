@@ -42,7 +42,9 @@ import { decodeSlot0, liquiditySlot, slot0Slot } from "./market.js";
 import type { Address, Hex } from "./types.js";
 import { NATIVE_ETH, VENUE_POOL, type PoolKey } from "./v4-swap.js";
 
-const POOL_MANAGER_ABI = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)"]);
+const POOL_MANAGER_ABI = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)", "function extsload(bytes32[] slots) view returns (bytes32[])"]);
+/** Pools read in one batched extsload: two words each, a call well inside any node's limits. */
+const BATCH_POOLS = 250;
 const INITIALIZE = parseAbiItem("event Initialize(bytes32 indexed id, address indexed currency0, address indexed currency1, uint24 fee, int24 tickSpacing, address hooks, uint160 sqrtPriceX96, int24 tick)");
 const POOL_KEY_ABI = [{ type: "address" }, { type: "address" }, { type: "uint24" }, { type: "int24" }, { type: "address" }] as const;
 
@@ -181,8 +183,24 @@ export const createPoolRegistry = (publicClient: PublicClient, poolManager: Addr
     return [...keys.values()];
   };
 
+  /**
+   * Many pools' states in batched reads (the pool manager's extsload of many slots): a token with hundreds of pools,
+   * most of them empty, is a few calls, not hundreds (USDG, 2026-10-01). A node that refuses the batch is read one by one.
+   */
+  const states = async (keys: PoolKey[]): Promise<Array<{ key: PoolKey; sqrtPriceX96: bigint; liquidity: bigint }>> => {
+    const out: Array<{ key: PoolKey; sqrtPriceX96: bigint; liquidity: bigint }> = [];
+    for (let i = 0; i < keys.length; i += BATCH_POOLS) {
+      const chunk = keys.slice(i, i + BATCH_POOLS);
+      const slots = chunk.flatMap((key) => { const id = poolIdOf(key); return [slot0Slot(id), liquiditySlot(id)]; });
+      const words = await publicClient.readContract({ address: poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slots] }).catch(() => undefined);
+      if (!words) { out.push(...(await Promise.all(chunk.map(async (key) => ({ key, ...(await state(key)) }))))); continue; }
+      chunk.forEach((key, j) => out.push({ key, sqrtPriceX96: decodeSlot0(words[2 * j]!).sqrtPriceX96, liquidity: BigInt(words[2 * j + 1]!) & ((1n << 128n) - 1n) }));
+    }
+    return out;
+  };
+
   const deepest = async (keys: PoolKey[]): Promise<DiscoveredPool | null> => {
-    const read = await Promise.all(keys.map(async (key) => ({ key, ...(await state(key)) })));
+    const read = await states(keys);
     const live = read.filter((r) => r.sqrtPriceX96 > 0n && r.liquidity > 0n);
     if (!live.length) return null;
     live.sort((a, b) => (a.liquidity > b.liquidity ? -1 : a.liquidity < b.liquidity ? 1 : 0));
