@@ -858,3 +858,22 @@ test("a mirrored buy is written to the follower's trade record too, so their Pos
   await bot.handle(tap(`b:${PEPE}:0.01`));
   assert.deepEqual((await positions.forAccount(FOLLOWER_ACCOUNT)).map((t) => [t.side, t.ethWei, t.units]), [["buy", parseEther("0.005"), null]]);
 });
+
+test("📊 Positions: on the linked card when there is a trade record; lists the holdings with a button to each card; offers dollars only when a price is to hand", async () => {
+  const positions = new MemoryPositionLedger();
+  const { links, bot, buttons, telegram } = setup({ positions });
+  await linked(links);
+  await bot.handle(dm("/start"));
+  assert.ok(buttons().includes("pos"), "the linked card offers Positions");
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  await bot.handle(tap("pos"));
+  const last = () => { const o = [...telegram.sent].reverse().find((x) => x.kind !== "answer") as { text: string }; return o.text; };
+  assert.match(last(), /📊 <b>your positions<\/b>/);
+  assert.match(last(), /<b>PEPE<\/b>/);
+  assert.deepEqual(buttons(), [`token:${PEPE}`, "pos:eth", "home"], "no dollars without a price");
+  const priced = setup({ positions, usdPerEth: async () => 2000 });
+  await linked(priced.links);
+  await priced.bot.handle(tap("pos:usd"));
+  assert.match(((priced.telegram.sent.at(-1)) as { text: string }).text, /per ETH/);
+  assert.deepEqual(priced.buttons().slice(-3), ["pos:eth", "pos:usd", "home"], "the toggle back to ETH, and refresh keeps dollars");
+});
