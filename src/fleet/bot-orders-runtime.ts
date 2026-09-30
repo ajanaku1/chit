@@ -34,6 +34,7 @@
  * killed mid-send, never fire the same order twice.
  */
 
+import { holdersGateFromEnv } from "./bot-holders.js";
 import { positionLedgerFromEnv } from "./bot-copy-runtime.js";
 import { neon } from "@neondatabase/serverless";
 import { isHex, parseEther, type Hex } from "viem";
@@ -91,10 +92,13 @@ const build = (): OrderRunner => {
   const dailyGas = process.env.BOT_DAILY_GAS_ETH?.trim();
   if (dailyGas && !/^\d+(\.\d{1,18})?$/.test(dailyGas)) refuse("BOT_DAILY_GAS_ETH is not an amount in ETH");
   const sql = overrides.orders && overrides.links ? undefined : sqlFromEnv();
+  const reads = overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) });
+  const holders = holdersGateFromEnv((t, o) => reads.tokenBalance(t, o));
   return new OrderRunner({
     orders: overrides.orders ?? (sql ? new NeonOrderStore(sql) : new MemoryOrderStore()),
     links: overrides.links ?? (sql ? new NeonBotLinkStore(sql) : new MemoryBotLinkStore()),
-    reads: overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) }),
+    reads,
+    ...(holders ? { holders } : {}),
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as Hex }),
     positions: positionLedgerFromEnv(),
     telegram: overrides.telegram ?? createTelegram(token!),

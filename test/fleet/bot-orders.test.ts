@@ -456,3 +456,16 @@ test("a fired order's buy is written to the account's trade record, so Positions
   await runner.run();
   assert.deepEqual((await positions.forAccount(ACCOUNT)).map((t) => [t.side, t.ethWei, t.units]), [["buy", parseEther("0.01"), null]]);
 });
+
+test("an order whose owner is under the $CHIT holders line waits, without sending, until the wallet holds the line again", async () => {
+  let ok = false;
+  const { orders, links, session, runner } = setup(1_500_000n, { holders: async () => (ok ? { ok: true as const } : { ok: false as const, holds: 0n, need: 1n }) } as never);
+  await linked(links);
+  await orders.put(order({ id: "l", kind: "limit", triggerPerEth: 1_200_000n }));
+  await runner.run();
+  assert.equal(session.calls.length, 0);
+  assert.match((await orders.get("l"))!.lastError ?? "", /holds less \$CHIT than the beta's line/);
+  ok = true;
+  await runner.run();
+  assert.equal(session.calls.length, 1, "fires once the line is held");
+});

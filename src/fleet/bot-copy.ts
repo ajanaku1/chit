@@ -111,6 +111,7 @@
  * the list. The list is what followers trust; it must not be forgeable.
  */
 
+import type { HoldersGate } from "./bot-holders.js";
 import { noteSent, type PositionLedger } from "./bot-positions.js";
 import { type Address, type Hex, getAddress, isAddress, isHex, recoverMessageAddress } from "viem";
 import type { BotChain, TokenInfo } from "./bot-chain.js";
@@ -188,6 +189,8 @@ export type CopyDeps = {
   session: SessionChain;
   /** Every sent trade, for Positions and their P&L (bot-positions.ts); absent, nothing is recorded. */
   positions?: PositionLedger;
+  /** The $CHIT holders line (bot-holders.ts): asked of the account's owner before any buy the bot pays gas for; absent, no line. */
+  holders?: HoldersGate;
   orus?: OrusScanner;
   /** The builder line on a venue buy's feed message; the cards' path brings its own. */
   hey?: HeyScanner;
@@ -481,6 +484,7 @@ export class CopyDesk {
     for (const f of followers) {
       const link = await this.#d.links.getLink(f.followerTgId);
       if (!link) { await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: "follower is not linked" }); continue; }
+      if (this.#d.holders && !(await this.#d.holders(link.owner)).ok) { await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: "your wallet holds less $CHIT than the beta's line; mirrors are for holders" }); continue; }
       // Sized to the leader's buy, never above the follower's cap.
       const wei = leaderEthWei < f.capWei ? leaderEthWei : f.capWei;
       const left = budgetUntil - this.#now.getTime();

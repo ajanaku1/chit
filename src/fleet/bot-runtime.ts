@@ -149,6 +149,7 @@
  *                                token is the one the bot trades
  */
 
+import { holdersGateFromEnv } from "./bot-holders.js";
 import { createUsdPrice } from "./bot-usd-price.js";
 import { timingSafeEqual } from "node:crypto";
 
@@ -312,6 +313,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
   const alerts = overrides.alertStore ?? alertsFromEnv();
   const reads = createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) });
   const usdToken = usdTokenFromEnv();
+  const holders = holdersGateFromEnv((t, o) => reads.tokenBalance(t, o));
   const deps: SessionBotDeps = {
     reads,
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as `0x${string}` }),
@@ -329,6 +331,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
     positions: positionLedgerFromEnv(),
+    ...(holders ? { holders } : {}),
     ...(usdToken ? { usdPerEth: createUsdPrice({ reads, token: usdToken }) } : {}),
   };
   // Leaders and followers: the desk over the same reads, session and links (bot-copy-runtime.ts, the one factory this webhook and the watcher's cron share).
@@ -336,6 +339,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
   const copy = createCopyDesk({
     links: deps.links, reads: deps.reads, session: deps.session, telegram: deps.telegram,
     ...(deps.positions ? { positions: deps.positions } : {}),
+    ...(deps.holders ? { holders: deps.holders } : {}),
     ...(deps.orus ? { orus: deps.orus } : {}),
     ...(deps.hey ? { hey: deps.hey } : {}),
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),

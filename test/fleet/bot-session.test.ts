@@ -214,7 +214,7 @@ test("with a plate renderer the token card is a picture; the plate says mainnet;
 const FOLLOWER_ACCOUNT = "0x00000000000000000000000000000000000000bb" as Address;
 const safe: OrusScan = { symbol: "PEPE", honeypot: false, buyTaxPct: 0, sellTaxPct: 0, bundlersPct: null, top10Pct: null, holders: 100, liquidityUsd: 50_000, lpBurnedPct: null, marketCapUsd: null, deployerLaunches: 1, checkedAt: clock.toISOString() };
 const orus = { scan: async () => safe, link: (t: Address) => `https://www.orusagent.xyz/token/${t}` };
-const withCopy = (opts: Partial<Deps> = {}, feed: { post?: (text: string) => Promise<void> } = {}, deskPositions?: MemoryPositionLedger) => {
+const withCopy = (opts: Partial<Deps> = {}, feed: { post?: (text: string) => Promise<void> } = {}, deskPositions?: MemoryPositionLedger, deskHolders?: Deps["holders"]) => {
   const s = setup(opts);
   const store = new MemoryCopyStore();
   // What the feed saw when each message was posted: the text and how many executes had run by then.
@@ -222,6 +222,7 @@ const withCopy = (opts: Partial<Deps> = {}, feed: { post?: (text: string) => Pro
   const copy = new CopyDesk({
     store, links: s.links, reads, session: opts.session ?? s.session.s, orus, now: opts.now ?? (() => clock), botUsername: "usechit_bot",
     ...(deskPositions ? { positions: deskPositions } : {}),
+    ...(deskHolders ? { holders: deskHolders } : {}),
     // The daily limits are the bot's, as the runtime hands the same env to both.
     ...(opts.dailyExecutes !== undefined ? { dailyExecutes: opts.dailyExecutes } : {}), ...(opts.dailyGasWei !== undefined ? { dailyGasWei: opts.dailyGasWei } : {}),
     tell: (to, text) => s.telegram.deliver({ kind: "send", chatId: to, text }),
@@ -876,4 +877,31 @@ test("📊 Positions: on the linked card when there is a trade record; lists the
   await priced.bot.handle(tap("pos:usd"));
   assert.match(((priced.telegram.sent.at(-1)) as { text: string }).text, /per ETH/);
   assert.deepEqual(priced.buttons().slice(-3), ["pos:eth", "pos:usd", "home"], "the toggle back to ETH, and refresh keeps dollars");
+});
+
+test("under the $CHIT holders line a buy tap is refused in words and nothing is sent, while a sell still goes through, so nobody is trapped in a position", async () => {
+  const under = async () => ({ ok: false as const, holds: 12_000n * 10n ** 18n, need: 100_000n * 10n ** 18n });
+  const { links, session, bot, textAt } = setup({ holders: under });
+  await linked(links);
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.match(textAt(-1), /the bot is for \$CHIT holders during the beta\. your wallet <code>0x.{4}….{4}<\/code> holds <code>12,000<\/code> \$CHIT; the line is <code>100,000<\/code>/);
+  assert.equal(session.calls.length, 0, "no buy sent");
+  session.allowSell(true);
+  await bot.handle(tap(`s:${PEPE}:50`));
+  assert.equal(session.sales.length, 1, "the sell is not gated");
+});
+
+test("a follower under the $CHIT holders line is skipped by the mirror with the reason, and nothing is sent into their account", async () => {
+  // Only the desk is given the line here, so the leader's own tap goes through and the follower's mirror meets it.
+  const under = async () => ({ ok: false as const, holds: 0n, need: 1n });
+  const { bot, links, session, telegram } = withCopy({}, {}, undefined, under);
+  await linked(links);
+  await followerLinked(links);
+  await bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
+  await bot.handle(asUser(8, "askf:7"));
+  await bot.handle(says(8, "0.005", "how much"));
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.deepEqual(session.calls.map((c) => c.account), [ACCOUNT], "the leader's buy only");
+  const toFollower = telegram.sent.filter((o) => o.kind === "send" && o.chatId === "8").map((o) => (o as { text: string }).text);
+  assert.match(toFollower.at(-1)!, /holds less \$CHIT than the beta's line/);
 });
