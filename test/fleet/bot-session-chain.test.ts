@@ -89,3 +89,28 @@ test("no time left is no receipt asked for at all: the send goes out and comes b
   assert.deepEqual(await chainOn(negative, 2_000).execute(ACCOUNT, ROUTER, parseEther("0.01"), "0x3593564c", -5), { hash: HASH, landed: false });
   assert.equal(negative.receiptPolls(), 0);
 });
+
+test("heldTokens: every token the chain shows the account receiving, over the whole chain in the widest pieces the node takes, each token once", async () => {
+  const HEAD = 25_000_000n;
+  const TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+  const pad = (a: string) => `0x${a.slice(2).toLowerCase().padStart(64, "0")}`;
+  const logAt = (token: string, block: bigint) => ({ address: token, topics: [TOPIC, pad("0x" + "99".repeat(20)), pad(ACCOUNT)], data: pad("0x01"), blockNumber: `0x${block.toString(16)}`, transactionHash: HASH, logIndex: "0x0", blockHash: "0x" + "cc".repeat(32), transactionIndex: "0x0", removed: false });
+  const logs = [logAt("0x00000000000000000000000000000000000000c1", 100n), logAt("0x00000000000000000000000000000000000000c2", 24_000_000n), logAt("0x00000000000000000000000000000000000000c1", 12_000_000n)];
+  const spans: bigint[] = [];
+  const transport = custom({
+    async request({ method, params }: { method: string; params?: unknown }) {
+      if (method === "eth_blockNumber") return `0x${HEAD.toString(16)}`;
+      if (method === "eth_getLogs") {
+        const f = (params as [{ fromBlock: string; toBlock: string }])[0];
+        const [from, to] = [BigInt(f.fromBlock), f.toBlock === "latest" ? HEAD : BigInt(f.toBlock)];
+        spans.push(to - from);
+        if (to - from >= 10_000_000n) throw new Error("query spans too many blocks");
+        return logs.filter((l) => BigInt(l.blockNumber) >= from && BigInt(l.blockNumber) <= to);
+      }
+      throw new Error(`unscripted rpc: ${method}`);
+    },
+  });
+  const chain = createSessionChain({ chainId: 4663, rpcUrl: "http://fake", signerKey: KEY, transport });
+  assert.deepEqual((await chain.heldTokens!(ACCOUNT)).sort(), ["0x00000000000000000000000000000000000000c1", "0x00000000000000000000000000000000000000c2"]);
+  assert.ok(spans.length <= 12, `a handful of queries, not ${spans.length}`);
+});

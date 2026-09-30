@@ -9,7 +9,13 @@ import { costBasis, positionRow, settleTrades, type PositionLedger, type TradeSe
 import type { Address } from "./types.js";
 
 export type PositionsView = { unit: "eth" | "usd"; usdPerEth?: number };
-export type PositionsParts = { ledger: PositionLedger; settle?: TradeSettler; reads: Pick<BotChain, "tokenInfo" | "tokenBalance" | "quoteSell" | "ethBalance"> };
+export type PositionsParts = {
+  ledger: PositionLedger;
+  settle?: TradeSettler;
+  reads: Pick<BotChain, "tokenInfo" | "tokenBalance" | "quoteSell" | "ethBalance">;
+  /** Every token the chain shows the account receiving, so holdings from before the record began are listed too (with no cost). */
+  heldTokens?: (account: Address) => Promise<Address[]>;
+};
 
 const short = (a: string): string => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const units = (v: bigint, decimals: number, places: number): string => {
@@ -33,11 +39,14 @@ export const positionsCard = async (d: PositionsParts, account: Address, view: P
   const trades = d.settle ? await settleTrades(d.ledger, d.settle, await d.ledger.forAccount(account)) : await d.ledger.forAccount(account);
   const bases = costBasis(trades);
   const known = new Set(bases.map((b) => b.token.toLowerCase()));
-  for (const t of trades) if (!known.has(t.token.toLowerCase())) { known.add(t.token.toLowerCase()); bases.push({ token: t.token, ethIn: 0n, unitsIn: 0n, unitsOut: 0n }); }
+  const onChain = d.heldTokens ? await d.heldTokens(account).catch(() => []) : [];
+  for (const token of [...trades.map((t) => t.token), ...onChain]) if (!known.has(token.toLowerCase())) { known.add(token.toLowerCase()); bases.push({ token, ethIn: 0n, unitsIn: 0n, unitsOut: 0n }); }
   const read = await Promise.all(bases.map(async (b) => {
     const held = await d.reads.tokenBalance(b.token, account);
     if (held === 0n) return undefined;
     const [info, value] = await Promise.all([d.reads.tokenInfo(b.token), d.reads.quoteSell(b.token, held)]);
+    // A token the bot never bought and cannot sell (no ETH pool, an airdrop) is not a position.
+    if (value === null && b.unitsIn === 0n) return undefined;
     return { info, row: positionRow(b, held, value ?? 0n) };
   }));
   const rows = read.filter((r): r is NonNullable<typeof r> => r !== undefined);

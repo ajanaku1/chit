@@ -336,7 +336,8 @@ export class SessionBot {
     const usdPerEth = this.#d.usdPerEth ? await Promise.race([this.#d.usdPerEth().catch(() => undefined), new Promise<undefined>((r) => setTimeout(() => r(undefined), USD_WAIT_MS))]) : undefined;
     const view = unit === "usd" && usdPerEth !== undefined ? { unit: "usd" as const, usdPerEth } : { unit: "eth" as const };
     const settle = this.#d.session.settle?.bind(this.#d.session);
-    const card = await positionsCard({ ledger: this.#d.positions, ...(settle ? { settle } : {}), reads: this.#d.reads }, link.account, view);
+    const heldTokens = this.#d.session.heldTokens?.bind(this.#d.session);
+    const card = await positionsCard({ ledger: this.#d.positions, ...(settle ? { settle } : {}), ...(heldTokens ? { heldTokens } : {}), reads: this.#d.reads }, link.account, view);
     const tokenRows: Keyboard = [];
     for (let i = 0; i < card.tokens.length; i += 2) tokenRows.push(card.tokens.slice(i, i + 2).map((t) => btn(t.symbol, `token:${t.token}`)));
     const toggle = usdPerEth === undefined ? [] : [btn(view.unit === "usd" ? "Ξ show in ETH" : "$ show in dollars", view.unit === "usd" ? "pos:eth" : "pos:usd")];
