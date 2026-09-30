@@ -22,6 +22,7 @@
  * of the bot share.
  */
 
+import type { HoldersGate } from "./bot-holders.js";
 import { randomBytes } from "node:crypto";
 import { type Address, type Hex, getAddress, isAddress, isHex, recoverMessageAddress } from "viem";
 
@@ -67,6 +68,7 @@ export const issueNonce = async (store: BotLinkStore, tgId: string, now: Date): 
  */
 export const verifyLink = async (
   store: BotLinkStore, chainId: number, req: LinkRequest, ownerOf: (account: Address) => Promise<Address | undefined>, now: Date,
+  holders?: HoldersGate,
 ): Promise<BotLink> => {
   const { nonce, account, signature } = req;
   if (typeof nonce !== "string" || !/^[0-9a-f]{32}$/.test(nonce)) throw new LinkError(400, "nonce is not one of ours");
@@ -82,6 +84,9 @@ export const verifyLink = async (
   const owner = await ownerOf(getAddress(account));
   if (!owner) throw new LinkError(404, "no session account at that address on this chain");
   if (getAddress(owner) !== getAddress(signer)) throw new LinkError(403, "the signature is not the account owner's");
+  // Before the nonce is spent, so a wallet that buys $CHIT can come back with the same link.
+  const held = holders ? await holders(getAddress(owner)) : { ok: true as const };
+  if (!held.ok) throw new LinkError(403, `the bot is for $CHIT holders during the beta: this wallet holds ${(held.holds / 10n ** 18n).toLocaleString("en-US")} $CHIT, the line is ${(held.need / 10n ** 18n).toLocaleString("en-US")}`);
   if (!(await store.useNonce(nonce, now))) throw new LinkError(409, "this link was already used: ask the bot for a new one");
   const link: BotLink = { tgId: n.tgId, account: getAddress(account), owner: getAddress(owner), chainId, nonce, signature: signature as Hex, linkedAt: now.toISOString() };
   await store.putLink(link);

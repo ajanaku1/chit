@@ -50,6 +50,7 @@
  * tomorrow. An account keeps at most `MAX_OPEN_ORDERS` open at once.
  */
 
+import type { HoldersGate } from "./bot-holders.js";
 import { noteSent, type PositionLedger } from "./bot-positions.js";
 import { randomBytes } from "node:crypto";
 import type { Address, Hex } from "viem";
@@ -157,6 +158,8 @@ export type OrderRunnerDeps = {
   session: SessionChain;
   /** Every sent trade, for Positions and their P&L (bot-positions.ts); absent, nothing is recorded. */
   positions?: PositionLedger;
+  /** The $CHIT holders line (bot-holders.ts): asked of the account's owner before any buy the bot pays gas for; absent, no line. */
+  holders?: HoldersGate;
   telegram: Telegram;
   buySlippageBps?: number;
   maxPerRun?: number;
@@ -229,6 +232,7 @@ export class OrderRunner {
   async #fire(o: Order, now: Date, budgets: Map<string, Budget>): Promise<Outcome> {
     const link = await this.#d.links.getLink(o.tgId);
     if (!link || link.account.toLowerCase() !== o.account.toLowerCase() || link.chainId !== o.chainId) return this.#refuse(o, now, "your telegram is no longer linked to the account this order was placed from");
+    if (this.#d.holders && !(await this.#d.holders(link.owner)).ok) return this.#wait(o, now, "your wallet holds less $CHIT than the beta's line; the order waits until it holds the line again");
     const [info, quote] = await Promise.all([this.#d.reads.tokenInfo(o.token), this.#d.reads.quoteBuy(o.token, o.ethWei)]);
     if (!info.hasPool || quote === null) return this.#refuse(o, now, "no quote from the pool right now");
     let minOut = minOutFor(quote, this.#d.buySlippageBps ?? 300);

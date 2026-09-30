@@ -6,7 +6,8 @@
  * page can say "expired" before asking for a signature. Session mode only.
  */
 
-import { type Address, createPublicClient, http } from "viem";
+import { holdersGateFromEnv, type HoldersGate } from "./bot-holders.js";
+import { type Address, createPublicClient, http, parseAbi } from "viem";
 import { neon } from "@neondatabase/serverless";
 import { robinhoodChain } from "./chain-def.js";
 import { LinkError, MemoryBotLinkStore, NeonBotLinkStore, NONCE_TTL_MS, verifyLink, type BotLinkStore } from "./bot-link.js";
@@ -28,14 +29,22 @@ const store = (): BotLinkStore => {
   return (links = new MemoryBotLinkStore());
 };
 
-const ownerOf = (): ((account: Address) => Promise<Address | undefined>) => {
-  if (ownerReader) return ownerReader;
+let client: ReturnType<typeof createPublicClient> | undefined;
+const pub = () => {
+  if (client) return client;
   const chainId = chainIdFromEnv();
   const rpcUrl = process.env.FLEET_RPC_URL || (chainId === 4663 ? process.env.ROBINHOOD_MAINNET_RPC_URL || "https://rpc.mainnet.chain.robinhood.com" : process.env.ROBINHOOD_TESTNET_RPC_URL || "https://rpc.testnet.chain.robinhood.com");
-  const chain = robinhoodChain(chainId, rpcUrl);
-  const pub = createPublicClient({ chain, transport: http(rpcUrl, { retryCount: 2, timeout: 15_000 }) });
-  return (ownerReader = (account) => pub.readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "owner" }).catch(() => undefined));
+  return (client = createPublicClient({ chain: robinhoodChain(chainId, rpcUrl), transport: http(rpcUrl, { retryCount: 2, timeout: 15_000 }) }));
 };
+
+const ownerOf = (): ((account: Address) => Promise<Address | undefined>) =>
+  (ownerReader ??= (account) => pub().readContract({ address: account, abi: SESSION_ACCOUNT_ABI, functionName: "owner" }).catch(() => undefined));
+
+/** The $CHIT holders line at linking (bot-holders.ts); null once read and unset, as on the testnet host. */
+let holdersGate: HoldersGate | null | undefined;
+const ERC20_BALANCE = parseAbi(["function balanceOf(address owner) view returns (uint256)"]);
+const holders = (): HoldersGate | undefined =>
+  (holdersGate ??= holdersGateFromEnv((token, owner) => pub().readContract({ address: token, abi: ERC20_BALANCE, functionName: "balanceOf", args: [owner] })) ?? null) ?? undefined;
 
 /** For tests: the store and the owner reader from outside; nothing else is overridable. */
 export const setLinkDepsForTests = (deps: { links?: BotLinkStore; ownerOf?: (a: Address) => Promise<Address | undefined> }): void => {
@@ -66,7 +75,7 @@ export const handleLinkRequest = async (request: Request, now = new Date()): Pro
     try { raw = await request.json(); } catch { return json({ error: "body must be json" }, 400, origin); }
     if (!raw || typeof raw !== "object") return json({ error: "body must be json" }, 400, origin);
     const body = raw as { nonce?: unknown; account?: unknown; signature?: unknown };
-    const link = await verifyLink(store(), chainIdFromEnv(), { nonce: body.nonce, account: body.account, signature: body.signature }, ownerOf(), now);
+    const link = await verifyLink(store(), chainIdFromEnv(), { nonce: body.nonce, account: body.account, signature: body.signature }, ownerOf(), now, holders());
     return json({ ok: true, account: link.account, owner: link.owner, chainId: link.chainId, linkedAt: link.linkedAt }, 200, origin);
   } catch (e) {
     if (e instanceof LinkError) return json({ error: e.message }, e.status, origin);

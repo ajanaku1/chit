@@ -41,6 +41,7 @@
  * trade from an account that was not linked with the owner's signature.
  */
 
+import { holdersRefusal, type HoldersGate } from "./bot-holders.js";
 import { positionsCard } from "./bot-positions-card.js";
 import { noteSent, type PositionLedger } from "./bot-positions.js";
 import { type Address, type Hex, isAddress } from "viem";
@@ -68,6 +69,8 @@ export type SessionBotDeps = {
   links: BotLinkStore;
   /** Every sent trade, for Positions and their P&L (bot-positions.ts); absent, nothing is recorded. */
   positions?: PositionLedger;
+  /** The $CHIT holders line (bot-holders.ts): asked of the account's owner before any buy the bot pays gas for; absent, no line. */
+  holders?: HoldersGate;
   /** ETH's price in dollars for Positions' $ view; absent or undefined, Positions stay in ETH. */
   usdPerEth?: () => Promise<number | undefined>;
   telegram: Telegram;
@@ -435,6 +438,8 @@ export class SessionBot {
   async #buy(chatId: string, tgId: string, token: Address, amount: string, fromButton = false, startedAt = this.#now.getTime()): Promise<void> {
     const link = await this.#d.links.getLink(tgId);
     if (!link) return this.#home(chatId, tgId);
+    const held = this.#d.holders ? await this.#d.holders(link.owner) : { ok: true as const };
+    if (!held.ok) return this.#say(chatId, holdersRefusal(link.owner, held.holds, held.need), kb([btn("← Back", `token:${token}`)]));
     const wei = toWei(amount.trim());
     // The reply slot was spent on this answer, so a corrected one typed next would not be read as an amount: the way back is said and offered.
     if (wei === null || wei <= 0n) return this.#say(chatId, "amount must be a number of ETH, like 0.02. tap Buy custom again to retry.", kb([btn("Buy custom", `ask:${token}`), btn("← Back", `token:${token}`)]));

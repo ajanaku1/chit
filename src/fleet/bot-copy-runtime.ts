@@ -20,6 +20,7 @@
  * `dailyLimitsFromEnv` with the same rule, by whoever needs them.
  */
 
+import { holdersGateFromEnv, type HoldersGate } from "./bot-holders.js";
 import { MemoryPositionLedger, NeonPositionLedger, type PositionLedger } from "./bot-positions.js";
 import { neon } from "@neondatabase/serverless";
 import { parseEther } from "viem";
@@ -36,6 +37,7 @@ export type Refuse = (why: string) => never;
 
 export type CopyDeskParts = {
   positions?: PositionLedger;
+  holders?: HoldersGate;
   links: BotLinkStore;
   reads: BotChain;
   session: SessionChain;
@@ -103,10 +105,12 @@ export const groupChatIdFromEnv = (refuse: Refuse): string | undefined => {
 export const createCopyDesk = (p: CopyDeskParts): CopyDesk => {
   if (!p.orus) warnOnce("copy-orus", "ORUS_PARTNER_API_KEY is not set: leaders and followers work, but every mirrored buy is skipped until it is");
   const groupChatId = groupChatIdFromEnv(p.refuse);
+  const holders = p.holders ?? holdersGateFromEnv((t, o) => p.reads.tokenBalance(t, o));
   return new CopyDesk({
     store: p.store ?? copyStoreFromEnv(p.refuse),
     links: p.links, reads: p.reads, session: p.session,
     positions: p.positions ?? positionLedgerFromEnv(),
+    ...(holders ? { holders } : {}),
     ...(p.orus ? { orus: p.orus } : {}),
     ...(p.hey ? { hey: p.hey } : {}),
     ...(p.dailyExecutes !== undefined ? { dailyExecutes: p.dailyExecutes } : {}),

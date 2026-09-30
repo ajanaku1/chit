@@ -60,3 +60,12 @@ test("a stranger's signature, a wrong chain, a used nonce, an expired nonce and 
 test("the message is exact: chain id, checksummed account, nonce, pipe-separated", () => {
   assert.equal(linkMessage(4663, "0x00000000000000000000000000000000000000aa", "ab".repeat(16)), `chit-bot-link|4663|0x00000000000000000000000000000000000000AA|${"ab".repeat(16)}`);
 });
+
+test("a wallet under the $CHIT holders line cannot link, and the link is not spent, so it can come back once it holds the line", async () => {
+  const store = new MemoryBotLinkStore();
+  const nonce = await issueNonce(store, "7", t0);
+  const under = async () => ({ ok: false as const, holds: 12_000n * 10n ** 18n, need: 100_000n * 10n ** 18n });
+  await assert.rejects(verifyLink(store, CHAIN, await signed(nonce), ownerOf, t0, under), (e: unknown) => e instanceof LinkError && e.status === 403 && /holds 12,000 \$CHIT, the line is 100,000/.test(e.message));
+  const link = await verifyLink(store, CHAIN, await signed(nonce), ownerOf, t0, async () => ({ ok: true as const }));
+  assert.equal(link.tgId, "7", "the same link, once the wallet holds the line");
+});
