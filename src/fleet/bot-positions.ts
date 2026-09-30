@@ -13,9 +13,10 @@
  * now. Units the record cannot account for (sent to the account from
  * outside, or bought before the record began) are shown without a cost.
  */
-import { getAddress } from "viem";
-
 import type { Address, Hex } from "./types.js";
+
+/** Addresses are kept lowercase, so a token pasted in any case is one token. */
+const lower = (a: string): Address => a.toLowerCase() as Address;
 
 export type TradeSide = "buy" | "sell";
 
@@ -48,9 +49,9 @@ export type TradeSettler = (hash: Hex, token: Address, account: Address) => Prom
 
 export class MemoryPositionLedger implements PositionLedger {
   readonly trades = new Map<string, BotTrade>();
-  async note(t: BotTrade) { if (!this.trades.has(t.hash.toLowerCase())) this.trades.set(t.hash.toLowerCase(), { ...t, account: getAddress(t.account), token: getAddress(t.token) }); }
+  async note(t: BotTrade) { if (!this.trades.has(t.hash.toLowerCase())) this.trades.set(t.hash.toLowerCase(), { ...t, account: lower(t.account), token: lower(t.token) }); }
   async settle(hash: Hex, units: bigint) { const t = this.trades.get(hash.toLowerCase()); if (t) t.units = units; }
-  async forAccount(account: Address) { const a = getAddress(account); return [...this.trades.values()].filter((t) => t.account === a).map((t) => ({ ...t })); }
+  async forAccount(account: Address) { const a = lower(account); return [...this.trades.values()].filter((t) => t.account === a).map((t) => ({ ...t })); }
 }
 
 type Row = Record<string, unknown>;
@@ -62,7 +63,7 @@ const SCHEMA = [
 ];
 
 const rowTrade = (r: Row): BotTrade => ({
-  hash: String(r.tx_hash) as Hex, account: getAddress(String(r.account)), token: getAddress(String(r.token)), side: String(r.side) as TradeSide,
+  hash: String(r.tx_hash) as Hex, account: lower(String(r.account)), token: lower(String(r.token)), side: String(r.side) as TradeSide,
   ethWei: BigInt(String(r.eth_wei)), asked: BigInt(String(r.asked)), units: r.units === null || r.units === undefined ? null : BigInt(String(r.units)), at: new Date(String(r.at)).toISOString(),
 });
 
@@ -77,7 +78,7 @@ export class NeonPositionLedger implements PositionLedger {
     await this.#init();
     await this.sql.query(
       `INSERT INTO bot_session_trades (tx_hash, account, token, side, eth_wei, asked, units, at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (tx_hash) DO NOTHING`,
-      [t.hash.toLowerCase(), getAddress(t.account), getAddress(t.token), t.side, t.ethWei.toString(), t.asked.toString(), t.units === null ? null : t.units.toString(), t.at],
+      [t.hash.toLowerCase(), lower(t.account), lower(t.token), t.side, t.ethWei.toString(), t.asked.toString(), t.units === null ? null : t.units.toString(), t.at],
     );
   }
   async settle(hash: Hex, units: bigint) {
@@ -86,7 +87,7 @@ export class NeonPositionLedger implements PositionLedger {
   }
   async forAccount(account: Address) {
     await this.#init();
-    return (await this.sql.query(`SELECT * FROM bot_session_trades WHERE account = $1 ORDER BY at`, [getAddress(account)])).map(rowTrade);
+    return (await this.sql.query(`SELECT * FROM bot_session_trades WHERE account = $1 ORDER BY at`, [lower(account)])).map(rowTrade);
   }
 }
 
