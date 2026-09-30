@@ -112,6 +112,8 @@ const SELL_GAS_WEI = 1_000_000n * 1_000_000_000n;
  * block the mirrors get what is left and are reported as sent, not landed.
  */
 export const MIRRORS_UNTIL_MS = 50_000;
+/** How long Positions waits for ETH's dollar price before showing ETH alone. */
+const USD_WAIT_MS = 3_000;
 const short = (a: string): string => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const fmt = (units: bigint, decimals = 18, places = 5): string => {
   const neg = units < 0n; const u = neg ? -units : units;
@@ -330,7 +332,8 @@ export class SessionBot {
   async #positions(chatId: string, tgId: string, messageId: number | undefined, unit: "eth" | "usd"): Promise<void> {
     const link = await this.#d.links.getLink(tgId);
     if (!link || !this.#d.positions) return this.#home(chatId, tgId, messageId);
-    const usdPerEth = this.#d.usdPerEth ? await this.#d.usdPerEth().catch(() => undefined) : undefined;
+    // The price is waited for briefly: the first read scans the chain and can take long; the card then shows ETH and the next tap offers dollars.
+    const usdPerEth = this.#d.usdPerEth ? await Promise.race([this.#d.usdPerEth().catch(() => undefined), new Promise<undefined>((r) => setTimeout(() => r(undefined), USD_WAIT_MS))]) : undefined;
     const view = unit === "usd" && usdPerEth !== undefined ? { unit: "usd" as const, usdPerEth } : { unit: "eth" as const };
     const settle = this.#d.session.settle?.bind(this.#d.session);
     const card = await positionsCard({ ledger: this.#d.positions, ...(settle ? { settle } : {}), reads: this.#d.reads }, link.account, view);

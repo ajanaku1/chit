@@ -149,6 +149,7 @@
  *                                token is the one the bot trades
  */
 
+import { createUsdPrice } from "./bot-usd-price.js";
 import { timingSafeEqual } from "node:crypto";
 
 import { neon } from "@neondatabase/serverless";
@@ -175,6 +176,14 @@ import { recordedPoolsFromEnv } from "./pool-registry.js";
 import { MemoryAlertStore, NeonAlertStore, type AlertStore } from "./bot-alerts.js";
 import { MemoryUpdateClaims, NeonUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { DualBot, MemoryFloorStore, NeonFloorStore, type FloorStore } from "./bot-dual.js";
+
+/** BOT_USD_TOKEN: a dollar stablecoin on the chain (USDG on 4663); its ETH pool prices Positions' $ view (bot-usd-price.ts). Unset: ETH only. */
+const usdTokenFromEnv = (): Address | undefined => {
+  const raw = process.env.BOT_USD_TOKEN?.trim();
+  if (!raw) return undefined;
+  if (!isAddress(raw)) refuse("BOT_USD_TOKEN must be the stablecoin's address");
+  return raw as Address;
+};
 
 const chainIdFromEnv = (): number => Number(process.env.FLEET_CHAIN_ID || 46630);
 /** Uniswap v4 on Robinhood Chain, same addresses on both chains (specs/001-fleet-mission/research.md). */
@@ -301,8 +310,10 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
   const orders = overrides.orders ?? ordersFromEnv();
   // alerts: the 🔔 card writes a line per user; the watcher's cron (api/bot/watch.js) reads it.
   const alerts = overrides.alertStore ?? alertsFromEnv();
+  const reads = createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) });
+  const usdToken = usdTokenFromEnv();
   const deps: SessionBotDeps = {
-    reads: createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) }),
+    reads,
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as `0x${string}` }),
     links: overrides.links ?? linksFromEnv(),
     updates: overrides.updates ?? updateClaimsFromEnv(),
@@ -318,6 +329,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
     positions: positionLedgerFromEnv(),
+    ...(usdToken ? { usdPerEth: createUsdPrice({ reads, token: usdToken }) } : {}),
   };
   // Leaders and followers: the desk over the same reads, session and links (bot-copy-runtime.ts, the one factory this webhook and the watcher's cron share).
   // This one mirrors an account leader's tapped buys; a wallet leader's venue buys reach the cron's own desk from the swap logs (bot-watch-runtime.ts).
