@@ -54,7 +54,14 @@ export type SessionChain = {
   sell(account: Address, sale: SessionSell): Promise<{ hash: Hex; landed: boolean }>;
   /** A sent trade's receipt: its status, and the token's units that reached the account in it; undefined while there is none (bot-positions.ts). */
   settle?(hash: Hex, token: Address, account: Address): Promise<TradeReceipt>;
+  /** Every token the chain shows the account receiving, lowercase, once each: Positions lists what it still holds (bot-positions-card.ts). */
+  heldTokens?(account: Address): Promise<Address[]>;
 };
+
+/** The widest log query asked for once the whole chain is refused: the public mainnet RPC takes 10 000 000 blocks. */
+const LOG_SPAN = 10_000_000n;
+const MIN_SPAN = 1_000n;
+const MAX_PIECES = 60;
 
 const TRANSFER = parseAbi(["event Transfer(address indexed from, address indexed to, uint256 value)"]);
 
@@ -134,6 +141,20 @@ export const createSessionChain = (config: SessionChainConfig): SessionChain => 
       return { ok, why };
     },
     sell: (a, sale) => send(a, encodeSell(sale), SELL_GAS),
+    async heldTokens(a) {
+      const tokens = new Set<string>();
+      const add = (logs: readonly { address: string }[]) => { for (const l of logs) tokens.add(l.address.toLowerCase()); };
+      const ask = (fromBlock: bigint, toBlock: bigint) => pub.getLogs({ event: TRANSFER[0], args: { to: a }, fromBlock, toBlock });
+      const head = await pub.getBlockNumber();
+      try { add(await ask(0n, head)); return [...tokens] as Address[]; } catch { /* the node would not take the whole chain: pieces, widest first */ }
+      let span = LOG_SPAN;
+      for (let to = head, asked = 0; to >= 0n && asked < MAX_PIECES; asked++) {
+        const from = to - span + 1n > 0n ? to - span + 1n : 0n;
+        try { add(await ask(from, to)); to = from - 1n; }
+        catch { if (to - from + 1n <= MIN_SPAN) break; span = (to - from + 1n) / 2n; }
+      }
+      return [...tokens] as Address[];
+    },
     async settle(hash, token, a) {
       const receipt = await pub.getTransactionReceipt({ hash }).catch(() => undefined);
       if (!receipt) return undefined;

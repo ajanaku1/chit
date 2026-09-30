@@ -56,3 +56,12 @@ test("in dollars, every ETH figure is shown at the price given, two decimals", a
   assert.match(card.text, /total ≈ <code>\$30\.00<\/code> · P&amp;L <code>\+\$10\.00<\/code> · plus <code>\$16\.00<\/code> in the account/);
   assert.match(card.text, /at <code>\$2,000\.00<\/code> per ETH/);
 });
+
+test("holdings the account had before the record began are found on chain and shown with their value and 'cost unknown'; one with no ETH pool to sell into is left out", async () => {
+  const SPAM = "0x00000000000000000000000000000000000000c3" as Address;
+  const withSpam = { ...reads, async quoteSell(t: Address, u: bigint) { return t.toLowerCase() === SPAM ? null : (reads as unknown as { quoteSell: (t: Address, u: bigint) => Promise<bigint> }).quoteSell(t, u); } } as unknown as BotChain;
+  const card = await positionsCard({ ledger: new MemoryPositionLedger(), reads: withSpam, heldTokens: async () => [GIFT, SPAM] }, ACCOUNT, { unit: "eth" });
+  assert.match(card.text, /<b>GIFT<\/b> <code>500<\/code> · ≈ <code>0\.002 ETH<\/code> · cost unknown/);
+  assert.doesNotMatch(card.text, /c3|GIFT.*GIFT/s, "the spam token is not listed, and GIFT once");
+  assert.deepEqual(card.tokens.map((t) => t.token), [GIFT]);
+});
