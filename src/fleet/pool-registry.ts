@@ -18,9 +18,9 @@
  *    follower's money through a recorded pool only (bot-copy.ts).
  *  - discovery, for any other token: every ETH pool the chain has opened
  *    for it (the Initialize events over the whole chain in one query
- *    filtered by the token, which the public RPC answers in well under a
- *    second; a node that refuses the span gets the last `scanBlocks` in
- *    pieces instead) and the common hookless keys read straight from the
+ *    filtered by the token; a node that refuses the span gets the whole
+ *    chain in the widest pieces it takes, 10 000 000 blocks on the public
+ *    mainnet RPC) and the common hookless keys read straight from the
  *    pool manager's storage, all gathered before any is chosen, and the
  *    deepest live one wins. Deepest is a convenience for a card and a tap,
  *    not a proof: a narrow position holds a large liquidity number for
@@ -85,9 +85,12 @@ export const recordedPoolsFromEnv = (refuse: (why: string) => never): PoolKey[] 
   return out;
 };
 
-/** How far back the pieced scan looks when the node refuses the whole chain in one query: a few days of either chain. */
-const SCAN_BLOCKS = 2_000_000n;
-const LOG_SPAN = 100_000n;
+/**
+ * The widest piece asked for when the node refuses the whole chain in one query: the public mainnet RPC takes
+ * 10 000 000 blocks (measured 2026-10-01), so the whole of 4663 is a handful of pieces. A node that takes less is
+ * met by halving.
+ */
+const LOG_SPAN = 10_000_000n;
 /** The narrowest piece asked for, and how many queries one discovery may spend in all. */
 const MIN_SPAN = 1_000n;
 const MAX_PIECES = 60;
@@ -118,12 +121,13 @@ export type PoolRegistryOptions = {
   chainId?: number;
   /** The operator's recorded pools (recordedPoolsFromEnv), added to the chain's. */
   recorded?: readonly PoolKey[];
+  /** Limits a pieced scan to the last this many blocks; absent, the whole chain. */
   scanBlocks?: bigint;
 };
 
 export const createPoolRegistry = (publicClient: PublicClient, poolManager: Address, options: PoolRegistryOptions = {}): PoolRegistry => {
   const cache = new Map<string, { at: number; pool: DiscoveredPool | null }>();
-  const scanBlocks = options.scanBlocks ?? SCAN_BLOCKS;
+  const scanBlocks = options.scanBlocks;
   /** The record by token: the chain's, then the operator's, which may replace an entry for the same token. */
   const record = new Map<string, PoolKey>();
   for (const key of [...(options.chainId !== undefined ? RECORDED_POOLS[options.chainId] ?? [] : []), ...(options.recorded ?? [])]) record.set(key.currency1.toLowerCase(), key);
@@ -144,7 +148,8 @@ export const createPoolRegistry = (publicClient: PublicClient, poolManager: Addr
   /**
    * Every ETH pool opened for the token: the whole chain in one query (the
    * filter on the token keeps the answer small whatever the span), and when
-   * the node refuses that, the last `scanBlocks` in pieces.
+   * the node refuses that, the whole chain (or the last `scanBlocks`, when
+   * given) in pieces, widest first.
    */
   const candidatesFromLogs = async (token: Address): Promise<PoolKey[]> => {
     const head = await publicClient.getBlockNumber();
@@ -158,17 +163,19 @@ export const createPoolRegistry = (publicClient: PublicClient, poolManager: Addr
     }
     // A refused piece is asked again at half the span, down to MIN_SPAN; within MAX_PIECES queries, whatever was found
     // is the answer. A keyed RPC can refuse even small spans, and then the common keys below still stand.
-    const floor = head > scanBlocks ? head - scanBlocks : 0n;
+    const floor = scanBlocks !== undefined && head > scanBlocks ? head - scanBlocks : 0n;
     let span = LOG_SPAN;
     let asked = 0;
-    for (let to = head; to > floor && asked < MAX_PIECES; asked++) {
+    for (let to = head; to >= floor && asked < MAX_PIECES; asked++) {
       const from = to - span + 1n > floor ? to - span + 1n : floor;
       try {
         add(await publicClient.getLogs({ address: poolManager, event: INITIALIZE, args: { currency0: NATIVE_ETH, currency1: token }, fromBlock: from, toBlock: to }));
         to = from - 1n;
       } catch {
-        if (span <= MIN_SPAN) break;
-        span /= 2n;
+        // Half of the piece actually asked for, which near the floor may be narrower than the span.
+        const asked = to - from + 1n;
+        if (asked <= MIN_SPAN) break;
+        span = asked / 2n;
       }
     }
     return [...keys.values()];

@@ -149,13 +149,17 @@ test("discovery: every candidate is gathered before any is chosen, the token's o
   assert.equal(node.storageReads(), 10);
   assert.equal(await registry.find(PEPE), found, "remembered");
   assert.equal(node.logQueries().length, 1);
-  // A node that will not take the whole chain: the last scanBlocks in pieces of 100 000, and the launch pool outside them is not found; the common keys still are.
+  // A node that will not take the whole chain, asked for a window of the last scanBlocks: the launch pool outside it is not found; the common keys still are.
   const strict = scriptedChain([{ key: hooked, block: 100n, liquidity: 10n ** 22n }, { key: decoy(PEPE, 500, 10), block: HEAD - 5n, liquidity: 10n ** 18n }], { maxSpan: 100_000n });
   const pieced = createPoolRegistry(strict.client, POOL_MANAGER, { chainId: 4663, scanBlocks: 250_000n });
   assert.deepEqual((await pieced.find(PEPE))!.key, decoy(PEPE, 500, 10), "what the recent chain and the common keys hold");
   const pieces = strict.logQueries();
-  assert.equal(pieces.length, 4, "the refused one, then three pieces");
-  assert.deepEqual(pieces.slice(1).map((q) => [BigInt(q.fromBlock), BigInt(q.toBlock)]), [[HEAD - 99_999n, HEAD], [HEAD - 199_999n, HEAD - 100_000n], [HEAD - 250_000n, HEAD - 200_000n]]);
+  // Widest first, halved on each refusal: what the node took is no wider than it allows, and covers the window without a gap.
+  const took = pieces.slice(1).map((q) => [BigInt(q.fromBlock), BigInt(q.toBlock)] as const).filter(([f, t]) => t - f <= 100_000n);
+  assert.equal(took[0]![1], HEAD, "from the head");
+  assert.equal(took.at(-1)![0], HEAD - 250_000n, "down to the window's floor");
+  for (let i = 1; i < took.length; i++) assert.equal(took[i]![1], took[i - 1]![0] - 1n, "no gap between pieces");
+  assert.ok(pieces.length <= 12, `a bounded number of queries, not ${pieces.length}`);
 });
 
 test("recordedPoolsFromEnv: unset is nothing, entries are token:fee:tickSpacing:hooks with the addresses checksummed and the numbers whole, and anything else (a wrongly cased address among it) is refused in the caller's words without a pool half read", () => {
@@ -228,4 +232,19 @@ test("discovery narrows its pieces on a node that refuses them, and never fails 
   const none = scriptedChain([{ key: common, block: 100n, liquidity: 10n ** 18n }], { maxSpan: -1n });
   const byStorage = await createPoolRegistry(none.client, POOL_MANAGER, { chainId: 4663 }).find(PEPE);
   assert.deepEqual(byStorage!.key, common, "no log query taken, and the common key is still read from storage");
+});
+
+/**
+ * Found 2026-10-01: ORUS's Pons pool opened long before the recent window the
+ * pieced scan read, so the bot said "no ETH pool" for a token with a live one.
+ * The public mainnet RPC takes 10 000 000 blocks a query, so the whole chain is
+ * a handful of pieces: the scan covers it all, widest first, nothing recorded.
+ */
+test("discovery scans the whole chain in the widest pieces the node takes, so an old launch pool is found", async () => {
+  const launch: PoolKey = { currency0: NATIVE_ETH, currency1: PEPE, fee: 0, tickSpacing: 200, hooks: HOOK };
+  const node = scriptedChain([{ key: launch, block: 100n, liquidity: 10n ** 21n }], { maxSpan: 999_999n });
+  assert.deepEqual((await createPoolRegistry(node.client, POOL_MANAGER, { chainId: 4663 }).find(PEPE))!.key, launch, "found at block 100 of 3 000 000");
+  const pieces = node.logQueries().slice(1);
+  assert.equal(BigInt(pieces.at(-1)!.fromBlock), 0n, "down to the chain's first block");
+  assert.ok(pieces.length <= 12, `a handful of queries, not ${pieces.length}`);
 });
