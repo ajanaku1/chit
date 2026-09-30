@@ -56,3 +56,27 @@ test("the lead section: shown for ?lead=, it asks for a plain name and one signa
   assert.match(page, /if \(handle\.startsWith\("@"\)\) \{ note\.textContent = "No @ here/);
   assert.match(page, /Ask the bot for a new one \(⭐ Become a leader, from my own wallet\)/, "a stale link says how to get another");
 });
+
+/**
+ * Found 2026-10-01 when the founder revoked the bot's key: the contract never
+ * grants a key twice on one account (SessionExists), after a revoke or an
+ * expiry alike, and the page gave each wallet one account. So a wallet whose
+ * first session ended could never let the bot back in. A wallet now keeps any
+ * number of accounts, the first at the address it always had.
+ */
+test("a wallet keeps several accounts: the first at its old address, each next one its own salt; the page lists them, picks one, and starts a new one", async () => {
+  const html = await read("sessions.html");
+  assert.match(html, /<select id="account-pick"/, "the accounts, to pick from");
+  assert.match(html, /<button id="account-new" type="button" class="ghost"[^>]*>Start a new account<\/button>/);
+  const page = await read("src/sessions-page.ts");
+  assert.match(page, /functionName: "accountOf", args: \[wallet!?, accountSalt\(/, "every account's address from its own salt");
+  assert.match(page, /encodeCreateAccount\(wallet, accountSalt\(index\)\)/, "the picked account is the one created");
+  assert.match(page, /This key can't be granted on this account again/, "a spent key says why and what to do");
+  assert.match(page, /start a new account to let it back in/i);
+});
+
+test("a grant for a key that already had a session on this account is refused before any transaction, in words; the default session is 30 days", async () => {
+  const page = await read("src/sessions-page.ts");
+  assert.match(page, /functionName: "sessionOf", args: \[key as Hex\] \}\)[\s\S]{0,200}already had a session on this account/);
+  assert.match(page, /const BETA_GRANT = \{ perCall: "0\.05", cap: "0\.5", hours: "720" \}/);
+});

@@ -21,7 +21,7 @@ Anyone running a bot today hands it their wallet key. Here you keep the wallet. 
             one transaction. Chit is not in the loop: no operator, no service, nothing of yours held.
 {" "}</p>
           <dl className="summary grid">
-            <div><dt>Your account</dt><dd id="account-address">—</dd></div>
+            <div><dt>Your account</dt><dd id="account-address">—</dd><dd><select id="account-pick" aria-label="Your accounts" hidden></select></dd></div>
             <div><dt>ETH in it</dt><dd id="account-eth">—</dd></div>
             <div><dt>Status</dt><dd id="account-state">—</dd></div>
             <div><dt>Figures</dt><dd><button id="account-refresh" type="button" className="ghost">Refresh</button></dd></div>
@@ -29,6 +29,7 @@ Anyone running a bot today hands it their wallet key. Here you keep the wallet. 
           <p id="account-note" className="fineprint" role="status" aria-live="polite">Connect your wallet to see your account.</p>
           <div className="wnav">
             <button id="account-create" type="button" className="primary" disabled>Create my account</button>
+            <button id="account-new" type="button" className="ghost" disabled>Start a new account</button>
           </div>
         </section>
 

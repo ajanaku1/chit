@@ -365,7 +365,7 @@ export class SessionBot {
       "<b>connect your wallet</b>",
       "",
       "1. open the Sessions page from the button below (the only link this bot ever sends is chit.tools).",
-      "2. create your account, fund it, grant the bot's key a session: 0.05 ETH a trade, 0.5 ETH in all, 7 days are the beta's defaults, the page fills them.",
+      "2. create your account, fund it, grant the bot's key a session: 0.05 ETH a trade, 0.5 ETH in all, 30 days are the beta's defaults, the page fills them.",
       "3. press <b>Link to the bot</b> and sign the message in your wallet. the link is good for 15 minutes.",
       "",
       `the bot's signer: <code>${this.#d.session.signer}</code>`,

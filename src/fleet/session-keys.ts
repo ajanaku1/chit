@@ -63,6 +63,12 @@ export const SESSION_FACTORY_ABI = parseAbi([
 
 /** One account per wallet by default; a second one is a different salt. */
 export const DEFAULT_SALT: Hex = keccak256(stringToHex("chit-session-account-v1"));
+/**
+ * A wallet's nth session account: the first keeps DEFAULT_SALT, so every account made before 2026-10-01 stays where it
+ * is; each next one has its own. The contract never grants a key twice on one account, so a wallet whose bot session
+ * ended (revoked or expired) lets the bot back in through a new account.
+ */
+export const accountSalt = (n: number): Hex => (n === 0 ? DEFAULT_SALT : keccak256(stringToHex(`chit-session-account-v1:${n}`)));
 
 /** A zero selector on a rule means any function of that target. */
 export const ANY_FUNCTION: Hex = "0x00000000";

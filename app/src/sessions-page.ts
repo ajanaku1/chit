@@ -12,7 +12,7 @@ import { createPublicClient, getAddress, http, isAddress, type Hex } from "viem"
 
 import {
   ANY_FUNCTION,
-  DEFAULT_SALT,
+  accountSalt,
   SESSION_ACCOUNT_ABI,
   SESSION_FACTORY_ABI,
   decodeSessionView,
@@ -71,6 +71,14 @@ let factory: Hex | undefined;
 let wallet: Hex | undefined;
 let account: Hex | undefined;
 let deployed = false;
+/** Which of the wallet's accounts the page shows, and how many exist; the one after the last is a new one not yet created. */
+let index = 0;
+let count = 0;
+const pickStorage = (w: Hex): string => `chit-session-account:${w.toLowerCase()}`;
+const storedPick = (w: Hex): number | undefined => {
+  try { const v = Number(localStorage.getItem(pickStorage(w))); return Number.isInteger(v) && v >= 0 ? v : undefined; } catch { return undefined; }
+};
+const storePick = (w: Hex, n: number): void => { try { localStorage.setItem(pickStorage(w), String(n)); } catch { /* a convenience only */ } };
 
 const keysStorage = (acct: Hex) => `chit-sessions:${acct.toLowerCase()}`;
 const rememberedKeys = (acct: Hex): Hex[] => {
@@ -149,9 +157,22 @@ const refreshAccount = async (): Promise<void> => {
     el("account-state").textContent = "not available";
     return;
   }
-  account = await publicClient.readContract({ address: factory, abi: SESSION_FACTORY_ABI, functionName: "accountOf", args: [wallet, DEFAULT_SALT] });
-  const code = await publicClient.getCode({ address: account });
-  deployed = !!code && code !== "0x";
+  // Every account the wallet has made, in order: the contract never grants a key twice on one, so a new one is how a
+  // spent bot key is let back in. The first is at the address accounts always had (accountSalt(0) is the old salt).
+  const addressOf = (n: number) => publicClient.readContract({ address: factory!, abi: SESSION_FACTORY_ABI, functionName: "accountOf", args: [wallet!, accountSalt(n)] });
+  const exists = async (a: Hex) => { const c = await publicClient.getCode({ address: a }); return !!c && c !== "0x"; };
+  const made: Hex[] = [];
+  for (let n = 0; n < 20; n++) { const a = await addressOf(n); if (!(await exists(a))) break; made.push(a); }
+  count = made.length;
+  const stored = storedPick(wallet);
+  index = stored !== undefined && stored <= count ? stored : Math.max(count - 1, 0);
+  account = made[index] ?? (await addressOf(index));
+  deployed = index < count;
+  const pick = el("account-pick") as HTMLSelectElement;
+  pick.replaceChildren(...made.map((a, n) => new Option(`Account ${n + 1} · ${a.slice(0, 6)}…${a.slice(-4)}`, String(n), false, n === index)));
+  if (!deployed) pick.append(new Option(`Account ${index + 1} · new, not created yet`, String(index), false, true));
+  pick.hidden = made.length === 0 && index === 0;
+  button("account-new").disabled = !deployed;
   el("account-address").textContent = account;
   const eth = await publicClient.getBalance({ address: account });
   el("account-eth").textContent = `${toEth(eth.toString())} ETH`;
@@ -197,6 +218,7 @@ const renderSessions = async (): Promise<void> => {
       <p class="lead small">${spent}</p>
       <p class="fineprint">${rules.map((r) => `${r.target}${r.selector === ANY_FUNCTION ? " · any function" : ` · ${r.selector}`}`).join("<br>")}</p>
       <p class="fineprint">until ${until}</p>
+      ${state === "revoked" || state === "expired" ? `<p class="fineprint">This key can't be granted on this account again: the contract never grants a key twice. Start a new account to let it back in.</p>` : ""}
       <label class="fineprint sell-toggle"><input type="checkbox" data-act="sell" ${sells ? "checked" : ""} ${state === "revoked" || sells === undefined ? "disabled" : ""} /> ${sells === undefined
         ? "let it sell: not on this account. it was created before the flag existed, so no key can sell from it; a key here does only what its rules name."
         : "let it sell: the key may sell tokens the account holds, through its router, with the ETH landing here and nothing approved afterwards; the pool and the floor are the key's, so this trusts it with the position, not only the caps"}</label>
@@ -235,9 +257,20 @@ const setSell = async (key: Hex, allowed: boolean): Promise<void> => {
   await renderSessions();
 };
 
+(el("account-pick") as HTMLSelectElement).addEventListener("change", (event) => {
+  if (!wallet) return;
+  storePick(wallet, Number((event.target as HTMLSelectElement).value));
+  void refreshAccount();
+});
+button("account-new").addEventListener("click", () => {
+  if (!wallet) return;
+  storePick(wallet, count);
+  void refreshAccount();
+});
+
 button("account-create").addEventListener("click", () => {
   if (!wallet || !factory) return;
-  void transact("Create account", factory, encodeCreateAccount(wallet)).then((ok) => { if (ok) void refreshAccount(); });
+  void transact("Create account", factory, encodeCreateAccount(wallet, accountSalt(index))).then((ok) => { if (ok) void refreshAccount(); });
 });
 
 el("fund-form").addEventListener("submit", (event) => {
@@ -277,11 +310,15 @@ el("grant-form").addEventListener("submit", (event) => {
   const expiry = Math.floor(Date.now() / 1000) + Math.floor(hours * 3600);
   note.textContent = "";
   const data = encodeGrant(key as Hex, [{ target: target as Hex, selector: selector as Hex }], perCall, cap, expiry);
-  void transact("Grant", account, data).then((ok) => {
-    if (!ok || !account) return;
-    rememberKey(account, key as Hex);
+  const acct = account;
+  void (async () => {
+    // The contract never grants a key twice on one account; asked first, so the refusal is words and not a failed transaction.
+    const [had] = await publicClient.readContract({ address: acct, abi: SESSION_ACCOUNT_ABI, functionName: "sessionOf", args: [key as Hex] });
+    if (had) { note.textContent = "That key already had a session on this account, and the contract never grants a key twice. Start a new account to let it back in."; return; }
+    if (!(await transact("Grant", acct, data))) return;
+    rememberKey(acct, key as Hex);
     void renderSessions();
-  });
+  })();
 });
 
 // ---- the bot's link ----
@@ -292,7 +329,7 @@ const linkParams = new URLSearchParams(location.search);
 const linkNonce = linkParams.get("link");
 const linkKey = linkParams.get("key");
 const LINK_API = "/api/bot/link";
-const BETA_GRANT = { perCall: "0.05", cap: "0.5", hours: "168" };
+const BETA_GRANT = { perCall: "0.05", cap: "0.5", hours: "720" };
 
 const linkMessage = (chainId: number, acct: Hex, nonce: string): string => `chit-bot-link|${chainId}|${acct}|${nonce}`;
 
