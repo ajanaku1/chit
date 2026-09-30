@@ -20,6 +20,7 @@
  * `dailyLimitsFromEnv` with the same rule, by whoever needs them.
  */
 
+import { MemoryPositionLedger, NeonPositionLedger, type PositionLedger } from "./bot-positions.js";
 import { neon } from "@neondatabase/serverless";
 import { parseEther } from "viem";
 import type { BotChain } from "./bot-chain.js";
@@ -34,6 +35,7 @@ import type { Telegram } from "./bot-telegram.js";
 export type Refuse = (why: string) => never;
 
 export type CopyDeskParts = {
+  positions?: PositionLedger;
   links: BotLinkStore;
   reads: BotChain;
   session: SessionChain;
@@ -54,6 +56,14 @@ const warnOnce = (what: string, message: string): void => {
   if (warned.has(what)) return;
   warned.add(what);
   console.warn(message);
+};
+
+/** The trade record behind Positions (bot-positions.ts): Neon when DATABASE_URL is set, else this instance's memory; every path that buys writes to it. */
+export const positionLedgerFromEnv = (): PositionLedger => {
+  const url = process.env.DATABASE_URL;
+  if (!url) return new MemoryPositionLedger();
+  const sql = neon(url);
+  return new NeonPositionLedger({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
 };
 
 /** The copy store: Neon when DATABASE_URL is set, one instance's memory when BOT_MEMORY_STORE=1 allows it, a refusal otherwise; the same rule as every store the bot keeps. */
@@ -96,6 +106,7 @@ export const createCopyDesk = (p: CopyDeskParts): CopyDesk => {
   return new CopyDesk({
     store: p.store ?? copyStoreFromEnv(p.refuse),
     links: p.links, reads: p.reads, session: p.session,
+    positions: p.positions ?? positionLedgerFromEnv(),
     ...(p.orus ? { orus: p.orus } : {}),
     ...(p.hey ? { hey: p.hey } : {}),
     ...(p.dailyExecutes !== undefined ? { dailyExecutes: p.dailyExecutes } : {}),

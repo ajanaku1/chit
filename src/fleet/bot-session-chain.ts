@@ -17,8 +17,9 @@
  * a sale is one send.
  */
 
-import { type Address, type Hex, type PublicClient, type Transport, type WalletClient, createPublicClient, createWalletClient, http } from "viem";
+import { type Address, type Hex, type PublicClient, type Transport, type WalletClient, createPublicClient, createWalletClient, http, parseAbi, parseEventLogs } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
+import type { TradeReceipt } from "./bot-positions.js";
 import { robinhoodChain } from "./chain-def.js";
 import { SESSION_ACCOUNT_ABI, decodeSessionView, encodeSell, encodeSessionExecute, type SessionSell, type SessionView } from "./session-keys.js";
 import { NATIVE_ETH, venuePoolKey, type PoolKey } from "./v4-swap.js";
@@ -51,7 +52,11 @@ export type SessionChain = {
   canSell(account: Address, router: Address, poolKey: PoolKey | undefined, amountIn: bigint, minOut: bigint, deadline?: bigint): Promise<{ ok: boolean; why: string }>;
   /** `sell(router, poolKey, amountIn, minOut, deadline)` on the account, from the bot's key: the sale as one call, the ETH into the account. */
   sell(account: Address, sale: SessionSell): Promise<{ hash: Hex; landed: boolean }>;
+  /** A sent trade's receipt: its status, and the token's units that reached the account in it; undefined while there is none (bot-positions.ts). */
+  settle?(hash: Hex, token: Address, account: Address): Promise<TradeReceipt>;
 };
+
+const TRANSFER = parseAbi(["event Transfer(address indexed from, address indexed to, uint256 value)"]);
 
 /** `receiptWaitMs`: how long one send waits for its receipt before answering with the hash alone; see RECEIPT_WAIT_MS. */
 export type SessionChainConfig = { chainId: number; rpcUrl: string; signerKey: Hex; transport?: Transport; receiptWaitMs?: number };
@@ -129,5 +134,12 @@ export const createSessionChain = (config: SessionChainConfig): SessionChain => 
       return { ok, why };
     },
     sell: (a, sale) => send(a, encodeSell(sale), SELL_GAS),
+    async settle(hash, token, a) {
+      const receipt = await pub.getTransactionReceipt({ hash }).catch(() => undefined);
+      if (!receipt) return undefined;
+      const logs = parseEventLogs({ abi: TRANSFER, logs: receipt.logs.filter((l) => l.address.toLowerCase() === token.toLowerCase()) });
+      const received = logs.filter((l) => l.args.to.toLowerCase() === a.toLowerCase()).reduce((sum, l) => sum + l.args.value, 0n);
+      return { status: receipt.status === "success" ? "success" : "reverted", received };
+    },
   };
 };

@@ -50,6 +50,7 @@
  * tomorrow. An account keeps at most `MAX_OPEN_ORDERS` open at once.
  */
 
+import { noteSent, type PositionLedger } from "./bot-positions.js";
 import { randomBytes } from "node:crypto";
 import type { Address, Hex } from "viem";
 import type { BotChain } from "./bot-chain.js";
@@ -154,6 +155,8 @@ export type OrderRunnerDeps = {
   links: BotLinkStore;
   reads: BotChain;
   session: SessionChain;
+  /** Every sent trade, for Positions and their P&L (bot-positions.ts); absent, nothing is recorded. */
+  positions?: PositionLedger;
   telegram: Telegram;
   buySlippageBps?: number;
   maxPerRun?: number;
@@ -252,6 +255,7 @@ export class OrderRunner {
     let r: { hash: Hex; landed: boolean };
     try { r = await this.#d.session.execute(o.account, this.#d.reads.router, o.ethWei, data); }
     catch (e) { return this.#cutOff(o, now, `the send did not answer (${firstLine(e)})`); }
+    await noteSent(this.#d.positions, { hash: r.hash, account: o.account, token: o.token, side: "buy", ethWei: o.ethWei, asked: 0n, at: now.toISOString() });
     // The buy went out: the order moves on whether or not the receipt was seen in time; the floor protects the fill either way.
     const next: Order = { ...o, refusals: 0 };
     delete next.lastError;

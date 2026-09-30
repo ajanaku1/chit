@@ -41,6 +41,7 @@
  * trade from an account that was not linked with the owner's signature.
  */
 
+import { noteSent, type PositionLedger } from "./bot-positions.js";
 import { type Address, type Hex, isAddress } from "viem";
 import { AlertCards } from "./bot-alert-cards.js";
 import type { AlertStore } from "./bot-alerts.js";
@@ -64,6 +65,8 @@ export type SessionBotDeps = {
   reads: BotChain;
   session: SessionChain;
   links: BotLinkStore;
+  /** Every sent trade, for Positions and their P&L (bot-positions.ts); absent, nothing is recorded. */
+  positions?: PositionLedger;
   telegram: Telegram;
   orus?: OrusScanner;
   hey?: HeyScanner;
@@ -429,6 +432,7 @@ export class SessionBot {
     await this.#say(chatId, `buying <code>${eth(wei)} ETH</code> of <b>${esc(info.symbol)}</b> from your account, floor <code>${fmt(minOut, info.decimals, 2)}</code>…${fromButton ? "" : ""}`);
     count.executes += 1;
     const r = await this.#d.session.execute(link.account, this.#d.reads.router, wei, data);
+    await noteSent(this.#d.positions, { hash: r.hash, account: link.account, token, side: "buy", ethWei: wei, asked: 0n, at: this.#now.toISOString() });
     // What the gas actually cost is the receipt's; here the budget counts the ceiling, so a loop is stopped early rather than late.
     count.gasWei += EXECUTE_GAS_WEI;
     // copy: the tap goes into the desk's ledger too, so a mirror from the watcher's function counts it against the same day.
@@ -560,6 +564,7 @@ export class SessionBot {
     await this.#say(chatId, `selling <code>${fmt(amount, info.decimals, 4)} ${esc(info.symbol)}</code> (${percent}%) from your account: about <code>${eth(quote)} ETH</code>, floor <code>${eth(minOut)}</code>…`);
     count.executes += 1;
     const r = await this.#d.session.sell(link.account, { router: this.#d.reads.router, token, amountIn: amount, minOut, deadline, poolKey });
+    await noteSent(this.#d.positions, { hash: r.hash, account: link.account, token, side: "sell", ethWei: 0n, asked: amount, at: this.#now.toISOString() });
     count.gasWei += SELL_GAS_WEI;
     const explorer = `https://robinhoodchain.blockscout.com/tx/${r.hash}`;
     await this.#say(chatId, r.landed

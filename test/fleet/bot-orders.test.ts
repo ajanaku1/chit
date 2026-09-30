@@ -14,6 +14,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { MemoryPositionLedger } from "../../src/fleet/bot-positions.js";
 import { type Address, type Hex, parseEther } from "viem";
 import type { BotChain } from "../../src/fleet/bot-chain.js";
 import { MemoryBotLinkStore } from "../../src/fleet/bot-link.js";
@@ -86,7 +87,7 @@ const fakeSession = () => {
   return { s, calls, refuseWith: (why: string | null) => { refuse = why; }, failWith: (why: string | null) => { fail = why; }, during: (f: (() => Promise<void>) | undefined) => { onExecute = f; } };
 };
 
-const setup = (perEth = 1_500_000n, opts: { maxPerRun?: number; dailyExecutes?: number; dailyGasWei?: bigint; reads?: BotChain } = {}) => {
+const setup = (perEth = 1_500_000n, opts: { maxPerRun?: number; dailyExecutes?: number; dailyGasWei?: bigint; reads?: BotChain; positions?: MemoryPositionLedger } = {}) => {
   const orders = new MemoryOrderStore();
   const links = new MemoryBotLinkStore();
   const session = fakeSession();
@@ -445,4 +446,13 @@ test("neon: the claim is one statement that takes only an open, unclaimed order 
   assert.deepEqual(sql.calls.at(-1)!.params, [46630, "7"]);
   const schema = sql.calls.filter((c) => /^(CREATE|ALTER)/.test(c.query.trim())).map((c) => c.query);
   assert.ok(schema.some((q) => q.includes("ADD COLUMN IF NOT EXISTS chain_id")) && schema.some((q) => q.includes("ADD COLUMN IF NOT EXISTS firing_at")), "a table from before is brought along");
+});
+
+test("a fired order's buy is written to the account's trade record, so Positions count what the orders bought", async () => {
+  const positions = new MemoryPositionLedger();
+  const { orders, links, runner } = setup(1_500_000n, { positions });
+  await linked(links);
+  await orders.put(order({ id: "l", kind: "limit", triggerPerEth: 1_200_000n }));
+  await runner.run();
+  assert.deepEqual((await positions.forAccount(ACCOUNT)).map((t) => [t.side, t.ethWei, t.units]), [["buy", parseEther("0.01"), null]]);
 });
