@@ -41,6 +41,7 @@
  * trade from an account that was not linked with the owner's signature.
  */
 
+import { positionsCard } from "./bot-positions-card.js";
 import { noteSent, type PositionLedger } from "./bot-positions.js";
 import { type Address, type Hex, isAddress } from "viem";
 import { AlertCards } from "./bot-alert-cards.js";
@@ -67,6 +68,8 @@ export type SessionBotDeps = {
   links: BotLinkStore;
   /** Every sent trade, for Positions and their P&L (bot-positions.ts); absent, nothing is recorded. */
   positions?: PositionLedger;
+  /** ETH's price in dollars for Positions' $ view; absent or undefined, Positions stay in ETH. */
+  usdPerEth?: () => Promise<number | undefined>;
   telegram: Telegram;
   orus?: OrusScanner;
   hey?: HeyScanner;
@@ -215,6 +218,7 @@ export class SessionBot {
     if (this.#alerts?.owns(verb ?? "")) { await ack(); return this.#alerts.callback(chatId, tgId, verb!, a); }
     switch (verb) {
       case "home": await ack(); return this.#home(chatId, tgId, messageId);
+      case "pos": await ack(); return this.#positions(chatId, tgId, messageId, a === "usd" ? "usd" : "eth");
       case "connect": await ack(); return this.#connect(chatId, tgId);
       case "token": await ack(); return a && isAddress(a) ? this.#tokenCard(chatId, tgId, a as Address, messageId) : this.#help(chatId);
       case "b": await ack(); return a && isAddress(a) && b ? this.#buy(chatId, tgId, a as Address, b, true, startedAt) : this.#help(chatId);
@@ -311,6 +315,7 @@ export class SessionBot {
     ];
     return this.#out(chatId, messageId, lines.join("\n"), kb(
       [url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions.html`), btn("🔗 Re-link", "connect")],
+      ...(this.#d.positions ? [[btn("📊 Positions", "pos")]] : []),
       ...(this.#d.orders ? [[btn("📋 Orders", "orders")]] : []),
       // copy: the leaders list, my follows, become or close leader.
       ...(this.#copy ? await this.#copy.homeRows(tgId) : []),
@@ -319,6 +324,20 @@ export class SessionBot {
       [btn("❓ Help", "help"), btn("↻ Refresh", "home")],
       ...this.#door(),
     ));
+  }
+
+  /** 📊 Positions (bot-positions-card.ts): in ETH, or in dollars when a price is to hand; each token opens its card. */
+  async #positions(chatId: string, tgId: string, messageId: number | undefined, unit: "eth" | "usd"): Promise<void> {
+    const link = await this.#d.links.getLink(tgId);
+    if (!link || !this.#d.positions) return this.#home(chatId, tgId, messageId);
+    const usdPerEth = this.#d.usdPerEth ? await this.#d.usdPerEth().catch(() => undefined) : undefined;
+    const view = unit === "usd" && usdPerEth !== undefined ? { unit: "usd" as const, usdPerEth } : { unit: "eth" as const };
+    const settle = this.#d.session.settle?.bind(this.#d.session);
+    const card = await positionsCard({ ledger: this.#d.positions, ...(settle ? { settle } : {}), reads: this.#d.reads }, link.account, view);
+    const tokenRows: Keyboard = [];
+    for (let i = 0; i < card.tokens.length; i += 2) tokenRows.push(card.tokens.slice(i, i + 2).map((t) => btn(t.symbol, `token:${t.token}`)));
+    const toggle = usdPerEth === undefined ? [] : [btn(view.unit === "usd" ? "Ξ show in ETH" : "$ show in dollars", view.unit === "usd" ? "pos:eth" : "pos:usd")];
+    return this.#out(chatId, messageId, card.text, kb(...tokenRows, [...toggle, btn("↻ Refresh", `pos:${view.unit}`)], [btn("← Back", "home")]));
   }
 
   #sessionLine(state: ReturnType<typeof sessionState>, s: { maxValuePerCall: string; totalValueCap: string; spentValue: string; expiry: number }): string {
