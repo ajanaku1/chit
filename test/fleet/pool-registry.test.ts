@@ -31,7 +31,7 @@ const HEAD = 3_000_000n;
 const Q96 = 1n << 96n;
 
 const INITIALIZE = parseAbiItem("event Initialize(bytes32 indexed id, address indexed currency0, address indexed currency1, uint24 fee, int24 tickSpacing, address hooks, uint160 sqrtPriceX96, int24 tick)");
-const EXTSLOAD = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)"]);
+const EXTSLOAD = parseAbi(["function extsload(bytes32 slot) view returns (bytes32)", "function extsload(bytes32[] slots) view returns (bytes32[])"]);
 const ERC20 = parseAbi(["function symbol() view returns (string)", "function decimals() view returns (uint8)"]);
 
 type RawLog = { address: Address; topics: Hex[]; data: Hex; blockNumber: Hex; transactionHash: Hex; transactionIndex: Hex; blockHash: Hex; logIndex: Hex; removed: boolean };
@@ -58,7 +58,7 @@ const matches = (log: RawLog, filter: { address?: string; fromBlock: Hex; toBloc
  * liquidity), read through extsload, and their openings as Initialize logs;
  * `maxSpan` makes it a node that refuses a log query wider than that.
  */
-const scriptedChain = (pools: Array<{ key: PoolKey; block: bigint; liquidity: bigint; sqrtPriceX96?: bigint }>, opts: { maxSpan?: bigint; meta?: Record<string, { symbol: string; decimals: number }> } = {}) => {
+const scriptedChain = (pools: Array<{ key: PoolKey; block: bigint; liquidity: bigint; sqrtPriceX96?: bigint }>, opts: { maxSpan?: bigint; noBatch?: boolean; meta?: Record<string, { symbol: string; decimals: number }> } = {}) => {
   const storage = new Map<string, bigint>();
   for (const p of pools) {
     const id = poolIdOf(p.key);
@@ -82,6 +82,9 @@ const scriptedChain = (pools: Array<{ key: PoolKey; block: bigint; liquidity: bi
         const { to, data } = (params as [{ to: Address; data: Hex }])[0];
         if (to.toLowerCase() === POOL_MANAGER) {
           const { args } = decodeFunctionData({ abi: EXTSLOAD, data });
+          // The batched read, as the v4 pool manager answers it: every slot asked for, in order.
+          if (Array.isArray(args[0]) && opts.noBatch) throw new Error("execution reverted");
+          if (Array.isArray(args[0])) return encodeAbiParameters([{ type: "bytes32[]" }], [(args[0] as Hex[]).map((slot) => word(storage.get(slot.toLowerCase()) ?? 0n))]);
           return word(storage.get((args[0] as Hex).toLowerCase()) ?? 0n);
         }
         const m = opts.meta?.[to.toLowerCase()];
@@ -146,7 +149,7 @@ test("discovery: every candidate is gathered before any is chosen, the token's o
   assert.deepEqual([queries[0]!.fromBlock, queries[0]!.toBlock], ["0x0", numberToHex(HEAD)]);
   assert.equal((queries[0]!.topics as Hex[])[3]!.toLowerCase(), `0x${PEPE.slice(2).padStart(64, "0")}`, "filtered by the token");
   // Five candidates read (three opened, of which two are common keys as well, plus the two other common keys), two words each.
-  assert.equal(node.storageReads(), 10);
+  assert.equal(node.storageReads(), 1, "the five candidates in one batched read");
   assert.equal(await registry.find(PEPE), found, "remembered");
   assert.equal(node.logQueries().length, 1);
   // A node that will not take the whole chain, asked for a window of the last scanBlocks: the launch pool outside it is not found; the common keys still are.
@@ -247,4 +250,20 @@ test("discovery scans the whole chain in the widest pieces the node takes, so an
   const pieces = node.logQueries().slice(1);
   assert.equal(BigInt(pieces.at(-1)!.fromBlock), 0n, "down to the chain's first block");
   assert.ok(pieces.length <= 12, `a handful of queries, not ${pieces.length}`);
+});
+
+/**
+ * Found 2026-10-01: USDG has some 630 ETH pools on 4663, nearly all empty, and
+ * discovery read each one's two words in its own call, 1 271 calls and 40 s.
+ * The candidates are read in batches through the pool manager's extsload of
+ * many slots at once, and a node that refuses the batch is read one by one.
+ */
+test("discovery reads a token's many pools in a few batched calls, and falls back to single reads on a node that refuses the batch", async () => {
+  const many = Array.from({ length: 600 }, (_, i) => ({ key: decoy(PEPE, 3000 + i, 60), block: 100n + BigInt(i), liquidity: i === 377 ? 10n ** 20n : 0n }));
+  const node = scriptedChain(many);
+  const found = await createPoolRegistry(node.client, POOL_MANAGER, { chainId: 4663 }).find(PEPE);
+  assert.equal(found!.key.fee, 3377, "the one live pool among six hundred");
+  assert.ok(node.storageReads() <= 4, `a few batched reads, not ${node.storageReads()}`);
+  const old = scriptedChain(many.slice(370, 380), { noBatch: true });
+  assert.equal((await createPoolRegistry(old.client, POOL_MANAGER, { chainId: 4663 }).find(PEPE))!.key.fee, 3377, "the same answer, one pool at a time");
 });
