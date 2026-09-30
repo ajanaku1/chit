@@ -170,7 +170,7 @@ import { MemoryOrderStore, NeonOrderStore, type OrderStore } from "./bot-orders.
 import { createSessionChain } from "./bot-session-chain.js";
 import { SessionBot, type SessionBotDeps } from "./bot-session.js";
 import type { CopyStore } from "./bot-copy.js";
-import { createCopyDesk, dailyLimitsFromEnv } from "./bot-copy-runtime.js";
+import { createCopyDesk, dailyLimitsFromEnv, positionLedgerFromEnv } from "./bot-copy-runtime.js";
 import { recordedPoolsFromEnv } from "./pool-registry.js";
 import { MemoryAlertStore, NeonAlertStore, type AlertStore } from "./bot-alerts.js";
 import { MemoryUpdateClaims, NeonUpdateClaims, type UpdateClaims } from "./bot-updates.js";
@@ -317,11 +317,13 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     ...(alerts ? { alerts } : {}),
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
+    positions: positionLedgerFromEnv(),
   };
   // Leaders and followers: the desk over the same reads, session and links (bot-copy-runtime.ts, the one factory this webhook and the watcher's cron share).
   // This one mirrors an account leader's tapped buys; a wallet leader's venue buys reach the cron's own desk from the swap logs (bot-watch-runtime.ts).
   const copy = createCopyDesk({
     links: deps.links, reads: deps.reads, session: deps.session, telegram: deps.telegram,
+    ...(deps.positions ? { positions: deps.positions } : {}),
     ...(deps.orus ? { orus: deps.orus } : {}),
     ...(deps.hey ? { hey: deps.hey } : {}),
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),

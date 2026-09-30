@@ -111,6 +111,7 @@
  * the list. The list is what followers trust; it must not be forgeable.
  */
 
+import { noteSent, type PositionLedger } from "./bot-positions.js";
 import { type Address, type Hex, getAddress, isAddress, isHex, recoverMessageAddress } from "viem";
 import type { BotChain, TokenInfo } from "./bot-chain.js";
 import { heyLine, type HeyScan, type HeyScanner } from "./bot-hey.js";
@@ -185,6 +186,8 @@ export type CopyDeps = {
   links: BotLinkStore;
   reads: BotChain;
   session: SessionChain;
+  /** Every sent trade, for Positions and their P&L (bot-positions.ts); absent, nothing is recorded. */
+  positions?: PositionLedger;
   orus?: OrusScanner;
   /** The builder line on a venue buy's feed message; the cards' path brings its own. */
   hey?: HeyScanner;
@@ -498,6 +501,7 @@ export class CopyDesk {
       try {
         // The receipt is waited for only with the time that is left after the send's own allowance; slower than that is "sent".
         r = await this.#d.session.execute(link.account, this.#d.reads.router, wei, data, left - MIRROR_SEND_MS);
+        await noteSent(this.#d.positions, { hash: r.hash, account: link.account, token, side: "buy", ethWei: wei, asked: 0n, at: now.toISOString() });
       } catch (error) {
         // The send itself failed (the signer, the rpc): nothing was broadcast for this follower, the day's room is theirs again, the next follower runs.
         const detail = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "unknown";

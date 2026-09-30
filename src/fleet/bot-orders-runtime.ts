@@ -34,6 +34,7 @@
  * killed mid-send, never fire the same order twice.
  */
 
+import { positionLedgerFromEnv } from "./bot-copy-runtime.js";
 import { neon } from "@neondatabase/serverless";
 import { isHex, parseEther, type Hex } from "viem";
 import { isAddress, type Address } from "./types.js";
@@ -95,6 +96,7 @@ const build = (): OrderRunner => {
     links: overrides.links ?? (sql ? new NeonBotLinkStore(sql) : new MemoryBotLinkStore()),
     reads: overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) }),
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as Hex }),
+    positions: positionLedgerFromEnv(),
     telegram: overrides.telegram ?? createTelegram(token!),
     ...(perRun !== undefined ? { maxPerRun: perRun } : {}),
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),

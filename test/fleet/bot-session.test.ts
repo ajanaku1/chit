@@ -28,6 +28,7 @@ import type { BotChain } from "../../src/fleet/bot-chain.js";
 import type { Update } from "../../src/fleet/bot-handlers.js";
 import { CopyDesk, MemoryCopyStore } from "../../src/fleet/bot-copy.js";
 import { MemoryBotLinkStore } from "../../src/fleet/bot-link.js";
+import { MemoryPositionLedger } from "../../src/fleet/bot-positions.js";
 import type { OrusScan } from "../../src/fleet/bot-orus.js";
 import { SessionBot } from "../../src/fleet/bot-session.js";
 import type { SessionSell } from "../../src/fleet/session-keys.js";
@@ -213,13 +214,14 @@ test("with a plate renderer the token card is a picture; the plate says mainnet;
 const FOLLOWER_ACCOUNT = "0x00000000000000000000000000000000000000bb" as Address;
 const safe: OrusScan = { symbol: "PEPE", honeypot: false, buyTaxPct: 0, sellTaxPct: 0, bundlersPct: null, top10Pct: null, holders: 100, liquidityUsd: 50_000, lpBurnedPct: null, marketCapUsd: null, deployerLaunches: 1, checkedAt: clock.toISOString() };
 const orus = { scan: async () => safe, link: (t: Address) => `https://www.orusagent.xyz/token/${t}` };
-const withCopy = (opts: Partial<Deps> = {}, feed: { post?: (text: string) => Promise<void> } = {}) => {
+const withCopy = (opts: Partial<Deps> = {}, feed: { post?: (text: string) => Promise<void> } = {}, deskPositions?: MemoryPositionLedger) => {
   const s = setup(opts);
   const store = new MemoryCopyStore();
   // What the feed saw when each message was posted: the text and how many executes had run by then.
   const posted: { text: string; keyboard?: unknown; executesSoFar: number }[] = [];
   const copy = new CopyDesk({
     store, links: s.links, reads, session: opts.session ?? s.session.s, orus, now: opts.now ?? (() => clock), botUsername: "usechit_bot",
+    ...(deskPositions ? { positions: deskPositions } : {}),
     // The daily limits are the bot's, as the runtime hands the same env to both.
     ...(opts.dailyExecutes !== undefined ? { dailyExecutes: opts.dailyExecutes } : {}), ...(opts.dailyGasWei !== undefined ? { dailyGasWei: opts.dailyGasWei } : {}),
     tell: (to, text) => s.telegram.deliver({ kind: "send", chatId: to, text }),
@@ -831,4 +833,28 @@ test("the door to the playground: the room in this bot when there is one, the te
   const neither = setup();
   await neither.bot.handle(dm("/start"));
   assert.ok(!neither.buttons().some((b) => /playground|testnet/i.test(b)), "no room and no host, no door");
+});
+
+test("every buy and sell the bot sends is written to the trade record by its hash when sent, unsettled until the chain's receipt says what it did", async () => {
+  const positions = new MemoryPositionLedger();
+  const { links, session, bot } = setup({ positions });
+  await linked(links);
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  session.allowSell(true);
+  await bot.handle(tap(`s:${PEPE}:50`));
+  const trades = await positions.forAccount(ACCOUNT);
+  assert.deepEqual(trades.map((t) => [t.side, t.ethWei, t.asked, t.units]), [["buy", parseEther("0.01"), 0n, null], ["sell", 0n, 21_000_000n, null]]);
+  assert.ok(trades.every((t) => t.token.toLowerCase() === PEPE.toLowerCase()));
+});
+
+test("a mirrored buy is written to the follower's trade record too, so their Positions count what the desk bought for them", async () => {
+  const positions = new MemoryPositionLedger();
+  const { bot, links } = withCopy({}, {}, positions);
+  await linked(links);
+  await followerLinked(links);
+  await bot.handle(asUser(7, "lead:acct", { username: "ogle" }));
+  await bot.handle(asUser(8, "askf:7"));
+  await bot.handle(says(8, "0.005", "how much"));
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.deepEqual((await positions.forAccount(FOLLOWER_ACCOUNT)).map((t) => [t.side, t.ethWei, t.units]), [["buy", parseEther("0.005"), null]]);
 });
