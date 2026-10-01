@@ -78,7 +78,8 @@ test("a wallet keeps several accounts: the first at its old address, each next o
 test("a grant for a key that already had a session on this account is refused before any transaction, in words; the default session is 30 days", async () => {
   const page = await read("src/sessions-page.ts");
   assert.match(page, /functionName: "sessionOf", args: \[key as Hex\] \}\)[\s\S]{0,200}already had a session on this account/);
-  assert.match(page, /const BETA_GRANT = \{ perCall: "0\.05", cap: "0\.5", hours: "720" \}/);
+  assert.match(page, /const BETA_GRANT = \{ perCall: "0\.05", cap: "0\.5", days: "30" \}/);
+  assert.match(await read("sessions.html"), /<label for="grant-days">Valid for \(days\)<\/label>\s*<input id="grant-days"[^>]*value="30"/, "30 days however the page is opened");
 });
 
 /**

@@ -428,9 +428,9 @@ el("grant-form").addEventListener("submit", (event) => {
   let perCall: bigint, cap: bigint;
   try { perCall = BigInt(parseEth(input("grant-per-call").value)); cap = BigInt(parseEth(input("grant-cap").value)); } catch { note.textContent = "Amounts like 0.001."; return; }
   if (perCall > cap) { note.textContent = "Per call cannot be above the total."; return; }
-  const hours = Number(input("grant-hours").value);
-  if (!Number.isFinite(hours) || hours <= 0 || hours > 24 * 365) { note.textContent = "Hours between 1 and 8760."; return; }
-  const expiry = Math.floor(Date.now() / 1000) + Math.floor(hours * 3600);
+  const days = Number(input("grant-days").value);
+  if (!Number.isFinite(days) || days <= 0 || days > 365) { note.textContent = "Days between 1 and 365, like 30."; return; }
+  const expiry = Math.floor(Date.now() / 1000) + Math.floor(days * 86_400);
   note.textContent = "";
   const data = encodeGrant(key as Hex, [{ target: target as Hex, selector: selector as Hex }], perCall, cap, expiry);
   const acct = account;
@@ -452,7 +452,7 @@ const linkParams = new URLSearchParams(location.search);
 const linkNonce = linkParams.get("link");
 const linkKey = linkParams.get("key");
 const LINK_API = "/api/bot/link";
-const BETA_GRANT = { perCall: "0.05", cap: "0.5", hours: "720" };
+const BETA_GRANT = { perCall: "0.05", cap: "0.5", days: "30" };
 
 const linkMessage = (chainId: number, acct: Hex, nonce: string): string => `chit-bot-link|${chainId}|${acct}|${nonce}`;
 
@@ -464,7 +464,7 @@ const initLink = async (): Promise<void> => {
     input("grant-key").value ||= linkKey;
     input("grant-per-call").value = BETA_GRANT.perCall;
     input("grant-cap").value = BETA_GRANT.cap;
-    input("grant-hours").value = BETA_GRANT.hours;
+    input("grant-days").value = BETA_GRANT.days;
   } else {
     el("link-key").textContent = "not in the link; paste it from the bot's card";
   }
