@@ -177,13 +177,18 @@ const fakeRegistry = (known: Partial<Record<string, Hex>>, fail?: () => boolean)
   return { registry, asked };
 };
 
-const scriptedChain = (head: bigint, logs: RawLog[], senders: Record<string, Address>) => {
+/** `maxLogs` makes a node that refuses a query matching more logs than that, as mainnet's RPC does at 10 000. */
+const scriptedChain = (head: bigint, logs: RawLog[], senders: Record<string, Address>, maxLogs?: number) => {
   const calls: { method: string; params: unknown }[] = [];
   const transport = custom({
     async request({ method, params }: { method: string; params?: unknown }) {
       calls.push({ method, params });
       if (method === "eth_blockNumber") return numberToHex(head);
-      if (method === "eth_getLogs") return logs.filter((l) => matches(l, (params as [never])[0]));
+      if (method === "eth_getLogs") {
+        const found = logs.filter((l) => matches(l, (params as [never])[0]));
+        if (maxLogs !== undefined && found.length > maxLogs) throw new Error(`logs matched by query exceeds limit of ${maxLogs}`);
+        return found;
+      }
       if (method === "eth_getTransactionByHash") {
         const h = ((params as [Hex])[0]).toLowerCase();
         const from = senders[h];
@@ -411,4 +416,37 @@ test("what a transaction left bought: a buy and a sell of the token in one trans
   ], "the round trips are nothing; the rest is what stayed bought");
   const txAsks = node.calls.filter((c) => c.method === "eth_getTransactionByHash").map((c) => (c.params as [Hex])[0]);
   assert.deepEqual(txAsks, [hash(2), hash(4), hash(5)], "no sender read for a transaction that bought nothing net");
+});
+
+/**
+ * Found 2026-10-01 on mainnet: a 12 000-block window held more than 10 000
+ * swaps, the RPC refused it ("logs matched by query exceeds limit"), the pass
+ * died before its cursor moved, and every pass after tried the same window: the
+ * watcher read nothing for a day. A refused range is now read in halves.
+ */
+test("a window with more swaps than the node returns in one answer is read in halves, and every buy in it still comes through", async () => {
+  const ethPool = poolId(1);
+  const logs = [initLog(ethPool, NATIVE, PEPE, 50n)];
+  const senders: Record<string, Address> = {};
+  for (let i = 0; i < 30; i++) { logs.push(swapLog(ethPool, -parseEther("0.1"), 100n, 1_000n + BigInt(i), hash(100 + i))); senders[hash(100 + i)] = BUYER; }
+  const node = scriptedChain(1_029n, logs, senders, 10);
+  const port = createWatchPort({ chainId: 4663, rpcUrl: "http://fake", poolManager: POOL_MANAGER, tokens: [PEPE], registry: fakeRegistry({ [PEPE.toLowerCase()]: ethPool }).registry, transport: node.transport, initLookbackBlocks: 2_000n });
+  const buys = await port.buysBetween(1_000n, 1_029n);
+  assert.equal(buys.length, 30, "none lost to the split");
+});
+
+test("pool ids are looked up in groups the node accepts, so a window that meets more new pools than one query can carry still names them", async () => {
+  const logs: RawLog[] = [];
+  const senders: Record<string, Address> = {};
+  // 1 200 strangers' pools traded in the window, and one of ours.
+  for (let i = 0; i < 1_200; i++) { const id = `0x${(10_000 + i).toString(16).padStart(64, "0")}` as Hex; logs.push(initLog(id, NATIVE, USDC, 100n), swapLog(id, -1n, 1n, 1_000n, hash(5_000 + i))); }
+  const ours = poolId(1);
+  logs.push(initLog(ours, NATIVE, PEPE, 100n), swapLog(ours, -parseEther("0.1"), 1n, 1_000n, hash(1)));
+  senders[hash(1)] = BUYER;
+  const node = scriptedChain(1_000n, logs, senders);
+  const port = createWatchPort({ chainId: 4663, rpcUrl: "http://fake", poolManager: POOL_MANAGER, tokens: [PEPE], registry: fakeRegistry({}).registry, transport: node.transport, initLookbackBlocks: 2_000n });
+  const buys = await port.buysBetween(1_000n, 1_000n);
+  assert.deepEqual(buys.map((b) => b.txHash), [hash(1)]);
+  const lookups = node.calls.filter((c) => c.method === "eth_getLogs" && Array.isArray((c.params as [{ topics?: unknown[] }])[0].topics?.[1])).map((c) => ((c.params as [{ topics: Hex[][] }])[0].topics[1]!).length);
+  assert.ok(lookups.length >= 3 && lookups.every((n) => n <= 500), `groups of at most 500, not ${lookups.join(", ")}`);
 });
