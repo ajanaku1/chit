@@ -83,6 +83,13 @@
             <p id="withdraw-note" class="fineprint" role="status" aria-live="polite"></p>
             <button id="withdraw-submit" type="submit" class="ghost" disabled>Withdraw to my wallet</button>
           </form>
+          <div class="withdraw-form">
+            <p class="fineprint">Tokens in this account. Only you can take them out.</p>
+            <div id="wtoken-list" class="fineprint" role="status" aria-live="polite"></div>
+            <button id="wtoken-all" type="button" class="ghost" disabled>Withdraw all tokens to my wallet</button>
+          </div>
+          <details class="fineprint">
+          <summary>A token not listed?</summary>
           <form id="wtoken-form" class="withdraw-form">
             <div class="field">
               <label for="wtoken-address">Take back a token (its address)</label>
@@ -95,6 +102,7 @@
             <p id="wtoken-note" class="fineprint" role="status" aria-live="polite">Tokens the bot bought sit in this account. Only you can take them out.</p>
             <button id="wtoken-submit" type="submit" class="ghost" disabled>Withdraw token to my wallet</button>
           </form>
+          </details>
         </section>
 
         <section class="wstep" aria-labelledby="grant-h" data-reveal>

@@ -97,3 +97,23 @@ test("a token withdraw: the token's address, what the account holds of it, an am
   assert.match(page, /functionName: "balanceOf", args: \[account!?\]/, "what the account holds is read from the token");
   assert.match(page, /button\("wtoken-submit"\)\.disabled = !deployed/, "enabled with the account, like the ETH withdraw");
 });
+
+/**
+ * The founder, 2026-10-01: "why is it asking for token ca, I should be able to
+ * withdraw all tokens at once". The page finds what the account holds from the
+ * chain itself and offers each, and all of them; the contract moves one token a
+ * call, so "all" is one transaction per token, sent in a row and counted.
+ */
+test("the account's tokens are found on chain and listed with a withdraw each and a withdraw all; the address field stays for one the scan missed", async () => {
+  const html = await read("sessions.html");
+  assert.match(html, /<div id="wtoken-list"/, "the tokens the account holds");
+  assert.match(html, /<button id="wtoken-all" type="button" class="ghost" disabled>Withdraw all tokens to my wallet<\/button>/);
+  assert.match(html, /<details[^>]*>\s*<summary>A token not listed\?<\/summary>/, "the address field, folded");
+  const page = await read("src/sessions-page.ts");
+  assert.match(page, /event: TRANSFER, args: \{ to: acct \}/, "every token sent to the account, from the chain's own logs");
+  assert.match(page, /const SPAN = 30_000n;/, "in pieces the public RPC takes without a token filter");
+  assert.match(page, /event: ACCOUNT_CREATED, args: \{ account: acct \}/, "from the account's creation, not the chain's start");
+  assert.match(page, /localStorage\.setItem\(scanStorage\(acct\)/, "and only the blocks since, next time");
+  assert.match(page, /for \(const \[n, t\] of held\.entries\(\)\)[\s\S]{0,400}encodeWithdrawToken\(t\.token, owner, t\.units\)/, "all: one withdrawToken per token, in a row");
+  assert.match(page, /`\$\{n \+ 1\} of \$\{held\.length\}/, "and the count as it goes");
+});

@@ -8,7 +8,7 @@
  * account) so the list can be rebuilt; the chain is the truth for each one.
  */
 
-import { createPublicClient, formatUnits, getAddress, http, isAddress, parseAbi, parseUnits, type Hex } from "viem";
+import { createPublicClient, formatUnits, getAddress, http, isAddress, parseAbi, parseAbiItem, parseUnits, type Hex } from "viem";
 
 import {
   ANY_FUNCTION,
@@ -189,6 +189,7 @@ const refreshAccount = async (): Promise<void> => {
   input("grant-target").value ||= UNIVERSAL_ROUTER;
   input("grant-selector").value ||= UNIVERSAL_ROUTER_EXECUTE;
   await renderSessions();
+  void renderTokens();
 };
 
 const readSession = async (key: Hex): Promise<SessionView> =>
@@ -303,6 +304,84 @@ const tokenHeld = async (token: Hex): Promise<{ units: bigint; decimals: number;
   ]);
   return { units, decimals, symbol };
 };
+/**
+ * Every token the chain shows reaching the account (Transfer logs to it, the whole chain in pieces the public RPC
+ * takes) that it still holds, so the owner withdraws without looking up an address. The contract moves one token a
+ * call, so "all" is one withdrawToken per token, sent in a row.
+ */
+const TRANSFER = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+let held: { token: Hex; units: bigint; decimals: number; symbol: string }[] = [];
+/**
+ * The public mainnet RPC answers a Transfer search without a token filter for 30 000 blocks at most (about an hour
+ * here, at ten blocks a second), so the search starts at the account's creation, found from the factory's own event
+ * (which can be filtered, 10 000 000 blocks a query), and this browser remembers how far it got and what it found, so a
+ * later visit reads only the blocks since. Cleared, it simply reads again from the creation.
+ */
+const SPAN = 30_000n;
+const ACCOUNT_CREATED = parseAbiItem("event AccountCreated(address indexed owner, address indexed account, bytes32 salt)");
+const scanStorage = (acct: Hex) => `chit-tokens:${acct.toLowerCase()}`;
+const createdAt = async (acct: Hex, head: bigint): Promise<bigint> => {
+  for (let to = head; to >= 0n; to -= 10_000_000n) {
+    const from = to >= 9_999_999n ? to - 9_999_999n : 0n;
+    const [made] = await publicClient.getLogs({ address: factory!, event: ACCOUNT_CREATED, args: { account: acct }, fromBlock: from, toBlock: to });
+    if (made) return made.blockNumber;
+  }
+  return 0n;
+};
+const tokensIn = async (acct: Hex, progress: (done: number, of: number) => void): Promise<Hex[]> => {
+  const head = await publicClient.getBlockNumber();
+  let saved: { to: string; tokens: string[] } | undefined;
+  try { saved = JSON.parse(localStorage.getItem(scanStorage(acct)) ?? "null") ?? undefined; } catch { saved = undefined; }
+  const seen = new Set<string>(saved?.tokens ?? []);
+  const start = saved ? BigInt(saved.to) + 1n : await createdAt(acct, head);
+  const pieces: [bigint, bigint][] = [];
+  for (let from = start; from <= head; from += SPAN) pieces.push([from, from + SPAN - 1n < head ? from + SPAN - 1n : head]);
+  let done = 0;
+  // A few at a time: the public RPC turns a burst away.
+  for (let i = 0; i < pieces.length; i += 4) {
+    await Promise.all(pieces.slice(i, i + 4).map(async ([from, to]) => {
+      for (const l of await publicClient.getLogs({ event: TRANSFER, args: { to: acct }, fromBlock: from, toBlock: to })) seen.add(l.address.toLowerCase());
+      progress(++done, pieces.length);
+    }));
+  }
+  try { localStorage.setItem(scanStorage(acct), JSON.stringify({ to: head.toString(), tokens: [...seen] })); } catch { /* read again next time */ }
+  return [...seen] as Hex[];
+};
+const renderTokens = async (): Promise<void> => {
+  const list = el("wtoken-list");
+  held = [];
+  button("wtoken-all").disabled = true;
+  if (!account || !deployed) { list.textContent = ""; return; }
+  list.textContent = "Looking for tokens in this account…";
+  try {
+    const found = await Promise.all((await tokensIn(account, (done, of) => { if (of > 4) list.textContent = `Reading this account's history… ${Math.round((done / of) * 100)}%`; })).map(async (token) => ({ token, ...(await tokenHeld(token).catch(() => ({ units: 0n, decimals: 18, symbol: "" }))) })));
+    held = found.filter((t) => t.units > 0n);
+  } catch { list.textContent = "Could not read the account's tokens right now. Refresh, or use a token's address below."; return; }
+  list.replaceChildren();
+  if (held.length === 0) { list.textContent = "No tokens in this account."; return; }
+  for (const t of held) {
+    const row = document.createElement("p");
+    row.textContent = `${formatUnits(t.units, t.decimals)} ${t.symbol} `;
+    const one = document.createElement("button");
+    one.type = "button"; one.className = "ghost"; one.textContent = "Withdraw";
+    one.addEventListener("click", () => { if (account && wallet) void transact(`Withdraw ${t.symbol}`, account, encodeWithdrawToken(t.token, wallet, t.units)).then((ok) => { if (ok) void renderTokens(); }); });
+    row.append(one);
+    list.append(row);
+  }
+  button("wtoken-all").disabled = false;
+};
+button("wtoken-all").addEventListener("click", () => {
+  if (!account || !wallet || held.length === 0) return;
+  const owner = wallet, from = account;
+  void (async () => {
+    for (const [n, t] of held.entries()) {
+      el("wtoken-list").textContent = `${n + 1} of ${held.length}: withdrawing ${t.symbol}…`;
+      if (!(await transact(`Withdraw ${t.symbol} (${n + 1} of ${held.length})`, from, encodeWithdrawToken(t.token, owner, t.units)))) break;
+    }
+    void renderTokens();
+  })();
+});
+
 input("wtoken-address").addEventListener("change", () => {
   const token = input("wtoken-address").value.trim();
   const note = el("wtoken-note");
