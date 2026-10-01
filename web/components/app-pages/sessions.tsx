@@ -82,14 +82,13 @@ Anyone running a bot today hands it their wallet key. Here you keep the wallet. 
               <label htmlFor="grant-key">The bot's key</label>
               <input id="grant-key" name="key" type="text" placeholder="0x… (filled in when you open this page from the bot's Re-link)" autoComplete="off" />
             </div>
-            <div className="field">
-              <label htmlFor="grant-target">Contract it may call</label>
-              <input id="grant-target" name="target" type="text" placeholder="0x… (the Universal Router is filled in)" autoComplete="off" />
-            </div>
-            <div className="field">
-              <label htmlFor="grant-selector">Function (4-byte selector; blank lets the key call any function of that contract)</label>
-              <input id="grant-selector" name="selector" type="text" placeholder="0x3593564c" autoComplete="off" />
-            </div>
+            <input id="grant-target" name="target" type="hidden" />
+            <input id="grant-selector" name="selector" type="hidden" />
+            <p className="fineprint">The bot can only swap, through the Uniswap router, within the limits below.</p>
+            <details className="fineprint">
+              <summary>Details</summary>
+              <p>Contract: the Universal Router, <code>0x8876789976decbfcbbbe364623c63652db8c0904</code>. Function: <code>execute</code> (<code>0x3593564c</code>), the swap call, and nothing else; this page never leaves it blank, since blank lets the key call any function of that contract.</p>
+            </details>
             <div className="field">
               <label htmlFor="grant-per-call">Max ETH per call</label>
               <input id="grant-per-call" name="perCall" type="text" inputMode="decimal" defaultValue="0.001" />

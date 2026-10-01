@@ -118,3 +118,21 @@ test("the account's tokens are found on chain and listed with a withdraw each an
   assert.match(page, /for \(const \[n, t\] of held\.entries\(\)\)[\s\S]{0,400}encodeWithdrawToken\(t\.token, owner, t\.units\)/, "all: one withdrawToken per token, in a row");
   assert.match(page, /`\$\{n \+ 1\} of \$\{held\.length\}/, "and the count as it goes");
 });
+
+/**
+ * The founder, 2026-10-01: why are the contract and the function editable
+ * boxes when they are filled in for you? For the Chit bot they are always the
+ * router and its execute, and a typo or a blank selector is a risk, not a
+ * choice. They are read-only; the bot's key is too once the bot's link fills
+ * it; the caps and the days stay the user's.
+ */
+test("the contract and the function are not fields at all: one plain line says what the key can do, the exact values are folded under Details; the bot's key is fixed once the bot's link fills it; the caps and the days stay editable", async () => {
+  const html = await read("sessions.html");
+  assert.match(html, /<input id="grant-target" name="target" type="hidden" \/>/, "the contract cannot be changed, nor seen as a box");
+  assert.match(html, /<input id="grant-selector" name="selector" type="hidden" \/>/, "nor the function");
+  assert.match(html, /The bot can only swap, through the Uniswap router, within the limits below\./);
+  assert.match(html, /<summary>Details<\/summary>[\s\S]{0,300}0x8876789976decbfcbbbe364623c63652db8c0904/, "the exact contract, for whoever checks");
+  for (const id of ["grant-per-call", "grant-cap", "grant-days"]) assert.doesNotMatch(html, new RegExp(`<input id="${id}"[^>]*readonly`), `${id} stays the user's`);
+  const page = await read("src/sessions-page.ts");
+  assert.match(page, /input\("grant-key"\)\.value \|\|= linkKey;\s*input\("grant-key"\)\.readOnly = true;/);
+});
