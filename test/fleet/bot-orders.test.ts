@@ -483,3 +483,19 @@ test("an order whose holders check could not be read skips the pass without tell
   await runner.run();
   assert.equal(session.calls.length, 1);
 });
+
+/**
+ * Found 2026-10-01: the founder's DCA never fired. The database driver returns a
+ * timestamp column as a Date, and String(date) drops the milliseconds, so the
+ * slot the runner read (09:41:12) never matched the stored one (09:41:12.345):
+ * every claim failed and every pass skipped the order without a word.
+ */
+test("neon: a timestamp read back as a Date keeps its milliseconds, so a dca's slot matches the stored one and the claim can take it", async () => {
+  const at = new Date("2026-10-01T09:41:12.345Z");
+  const sql = fakeSql((query) => query.includes("SELECT * FROM bot_orders WHERE status = 'open'")
+    ? [{ id: "d", tg_id: "7", account: ACCOUNT, chain_id: 4663, token: PEPE, kind: "dca", eth_wei: "100000000000000", every_ms: 3_600_000, remaining: 2, next_at: at, created_at: at, status: "open", refusals: 0, firing_at: null }]
+    : []);
+  const [o] = await new NeonOrderStore(sql).open(4663);
+  assert.equal(o!.nextAt, "2026-10-01T09:41:12.345Z", "the slot as stored, to the millisecond");
+  assert.equal(o!.createdAt, "2026-10-01T09:41:12.345Z");
+});

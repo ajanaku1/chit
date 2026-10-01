@@ -128,6 +128,8 @@ export const handleOrdersRequest = async (request: Request, now = new Date()): P
     try {
       runner ??= build();
       const report = await runner.run(now);
+      // One line a pass, so an order that is skipped without a word can be seen from the logs (2026-10-01: a DCA that never fired).
+      console.log(`bot orders: ${JSON.stringify(report)}`);
       return json({ state: "ran", ...report }, 200);
     } catch (e) {
       if (e instanceof ConfigFault) return json({ state: "not_configured", reason: e.message }, 503);

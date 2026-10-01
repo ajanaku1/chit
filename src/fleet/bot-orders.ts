@@ -381,17 +381,20 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS bot_order_fires_owner ON bot_order_fires (tg_id, chain_id, fired_at)`,
 ];
 
+/** A timestamp column as ISO text. The driver hands back a Date, and String(date) drops the milliseconds, which made a DCA's slot never match its own row. */
+const iso = (v: unknown): string => (v instanceof Date ? v : new Date(String(v))).toISOString();
+
 const rowOrder = (r: Row): Order => ({
   id: String(r.id), tgId: String(r.tg_id), account: String(r.account) as Address, chainId: Number(r.chain_id), token: String(r.token) as Address, kind: String(r.kind) as OrderKind,
   ethWei: BigInt(String(r.eth_wei)),
   ...(r.trigger_per_eth !== null && r.trigger_per_eth !== undefined ? { triggerPerEth: BigInt(String(r.trigger_per_eth)) } : {}),
   ...(r.every_ms !== null && r.every_ms !== undefined ? { everyMs: Number(r.every_ms) } : {}),
   ...(r.remaining !== null && r.remaining !== undefined ? { remaining: Number(r.remaining) } : {}),
-  ...(r.next_at ? { nextAt: new Date(String(r.next_at)).toISOString() } : {}),
-  createdAt: new Date(String(r.created_at)).toISOString(), status: String(r.status) as OrderStatus,
+  ...(r.next_at ? { nextAt: iso(r.next_at) } : {}),
+  createdAt: iso(r.created_at), status: String(r.status) as OrderStatus,
   ...(r.last_error ? { lastError: String(r.last_error) } : {}),
   refusals: Number(r.refusals ?? 0),
-  ...(r.firing_at ? { firingAt: new Date(String(r.firing_at)).toISOString() } : {}),
+  ...(r.firing_at ? { firingAt: iso(r.firing_at) } : {}),
 });
 
 /** Neon: beside the bot's links; the schema is applied once per instance. Every runner write is one conditional statement, never a read then a write. */
