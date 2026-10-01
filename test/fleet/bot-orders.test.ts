@@ -469,3 +469,17 @@ test("an order whose owner is under the $CHIT holders line waits, without sendin
   await runner.run();
   assert.equal(session.calls.length, 1, "fires once the line is held");
 });
+
+test("an order whose holders check could not be read skips the pass without telling the owner anything false, and fires on the next", async () => {
+  let unknown = true;
+  const { orders, links, session, telegram, runner } = setup(1_500_000n, { holders: async () => (unknown ? { ok: false as const, unknown: true as const } : { ok: true as const }) } as never);
+  await linked(links);
+  await orders.put(order({ id: "l", kind: "limit", triggerPerEth: 1_200_000n }));
+  await runner.run();
+  assert.equal(session.calls.length, 0);
+  assert.equal((await orders.get("l"))!.lastError, undefined, "no 'holds less' on the order");
+  assert.equal(telegram.sent.length, 0, "and nothing said to the owner");
+  unknown = false;
+  await runner.run();
+  assert.equal(session.calls.length, 1);
+});

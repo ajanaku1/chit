@@ -484,7 +484,8 @@ export class CopyDesk {
     for (const f of followers) {
       const link = await this.#d.links.getLink(f.followerTgId);
       if (!link) { await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: "follower is not linked" }); continue; }
-      if (this.#d.holders && !(await this.#d.holders(link.owner)).ok) { await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: "your wallet holds less $CHIT than the beta's line; mirrors are for holders" }); continue; }
+      const held = this.#d.holders ? await this.#d.holders(link.owner) : { ok: true as const };
+      if (!held.ok) { await record({ ...base, followerTgId: f.followerTgId, ethWei: 0n, outcome: "skipped", why: "unknown" in held ? "your wallet's $CHIT could not be checked just now; nothing was sent for you" : "your wallet holds less $CHIT than the beta's line; mirrors are for holders" }); continue; }
       // Sized to the leader's buy, never above the follower's cap.
       const wei = leaderEthWei < f.capWei ? leaderEthWei : f.capWei;
       const left = budgetUntil - this.#now.getTime();

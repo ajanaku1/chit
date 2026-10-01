@@ -93,7 +93,7 @@ const build = (): OrderRunner => {
   if (dailyGas && !/^\d+(\.\d{1,18})?$/.test(dailyGas)) refuse("BOT_DAILY_GAS_ETH is not an amount in ETH");
   const sql = overrides.orders && overrides.links ? undefined : sqlFromEnv();
   const reads = overrides.reads ?? createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) });
-  const holders = holdersGateFromEnv((t, o) => reads.tokenBalance(t, o));
+  const holders = holdersGateFromEnv((t, o) => (reads.tokenBalanceStrict ?? reads.tokenBalance)(t, o));
   return new OrderRunner({
     orders: overrides.orders ?? (sql ? new NeonOrderStore(sql) : new MemoryOrderStore()),
     links: overrides.links ?? (sql ? new NeonBotLinkStore(sql) : new MemoryBotLinkStore()),

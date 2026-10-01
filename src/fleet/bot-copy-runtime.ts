@@ -105,7 +105,7 @@ export const groupChatIdFromEnv = (refuse: Refuse): string | undefined => {
 export const createCopyDesk = (p: CopyDeskParts): CopyDesk => {
   if (!p.orus) warnOnce("copy-orus", "ORUS_PARTNER_API_KEY is not set: leaders and followers work, but every mirrored buy is skipped until it is");
   const groupChatId = groupChatIdFromEnv(p.refuse);
-  const holders = p.holders ?? holdersGateFromEnv((t, o) => p.reads.tokenBalance(t, o));
+  const holders = p.holders ?? holdersGateFromEnv((t, o) => (p.reads.tokenBalanceStrict ?? p.reads.tokenBalance)(t, o));
   return new CopyDesk({
     store: p.store ?? copyStoreFromEnv(p.refuse),
     links: p.links, reads: p.reads, session: p.session,

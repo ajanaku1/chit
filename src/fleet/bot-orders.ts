@@ -232,7 +232,9 @@ export class OrderRunner {
   async #fire(o: Order, now: Date, budgets: Map<string, Budget>): Promise<Outcome> {
     const link = await this.#d.links.getLink(o.tgId);
     if (!link || link.account.toLowerCase() !== o.account.toLowerCase() || link.chainId !== o.chainId) return this.#refuse(o, now, "your telegram is no longer linked to the account this order was placed from");
-    if (this.#d.holders && !(await this.#d.holders(link.owner)).ok) return this.#wait(o, now, "your wallet holds less $CHIT than the beta's line; the order waits until it holds the line again");
+    const held = this.#d.holders ? await this.#d.holders(link.owner) : { ok: true as const };
+    // Unknown is not "less": the pass is skipped quietly and the next one reads again.
+    if (!held.ok) return "unknown" in held ? "skipped" : this.#wait(o, now, "your wallet holds less $CHIT than the beta's line; the order waits until it holds the line again");
     const [info, quote] = await Promise.all([this.#d.reads.tokenInfo(o.token), this.#d.reads.quoteBuy(o.token, o.ethWei)]);
     if (!info.hasPool || quote === null) return this.#refuse(o, now, "no quote from the pool right now");
     let minOut = minOutFor(quote, this.#d.buySlippageBps ?? 300);

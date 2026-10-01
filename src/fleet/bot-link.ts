@@ -86,6 +86,7 @@ export const verifyLink = async (
   if (getAddress(owner) !== getAddress(signer)) throw new LinkError(403, "the signature is not the account owner's");
   // Before the nonce is spent, so a wallet that buys $CHIT can come back with the same link.
   const held = holders ? await holders(getAddress(owner)) : { ok: true as const };
+  if (!held.ok && "unknown" in held) throw new LinkError(503, "could not check this wallet's $CHIT just now: try again in a moment");
   if (!held.ok) throw new LinkError(403, `the bot is for $CHIT holders during the beta: this wallet holds ${(held.holds / 10n ** 18n).toLocaleString("en-US")} $CHIT, the line is ${(held.need / 10n ** 18n).toLocaleString("en-US")}`);
   if (!(await store.useNonce(nonce, now))) throw new LinkError(409, "this link was already used: ask the bot for a new one");
   const link: BotLink = { tgId: n.tgId, account: getAddress(account), owner: getAddress(owner), chainId, nonce, signature: signature as Hex, linkedAt: now.toISOString() };

@@ -37,3 +37,18 @@ test("the refusal names the wallet, what it holds and the line, and says the acc
     "the bot is for $CHIT holders during the beta. your wallet <code>0x2e50…e91d</code> holds <code>12,000</code> $CHIT; the line is <code>100,000</code>. your account and its tokens stay yours: you can still sell here, or withdraw on the Sessions page.",
   );
 });
+
+/**
+ * Found 2026-10-01: the founder's DCA waited with "your wallet holds less $CHIT
+ * than the beta's line" while the wallet held 104,614. The balance read failed
+ * on the server and the bot's read turned the failure into 0. A failed read is
+ * now "unknown": still never a pass, never remembered, and said as what it is.
+ */
+test("a failed read is unknown, not a balance of 0: never a pass, never remembered, so the next ask reads again", async () => {
+  let fail = true, reads = 0;
+  const gate = createHoldersGate({ balanceOf: async () => { reads++; if (fail) throw new Error("429"); return LINE; }, threshold: LINE });
+  assert.deepEqual(await gate(OWNER), { ok: false, unknown: true });
+  fail = false;
+  assert.deepEqual(await gate(OWNER), { ok: true }, "read again at once, and passes");
+  assert.equal(reads, 2);
+});
