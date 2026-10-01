@@ -29,6 +29,7 @@ import type { Update } from "../../src/fleet/bot-handlers.js";
 import { CopyDesk, MemoryCopyStore } from "../../src/fleet/bot-copy.js";
 import { MemoryBotLinkStore } from "../../src/fleet/bot-link.js";
 import { MemoryPositionLedger } from "../../src/fleet/bot-positions.js";
+import { MemoryCompStore } from "../../src/fleet/bot-comp.js";
 import type { OrusScan } from "../../src/fleet/bot-orus.js";
 import { SessionBot } from "../../src/fleet/bot-session.js";
 import type { SessionSell } from "../../src/fleet/session-keys.js";
@@ -846,6 +847,38 @@ test("every buy and sell the bot sends is written to the trade record by its has
   const trades = await positions.forAccount(ACCOUNT);
   assert.deepEqual(trades.map((t) => [t.side, t.ethWei, t.asked, t.units]), [["buy", parseEther("0.01"), 0n, null], ["sell", 0n, 21_000_000n, null]]);
   assert.ok(trades.every((t) => t.token.toLowerCase() === PEPE.toLowerCase()));
+});
+
+test("a landed sale writes what it returned, the account's ETH rise, beside its floor; a sale not seen landing keeps the floor", async () => {
+  const positions = new MemoryPositionLedger();
+  // 50% of 42 PEPE quotes 0.000021 ETH; the account's balance rises 0.0000205 across the sale.
+  let balance = parseEther("0.4");
+  const rising = { ...reads, async ethBalance() { const b = balance; balance += 20_500_000_000_000n; return b; } } as BotChain;
+  const { links, session, bot } = setup({ positions, reads: rising });
+  await linked(links);
+  session.allowSell(true);
+  await bot.handle(tap(`s:${PEPE}:50`));
+  const floor = minOutFor(21_000_000_000_000n, 300);
+  assert.equal((await positions.forAccount(ACCOUNT))[0]!.ethOut, 20_500_000_000_000n);
+  const unseen = new MemoryPositionLedger();
+  const second = setup({ positions: unseen, reads: rising });
+  await linked(second.links);
+  second.session.allowSell(true);
+  second.session.saleLands(false);
+  await second.bot.handle(tap(`s:${PEPE}:50`));
+  assert.equal((await unseen.forAccount(ACCOUNT))[0]!.ethOut, floor);
+});
+
+test("/join enters the competition under a nickname, by Telegram id; without the store it is the help card", async () => {
+  const comp = new MemoryCompStore();
+  const { bot, telegram, links } = setup({ comp });
+  await linked(links);
+  await bot.handle(dm("/join moonboy"));
+  assert.match(telegram.last(), /you're in as <b>moonboy<\/b>\. only trades you make in this bot/);
+  assert.deepEqual((await comp.all()).map((e) => [e.tgId, e.nickname, e.username]), [["7", "moonboy", null]]);
+  const plain = setup();
+  await plain.bot.handle(dm("/join moonboy"));
+  assert.doesNotMatch(plain.telegram.last(), /you're in/);
 });
 
 test("a mirrored buy is written to the follower's trade record too, so their Positions count what the desk bought for them", async () => {

@@ -13,6 +13,7 @@
     "test:fleet": "npm run build:fleet && node --test --test-reporter spec \"dist-fleet/test/fleet/*.test.js\"",
     "watch": "tsc --build . --watch",
     "test": "npm run test:fleet",
+    "comp-score": "tsx scripts/comp-score.ts",
     "test:fleet:contracts": "npm run build && node --test dist/test/fork/fleet-contracts.test.js",
     "fleet-deploy:live": "npm run build && node --env-file=.env dist/scripts/fleet-deploy-live.js",
     "fleet-first-buy:live": "npm run build && node --env-file=.env dist/scripts/fleet-first-buy-live.js",

@@ -42,8 +42,9 @@
  */
 
 import { holdersAnswer, type HoldersGate } from "./bot-holders.js";
+import { joinReply, type CompStore } from "./bot-comp.js";
 import { positionsCard } from "./bot-positions-card.js";
-import { noteSent, type PositionLedger } from "./bot-positions.js";
+import { noteProceeds, noteSent, saleProceeds, type PositionLedger } from "./bot-positions.js";
 import { type Address, type Hex, isAddress } from "viem";
 import { AlertCards } from "./bot-alert-cards.js";
 import type { AlertStore } from "./bot-alerts.js";
@@ -69,6 +70,8 @@ export type SessionBotDeps = {
   links: BotLinkStore;
   /** Every sent trade, for Positions and their P&L (bot-positions.ts); absent, nothing is recorded. */
   positions?: PositionLedger;
+  /** The trading competition's entries (bot-comp.ts): `/join <nickname>`; absent, /join is the help card. */
+  comp?: CompStore;
   /** The $CHIT holders line (bot-holders.ts): asked of the account's owner before any buy the bot pays gas for; absent, no line. */
   holders?: HoldersGate;
   /** ETH's price in dollars for Positions' $ view; absent or undefined, Positions stay in ETH. */
@@ -195,6 +198,7 @@ export class SessionBot {
       if (cmd === "/start") return this.#start(chatId, tgId, arg);
       if (cmd === "/help") return this.#help(chatId);
       if (cmd === "/link") return this.#connect(chatId, tgId);
+      if (cmd === "/join" && this.#d.comp) return this.#join(this.#d.comp, chatId, tgId, u.message.from.username, text.slice(cmd.length));
       // copy: a reply to a cap or handle prompt (bot-copy-cards.ts).
       if (this.#copy && (await this.#copy.reply(chatId, tgId, text, !!u.message.reply_to_message))) return;
       // alerts: a reply to the line prompt (bot-alert-cards.ts).
@@ -553,6 +557,12 @@ export class SessionBot {
     return this.#orders(chatId, tgId, messageId);
   }
 
+  /** The trading competition's entry (bot-comp.ts): by Telegram id, under the nickname typed after /join. */
+  async #join(comp: CompStore, chatId: string, tgId: string, username: string | undefined, nickname: string): Promise<void> {
+    const linked = !!(await this.#d.links.getLink(tgId));
+    return this.#say(chatId, await joinReply(comp, { tgId, ...(username ? { username } : {}) }, nickname, linked, this.#now));
+  }
+
   // ---------- sell ----------
 
   /**
@@ -591,8 +601,11 @@ export class SessionBot {
     if (!can.ok) return this.#say(chatId, `your session says no: <b>${esc(can.why)}</b>. manage it on the Sessions page.`, kb([url("🔑 Sessions page", sessions), btn("← Back", `token:${token}`)]));
     await this.#say(chatId, `selling <code>${fmt(amount, info.decimals, 4)} ${esc(info.symbol)}</code> (${percent}%) from your account: about <code>${eth(quote)} ETH</code>, floor <code>${eth(minOut)}</code>…`);
     count.executes += 1;
+    // The account's ETH either side of the sale is what it returned (saleProceeds); a read that fails leaves the floor on record and never stops the sale.
+    const before = this.#d.positions ? await this.#d.reads.ethBalance(link.account).catch(() => undefined) : undefined;
     const r = await this.#d.session.sell(link.account, { router: this.#d.reads.router, token, amountIn: amount, minOut, deadline, poolKey });
-    await noteSent(this.#d.positions, { hash: r.hash, account: link.account, token, side: "sell", ethWei: 0n, asked: amount, at: this.#now.toISOString() });
+    await noteSent(this.#d.positions, { hash: r.hash, account: link.account, token, side: "sell", ethWei: 0n, asked: amount, ethOut: minOut, at: this.#now.toISOString() });
+    if (r.landed && before !== undefined) await noteProceeds(this.#d.positions, r.hash, saleProceeds(before, await this.#d.reads.ethBalance(link.account).catch(() => before), minOut, quote));
     count.gasWei += SELL_GAS_WEI;
     const explorer = `https://robinhoodchain.blockscout.com/tx/${r.hash}`;
     await this.#say(chatId, r.landed

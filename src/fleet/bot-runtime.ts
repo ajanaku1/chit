@@ -177,6 +177,7 @@ import { recordedPoolsFromEnv } from "./pool-registry.js";
 import { MemoryAlertStore, NeonAlertStore, type AlertStore } from "./bot-alerts.js";
 import { MemoryUpdateClaims, NeonUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { DualBot, MemoryFloorStore, NeonFloorStore, type FloorStore } from "./bot-dual.js";
+import { MemoryCompStore, NeonCompStore, type CompStore } from "./bot-comp.js";
 
 /** BOT_USD_TOKEN: a dollar stablecoin on the chain (USDG on 4663); its ETH pool prices Positions' $ view (bot-usd-price.ts). Unset: ETH only. */
 const usdTokenFromEnv = (): Address | undefined => {
@@ -266,6 +267,18 @@ const updateClaimsFromEnv = (): UpdateClaims => {
   return new MemoryUpdateClaims();
 };
 
+/** Session mode: the trading competition's /join entries (bot-comp.ts); the same store rule as the links. */
+const compFromEnv = (): CompStore => {
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    const sql = neon(url);
+    return new NeonCompStore({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
+  }
+  if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
+  warnOnce("comp", "BOT_MEMORY_STORE=1: competition entries live in this instance's memory only");
+  return new MemoryCompStore();
+};
+
 /** Session mode's standing orders (limit buys, DCA); the same store rule as the links. BOT_ORDERS_OFF=1 offers none. */
 const ordersFromEnv = (): OrderStore | undefined => {
   if (process.env.BOT_ORDERS_OFF === "1") return undefined;
@@ -331,6 +344,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     ...(dailyExecutes !== undefined ? { dailyExecutes } : {}),
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
     positions: positionLedgerFromEnv(),
+    comp: compFromEnv(),
     ...(holders ? { holders } : {}),
     ...(usdToken ? { usdPerEth: createUsdPrice({ reads, token: usdToken }) } : {}),
   };
