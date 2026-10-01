@@ -31,6 +31,8 @@ export type BotTrade = {
   asked: bigint;
   /** Tokens in (buy) or out (sell); null until settled from the receipt. */
   units: bigint | null;
+  /** A sell's ETH back: its floor when sent, what the account's balance rose by once it landed (saleProceeds). Absent for a buy. */
+  ethOut?: bigint;
   at: string;
 };
 
@@ -41,6 +43,8 @@ export type PositionLedger = {
   /** Written when the trade is sent; the same hash twice is one trade. */
   note(trade: BotTrade): Promise<void>;
   settle(hash: Hex, units: bigint): Promise<void>;
+  /** What a landed sell returned, measured when it landed. */
+  proceeds(hash: Hex, wei: bigint): Promise<void>;
   forAccount(account: Address): Promise<BotTrade[]>;
 };
 
@@ -51,6 +55,7 @@ export class MemoryPositionLedger implements PositionLedger {
   readonly trades = new Map<string, BotTrade>();
   async note(t: BotTrade) { if (!this.trades.has(t.hash.toLowerCase())) this.trades.set(t.hash.toLowerCase(), { ...t, account: lower(t.account), token: lower(t.token) }); }
   async settle(hash: Hex, units: bigint) { const t = this.trades.get(hash.toLowerCase()); if (t) t.units = units; }
+  async proceeds(hash: Hex, wei: bigint) { const t = this.trades.get(hash.toLowerCase()); if (t) t.ethOut = wei; }
   async forAccount(account: Address) { const a = lower(account); return [...this.trades.values()].filter((t) => t.account === a).map((t) => ({ ...t })); }
 }
 
@@ -60,11 +65,13 @@ export type PositionSql = { query(sql: string, params?: unknown[]): Promise<read
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS bot_session_trades (tx_hash TEXT PRIMARY KEY, account TEXT NOT NULL, token TEXT NOT NULL, side TEXT NOT NULL, eth_wei NUMERIC(40,0) NOT NULL, asked NUMERIC(60,0) NOT NULL, units NUMERIC(60,0), at TIMESTAMPTZ NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS bot_session_trades_account ON bot_session_trades (account)`,
+  `ALTER TABLE bot_session_trades ADD COLUMN IF NOT EXISTS eth_out NUMERIC(40,0)`,
 ];
 
 const rowTrade = (r: Row): BotTrade => ({
   hash: String(r.tx_hash) as Hex, account: lower(String(r.account)), token: lower(String(r.token)), side: String(r.side) as TradeSide,
   ethWei: BigInt(String(r.eth_wei)), asked: BigInt(String(r.asked)), units: r.units === null || r.units === undefined ? null : BigInt(String(r.units)), at: new Date(String(r.at)).toISOString(),
+  ...(r.eth_out === null || r.eth_out === undefined ? {} : { ethOut: BigInt(String(r.eth_out)) }),
 });
 
 /** Neon, beside the bot's other tables; the schema is applied once per instance. */
@@ -77,13 +84,17 @@ export class NeonPositionLedger implements PositionLedger {
   async note(t: BotTrade) {
     await this.#init();
     await this.sql.query(
-      `INSERT INTO bot_session_trades (tx_hash, account, token, side, eth_wei, asked, units, at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (tx_hash) DO NOTHING`,
-      [t.hash.toLowerCase(), lower(t.account), lower(t.token), t.side, t.ethWei.toString(), t.asked.toString(), t.units === null ? null : t.units.toString(), t.at],
+      `INSERT INTO bot_session_trades (tx_hash, account, token, side, eth_wei, asked, units, at, eth_out) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) ON CONFLICT (tx_hash) DO NOTHING`,
+      [t.hash.toLowerCase(), lower(t.account), lower(t.token), t.side, t.ethWei.toString(), t.asked.toString(), t.units === null ? null : t.units.toString(), t.at, t.ethOut === undefined ? null : t.ethOut.toString()],
     );
   }
   async settle(hash: Hex, units: bigint) {
     await this.#init();
     await this.sql.query(`UPDATE bot_session_trades SET units = $2 WHERE tx_hash = $1`, [hash.toLowerCase(), units.toString()]);
+  }
+  async proceeds(hash: Hex, wei: bigint) {
+    await this.#init();
+    await this.sql.query(`UPDATE bot_session_trades SET eth_out = $2 WHERE tx_hash = $1`, [hash.toLowerCase(), wei.toString()]);
   }
   async forAccount(account: Address) {
     await this.#init();
@@ -141,4 +152,21 @@ export const noteSent = async (ledger: PositionLedger | undefined, t: Omit<BotTr
   if (!ledger) return;
   try { await ledger.note({ ...t, units: null }); }
   catch (error) { console.error("positions: trade not noted", t.hash, (error instanceof Error ? error.message : String(error)).split("\n")[0]); }
+};
+
+/**
+ * What a landed sale returned: the account's balance after, less before. The bot pays the gas, so that rise is the
+ * sale's ETH, unless something else moved the account in between; so it is held between the floor (a landed sale
+ * returned at least that) and the quote, and a balance read that missed it counts the floor.
+ */
+export const saleProceeds = (before: bigint, after: bigint, floor: bigint, quote: bigint): bigint => {
+  const rose = after - before;
+  return rose < floor ? floor : rose > quote ? quote : rose;
+};
+
+/** Writes what a landed sale returned; like noteSent, a failure is logged and never stands in the way of the reply. */
+export const noteProceeds = async (ledger: PositionLedger | undefined, hash: Hex, wei: bigint): Promise<void> => {
+  if (!ledger) return;
+  try { await ledger.proceeds(hash, wei); }
+  catch (error) { console.error("positions: proceeds not noted", hash, (error instanceof Error ? error.message : String(error)).split("\n")[0]); }
 };

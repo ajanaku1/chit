@@ -43,7 +43,7 @@
 
 import { holdersAnswer, type HoldersGate } from "./bot-holders.js";
 import { positionsCard } from "./bot-positions-card.js";
-import { noteSent, type PositionLedger } from "./bot-positions.js";
+import { noteProceeds, noteSent, saleProceeds, type PositionLedger } from "./bot-positions.js";
 import { type Address, type Hex, isAddress } from "viem";
 import { AlertCards } from "./bot-alert-cards.js";
 import type { AlertStore } from "./bot-alerts.js";
@@ -591,8 +591,11 @@ export class SessionBot {
     if (!can.ok) return this.#say(chatId, `your session says no: <b>${esc(can.why)}</b>. manage it on the Sessions page.`, kb([url("🔑 Sessions page", sessions), btn("← Back", `token:${token}`)]));
     await this.#say(chatId, `selling <code>${fmt(amount, info.decimals, 4)} ${esc(info.symbol)}</code> (${percent}%) from your account: about <code>${eth(quote)} ETH</code>, floor <code>${eth(minOut)}</code>…`);
     count.executes += 1;
+    // The account's ETH either side of the sale is what it returned (saleProceeds); a read that fails leaves the floor on record and never stops the sale.
+    const before = this.#d.positions ? await this.#d.reads.ethBalance(link.account).catch(() => undefined) : undefined;
     const r = await this.#d.session.sell(link.account, { router: this.#d.reads.router, token, amountIn: amount, minOut, deadline, poolKey });
-    await noteSent(this.#d.positions, { hash: r.hash, account: link.account, token, side: "sell", ethWei: 0n, asked: amount, at: this.#now.toISOString() });
+    await noteSent(this.#d.positions, { hash: r.hash, account: link.account, token, side: "sell", ethWei: 0n, asked: amount, ethOut: minOut, at: this.#now.toISOString() });
+    if (r.landed && before !== undefined) await noteProceeds(this.#d.positions, r.hash, saleProceeds(before, await this.#d.reads.ethBalance(link.account).catch(() => before), minOut, quote));
     count.gasWei += SELL_GAS_WEI;
     const explorer = `https://robinhoodchain.blockscout.com/tx/${r.hash}`;
     await this.#say(chatId, r.landed

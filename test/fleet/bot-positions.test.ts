@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { MemoryPositionLedger, costBasis, positionRow, settleTrades, type BotTrade, type TradeReceipt } from "../../src/fleet/bot-positions.js";
+import { MemoryPositionLedger, costBasis, positionRow, saleProceeds, settleTrades, type BotTrade, type TradeReceipt } from "../../src/fleet/bot-positions.js";
 import type { Address, Hex } from "../../src/fleet/types.js";
 
 const ACCOUNT = "0x00000000000000000000000000000000000000a1" as Address;
@@ -37,4 +37,14 @@ test("units the record cannot account for carry no cost, and do not flatter the 
   // 150 recorded, 300 held: half the holding came from elsewhere; its value is left out of the P&L.
   assert.deepEqual(positionRow(basis, 300n, 120n), { token: TOKEN, held: 300n, value: 120n, cost: 30n, pnl: 30n, unknownUnits: 150n });
   assert.deepEqual(positionRow({ token: TOKEN, ethIn: 0n, unitsIn: 0n, unitsOut: 0n }, 10n, 5n), { token: TOKEN, held: 10n, value: 5n, cost: null, pnl: null, unknownUnits: 10n }, "nothing recorded: value only");
+});
+
+test("a sale's proceeds are the balance's rise, held between its floor and its quote: a missed read counts the floor, a deposit in between is not profit", async () => {
+  assert.equal(saleProceeds(100n, 195n, 90n, 100n), 95n, "the rise, inside the bounds");
+  assert.equal(saleProceeds(100n, 100n, 90n, 100n), 90n, "no rise seen: the floor, which a landed sale returned at least");
+  assert.equal(saleProceeds(100n, 400n, 90n, 100n), 100n, "a deposit landed too: no more than the quote");
+  const ledger = new MemoryPositionLedger();
+  await ledger.note({ ...trade(1, "sell", 0n, 50n), ethOut: 90n });
+  await ledger.proceeds(h(1), 95n);
+  assert.equal((await ledger.forAccount(ACCOUNT))[0]!.ethOut, 95n);
 });
