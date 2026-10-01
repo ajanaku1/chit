@@ -52,6 +52,13 @@ Anyone running a bot today hands it their wallet key. Here you keep the wallet. 
             <p id="withdraw-note" className="fineprint" role="status" aria-live="polite"></p>
             <button id="withdraw-submit" type="submit" className="ghost" disabled>Withdraw to my wallet</button>
           </form>
+          <div className="withdraw-form">
+            <p className="fineprint">Tokens in this account. Only you can take them out.</p>
+            <div id="wtoken-list" className="fineprint" role="status" aria-live="polite"></div>
+            <button id="wtoken-all" type="button" className="ghost" disabled>Withdraw all tokens to my wallet</button>
+          </div>
+          <details className="fineprint">
+          <summary>A token not listed?</summary>
           <form id="wtoken-form" className="withdraw-form">
             <div className="field">
               <label htmlFor="wtoken-address">Take back a token (its address)</label>
@@ -64,6 +71,7 @@ Anyone running a bot today hands it their wallet key. Here you keep the wallet. 
             <p id="wtoken-note" className="fineprint" role="status" aria-live="polite">Tokens the bot bought sit in this account. Only you can take them out.</p>
             <button id="wtoken-submit" type="submit" className="ghost" disabled>Withdraw token to my wallet</button>
           </form>
+          </details>
         </section>
 
         <section className="wstep" aria-labelledby="grant-h" data-reveal>
