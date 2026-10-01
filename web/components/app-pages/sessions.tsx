@@ -52,6 +52,18 @@ Anyone running a bot today hands it their wallet key. Here you keep the wallet. 
             <p id="withdraw-note" className="fineprint" role="status" aria-live="polite"></p>
             <button id="withdraw-submit" type="submit" className="ghost" disabled>Withdraw to my wallet</button>
           </form>
+          <form id="wtoken-form" className="withdraw-form">
+            <div className="field">
+              <label htmlFor="wtoken-address">Take back a token (its address)</label>
+              <input id="wtoken-address" name="token" type="text" inputMode="text" placeholder="0x…" autoComplete="off" />
+            </div>
+            <div className="field">
+              <label htmlFor="wtoken-amount">Amount (blank for all of it)</label>
+              <input id="wtoken-amount" name="amount" type="text" inputMode="decimal" placeholder="all" />
+            </div>
+            <p id="wtoken-note" className="fineprint" role="status" aria-live="polite">Tokens the bot bought sit in this account. Only you can take them out.</p>
+            <button id="wtoken-submit" type="submit" className="ghost" disabled>Withdraw token to my wallet</button>
+          </form>
         </section>
 
         <section className="wstep" aria-labelledby="grant-h" data-reveal>

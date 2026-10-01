@@ -8,7 +8,7 @@
  * account) so the list can be rebuilt; the chain is the truth for each one.
  */
 
-import { createPublicClient, getAddress, http, isAddress, type Hex } from "viem";
+import { createPublicClient, formatUnits, getAddress, http, isAddress, parseAbi, parseUnits, type Hex } from "viem";
 
 import {
   ANY_FUNCTION,
@@ -23,6 +23,7 @@ import {
   encodeRevoke,
   encodeSetSellAllowed,
   encodeWithdraw,
+  encodeWithdrawToken,
   sessionState,
   type SessionView,
 } from "../../src/fleet/session-keys.js";
@@ -149,7 +150,7 @@ const refreshAccount = async (): Promise<void> => {
   wallet = getConnectedWallet();
   if (!wallet) {
     el("account-note").textContent = "Connect your wallet to see your account.";
-    for (const id of ["account-create", "fund-submit", "withdraw-submit", "grant-submit"]) button(id).disabled = true;
+    for (const id of ["account-create", "fund-submit", "withdraw-submit", "wtoken-submit", "grant-submit"]) button(id).disabled = true;
     return;
   }
   if (!factory) {
@@ -183,6 +184,7 @@ const refreshAccount = async (): Promise<void> => {
   button("account-create").disabled = deployed;
   button("fund-submit").disabled = !deployed;
   button("withdraw-submit").disabled = !deployed;
+  button("wtoken-submit").disabled = !deployed;
   button("grant-submit").disabled = !deployed;
   input("grant-target").value ||= UNIVERSAL_ROUTER;
   input("grant-selector").value ||= UNIVERSAL_ROUTER_EXECUTE;
@@ -288,6 +290,48 @@ el("withdraw-form").addEventListener("submit", (event) => {
   let wei: bigint;
   try { wei = BigInt(parseEth(input("withdraw-amount").value)); } catch { el("withdraw-note").textContent = "Enter an amount like 0.01."; return; }
   void transact("Withdraw", account, encodeWithdraw(wallet, wei)).then((ok) => { if (ok) void refreshAccount(); });
+});
+
+// ---- a token back to the wallet ----
+// Tokens the bot bought sit in the account; the owner takes them out with withdrawToken, the one way out that needs no key.
+const ERC20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function decimals() view returns (uint8)", "function symbol() view returns (string)"]);
+const tokenHeld = async (token: Hex): Promise<{ units: bigint; decimals: number; symbol: string }> => {
+  const [units, decimals, symbol] = await Promise.all([
+    publicClient.readContract({ address: token, abi: ERC20, functionName: "balanceOf", args: [account!] }),
+    publicClient.readContract({ address: token, abi: ERC20, functionName: "decimals" }),
+    publicClient.readContract({ address: token, abi: ERC20, functionName: "symbol" }).catch(() => "tokens"),
+  ]);
+  return { units, decimals, symbol };
+};
+input("wtoken-address").addEventListener("change", () => {
+  const token = input("wtoken-address").value.trim();
+  const note = el("wtoken-note");
+  if (!account || !deployed || !isAddress(token)) return;
+  void tokenHeld(token as Hex).then(
+    (h) => { note.textContent = `This account holds ${formatUnits(h.units, h.decimals)} ${h.symbol}.`; },
+    () => { note.textContent = "That address does not answer as a token on this network."; },
+  );
+});
+el("wtoken-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  const note = el("wtoken-note");
+  const token = input("wtoken-address").value.trim();
+  if (!account || !wallet) return;
+  if (!isAddress(token)) { note.textContent = "The token has to be an address."; return; }
+  const owner = wallet, from = account;
+  void (async () => {
+    let h: Awaited<ReturnType<typeof tokenHeld>>;
+    try { h = await tokenHeld(token as Hex); } catch { note.textContent = "That address does not answer as a token on this network."; return; }
+    const typed = input("wtoken-amount").value.trim();
+    let units: bigint;
+    try { units = typed === "" ? h.units : parseUnits(typed, h.decimals); } catch { note.textContent = "Enter an amount like 100, or leave it blank for all."; return; }
+    if (units <= 0n) { note.textContent = `This account holds no ${h.symbol}.`; return; }
+    if (units > h.units) { note.textContent = `This account holds ${formatUnits(h.units, h.decimals)} ${h.symbol}; that is more.`; return; }
+    if (await transact(`Withdraw ${h.symbol}`, from, encodeWithdrawToken(token as Hex, owner, units))) {
+      note.textContent = `Sent ${formatUnits(units, h.decimals)} ${h.symbol} to your wallet.`;
+      void refreshAccount();
+    }
+  })();
 });
 
 el("grant-form").addEventListener("submit", (event) => {
