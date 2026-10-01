@@ -49,6 +49,8 @@ initShell({ pill: false });
 /** Robinhood Chain testnet's Universal Router; the default target, since trading is what most bots do. */
 const UNIVERSAL_ROUTER = "0x8876789976decbfcbbbe364623c63652db8c0904";
 const UNIVERSAL_ROUTER_EXECUTE = "0x3593564c";
+// The grant's contract and function are fixed on this page (read-only fields): shown from the start, not after the wallet connects.
+for (const [id, value] of [["grant-target", UNIVERSAL_ROUTER], ["grant-selector", UNIVERSAL_ROUTER_EXECUTE]] as const) { const f = document.getElementById(id) as HTMLInputElement | null; if (f) f.value = value; }
 
 const el = (id: string): HTMLElement => {
   const node = document.getElementById(id);
@@ -462,6 +464,7 @@ const initLink = async (): Promise<void> => {
   if (linkKey && isAddress(linkKey)) {
     el("link-key").textContent = linkKey;
     input("grant-key").value ||= linkKey;
+    input("grant-key").readOnly = true;
     input("grant-per-call").value = BETA_GRANT.perCall;
     input("grant-cap").value = BETA_GRANT.cap;
     input("grant-days").value = BETA_GRANT.days;

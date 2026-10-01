@@ -307,3 +307,6 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 .led .led__dots { display: none; }
 .led > .sr-only { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: nowrap; }
 .led__unit { font-family: var(--font-mono); font-weight: 400; letter-spacing: 0; }
+
+/* A value the page fixes (the Sessions grant's contract and function, the key the bot's link fills): read as text, not as a box to type in. */
+.field input[readonly] { border-color: transparent; background: transparent; padding-left: 0; color: var(--soft-paper); cursor: default; }
