@@ -233,6 +233,8 @@ const NATIVE: Address = "0x0000000000000000000000000000000000000000";
 const LOG_SPAN = 100_000n;
 /** How far back an unknown pool id is looked for in the Initialize events: about a week of the chain. */
 const DEFAULT_LOOKBACK = 2_000_000n;
+/** Pool ids looked up in one query; mainnet's RPC refuses a query with more than about 1 000 address and topic selectors. */
+const IDS_PER_QUERY = 500;
 
 export type WatchPortConfig = {
   chainId: number;
@@ -297,10 +299,25 @@ export const createWatchPort = (config: WatchPortConfig): WatchPort => {
     return out;
   };
 
+  /**
+   * A range's logs, and when the node refuses the range (more logs than it returns in one answer: mainnet's RPC
+   * caps at 10 000, and a busy 12 000-block window passes that), the two halves of it, and theirs in turn. A refusal
+   * of one block is a real error. Without this the pass died before its cursor moved, and every pass after it
+   * met the same window (2026-10-01).
+   */
+  const halving = async <T>(ask: (a: bigint, b: bigint) => Promise<readonly T[]>, a: bigint, b: bigint): Promise<T[]> => {
+    try { return [...(await ask(a, b))]; }
+    catch (error) {
+      if (b <= a) throw error;
+      const mid = a + (b - a) / 2n;
+      return [...(await halving(ask, a, mid)), ...(await halving(ask, mid + 1n, b))];
+    }
+  };
+
   /** Pools opened in the window are known before their first swap is read: a watched token's by name, any other as not ours, so it is never looked up. */
   const learnOpened = async (from: bigint, to: bigint): Promise<void> => {
     for (const [a, b] of spans(from, to)) {
-      const logs = await client.getLogs({ address: config.poolManager, event: INITIALIZE, args: { currency0: NATIVE }, fromBlock: a, toBlock: b });
+      const logs = await halving((x, y) => client.getLogs({ address: config.poolManager, event: INITIALIZE, args: { currency0: NATIVE }, fromBlock: x, toBlock: y }), a, b);
       for (const l of logs) if (l.args.id && l.args.currency1) pools.set(l.args.id.toLowerCase(), ours(NATIVE, l.args.currency1 as Address));
     }
   };
@@ -312,7 +329,10 @@ export const createWatchPort = (config: WatchPortConfig): WatchPort => {
     const floor = before > lookback ? before - lookback : 0n;
     for (let to = before; to >= floor && missing.size; to -= LOG_SPAN) {
       const from = to - LOG_SPAN + 1n > floor ? to - LOG_SPAN + 1n : floor;
-      const logs = await client.getLogs({ address: config.poolManager, event: INITIALIZE, args: { id: [...missing] as Hex[] }, fromBlock: from, toBlock: to });
+      // The ids in groups: mainnet's RPC takes about 1 000 selectors a query, and a busy window meets more new pools than that (1 798, 2026-10-01).
+      const ids = [...missing] as Hex[];
+      const logs = [];
+      for (let i = 0; i < ids.length; i += IDS_PER_QUERY) logs.push(...(await client.getLogs({ address: config.poolManager, event: INITIALIZE, args: { id: ids.slice(i, i + IDS_PER_QUERY) }, fromBlock: from, toBlock: to })));
       for (const l of logs) {
         if (!l.args.id) continue;
         const id = l.args.id.toLowerCase();
@@ -343,7 +363,7 @@ export const createWatchPort = (config: WatchPortConfig): WatchPort => {
       // One entry per transaction and pool, every swap's deltas summed with their signs (ETH paid is positive here, ETH taken back negative); the order is the chain's.
       const found = new Map<string, { block: bigint; txHash: Hex; poolId: Hex; ethInWei: bigint; tokensOut: bigint }>();
       for (const [a, b] of spans(from, to)) {
-        const logs = await client.getLogs({ address: config.poolManager, event: SWAP, fromBlock: a, toBlock: b });
+        const logs = await halving((x, y) => client.getLogs({ address: config.poolManager, event: SWAP, fromBlock: x, toBlock: y }), a, b);
         for (const l of logs) {
           const { id, amount0, amount1 } = l.args;
           if (!id || amount0 === undefined || amount1 === undefined || !l.transactionHash || l.blockNumber === null) continue;
