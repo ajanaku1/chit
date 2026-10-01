@@ -29,6 +29,7 @@ import type { Update } from "../../src/fleet/bot-handlers.js";
 import { CopyDesk, MemoryCopyStore } from "../../src/fleet/bot-copy.js";
 import { MemoryBotLinkStore } from "../../src/fleet/bot-link.js";
 import { MemoryPositionLedger } from "../../src/fleet/bot-positions.js";
+import { MemoryCompStore } from "../../src/fleet/bot-comp.js";
 import type { OrusScan } from "../../src/fleet/bot-orus.js";
 import { SessionBot } from "../../src/fleet/bot-session.js";
 import type { SessionSell } from "../../src/fleet/session-keys.js";
@@ -866,6 +867,18 @@ test("a landed sale writes what it returned, the account's ETH rise, beside its 
   second.session.saleLands(false);
   await second.bot.handle(tap(`s:${PEPE}:50`));
   assert.equal((await unseen.forAccount(ACCOUNT))[0]!.ethOut, floor);
+});
+
+test("/join enters the competition under a nickname, by Telegram id; without the store it is the help card", async () => {
+  const comp = new MemoryCompStore();
+  const { bot, telegram, links } = setup({ comp });
+  await linked(links);
+  await bot.handle(dm("/join moonboy"));
+  assert.match(telegram.last(), /you're in as <b>moonboy<\/b>\. only trades you make in this bot/);
+  assert.deepEqual((await comp.all()).map((e) => [e.tgId, e.nickname, e.username]), [["7", "moonboy", null]]);
+  const plain = setup();
+  await plain.bot.handle(dm("/join moonboy"));
+  assert.doesNotMatch(plain.telegram.last(), /you're in/);
 });
 
 test("a mirrored buy is written to the follower's trade record too, so their Positions count what the desk bought for them", async () => {

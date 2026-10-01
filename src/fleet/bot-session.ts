@@ -42,6 +42,7 @@
  */
 
 import { holdersAnswer, type HoldersGate } from "./bot-holders.js";
+import { joinReply, type CompStore } from "./bot-comp.js";
 import { positionsCard } from "./bot-positions-card.js";
 import { noteProceeds, noteSent, saleProceeds, type PositionLedger } from "./bot-positions.js";
 import { type Address, type Hex, isAddress } from "viem";
@@ -69,6 +70,8 @@ export type SessionBotDeps = {
   links: BotLinkStore;
   /** Every sent trade, for Positions and their P&L (bot-positions.ts); absent, nothing is recorded. */
   positions?: PositionLedger;
+  /** The trading competition's entries (bot-comp.ts): `/join <nickname>`; absent, /join is the help card. */
+  comp?: CompStore;
   /** The $CHIT holders line (bot-holders.ts): asked of the account's owner before any buy the bot pays gas for; absent, no line. */
   holders?: HoldersGate;
   /** ETH's price in dollars for Positions' $ view; absent or undefined, Positions stay in ETH. */
@@ -195,6 +198,7 @@ export class SessionBot {
       if (cmd === "/start") return this.#start(chatId, tgId, arg);
       if (cmd === "/help") return this.#help(chatId);
       if (cmd === "/link") return this.#connect(chatId, tgId);
+      if (cmd === "/join" && this.#d.comp) return this.#say(chatId, await joinReply(this.#d.comp, { tgId, ...(u.message.from.username ? { username: u.message.from.username } : {}) }, text.slice(cmd.length), !!(await this.#d.links.getLink(tgId)), this.#now));
       // copy: a reply to a cap or handle prompt (bot-copy-cards.ts).
       if (this.#copy && (await this.#copy.reply(chatId, tgId, text, !!u.message.reply_to_message))) return;
       // alerts: a reply to the line prompt (bot-alert-cards.ts).
