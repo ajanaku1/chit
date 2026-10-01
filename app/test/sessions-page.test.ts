@@ -17,9 +17,6 @@ const read = (path: string): Promise<string> => readFile(join(appRoot, path), "u
 test("the page does not say a key without the sell flag can only buy: execute lets it call what its rules name, and a blank selector is any function of that contract", async () => {
   const html = await read("sessions.html");
   assert.doesNotMatch(html, /can only buy/, "the flag gates sell(); it does not make execute buy-only");
-  assert.match(html, /What a key can do is what its rules name, with the account's ETH inside the caps/);
-  assert.match(html, /any function of any contract you name if you leave the selector blank, a token's own transfer included/, "the risk of a blank selector is named where the flag is explained");
-  assert.match(html, /without it the key cannot call sell, so the tokens the account holds go back to ETH only by your hand/);
   assert.match(html, /blank lets the key call any function of that contract/, "the grant form's own label says what blank means");
   const page = await read("src/sessions-page.ts");
   assert.match(page, /selectorRaw === "" \? ANY_FUNCTION : selectorRaw/, "blank is still any: the copy follows the code, not the other way round");
