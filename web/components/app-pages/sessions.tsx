@@ -80,7 +80,7 @@ Anyone running a bot today hands it their wallet key. Here you keep the wallet. 
           <form id="grant-form" className="withdraw-form">
             <div className="field">
               <label htmlFor="grant-key">The bot's key</label>
-              <input id="grant-key" name="key" type="text" placeholder="0x…" autoComplete="off" />
+              <input id="grant-key" name="key" type="text" placeholder="0x… (filled in when you open this page from the bot's Re-link)" autoComplete="off" />
             </div>
             <div className="field">
               <label htmlFor="grant-target">Contract it may call</label>
@@ -99,8 +99,8 @@ Anyone running a bot today hands it their wallet key. Here you keep the wallet. 
               <input id="grant-cap" name="cap" type="text" inputMode="decimal" defaultValue="0.005" />
             </div>
             <div className="field">
-              <label htmlFor="grant-hours">Valid for (hours)</label>
-              <input id="grant-hours" name="hours" type="text" inputMode="numeric" defaultValue="24" />
+              <label htmlFor="grant-days">Valid for (days)</label>
+              <input id="grant-days" name="days" type="text" inputMode="decimal" defaultValue="30" />
             </div>
             <p id="grant-note" className="fineprint" role="status" aria-live="polite"></p>
             <button id="grant-submit" type="submit" className="primary" disabled>Grant</button>

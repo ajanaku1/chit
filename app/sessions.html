@@ -111,7 +111,7 @@
           <form id="grant-form" class="withdraw-form">
             <div class="field">
               <label for="grant-key">The bot's key</label>
-              <input id="grant-key" name="key" type="text" placeholder="0x…" autocomplete="off" />
+              <input id="grant-key" name="key" type="text" placeholder="0x… (filled in when you open this page from the bot's Re-link)" autocomplete="off" />
             </div>
             <div class="field">
               <label for="grant-target">Contract it may call</label>
@@ -130,8 +130,8 @@
               <input id="grant-cap" name="cap" type="text" inputmode="decimal" value="0.005" />
             </div>
             <div class="field">
-              <label for="grant-hours">Valid for (hours)</label>
-              <input id="grant-hours" name="hours" type="text" inputmode="numeric" value="24" />
+              <label for="grant-days">Valid for (days)</label>
+              <input id="grant-days" name="days" type="text" inputmode="decimal" value="30" />
             </div>
             <p id="grant-note" class="fineprint" role="status" aria-live="polite"></p>
             <button id="grant-submit" type="submit" class="primary" disabled>Grant</button>
