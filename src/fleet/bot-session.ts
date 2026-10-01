@@ -198,7 +198,7 @@ export class SessionBot {
       if (cmd === "/start") return this.#start(chatId, tgId, arg);
       if (cmd === "/help") return this.#help(chatId);
       if (cmd === "/link") return this.#connect(chatId, tgId);
-      if (cmd === "/join" && this.#d.comp) return this.#say(chatId, await joinReply(this.#d.comp, { tgId, ...(u.message.from.username ? { username: u.message.from.username } : {}) }, text.slice(cmd.length), !!(await this.#d.links.getLink(tgId)), this.#now));
+      if (cmd === "/join" && this.#d.comp) return this.#join(this.#d.comp, chatId, tgId, u.message.from.username, text.slice(cmd.length));
       // copy: a reply to a cap or handle prompt (bot-copy-cards.ts).
       if (this.#copy && (await this.#copy.reply(chatId, tgId, text, !!u.message.reply_to_message))) return;
       // alerts: a reply to the line prompt (bot-alert-cards.ts).
@@ -555,6 +555,12 @@ export class SessionBot {
     // One conditional statement in the store, so a run mid-send cannot write the order back to open over the cancel.
     if (o.status === "open") await orders.cancel(o.id);
     return this.#orders(chatId, tgId, messageId);
+  }
+
+  /** The trading competition's entry (bot-comp.ts): by Telegram id, under the nickname typed after /join. */
+  async #join(comp: CompStore, chatId: string, tgId: string, username: string | undefined, nickname: string): Promise<void> {
+    const linked = !!(await this.#d.links.getLink(tgId));
+    return this.#say(chatId, await joinReply(comp, { tgId, ...(username ? { username } : {}) }, nickname, linked, this.#now));
   }
 
   // ---------- sell ----------
