@@ -313,7 +313,7 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
   const alerts = overrides.alertStore ?? alertsFromEnv();
   const reads = createBotChain({ chainId, rpcUrl, defaultToken: allowlist[0] ?? TESTNET_VENUE_TOKEN, router: ROUTER, poolManager: POOL_MANAGER, recordedPools: recordedPoolsFromEnv(refuse) });
   const usdToken = usdTokenFromEnv();
-  const holders = holdersGateFromEnv((t, o) => reads.tokenBalance(t, o));
+  const holders = holdersGateFromEnv((t, o) => (reads.tokenBalanceStrict ?? reads.tokenBalance)(t, o));
   const deps: SessionBotDeps = {
     reads,
     session: overrides.session ?? createSessionChain({ chainId, rpcUrl, signerKey: signerKey as `0x${string}` }),

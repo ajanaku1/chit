@@ -8,7 +8,8 @@
  */
 import type { Address } from "./types.js";
 
-export type HoldersVerdict = { ok: true } | { ok: false; holds: bigint; need: bigint };
+/** `unknown`: the balance could not be read; never a pass, never remembered, and never said as "holds less". */
+export type HoldersVerdict = { ok: true } | { ok: false; holds: bigint; need: bigint } | { ok: false; unknown: true };
 export type HoldersGate = (owner: Address) => Promise<HoldersVerdict>;
 
 const PASS_MS = 5 * 60_000;
@@ -21,15 +22,24 @@ export const createHoldersGate = (p: { balanceOf: (owner: Address) => Promise<bi
     const key = owner.toLowerCase();
     const hit = seen.get(key);
     if (hit && now() - hit.at < (hit.verdict.ok ? PASS_MS : REFUSE_MS)) return hit.verdict;
-    // A read that fails is a refusal: the gate never opens on an answer it did not get.
-    const holds = await p.balanceOf(owner).catch(() => -1n);
-    const verdict: HoldersVerdict = holds >= p.threshold ? { ok: true } : { ok: false, holds: holds < 0n ? 0n : holds, need: p.threshold };
+    // A read that fails is unknown: the gate never opens on an answer it did not get, nor says the wallet holds less.
+    let holds: bigint;
+    try { holds = await p.balanceOf(owner); }
+    catch (error) {
+      console.warn("holders: balance read failed", owner, (error instanceof Error ? error.message : String(error)).split("\n")[0]);
+      return { ok: false, unknown: true };
+    }
+    const verdict: HoldersVerdict = holds >= p.threshold ? { ok: true } : { ok: false, holds, need: p.threshold };
     seen.set(key, { at: now(), verdict });
     return verdict;
   };
 };
 
 const whole = (units: bigint): string => (units / 10n ** 18n).toLocaleString("en-US");
+
+/** What a tap is told: the line and the wallet's balance, or, when the balance could not be read, that and nothing more. */
+export const holdersAnswer = (owner: Address, v: Exclude<HoldersVerdict, { ok: true }>): string =>
+  "unknown" in v ? "could not check your wallet's $CHIT just now. try again in a moment." : holdersRefusal(owner, v.holds, v.need);
 
 export const holdersRefusal = (owner: Address, holds: bigint, need: bigint): string =>
   `the bot is for $CHIT holders during the beta. your wallet <code>${owner.slice(0, 6)}…${owner.slice(-4)}</code> holds <code>${whole(holds)}</code> $CHIT; the line is <code>${whole(need)}</code>. your account and its tokens stay yours: you can still sell here, or withdraw on the Sessions page.`;

@@ -62,6 +62,8 @@ export type BotChain = {
   hasFaucet: boolean;
   ethBalance(address: Address): Promise<bigint>;
   tokenBalance(token: Address, address: Address): Promise<bigint>;
+  /** The same read, but a failure is thrown, not read as 0: for a check that must not mistake an error for an empty wallet (bot-holders.ts). */
+  tokenBalanceStrict?(token: Address, address: Address): Promise<bigint>;
   tokenInfo(token: Address): Promise<TokenInfo>;
   /** Tokens out for ETH in, fee and price impact included; null when the pool has no price. */
   quoteBuy(token: Address, ethIn: bigint): Promise<bigint | null>;
@@ -181,6 +183,7 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
     hasFaucet: Boolean(config.faucetKey),
     ethBalance: (address) => publicClient.getBalance({ address }),
     tokenBalance: (token, address) => publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "balanceOf", args: [address] }).catch(() => 0n),
+    tokenBalanceStrict: (token, address) => publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: "balanceOf", args: [address] }),
     async tokenInfo(token) {
       const [m, pool] = await Promise.all([metaOf(token), poolOf(token)]);
       const hasPool = Boolean(pool && pool.sqrtPriceX96 > 0n && pool.liquidity > 0n);

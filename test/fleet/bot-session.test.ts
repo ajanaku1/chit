@@ -905,3 +905,12 @@ test("a follower under the $CHIT holders line is skipped by the mirror with the 
   const toFollower = telegram.sent.filter((o) => o.kind === "send" && o.chatId === "8").map((o) => (o as { text: string }).text);
   assert.match(toFollower.at(-1)!, /holds less \$CHIT than the beta's line/);
 });
+
+test("a buy tap whose holders check could not be read says so and asks to try again, rather than saying the wallet holds less", async () => {
+  const { links, session, bot, textAt } = setup({ holders: async () => ({ ok: false as const, unknown: true as const }) });
+  await linked(links);
+  await bot.handle(tap(`b:${PEPE}:0.01`));
+  assert.match(textAt(-1), /could not check your wallet's \$CHIT just now/);
+  assert.doesNotMatch(textAt(-1), /holds/);
+  assert.equal(session.calls.length, 0);
+});
