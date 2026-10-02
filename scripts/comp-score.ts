@@ -5,8 +5,10 @@
  * BOT_POOL_KEYS as production has it). No key: the only write is the trade
  * record's settling from receipts, the same one Positions makes.
  *
- *   DATABASE_URL=… npx tsx scripts/comp-score.ts --start 2026-10-05T00:00:00Z --end 2026-10-12T00:00:00Z \
- *     [--min 0.0005] [--trades 5] [--exclude <tg id>,<tg id>]
+ *   DATABASE_URL=… npm run comp-score -- [--exclude <tg id>,<tg id>] \
+ *     [--start 2026-10-02T12:00:00Z --end 2026-10-09T12:00:00Z] [--min 0.0005] [--trades 5]
+ *
+ * Without dates it scores the first competition (FIRST_COMPETITION).
  *
  * Prints both boards by nickname, then the awards with each winner's
  * Telegram id, to message them in the bot. Never a wallet on the boards.
@@ -21,7 +23,7 @@ import { NeonCompStore } from "../src/fleet/bot-comp.js";
 import { NeonBotLinkStore } from "../src/fleet/bot-link.js";
 import { NeonPositionLedger, settleTrades } from "../src/fleet/bot-positions.js";
 import { createSessionChain } from "../src/fleet/bot-session-chain.js";
-import { scoreCompetition, type Entrant, type Holding } from "../src/fleet/comp-score.js";
+import { FIRST_COMPETITION, scoreCompetition, type Entrant, type Holding } from "../src/fleet/comp-score.js";
 import { recordedPoolsFromEnv } from "../src/fleet/pool-registry.js";
 import type { Address } from "../src/fleet/types.js";
 
@@ -32,10 +34,10 @@ const POOL_MANAGER: Address = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
 
 const fail = (why: string): never => { console.error(`comp-score: ${why}`); process.exit(1); };
 const arg = (name: string): string | undefined => { const i = process.argv.indexOf(`--${name}`); return i > 0 ? process.argv[i + 1] : undefined; };
-const date = (name: string): Date => { const d = new Date(arg(name) ?? ""); return Number.isNaN(d.getTime()) ? fail(`--${name} must be a date, like 2026-10-05T00:00:00Z`) : d; };
+const date = (name: string, fallback: Date): Date => { const raw = arg(name); if (!raw) return fallback; const d = new Date(raw); return Number.isNaN(d.getTime()) ? fail(`--${name} must be a date, like 2026-10-05T00:00:00Z`) : d; };
 
 const url = process.env.DATABASE_URL ?? fail("DATABASE_URL is not set");
-const rules = { start: date("start"), end: date("end"), minWei: parseEther(arg("min") ?? "0.0005"), minTrades: Number(arg("trades") ?? 5) };
+const rules = { start: date("start", FIRST_COMPETITION.start), end: date("end", FIRST_COMPETITION.end), minWei: arg("min") ? parseEther(arg("min")!) : FIRST_COMPETITION.minWei, minTrades: Number(arg("trades") ?? FIRST_COMPETITION.minTrades) };
 const excluded = new Set((arg("exclude") ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 
 const sql = neon(url);

@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { BotTrade } from "../../src/fleet/bot-positions.js";
-import { countedTrades, scoreCompetition, scoreEntrant, type Entrant, type Holding, type ScoreRules } from "../../src/fleet/comp-score.js";
+import { FIRST_COMPETITION, countedTrades, scoreCompetition, scoreEntrant, type Entrant, type Holding, type ScoreRules } from "../../src/fleet/comp-score.js";
 import type { Address, Hex } from "../../src/fleet/types.js";
 
 const A = "0x00000000000000000000000000000000000000a1" as Address;
@@ -55,7 +55,7 @@ test("the boards and the prizes: biggest first, one per person, the excluded nev
     buy(A, cost, 100n), sell(A, 100n, back), buy(A, 1000n, 10n), sell(A, 10n, 1000n), ...(open ? [buy(B, 1000n, 10n)] : [buy(A, 1000n, 10n), sell(A, 10n, 1000n)]),
   ], open ? [[B, open]] : []);
   const entrants = [
-    five("1", 1000n, 9000n, { held: 10n, exitWei: 9000n }), // best PnL and best ongoing: keeps the ongoing $350
+    five("1", 1000n, 9000n, { held: 10n, exitWei: 9000n }), // best PnL and best ongoing: keeps the pnl $500
     five("2", 1000n, 5000n),
     five("3", 1000n, 3000n, { held: 10n, exitWei: 2000n }),
     five("4", 1000n, 2000n),
@@ -64,7 +64,11 @@ test("the boards and the prizes: biggest first, one per person, the excluded nev
   const { pnl, ongoing, awards } = scoreCompetition(entrants, rules, new Set(["team"]));
   assert.deepEqual(pnl.map((p) => p.tgId), ["team", "1", "2", "3", "4"], "the team is on the board");
   assert.deepEqual(ongoing.map((o) => o.tgId), ["1", "3"]);
-  assert.deepEqual(awards.map((a) => [a.prize, a.usd, a.tgId]), [
-    ["best ongoing trade", 350, "1"], ["best pnl, 1st", 250, "2"], ["best pnl, 2nd", 150, "3"], ["best pnl, 3rd", 100, "4"],
-  ]);
+  assert.deepEqual(awards.map((a) => [a.prize, a.usd, a.tgId]), [["best pnl", 500, "1"], ["best ongoing trade", 350, "3"]]);
+});
+
+test("the first competition: 2 to 9 October 2026 noon UTC, 0.0005 ETH a trade, five trades; a trade at 11:59 on the 2nd is out, one at noon is in", () => {
+  assert.deepEqual([FIRST_COMPETITION.start.toISOString(), FIRST_COMPETITION.end.toISOString(), FIRST_COMPETITION.minWei, FIRST_COMPETITION.minTrades], ["2026-10-02T12:00:00.000Z", "2026-10-09T12:00:00.000Z", 500_000_000_000_000n, 5]);
+  const early = buy(A, 10n ** 16n, 10n, "2026-10-02T11:59:59Z"), first = buy(A, 10n ** 16n, 10n, "2026-10-02T12:00:00Z"), last = buy(A, 10n ** 16n, 10n, "2026-10-09T11:59:59Z"), late = buy(A, 10n ** 16n, 10n, "2026-10-09T12:00:00Z");
+  assert.deepEqual(countedTrades([early, first, last, late], FIRST_COMPETITION), [first, last]);
 });
