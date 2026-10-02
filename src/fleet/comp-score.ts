@@ -3,16 +3,17 @@
  * entrants, their accounts' trades in the window and what each holding
  * would fetch at the end in; the two boards and the prizes out.
  *
- * Best PnL, one number per wallet: (ETH back from sells + exit value of what
+ * Best PnL ($500), one number per wallet: (ETH back from sells + exit value of what
  * is still held - ETH spent on buys) / ETH spent on buys. Exit value is what
  * selling the whole holding returns, not a price, so a pumped thin pool
  * scores what it would really pay. Only trades in the window of at least the
  * minimum count (a buy by its ETH in, a sell by its ETH back), and at least
  * `minTrades` of them qualify a wallet. Units bought before the window, or
  * in trades under the minimum, carry no cost: what they sell for or are
- * worth is left out, so they cannot flatter the number.
+ * worth is left out, so they cannot flatter the number. Break it ($150) is
+ * judged by hand; its winner goes in `excluded`.
  *
- * Best ongoing trade: the single holding still open at the end, bought in
+ * Best ongoing trade ($350): the single holding still open at the end, bought in
  * the window, with the highest return on its cost, its cost at least the
  * minimum. One prize per person: the prizes are handed out biggest first,
  * each to the best-placed entrant not already holding one.
@@ -31,11 +32,12 @@ export type Award = Prize & { tgId: string; nickname: string };
 
 /** Biggest first: the order the prizes are handed out in, so a person placed for two keeps the bigger. */
 export const PRIZES: Prize[] = [
+  { prize: "best pnl", usd: 500, board: "pnl" },
   { prize: "best ongoing trade", usd: 350, board: "ongoing" },
-  { prize: "best pnl, 1st", usd: 250, board: "pnl" },
-  { prize: "best pnl, 2nd", usd: 150, board: "pnl" },
-  { prize: "best pnl, 3rd", usd: 100, board: "pnl" },
 ];
+
+/** The first competition, as announced: 2 to 9 October 2026, noon UTC to noon UTC, 0.0005 ETH a trade, five trades. */
+export const FIRST_COMPETITION: ScoreRules = { start: new Date("2026-10-02T12:00:00Z"), end: new Date("2026-10-09T12:00:00Z"), minWei: 500_000_000_000_000n, minTrades: 5 };
 
 const bps = (gain: bigint, cost: bigint): number => (cost === 0n ? 0 : Number((gain * 10_000n) / cost));
 const share = (whole: bigint, part: bigint, of: bigint): bigint => (of === 0n ? 0n : (whole * part) / of);
