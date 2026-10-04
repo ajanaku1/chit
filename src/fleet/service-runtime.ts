@@ -8,6 +8,7 @@
  * 503 instead of substituting a default fact.
  */
 
+import { holderAllowlistFromEnv } from "./holders-allowlist.js";
 import { neon } from "@neondatabase/serverless";
 import { createPublicClient, createWalletClient, http, isHex, keccak256, stringToBytes, type PublicClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -438,7 +439,7 @@ export const getFleetRouter = (): CampaignRouter => {
     // (T048, T049). Without TELEGRAM_BOT_TOKEN and MONITOR_CHAT_ID the sink
     // logs instead of sending, so a local run and a preview need no secrets.
     alerts,
-    ...(feeConfig ? { feeConfig, chitBalanceOf } : {}),
+    ...(feeConfig ? { feeConfig, chitBalanceOf, holderAllowlist: holderAllowlistFromEnv() } : {}),
     // Without the chain, fund and buy answer 503 dependency_evidence_invalid.
     ...(chain ? { chain } : {}),
     ...(allowedTokens ? { allowedTokens } : {}),

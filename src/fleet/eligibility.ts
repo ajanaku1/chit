@@ -48,8 +48,8 @@ export const validateFeeConfig = (config: FeeConfig): FeeConfig => {
   return { threshold, baseFee, discount, feeAsset: config.feeAsset, recipient: config.recipient };
 };
 
-/** Builds the disclosed quote from configuration and a read-only CHIT balance. */
-export const createQuote = (config: FeeConfig, chitBalance: Uint, quoteId: string): FeeQuote => {
+/** Builds the disclosed quote from configuration and a read-only CHIT balance; `allowlisted` (CHIT_HOLDER_ALLOWLIST) is eligible whatever it holds. */
+export const createQuote = (config: FeeConfig, chitBalance: Uint, quoteId: string, allowlisted = false): FeeQuote => {
   const checked = validateFeeConfig(config);
   const balance = uint(chitBalance, "invalid_balance");
   return {
@@ -58,7 +58,7 @@ export const createQuote = (config: FeeConfig, chitBalance: Uint, quoteId: strin
     baseFee: checked.baseFee,
     discount: checked.discount,
     netFee: (BigInt(checked.baseFee) - BigInt(checked.discount)).toString(),
-    eligible: BigInt(balance) >= BigInt(checked.threshold),
+    eligible: allowlisted || BigInt(balance) >= BigInt(checked.threshold),
     holdings: balance,
   };
 };
