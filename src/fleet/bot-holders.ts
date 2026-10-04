@@ -6,6 +6,7 @@
  * wallet that sold its $CHIT after granting, cannot have the bot spend Chit's
  * gas on its buys. Sells are not gated: nobody is trapped in a position.
  */
+import { holderAllowlistFromEnv } from "./holders-allowlist.js";
 import type { Address } from "./types.js";
 
 /** `unknown`: the balance could not be read; never a pass, never remembered, and never said as "holds less". */
@@ -15,11 +16,13 @@ export type HoldersGate = (owner: Address) => Promise<HoldersVerdict>;
 const PASS_MS = 5 * 60_000;
 const REFUSE_MS = 60_000;
 
-export const createHoldersGate = (p: { balanceOf: (owner: Address) => Promise<bigint>; threshold: bigint; now?: () => number }): HoldersGate => {
+export const createHoldersGate = (p: { balanceOf: (owner: Address) => Promise<bigint>; threshold: bigint; now?: () => number; allowlist?: ReadonlySet<string> }): HoldersGate => {
   const now = p.now ?? Date.now;
   const seen = new Map<string, { at: number; verdict: HoldersVerdict }>();
   return async (owner) => {
     const key = owner.toLowerCase();
+    // Let in without the line (CHIT_HOLDER_ALLOWLIST): no read, nothing remembered.
+    if (p.allowlist?.has(key)) return { ok: true };
     const hit = seen.get(key);
     if (hit && now() - hit.at < (hit.verdict.ok ? PASS_MS : REFUSE_MS)) return hit.verdict;
     // A read that fails is unknown: the gate never opens on an answer it did not get, nor says the wallet holds less.
@@ -49,5 +52,5 @@ export const holdersGateFromEnv = (balanceOf: (token: Address, owner: Address) =
   const token = process.env.CHIT_TOKEN_ADDRESS?.trim();
   const threshold = process.env.CHIT_FEE_THRESHOLD?.trim();
   if (!token || !/^0x[0-9a-fA-F]{40}$/.test(token) || !threshold || !/^\d+$/.test(threshold)) return undefined;
-  return createHoldersGate({ balanceOf: (owner) => balanceOf(token as Address, owner), threshold: BigInt(threshold) });
+  return createHoldersGate({ balanceOf: (owner) => balanceOf(token as Address, owner), threshold: BigInt(threshold), allowlist: holderAllowlistFromEnv() });
 };

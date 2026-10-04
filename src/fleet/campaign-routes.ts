@@ -52,6 +52,8 @@ export type RouterDeps = {
   feeConfig?: FeeConfig;
   /** Read-only mainnet CHIT balance for one wallet, in base units. */
   chitBalanceOf?: (wallet: Address) => Promise<Uint>;
+  /** Wallets eligible without the $CHIT line (CHIT_HOLDER_ALLOWLIST, holders-allowlist.ts), lowercase. */
+  holderAllowlist?: ReadonlySet<string>;
   /** Deployed contracts + operator signer; present means the chain is the budget's source of truth. */
   chain?: FleetChain;
   /** Stage 2 pool; absent means balance and withdrawal answer 503, never a guess. */
@@ -443,7 +445,7 @@ export class CampaignRouter {
   async #quote(wallet: Address, quoteId: string) {
     const { feeConfig, chitBalanceOf } = this.#deps;
     if (!feeConfig || !chitBalanceOf) return openQuote(quoteId);
-    return createQuote(feeConfig, await chitBalanceOf(wallet), quoteId);
+    return createQuote(feeConfig, await chitBalanceOf(wallet), quoteId, this.#deps.holderAllowlist?.has(wallet.toLowerCase()) ?? false);
   }
 
   #budget(record: CampaignRecord): Budget {
