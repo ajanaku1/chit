@@ -283,7 +283,7 @@ export class SessionBot {
     return this.#d.telegram.deliver({ kind: "send", chatId, text, ...(keyboard ? { keyboard } : {}) });
   }
 
-  #mode(): string { return `<b>Robinhood Chain</b> · ${this.#d.session.chainId} · your keys stay with you`; }
+  #mode(): string { return `<b>Robinhood Chain</b> · ${this.#d.session.chainId} · Your keys stay with you`; }
   /**
    * The door to the free playground. A room in this bot is one tap and stays
    * in the chat, so it wins; otherwise the door is the testnet host's own
@@ -311,11 +311,19 @@ export class SessionBot {
       const text = [
         this.#mode(),
         "",
-        "the bot never holds your key. you keep your wallet, you create a session account of your own, you grant the bot's key a bounded session (which router, how much a trade, how much in all, until when), and every Buy is one call on your account that you can pause or revoke in one transaction.",
+        // docs/bot-voice.md: sentence case, one instruction a line. The signer line keeps its
+        // warning — without "if it differs, stop" the address is decoration, and a cloned bot
+        // showing its own signer is the thing it defends against.
+        "The bot never holds your key.",
         "",
-        `the bot's signer is <code>${this.#d.session.signer}</code>. the Sessions page shows it in full; if it differs, stop.`,
+        "You keep your wallet and create a session account of your own. You then grant the bot's key a bounded session: which router it may use, how much per trade, how much in total, and when it expires.",
         "",
-        "<i>beta. holders only. not audited by a firm yet, and we say so on every card.</i>",
+        "Every buy is a single call from your account. You can pause or revoke it in one transaction.",
+        "",
+        `Bot signer: <code>${this.#d.session.signer}</code>`,
+        "The Sessions page shows it in full. If it differs, stop.",
+        "",
+        "<i>Beta · holders only · not audited by a firm yet</i>",
       ].join("\n");
       // alerts: no link needed, the alert goes to this chat.
       return this.#out(chatId, messageId, text, kb([btn("🔗 Connect your wallet", "connect")], ...(this.#d.comp ? [[btn("🏆 Competition", "comp")]] : []), ...(this.#alerts ? [this.#alerts.homeRow()] : []), [btn("❓ Help", "help")], ...this.#door()));

@@ -102,7 +102,7 @@ const linked = (links: MemoryBotLinkStore) => links.putLink({ tgId: "7", account
 test("unlinked: the card names the signer and offers Connect only; a pasted token goes back to the card; Connect mints a nonce and sends the Sessions page", async () => {
   const { bot, telegram, buttons, links } = setup();
   await bot.handle(dm("/start"));
-  assert.match(telegram.last(), /your keys stay with you/);
+  assert.match(telegram.last(), /Your keys stay with you/, "docs/bot-voice.md: the header is sentence case now");
   assert.match(telegram.last(), new RegExp(SIGNER));
   assert.match(telegram.last(), /not audited by a firm yet/);
   assert.deepEqual(buttons(), ["connect", "help"], "no buy, no sell, no withdraw");

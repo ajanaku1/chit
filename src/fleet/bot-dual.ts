@@ -53,7 +53,7 @@ export class DualBot {
     const wanted: Floor | undefined = cmd === "/mainnet" || data === SWITCH_TO_MAINNET ? "mainnet" : cmd === "/playground" || data === SWITCH_TO_PLAYGROUND ? "playground" : undefined;
     if (wanted) {
       await this.#d.floors.setFloor(who.tgId, wanted);
-      if (u.callback_query) await this.#d.telegram.deliver({ kind: "answer", callbackId: u.callback_query.id, text: wanted === "mainnet" ? "mainnet: your keys stay with you" : "testnet playground: test eth, nothing real" });
+      if (u.callback_query) await this.#d.telegram.deliver({ kind: "answer", callbackId: u.callback_query.id, text: wanted === "mainnet" ? "Mainnet: your keys stay with you" : "Testnet playground: test ETH, nothing real" });
       // The floor's own /start draws its home card; a switch is a fresh card, never an edit of the other floor's.
       return this.#floor(wanted).handle({ message: { message_id: 0, text: "/start", chat: { id: Number(who.chatId), type: u.message?.chat.type ?? "private" }, from: { id: Number(who.tgId) } } });
     }
