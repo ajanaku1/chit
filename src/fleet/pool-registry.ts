@@ -103,6 +103,8 @@ export type DiscoveredPool = {
   id: Hex;
   sqrtPriceX96: bigint;
   liquidity: bigint;
+  /** The LP fee in force (slot0): what a dynamic-fee pool charges, its key's fee being only a flag (market.ts effectiveFee). */
+  lpFee: number;
   hooked: boolean;
   /** True when the pool is the record's; false when it was discovered, and so is anyone's to have opened. */
   onRecord: boolean;
@@ -115,7 +117,7 @@ export type PoolRegistry = {
   /** The token's recorded pool, else its deepest discovered ETH pool, or null when it has none live; remembered for ten minutes. */
   find(token: Address): Promise<DiscoveredPool | null>;
   /** The pool's price and liquidity, read now, for a key already known. */
-  state(key: PoolKey): Promise<{ sqrtPriceX96: bigint; liquidity: bigint }>;
+  state(key: PoolKey): Promise<{ sqrtPriceX96: bigint; liquidity: bigint; lpFee: number }>;
 };
 
 export type PoolRegistryOptions = {
@@ -134,13 +136,14 @@ export const createPoolRegistry = (publicClient: PublicClient, poolManager: Addr
   const record = new Map<string, PoolKey>();
   for (const key of [...(options.chainId !== undefined ? RECORDED_POOLS[options.chainId] ?? [] : []), ...(options.recorded ?? [])]) record.set(key.currency1.toLowerCase(), key);
 
-  const state = async (key: PoolKey): Promise<{ sqrtPriceX96: bigint; liquidity: bigint }> => {
+  const state = async (key: PoolKey): Promise<{ sqrtPriceX96: bigint; liquidity: bigint; lpFee: number }> => {
     const id = poolIdOf(key);
     const [slot0, liq] = await Promise.all([
       publicClient.readContract({ address: poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slot0Slot(id)] }),
       publicClient.readContract({ address: poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [liquiditySlot(id)] }),
     ]);
-    return { sqrtPriceX96: decodeSlot0(slot0).sqrtPriceX96, liquidity: BigInt(liq) & ((1n << 128n) - 1n) };
+    const { sqrtPriceX96, lpFee } = decodeSlot0(slot0);
+    return { sqrtPriceX96, liquidity: BigInt(liq) & ((1n << 128n) - 1n), lpFee };
   };
 
   type Opened = { args: { fee?: number | undefined; tickSpacing?: number | undefined; hooks?: Address | undefined } };
@@ -187,14 +190,14 @@ export const createPoolRegistry = (publicClient: PublicClient, poolManager: Addr
    * Many pools' states in batched reads (the pool manager's extsload of many slots): a token with hundreds of pools,
    * most of them empty, is a few calls, not hundreds (USDG, 2026-10-01). A node that refuses the batch is read one by one.
    */
-  const states = async (keys: PoolKey[]): Promise<Array<{ key: PoolKey; sqrtPriceX96: bigint; liquidity: bigint }>> => {
-    const out: Array<{ key: PoolKey; sqrtPriceX96: bigint; liquidity: bigint }> = [];
+  const states = async (keys: PoolKey[]): Promise<Array<{ key: PoolKey; sqrtPriceX96: bigint; liquidity: bigint; lpFee: number }>> => {
+    const out: Array<{ key: PoolKey; sqrtPriceX96: bigint; liquidity: bigint; lpFee: number }> = [];
     for (let i = 0; i < keys.length; i += BATCH_POOLS) {
       const chunk = keys.slice(i, i + BATCH_POOLS);
       const slots = chunk.flatMap((key) => { const id = poolIdOf(key); return [slot0Slot(id), liquiditySlot(id)]; });
       const words = await publicClient.readContract({ address: poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slots] }).catch(() => undefined);
       if (!words) { out.push(...(await Promise.all(chunk.map(async (key) => ({ key, ...(await state(key)) }))))); continue; }
-      chunk.forEach((key, j) => out.push({ key, sqrtPriceX96: decodeSlot0(words[2 * j]!).sqrtPriceX96, liquidity: BigInt(words[2 * j + 1]!) & ((1n << 128n) - 1n) }));
+      chunk.forEach((key, j) => { const { sqrtPriceX96, lpFee } = decodeSlot0(words[2 * j]!); out.push({ key, sqrtPriceX96, liquidity: BigInt(words[2 * j + 1]!) & ((1n << 128n) - 1n), lpFee }); });
     }
     return out;
   };
@@ -205,7 +208,7 @@ export const createPoolRegistry = (publicClient: PublicClient, poolManager: Addr
     if (!live.length) return null;
     live.sort((a, b) => (a.liquidity > b.liquidity ? -1 : a.liquidity < b.liquidity ? 1 : 0));
     const best = live[0]!;
-    return { key: best.key, id: poolIdOf(best.key), sqrtPriceX96: best.sqrtPriceX96, liquidity: best.liquidity, hooked: best.key.hooks.toLowerCase() !== VENUE_POOL.hooks, onRecord: false };
+    return { key: best.key, id: poolIdOf(best.key), sqrtPriceX96: best.sqrtPriceX96, liquidity: best.liquidity, lpFee: best.lpFee, hooked: best.key.hooks.toLowerCase() !== VENUE_POOL.hooks, onRecord: false };
   };
 
   return {

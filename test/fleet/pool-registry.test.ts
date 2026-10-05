@@ -116,7 +116,7 @@ test("the record: $CHIT's pool on 4663 is the recorded key, the buyback's pool b
   ]);
   const registry = createPoolRegistry(node.client, POOL_MANAGER, { chainId: 4663 });
   const found = await registry.find(CHIT);
-  assert.deepEqual(found, { key: CHIT_POOL, id: record.poolId, sqrtPriceX96: Q96, liquidity: 10n ** 22n, hooked: true, onRecord: true });
+  assert.deepEqual(found, { key: CHIT_POOL, id: record.poolId, sqrtPriceX96: Q96, liquidity: 10n ** 22n, lpFee: 0, hooked: true, onRecord: true });
   assert.equal(node.logQueries().length, 0, "nothing was looked for on the chain");
   assert.equal(node.storageReads(), 2, "the recorded pool's two words, no common key");
   // Emptied: null, and still nothing else is looked for; the decoy is never the answer.
@@ -143,7 +143,7 @@ test("discovery: every candidate is gathered before any is chosen, the token's o
   ]);
   const registry = createPoolRegistry(node.client, POOL_MANAGER, { chainId: 4663 });
   const found = await registry.find(PEPE);
-  assert.deepEqual(found, { key: hooked, id: poolIdOf(hooked), sqrtPriceX96: Q96, liquidity: 10n ** 22n, hooked: true, onRecord: false }, "the hooked launch pool is a candidate at all, and the deepest");
+  assert.deepEqual(found, { key: hooked, id: poolIdOf(hooked), sqrtPriceX96: Q96, liquidity: 10n ** 22n, lpFee: 0, hooked: true, onRecord: false }, "the hooked launch pool is a candidate at all, and the deepest");
   const queries = node.logQueries();
   assert.equal(queries.length, 1, "the whole chain in one query");
   assert.deepEqual([queries[0]!.fromBlock, queries[0]!.toBlock], ["0x0", numberToHex(HEAD)]);
