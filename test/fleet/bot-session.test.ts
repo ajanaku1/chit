@@ -110,7 +110,7 @@ test("unlinked: the card names the signer and offers Connect only; a pasted toke
   assert.match(telegram.last(), /never holds your key/, "no link, no token card");
   await bot.handle(tap("connect"));
   const href = buttons()[0]!;
-  assert.ok(href.startsWith("https://chit.tools/app/sessions.html?link=") && href.endsWith(`&key=${SIGNER}`) && /link=[0-9a-f]{32}&/.test(href), href);
+  assert.ok(href.startsWith("https://chit.tools/app/sessions?link=") && href.endsWith(`&key=${SIGNER}`) && /link=[0-9a-f]{32}&/.test(href), href);
   const nonce = href.split("link=")[1]!.split("&")[0]!;
   assert.equal((await links.getNonce(nonce))!.tgId, "7", "the nonce is this telegram's");
   assert.match(telegram.last(), /15 minutes/);
@@ -637,7 +637,7 @@ test("a sell without the owner's flag says what to do, with the Sessions page, a
   await bot.handle(tap(`s:${PEPE}:50`));
   assert.match(telegram.last(), /your session does not allow sells yet\. on the Sessions page, next to the bot's key, turn on let it sell \(one transaction\), then try again\./);
   assert.match(telegram.last(), /the ETH landing there and nothing approved afterwards, but the pool and the floor are the key's, so the flag trusts the bot's key with the position, not only the caps/, "the flag is sold for what it is: complete when off, unbounded on price");
-  assert.ok(buttons().includes("https://chit.tools/app/sessions.html"), "the Sessions page is the button");
+  assert.ok(buttons().includes("https://chit.tools/app/sessions"), "the Sessions page is the button");
   assert.equal(session.sales.length, 0, "no sale");
   assert.equal(session.calls.length, 0, "no execute either");
 });
@@ -775,7 +775,7 @@ test("the wallet choice mints a nonce of this telegram's and sends the Sessions 
   assert.match(telegram.last(), /every ETH buy that wallet makes on the venue is read from the chain within a few minutes, posted to the feed with the hash and mirrored into your followers' accounts, each inside their own caps and behind orus's read: a buy of 0.01 ETH or more through the token's own pool on the venue, up to 20 a day, for a token orus clears\. a smaller buy, one through another pool or a token orus will not clear is not posted or mirrored, and you are told why in private\. your taps in this bot, if you link an account too, and your sells are never mirrored/);
   assert.match(telegram.last(), /your sells are never mirrored, and the wallet's own trades are never touched\. close leader on your card stops the feed and the mirrors, any time/);
   const [href, back] = buttons();
-  assert.ok(href!.startsWith("https://chit.tools/app/sessions.html?lead=") && /lead=[0-9a-f]{32}&handle=ogle$/.test(href!), href);
+  assert.ok(href!.startsWith("https://chit.tools/app/sessions?lead=") && /lead=[0-9a-f]{32}&handle=ogle$/.test(href!), href);
   assert.equal(back, "home");
   const nonce = href!.split("lead=")[1]!.split("&")[0]!;
   assert.equal((await links.getNonce(nonce))!.tgId, "7", "the nonce is this telegram's, in the link store");

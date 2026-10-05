@@ -319,11 +319,11 @@ export class SessionBot {
       `account holds: <code>${eth(ethBal)} ETH</code>`,
       this.#sessionLine(state, s),
       "",
-      state === "active" ? "paste any token's contract address to see its card and buy from your account." : `manage the session on the <a href="${this.#d.siteUrl}/app/sessions.html">Sessions page</a>: fund, grant, pause, resume, revoke, withdraw. only you can.`,
+      state === "active" ? "paste any token's contract address to see its card and buy from your account." : `manage the session on the <a href="${this.#d.siteUrl}/app/sessions">Sessions page</a>: fund, grant, pause, resume, revoke, withdraw. only you can.`,
       "<i>beta. holders only. not audited by a firm yet.</i>",
     ];
     return this.#out(chatId, messageId, lines.join("\n"), kb(
-      [url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions.html`), btn("🔗 Re-link", "connect")],
+      [url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions`), btn("🔗 Re-link", "connect")],
       ...(this.#d.positions ? [[btn("📊 Positions", "pos")]] : []),
       ...(this.#d.orders ? [[btn("📋 Orders", "orders")]] : []),
       // copy: the leaders list, my follows, become or close leader.
@@ -364,7 +364,7 @@ export class SessionBot {
 
   async #connect(chatId: string, tgId: string): Promise<void> {
     const nonce = await issueNonce(this.#d.links, tgId, this.#now);
-    const href = `${this.#d.siteUrl}/app/sessions.html?link=${nonce}&key=${this.#d.session.signer}`;
+    const href = `${this.#d.siteUrl}/app/sessions?link=${nonce}&key=${this.#d.session.signer}`;
     await this.#say(chatId, [
       "<b>connect your wallet</b>",
       "",
@@ -457,7 +457,7 @@ export class SessionBot {
     if (!info.hasPool || quote === null) return this.#say(chatId, "no ETH pool on the venue for this token.", kb([btn("← Back", "home")]));
     // The contract's own answer first, so a refused buy burns no gas and says why in the contract's words.
     const can = await this.#d.session.canExecute(link.account, this.#d.reads.router, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, wei);
-    if (!can.ok) return this.#say(chatId, `your session says no: <b>${esc(can.why)}</b>. manage it on the Sessions page.`, kb([url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions.html`), btn("← Back", `token:${token}`)]));
+    if (!can.ok) return this.#say(chatId, `your session says no: <b>${esc(can.why)}</b>. manage it on the Sessions page.`, kb([url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions`), btn("← Back", `token:${token}`)]));
     const minOut = minOutFor(quote, this.#cfg("buySlippageBps"));
     const deadline = BigInt(Math.floor(this.#now.getTime() / 1000) + 3600);
     const data = encodeV4EthBuy({ token, amountIn: wei, minOut, deadline, ...(info.poolKey ? { poolKey: info.poolKey } : {}) });
@@ -508,7 +508,7 @@ export class SessionBot {
     const info = await this.#d.reads.tokenInfo(token);
     if (!info.hasPool) return this.#say(chatId, "no ETH pool on the venue for this token, so nothing to order.", kb([btn("← Back", "home")]));
     const can = await this.#d.session.canExecute(link.account, this.#d.reads.router, UNIVERSAL_ROUTER_EXECUTE_SELECTOR, wei);
-    if (!can.ok) return this.#say(chatId, `your session says no to a buy of that size: <b>${esc(can.why)}</b>. manage it on the Sessions page, then set the order.`, kb([url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions.html`), btn("← Back", `token:${token}`)]));
+    if (!can.ok) return this.#say(chatId, `your session says no to a buy of that size: <b>${esc(can.why)}</b>. manage it on the Sessions page, then set the order.`, kb([url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions`), btn("← Back", `token:${token}`)]));
     const now = this.#now.toISOString();
     const base = { id: newOrderId(), tgId, account: link.account, chainId: this.#d.session.chainId, token, ethWei: wei, createdAt: now, status: "open" as const, refusals: 0 };
     let order: Order;
@@ -583,7 +583,7 @@ export class SessionBot {
     const count = this.#today(tgId);
     if (count.executes >= this.#cfg("dailyExecutes")) return this.#say(chatId, `that is ${this.#cfg("dailyExecutes")} trades today from this account; again tomorrow.`, kb([btn("← Back", `token:${token}`)]));
     if (count.gasWei >= this.#cfg("dailyGasWei")) return this.#say(chatId, "the bot has fronted its daily gas for this account; again tomorrow.", kb([btn("← Back", `token:${token}`)]));
-    const sessions = `${this.#d.siteUrl}/app/sessions.html`;
+    const sessions = `${this.#d.siteUrl}/app/sessions`;
     // The flag is the owner's to set, from the wallet; the bot cannot give it to itself.
     if (!(await this.#d.session.sellAllowed(link.account))) return this.#say(chatId, "your session does not allow sells yet. on the Sessions page, next to the bot's key, turn on let it sell (one transaction), then try again. know before you do: a sale is one call on your account with the ETH landing there and nothing approved afterwards, but the pool and the floor are the key's, so the flag trusts the bot's key with the position, not only the caps.", kb([url("🔑 Sessions page", sessions), btn("← Back", `token:${token}`)]));
     const [info, held] = await Promise.all([this.#d.reads.tokenInfo(token), this.#d.reads.tokenBalance(token, link.account)]);

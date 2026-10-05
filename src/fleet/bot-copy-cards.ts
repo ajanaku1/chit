@@ -286,7 +286,7 @@ export class CopyCards {
       "unfollow is one tap here; to shut every mirrored buy out at once, pause or revoke the session on the Sessions page.",
     ];
     const rows: Keyboard = follows.map((f, i) => [btn(`unfollow ${name(i)}`, `unf:${f.leaderTgId}`)]);
-    await this.#say(chatId, lines.join("\n"), [...rows, [btn("📣 Leaders", "leaders"), url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions.html`)], [btn("← Back", "home")]]);
+    await this.#say(chatId, lines.join("\n"), [...rows, [btn("📣 Leaders", "leaders"), url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions`)], [btn("← Back", "home")]]);
   }
 
   async #unfollow(chatId: string, tgId: string, leaderTgId: string): Promise<void> {
@@ -316,7 +316,7 @@ export class CopyCards {
   async #leadFromWallet(chatId: string, tgId: string, from: Tapper): Promise<void> {
     const nonce = await this.#d.copy.leadNonce(tgId);
     const hint = handleOf(from)?.replace(/^@/, "");
-    const href = `${this.#d.siteUrl}/app/sessions.html?lead=${nonce}${hint ? `&handle=${encodeURIComponent(hint)}` : ""}`;
+    const href = `${this.#d.siteUrl}/app/sessions?lead=${nonce}${hint ? `&handle=${encodeURIComponent(hint)}` : ""}`;
     await this.#say(chatId, [
       "<b>lead from your own wallet</b>",
       "",

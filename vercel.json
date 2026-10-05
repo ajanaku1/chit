@@ -23,6 +23,9 @@
     "api/bot/watch.js": {
       "maxDuration": 300
     },
+    "api/comp/board.js": {
+      "maxDuration": 60
+    },
     "api/fleet/alert-test.js": {
       "maxDuration": 30
     },
@@ -116,14 +119,14 @@
       "permanent": false
     },
     {
-      "source": "/app/:page(balance|fleet|fleet-dashboard|fleet-privacy|sessions|trade).html",
+      "source": "/app/:page(balance|board|fleet|fleet-dashboard|fleet-privacy|sessions|trade).html",
       "destination": "/app/:page",
       "permanent": true
     }
   ],
   "rewrites": [
     {
-      "source": "/app/(balance|fleet|fleet-dashboard|fleet-privacy|sessions|trade)",
+      "source": "/app/(balance|board|fleet|fleet-dashboard|fleet-privacy|sessions|trade)",
       "destination": "/app/$1.html"
     }
   ]

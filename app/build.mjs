@@ -37,6 +37,7 @@ await Promise.all([
   page("./trade.html"),
   page("./sessions.html"),
   page("./control.html"),
+  page("./board.html"),
   // Written, never copied: a factory belongs to the chain it was deployed on, and a build must not ship the other host's (T081).
   writeFile(new URL("session-target.json", output), `${JSON.stringify(sessionTargetFromEnv(process.env), null, 2)}
 `),
@@ -52,6 +53,7 @@ await build({
     "trade-page": fileURLToPath(new URL("./src/trade-page.ts", import.meta.url)),
     "sessions-page": fileURLToPath(new URL("./src/sessions-page.ts", import.meta.url)),
     "control-page": fileURLToPath(new URL("./src/control-page.ts", import.meta.url)),
+    "board-page": fileURLToPath(new URL("./src/board-page.ts", import.meta.url)),
   },
   outdir: fileURLToPath(output),
   bundle: true,

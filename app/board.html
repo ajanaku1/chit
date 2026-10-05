@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#171513" />
+    <meta
+      name="description"
+      content="The Chit trading competition: who is ahead, by nickname, with open positions valued at what selling them would return right now."
+    />
+    <title>Chit · Trading competition</title>
+    <link rel="icon" href="./favicon.svg" />
+    <link rel="stylesheet" href="./fleet.css" />
+  </head>
+  <body class="fleet-body">
+    <a class="skip-link" href="#board">Skip to the board</a>
+    <div class="fleet-shell">
+      <header class="masthead">
+        <a class="brand-lockup" href="/" aria-label="Chit home">
+          <img src="./logo.svg" alt="" width="28" height="28" />
+          <span>Chit</span>
+        </a>
+        <nav class="nav" id="fleet-nav" aria-label="Fleet pages">
+          <a href="./balance">Balance</a>
+          <a href="./fleet">Set up</a>
+          <a href="./trade">Trade</a>
+          <a href="./fleet-dashboard">Control Room</a>
+          <a href="./fleet-privacy">Boundary</a>
+          <a href="./sessions">Sessions</a>
+        </nav>
+        <button id="hdr-wallet" type="button" class="wallet-btn" data-state="disconnected" aria-label="Connect wallet">Connect wallet</button>
+        <button class="burger" type="button" aria-label="Menu" aria-expanded="false" aria-controls="fleet-nav"><span></span><span></span><span></span></button>
+        <div class="contract-row">
+          <span class="contract-row__label">CHIT token</span>
+          <code id="contract-address" title="0xD523A627030509021cC39B6d7C8543417D3E50D8"><span>0xD523A6</span><span class="sr-only">27030509021cC39B6d7C8543417D</span><span>3E50D8</span></code>
+          <button id="copy-contract-address" type="button" aria-label="Copy CHIT token address"><svg class="contract-row__icon contract-row__icon--copy" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 9h10v10H9z"/><path d="M5 15V5h10"/></svg><svg class="contract-row__icon contract-row__icon--done" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg><span class="contract-row__action">Copy</span></button>
+          <span id="copy-contract-status" class="sr-only" role="status" aria-live="polite"></span>
+        </div>
+      </header>
+
+      <main id="board" class="wizard">
+        <section class="wstep card-glass" aria-labelledby="board-h" data-reveal>
+          <p class="kicker">Trading competition · $1,000 in USDG</p>
+          <h1 id="board-h">Seven days. Best return wins.</h1>
+          <p id="clock" class="lead" role="status" aria-live="polite">Loading the board…</p>
+          <dl class="summary grid">
+            <div><dt>Entrants</dt><dd id="stat-entrants">—</dd></div>
+            <div><dt>Trades counted</dt><dd id="stat-trades">—</dd></div>
+            <div><dt>Board as of</dt><dd id="stat-asof">—</dd></div>
+          </dl>
+          <p id="stale" class="callout" role="status" hidden>These numbers are from the last board we could build; the chain or the database was slow. They will catch up.</p>
+        </section>
+
+        <section class="wstep" aria-labelledby="pnl-h" data-reveal>
+          <p class="kicker">Best pnl · $500</p>
+          <h2 id="pnl-h">If it ended now</h2>
+          <p class="lead small">Each wallet's whole return on what it spent: ETH back from sells plus what its open bags would sell for right now, against what it bought. Open bags are priced at what selling the whole bag returns, not the chart.</p>
+          <ol id="pnl-list" class="board-list" aria-label="Best pnl standings"></ol>
+          <p id="pnl-empty" class="fineprint" hidden>No counted trades yet. The first one puts a name here.</p>
+        </section>
+
+        <section class="wstep" aria-labelledby="open-h" data-reveal>
+          <p class="kicker">Best open trade · $350</p>
+          <h2 id="open-h">Still holding</h2>
+          <p class="lead small">One position bought during the competition and still held, by its return at what selling it would fetch now.</p>
+          <ol id="open-list" class="board-list" aria-label="Best open trade standings"></ol>
+          <p id="open-empty" class="fineprint" hidden>Nobody is holding a counted position yet.</p>
+        </section>
+
+        <section id="awards" class="wstep card-warm" aria-labelledby="awards-h" hidden>
+          <p class="cardlabel">Final</p>
+          <h2 id="awards-h">Winners</h2>
+          <ul id="awards-list" class="board-list"></ul>
+          <p class="fineprint">Winners hear from the bot. Tell it where to send the USDG.</p>
+        </section>
+
+        <section class="wstep" aria-labelledby="rules-h" data-reveal>
+          <h2 id="rules-h">How it counts</h2>
+          <ul class="rules">
+            <li>Send <code>/join</code> and a nickname in the bot. That nickname is all this page shows; never a wallet.</li>
+            <li>Only trades made in the Chit bot between the start and the end count, each of at least <span id="rule-min">—</span> ETH.</li>
+            <li>You need <span id="rule-trades">—</span> counted trades to be ranked. Until then your row shows how many you have.</li>
+            <li>Any coin on Robinhood Chain counts. Anything bought before the start doesn't, even if you sell it during.</li>
+            <li>One prize per person. Best bug report takes a third prize, $150, judged by hand.</li>
+            <li>$CHIT holders only, like the beta. Trades the team judges set up to fake a result are disqualified.</li>
+          </ul>
+          <div class="wnav">
+            <a class="primary" href="https://t.me/usechit_bot" rel="noopener">Join in the bot</a>
+          </div>
+        </section>
+      </main>
+
+      <footer class="fleet-foot">
+        <p>Live on Robinhood Chain. Real ETH; a capped beta for $CHIT holders.</p>
+        <p class="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
+      </footer>
+    </div>
+    <script type="module" src="./board-page.js"></script>
+  </body>
+</html>

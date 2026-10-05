@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { FACTS, useSceneExit } from "./chrome";
 import { ago, fmtChit, fmtEth, mmss, useLive, useSecondsTo, type Burn } from "./live";
 import { Mark, SEAM, leftOfSeam, rightOfSeam } from "./mark";
-import { APP_HREF, BETA, TARGET } from "./chain";
+import { APP_HREF, APP_ORIGIN, BETA, TARGET } from "./chain";
 
 /* Every screen leaves room for the floating header above and the beta note below. */
 const PAD = "pt-[112px] pb-[40px]";
@@ -434,6 +434,54 @@ export function BotScene({ hero = false }: { hero?: boolean }) {
 }
 
 /* ================================================================
+   04b · the competition (beta host only)
+   ================================================================ */
+
+/** The trading competition: one section, one way in. Shown only where the beta app lives; the playground has no board. */
+export function Competition() {
+  if (!BETA) return null;
+  return (
+    <section id="competition" data-scene="Competition" className={`scene flex bg-void ${PAD}`}>
+      <div className="pointer-events-none absolute -left-[10vw] top-1/2 h-[70vh] w-[50vw] -translate-y-1/2 rounded-full bg-coral/10 blur-[120px]" />
+      <div className="relative mx-auto grid w-full max-w-wide grid-cols-1 items-center gap-10 px-6 md:grid-cols-[1.15fr_1fr] md:px-10">
+        <div>
+          <p className="eyebrow mb-4 text-coral">Trading competition · $1,000 in USDG</p>
+          <h2 className="display text-[clamp(44px,6.6vw,108px)]">
+            Seven days.
+            <br />
+            <span className="text-coral">Best return wins.</span>
+          </h2>
+          <p className="mt-6 max-w-[52ch] text-[15px] leading-relaxed text-paper/60">
+            Trade from the bot between 2 and 9 October, noon UTC to noon UTC. Best pnl takes $500, the best open trade at the end $350, the best bug report $150. Holders only, nicknames only: no wallet is ever shown.
+          </p>
+          <div className="mt-7 flex flex-wrap gap-2">
+            <a href={`${APP_ORIGIN}/app/board`} className="flex items-center gap-2 rounded-full bg-coral py-2.5 pl-6 pr-2.5 text-[15px] font-medium text-ink transition-colors hover:bg-coral-lift">
+              See the board <span className="grid h-7 w-7 place-items-center rounded-full bg-ink text-paper" aria-hidden="true">→</span>
+            </a>
+            <a href="https://t.me/usechit_bot" className="rounded-full border border-paper/20 px-6 py-2.5 text-[15px] font-medium transition-colors hover:border-paper">
+              /join in the bot
+            </a>
+          </div>
+        </div>
+        <dl className="grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
+          {[
+            ["$500", "Best pnl: each wallet's whole return on what it spent, open bags at what selling them returns."],
+            ["$350", "Best open trade: one position bought during the week and still held at the end."],
+            ["$150", "Break it: the best bug report, filed with /bug in the bot."],
+            ["5 trades", "Of at least 0.0005 ETH each, inside the week, to be ranked. Any coin on Robinhood Chain."],
+          ].map(([k, v]) => (
+            <div key={k} className="border-t border-paper/15 pt-4">
+              <dt className="font-display text-[20px] font-bold tracking-[-0.03em]">{k}</dt>
+              <dd className="mt-1.5 text-[14px] leading-relaxed text-paper/60">{v}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
+  );
+}
+
+/* ================================================================
    05 · the burn
    ================================================================ */
 
@@ -602,7 +650,7 @@ export function Launch({ tone = "surface" }: { tone?: "surface" | "void" }) {
 
         <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:pt-4">
           {[
-            ["Product", [["Home", "/"], ["The bot", "/bot"], ["Burn", "/burn"], ["Open the app", APP_HREF]]],
+            ["Product", [["Home", "/"], ["The bot", "/bot"], ["Burn", "/burn"], ...(BETA ? [["Competition", `${APP_ORIGIN}/app/board`]] : []), ["Open the app", APP_HREF]]],
             ["Community", [["Telegram", "https://t.me/usechittools"], ["@usechit_bot", "https://t.me/usechit_bot"]]],
             ["On chain", [["Explorer", "https://robinhoodchain.blockscout.com"], ["$CHIT contract", "https://robinhoodchain.blockscout.com/token/0xD523A627030509021cC39B6d7C8543417D3E50D8"], ["Buyback contract", "https://robinhoodchain.blockscout.com/address/0xe5a7dbd4fd12edfb5b2c1e584b5d1ea9131f8b64"]]],
           ].map(([title, links]) => (

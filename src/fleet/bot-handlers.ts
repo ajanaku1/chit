@@ -995,7 +995,7 @@ export class ChitBot {
     if (!wallet) return this.#start(chatId, tgId);
     const intro = ChitBot.FLEET_INTRO;
     if (!this.#d.fleetApi) {
-      return this.#out(chatId, messageId, [...intro, "", `from this chat it is not wired yet. today it lives in the app: <a href="${esc(this.#site)}/app/balance.html">Balance</a> → <a href="${esc(this.#site)}/app/fleet.html">Set up</a> → <a href="${esc(this.#site)}/app/trade.html">Trade</a> → <a href="${esc(this.#site)}/app/fleet-dashboard.html">Control Room</a>.`].join("\n"), kb(back()), "fleet");
+      return this.#out(chatId, messageId, [...intro, "", `from this chat it is not wired yet. today it lives in the app: <a href="${esc(this.#site)}/app/balance">Balance</a> → <a href="${esc(this.#site)}/app/fleet">Set up</a> → <a href="${esc(this.#site)}/app/trade">Trade</a> → <a href="${esc(this.#site)}/app/fleet-dashboard">Control Room</a>.`].join("\n"), kb(back()), "fleet");
     }
     const record = this.#fleetOf(wallet);
     const phase = fleetPhase(record);
