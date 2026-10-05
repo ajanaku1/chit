@@ -177,7 +177,7 @@ import { recordedPoolsFromEnv } from "./pool-registry.js";
 import { MemoryAlertStore, NeonAlertStore, type AlertStore } from "./bot-alerts.js";
 import { MemoryUpdateClaims, NeonUpdateClaims, type UpdateClaims } from "./bot-updates.js";
 import { DualBot, MemoryFloorStore, NeonFloorStore, type FloorStore } from "./bot-dual.js";
-import { MemoryCompStore, NeonCompStore, type CompStore } from "./bot-comp.js";
+import { MemoryBugStore, MemoryCompStore, NeonBugStore, NeonCompStore, type BoardLike, type BugStore, type CompStore } from "./bot-comp.js";
 
 /** BOT_USD_TOKEN: a dollar stablecoin on the chain (USDG on 4663); its ETH pool prices Positions' $ view (bot-usd-price.ts). Unset: ETH only. */
 const usdTokenFromEnv = (): Address | undefined => {
@@ -279,6 +279,25 @@ const compFromEnv = (): CompStore => {
   return new MemoryCompStore();
 };
 
+/** Session mode: /bug reports (bot-comp.ts); the same store rule as the links. */
+const bugsFromEnv = (): BugStore => {
+  const url = process.env.DATABASE_URL;
+  if (url) {
+    const sql = neon(url);
+    return new NeonBugStore({ query: (query, params) => sql.query(query, params) as Promise<readonly Record<string, unknown>[]> });
+  }
+  if (process.env.BOT_MEMORY_STORE !== "1") refuse("DATABASE_URL is not set (BOT_MEMORY_STORE=1 allows a per-instance memory store on one machine only)");
+  warnOnce("bugs", "BOT_MEMORY_STORE=1: bug reports live in this instance's memory only");
+  return new MemoryBugStore();
+};
+
+/** /board reads the site's own route, so the bot and the page show one board and share its minute of cache. */
+const boardFromSite = (site: string) => async (): Promise<BoardLike> => {
+  const r = await fetch(`${site}/api/comp/board`, { headers: { accept: "application/json" } });
+  if (!r.ok) throw new Error(`board ${r.status}`);
+  return (await r.json()) as BoardLike;
+};
+
 /** Session mode's standing orders (limit buys, DCA); the same store rule as the links. BOT_ORDERS_OFF=1 offers none. */
 const ordersFromEnv = (): OrderStore | undefined => {
   if (process.env.BOT_ORDERS_OFF === "1") return undefined;
@@ -345,6 +364,8 @@ const buildSession = (overrides: SessionOverrides): SessionBot => {
     ...(dailyGasWei !== undefined ? { dailyGasWei } : {}),
     positions: positionLedgerFromEnv(),
     comp: compFromEnv(),
+    bugs: { store: bugsFromEnv(), ...(process.env.MONITOR_CHAT_ID?.trim() ? { operatorChatId: process.env.MONITOR_CHAT_ID.trim() } : {}) },
+    board: boardFromSite(site),
     ...(holders ? { holders } : {}),
     ...(usdToken ? { usdPerEth: createUsdPrice({ reads, token: usdToken }) } : {}),
   };

@@ -42,7 +42,7 @@
  */
 
 import { holdersAnswer, type HoldersGate } from "./bot-holders.js";
-import { joinReply, type CompStore } from "./bot-comp.js";
+import { boardText, bugReply, joinReply, type BoardLike, type BugStore, type CompStore } from "./bot-comp.js";
 import { positionsCard } from "./bot-positions-card.js";
 import { noteProceeds, noteSent, saleProceeds, type PositionLedger } from "./bot-positions.js";
 import { type Address, type Hex, isAddress } from "viem";
@@ -72,6 +72,10 @@ export type SessionBotDeps = {
   positions?: PositionLedger;
   /** The trading competition's entries (bot-comp.ts): `/join <nickname>`; absent, /join is the help card. */
   comp?: CompStore;
+  /** `/bug`: the report kept, and told to the operator chat when there is one (MONITOR_CHAT_ID); absent, /bug is the help card. */
+  bugs?: { store: BugStore; operatorChatId?: string };
+  /** `/board`: the competition's board (comp-board.ts), read from the site's own route; absent, /board is the help card. */
+  board?: () => Promise<BoardLike>;
   /** The $CHIT holders line (bot-holders.ts): asked of the account's owner before any buy the bot pays gas for; absent, no line. */
   holders?: HoldersGate;
   /** ETH's price in dollars for Positions' $ view; absent or undefined, Positions stay in ETH. */
@@ -199,6 +203,9 @@ export class SessionBot {
       if (cmd === "/help") return this.#help(chatId);
       if (cmd === "/link") return this.#connect(chatId, tgId);
       if (cmd === "/join" && this.#d.comp) return this.#join(this.#d.comp, chatId, tgId, u.message.from.username, text.slice(cmd.length));
+      if (cmd === "/bug" && this.#d.bugs) return this.#bug(this.#d.bugs, chatId, tgId, u.message.from.username, text.slice(cmd.length));
+      if (cmd === "/board" && this.#d.board) return this.#board(this.#d.board, chatId);
+      if (cmd === "/competition" && this.#d.comp) return this.#competition(chatId, tgId);
       // copy: a reply to a cap or handle prompt (bot-copy-cards.ts).
       if (this.#copy && (await this.#copy.reply(chatId, tgId, text, !!u.message.reply_to_message))) return;
       // alerts: a reply to the line prompt (bot-alert-cards.ts).
@@ -229,6 +236,8 @@ export class SessionBot {
       case "home": await ack(); return this.#home(chatId, tgId, messageId);
       case "pos": await ack(); return this.#positions(chatId, tgId, messageId, a === "usd" ? "usd" : "eth");
       case "connect": await ack(); return this.#connect(chatId, tgId);
+      case "joinhow": await ack(); return this.#say(chatId, "send /join and the nickname the board shows, like <code>/join moonboy</code>. letters, digits, _ . - only, 3 to 20 of them.");
+      case "comp": await ack(); return this.#d.comp ? this.#competition(chatId, tgId, messageId) : this.#help(chatId);
       case "token": await ack(); return a && isAddress(a) ? this.#tokenCard(chatId, tgId, a as Address, messageId) : this.#help(chatId);
       case "b": await ack(); return a && isAddress(a) && b ? this.#buy(chatId, tgId, a as Address, b, true, startedAt) : this.#help(chatId);
       case "ask": {
@@ -309,7 +318,7 @@ export class SessionBot {
         "<i>beta. holders only. not audited by a firm yet, and we say so on every card.</i>",
       ].join("\n");
       // alerts: no link needed, the alert goes to this chat.
-      return this.#out(chatId, messageId, text, kb([btn("🔗 Connect your wallet", "connect")], ...(this.#alerts ? [this.#alerts.homeRow()] : []), [btn("❓ Help", "help")], ...this.#door()));
+      return this.#out(chatId, messageId, text, kb([btn("🔗 Connect your wallet", "connect")], ...(this.#d.comp ? [[btn("🏆 Competition", "comp")]] : []), ...(this.#alerts ? [this.#alerts.homeRow()] : []), [btn("❓ Help", "help")], ...this.#door()));
     }
     const [s, ethBal] = await Promise.all([this.#d.session.sessionOf(link.account), this.#d.reads.ethBalance(link.account)]);
     const state = sessionState(s, Math.floor(this.#now.getTime() / 1000));
@@ -326,6 +335,7 @@ export class SessionBot {
       [url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions`), btn("🔗 Re-link", "connect")],
       ...(this.#d.positions ? [[btn("📊 Positions", "pos")]] : []),
       ...(this.#d.orders ? [[btn("📋 Orders", "orders")]] : []),
+      ...(this.#d.comp ? [[btn("🏆 Competition", "comp")]] : []),
       // copy: the leaders list, my follows, become or close leader.
       ...(this.#copy ? await this.#copy.homeRows(tgId) : []),
       // alerts: on, off and the line (bot-alert-cards.ts).
@@ -381,7 +391,7 @@ export class SessionBot {
       "<b>chit bot on mainnet</b>",
       "the key stays with you. link a session account once, then paste any token's address and buy from your account in one tap.",
       "sell from the token card too, once you turn on let it sell next to the bot's key on the Sessions page. a sale is one call on your account: the ETH lands in your account, nothing stays approved after it, and turning let it sell off is complete. the pool and the floor are the key's, so the flag trusts the bot's key with the position, not only the caps. withdrawals and fleets are yours to do from the app in this beta.",
-      "/link to connect or re-link. /start for your card.",
+      "/link to connect or re-link. /start for your card." + (this.#d.comp ? " /competition for how to enter the trading competition, /board for the standings, /bug to report what broke." : ""),
     ].join("\n"), kb([btn("← Back", "home")]));
   }
 
@@ -561,6 +571,44 @@ export class SessionBot {
   async #join(comp: CompStore, chatId: string, tgId: string, username: string | undefined, nickname: string): Promise<void> {
     const linked = !!(await this.#d.links.getLink(tgId));
     return this.#say(chatId, await joinReply(comp, { tgId, ...(username ? { username } : {}) }, nickname, linked, this.#now));
+  }
+
+  /** The competition card: how to enter, in the order it has to happen, with where each step is done; what this user has done already is ticked. */
+  async #competition(chatId: string, tgId: string, messageId?: number): Promise<void> {
+    const [entry, link] = await Promise.all([this.#d.comp!.all().then((all) => all.find((e) => e.tgId === tgId)), this.#d.links.getLink(tgId)]);
+    const tick = (done: boolean) => (done ? "✅" : "▫️");
+    const text = [
+      "<b>trading competition</b> · 2 to 9 october, noon UTC · $1,000 in USDG",
+      "best pnl $500 · best open trade $350 · best bug report $150. $CHIT holders only.",
+      "",
+      "<b>how to enter</b>",
+      `${tick(!!entry)} 1. pick a nickname: <code>/join yourname</code>${entry ? ` (you're in as <b>${esc(entry.nickname)}</b>)` : ""}`,
+      `${tick(!!link)} 2. link a session account: create and fund one on the Sessions page, grant the bot's key, then /link`,
+      "▫️ 3. trade from this bot: paste a token, buy, sell. 5 trades of 0.0005 ETH or more, inside the week, to be ranked",
+      "",
+      "your return is on what you spent, open bags at what selling them returns now. the board shows nicknames and percentages, never a wallet.",
+      "/board for the standings. /bug if something breaks: the best report of the week takes $150.",
+    ].join("\n");
+    return this.#out(chatId, messageId, text, kb(
+      ...(entry ? [] : [[btn("🏆 Join", "joinhow")]]),
+      [url("🔑 Sessions page", `${this.#d.siteUrl}/app/sessions`), ...(link ? [] : [btn("🔗 Link", "connect")])],
+      [url("📊 Board", `${this.#d.siteUrl}/app/board`), btn("← Back", "home")],
+    ));
+  }
+
+  /** A bug report (bot-comp.ts): kept by Telegram id, and told to the operator chat; the reporter is named by nickname when they have one. */
+  async #bug(bugs: NonNullable<SessionBotDeps["bugs"]>, chatId: string, tgId: string, username: string | undefined, text: string): Promise<void> {
+    const nickname = this.#d.comp ? (await this.#d.comp.all()).find((e) => e.tgId === tgId)?.nickname : undefined;
+    const { reply, forward } = await bugReply(bugs.store, { tgId, ...(username ? { username } : {}) }, text, nickname, this.#now);
+    if (forward && bugs.operatorChatId) await this.#d.telegram.deliver({ kind: "send", chatId: bugs.operatorChatId, text: forward }).catch((e: unknown) => console.error("bug not forwarded:", e instanceof Error ? e.message : String(e)));
+    return this.#say(chatId, reply);
+  }
+
+  /** The standings, as the site's board route has them; a route that does not answer is said, not thrown. */
+  async #board(board: NonNullable<SessionBotDeps["board"]>, chatId: string): Promise<void> {
+    const href = `${this.#d.siteUrl}/app/board`;
+    try { return await this.#say(chatId, boardText(await board(), href)); }
+    catch { return this.#say(chatId, `the board is not answering right now. <a href="${href}">try the page</a>, or again in a minute.`); }
   }
 
   // ---------- sell ----------

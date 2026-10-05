@@ -89,3 +89,62 @@ export const joinReply = async (store: CompStore, from: { tgId: string; username
   const tail = linked ? "only trades you make in this bot during the competition count." : "connect your account with /link first: only trades you make in this bot count.";
   return `${head} ${tail}`;
 };
+
+// ---------- bug reports (/bug) ----------
+
+export type BugReport = { tgId: string; text: string; at: string };
+export type BugStore = { add(report: BugReport): Promise<void>; count(tgId: string): Promise<number> };
+
+export class MemoryBugStore implements BugStore {
+  readonly reports: BugReport[] = [];
+  async add(r: BugReport) { this.reports.push({ ...r }); }
+  async count(tgId: string) { return this.reports.filter((r) => r.tgId === tgId).length; }
+}
+
+export class NeonBugStore implements BugStore {
+  #ready: Promise<void> | undefined;
+  constructor(private readonly sql: CompSql) {}
+  #init(): Promise<void> {
+    return (this.#ready ??= this.sql.query(`CREATE TABLE IF NOT EXISTS bot_bug_reports (id BIGSERIAL PRIMARY KEY, tg_id TEXT NOT NULL, text TEXT NOT NULL, at TIMESTAMPTZ NOT NULL)`).then(() => undefined).catch((e) => { this.#ready = undefined; throw e; }));
+  }
+  async add(r: BugReport) { await this.#init(); await this.sql.query(`INSERT INTO bot_bug_reports (tg_id, text, at) VALUES ($1, $2, $3)`, [r.tgId, r.text, r.at]); }
+  async count(tgId: string) { await this.#init(); const [r] = await this.sql.query(`SELECT count(*)::int AS n FROM bot_bug_reports WHERE tg_id = $1`, [tgId]); return Number(r?.n ?? 0); }
+}
+
+export const BUG_MAX_CHARS = 1500;
+
+/** What /bug answers, and what the operator chat is told (undefined when nothing was filed). */
+export const bugReply = async (store: BugStore, from: { tgId: string; username?: string }, text: string, nickname: string | undefined, now: Date): Promise<{ reply: string; forward?: string }> => {
+  const body = text.trim();
+  if (!body) return { reply: "found something broken? send /bug and what happened, in one message: what you did, what you expected, what you got. the best report of the competition takes $150." };
+  if (body.length > BUG_MAX_CHARS) return { reply: `that is over ${BUG_MAX_CHARS} characters. the first message is the report; send the rest as a second /bug if it matters.` };
+  await store.add({ tgId: from.tgId, text: body, at: now.toISOString() });
+  const n = await store.count(from.tgId);
+  const who = nickname ?? (from.username ? `@${from.username}` : `tg ${from.tgId}`);
+  return {
+    reply: `filed, thank you. that is your ${n === 1 ? "first" : `${n}th`} report. we read every one; the best of the week takes $150.`,
+    forward: `🐞 bug from ${who} (tg ${from.tgId}, report ${n}):\n${body}`,
+  };
+};
+
+// ---------- the board (/board) ----------
+
+export type BoardLike = { ended: boolean; end: string; entrants: number; trades: number; minTrades: number; pnl: { nickname: string; pct: number; trades: number; qualified: boolean }[]; ongoing: { nickname: string; symbol: string; pct: number }[]; awards?: { prize: string; usd: number; nickname: string }[] };
+
+const sign = (pct: number): string => `${pct > 0 ? "+" : ""}${pct.toFixed(2)}%`;
+
+/** The board as a Telegram message: top five of each, the unranked with their count toward five, the winners once it has ended. */
+export const boardText = (b: BoardLike, boardUrl: string): string => {
+  const lines: string[] = [b.ended ? "<b>competition over</b>" : `<b>competition · if it ended now</b>`, `${b.entrants} in, ${b.trades} trades counted`, ""];
+  if (b.ended && b.awards) {
+    lines.push("<b>winners</b>", ...b.awards.map((a) => `$${a.usd} ${a.prize}: <b>${esc(a.nickname)}</b>`), "");
+  }
+  lines.push("<b>best pnl · $500</b>");
+  lines.push(...(b.pnl.length ? b.pnl.slice(0, 5).map((r, i) => `${i + 1}. ${esc(r.nickname)} <code>${sign(r.pct)}</code>${r.qualified ? "" : ` (${r.trades}/${b.minTrades} trades)`}`) : ["nobody has a counted trade yet"]));
+  lines.push("", "<b>best open trade · $350</b>");
+  lines.push(...(b.ongoing.length ? b.ongoing.slice(0, 5).map((r, i) => `${i + 1}. ${esc(r.nickname)} <code>${sign(r.pct)}</code> ${esc(r.symbol)}`) : ["nobody is holding a counted position yet"]));
+  lines.push("", `<a href="${boardUrl}">the full board</a>`);
+  return lines.join("\n");
+};
+
+const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
