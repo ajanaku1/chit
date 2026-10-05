@@ -78,10 +78,23 @@ const balance = BigInt(balanceHex);
 const now = Number(latest.timestamp);
 const head = Number(latest.number);
 
-// The last 24 hours of events. Blocks land about every quarter second on 4663, so a day is under 400k blocks; the block timestamps decide.
-const DAY_BLOCKS = 400_000;
-const from = "0x" + Math.max(0, head - DAY_BLOCKS).toString(16);
-const logs = await rpc("eth_getLogs", [{ address: BUYBACK, fromBlock: from, toBlock: "latest", topics: [[TOPIC.funded, TOPIC.burned]] }]);
+// The last 24 hours of events. The block time is measured, not assumed: 4663 went from about a quarter
+// second to about a tenth, and a fixed 400k-block window then held only the last eleven hours. The span
+// gets a tenth more as margin and the block timestamps decide what counts.
+const PROBE = 100_000;
+const probe = await rpc("eth_getBlockByNumber", ["0x" + Math.max(0, head - PROBE).toString(16), false]);
+const measured = (now - Number(probe?.timestamp)) / PROBE;
+// An empty probe would make this NaN, the span NaN and the loop run zero times: a quiet "no buys" post. It throws instead.
+if (!Number.isFinite(measured) || measured <= 0) throw new Error(`could not measure the block time from block ${head - PROBE}: got ${measured}`);
+const secPerBlock = Math.max(0.01, measured);
+const dayBlocks = Math.ceil((86_400 / secPerBlock) * 1.1);
+// The public RPC answers eth_getLogs over at most 100k blocks when a topic position holds more than one value, so the day goes in slices.
+const SLICE = 100_000;
+const logs = [];
+for (let lo = Math.max(0, head - dayBlocks); lo <= head; lo += SLICE) {
+  const hi = Math.min(lo + SLICE - 1, head);
+  logs.push(...(await rpc("eth_getLogs", [{ address: BUYBACK, fromBlock: "0x" + lo.toString(16), toBlock: "0x" + hi.toString(16), topics: [[TOPIC.funded, TOPIC.burned]] }])));
+}
 const blockTimes = new Map();
 const timeOf = async (blockHex) => {
   if (!blockTimes.has(blockHex)) blockTimes.set(blockHex, Number((await rpc("eth_getBlockByNumber", [blockHex, false])).timestamp));
