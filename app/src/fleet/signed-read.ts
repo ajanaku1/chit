@@ -2,8 +2,10 @@
  * Signed reads a recent answer can stand in for.
  *
  * A signed read is a wallet prompt, so a page that signs every time it loads
- * prompts on every tab switch. Answers are kept per wallet for this tab, as long
- * as a cached balance is; anything that changes a fleet forgets them instead.
+ * prompts on every tab switch. Answers are kept per wallet, as long as a cached
+ * balance is, in localStorage: a phone's trip into the wallet app can discard
+ * the tab, and sessionStorage with it, which was one more prompt on return.
+ * Anything that changes a fleet forgets them instead.
  */
 
 import type { Hex } from "viem";
@@ -44,7 +46,7 @@ export const recentSigned = (
   wallet: Hex,
   action: string,
   body: Body,
-  { now = new Date(), maxAgeMs, storage = sessionStorage }: Pick<SignedReadOptions, "now" | "maxAgeMs" | "storage"> = {},
+  { now = new Date(), maxAgeMs, storage = localStorage }: Pick<SignedReadOptions, "now" | "maxAgeMs" | "storage"> = {},
 ): Body | undefined => {
   const cached = load(storage, wallet)[`${action}:${payloadHash(body)}`];
   return cached && isFresh(cached.savedAt, now, maxAgeMs) ? cached.body : undefined;
@@ -54,7 +56,7 @@ export const readSigned = async (
   wallet: Hex,
   action: string,
   body: Body,
-  { force = false, now = new Date(), maxAgeMs, storage = sessionStorage, sign = signedFleetApi }: SignedReadOptions = {},
+  { force = false, now = new Date(), maxAgeMs, storage = localStorage, sign = signedFleetApi }: SignedReadOptions = {},
 ): Promise<Body> => {
   const slot = `${action}:${payloadHash(body)}`;
   const cached = force ? undefined : recentSigned(wallet, action, body, { now, storage, ...(maxAgeMs !== undefined ? { maxAgeMs } : {}) });
@@ -78,7 +80,7 @@ export const readSigned = async (
 };
 
 /** Call after anything that changes a fleet, so the next read is live. */
-export const forgetSignedReads = (wallet: Hex, storage: Store = sessionStorage): void => {
+export const forgetSignedReads = (wallet: Hex, storage: Store = localStorage): void => {
   try {
     storage.removeItem(keyOf(wallet));
   } catch {

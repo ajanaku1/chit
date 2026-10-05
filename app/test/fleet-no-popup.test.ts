@@ -135,8 +135,8 @@ test("only the shared freshness rule decides a Chit balance may show without sig
   for (const name of ["balance-page.ts", "fleet-dashboard.ts", "fleet-page.ts", "trade-page.ts"]) {
     assert.doesNotMatch(await source(name), /loadCachedBalance\(/, `${name} reaches around the freshness rule`);
   }
-  assert.match(await source("fleet/balance-read.ts"), /showableBalance\(sessionStorage, wallet, now\)/, "recentBalance keeps its own copy of the rule");
-  assert.match(await source("fleet/page-shared.ts"), /showableBalance\(sessionStorage, address\)/, "the wallet menu keeps its own copy of the rule");
+  assert.match(await source("fleet/balance-read.ts"), /showableBalance\(localStorage, wallet, now\)/, "recentBalance keeps its own copy of the rule");
+  assert.match(await source("fleet/page-shared.ts"), /showableBalance\(localStorage, address\)/, "the wallet menu keeps its own copy of the rule");
 });
 
 test("the Control Room asks only for the figures it is actually hiding", async () => {

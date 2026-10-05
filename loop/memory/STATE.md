@@ -168,3 +168,30 @@ GitHub ran no scheduled instance between the 10:04 dispatch and 14:54 UTC, then
 ran buy 2. That is GitHub's scheduler skipping slots on a fresh workflow, not
 the script. A Vercel cron hitting a keeper route would be the reliable fix; it
 needs `BUYBACK_KEEPER_KEY` in the Vercel environment, so it is proposed, not done.
+
+---
+
+## 2026-10-05 — Proposal: WalletConnect for phone browsers (not added)
+
+The app connects only through an injected provider (EIP-6963, else
+`window.ethereum`). Safari and Chrome on a phone have none, so the only way in
+from a phone was to know to open app.chit.tools inside the wallet's own
+browser. `feat/mobile-wallet` closes the dead end without a dependency: on a
+phone, "no wallet" now opens a sheet of the wallet apps' universal links
+(MetaMask, Coinbase Wallet, Trust Wallet, Phantom), each carrying the current
+page, so the trader lands back on it inside the wallet's browser.
+
+The full fix is WalletConnect, which lets a phone browser pair with any wallet
+app directly and keeps the session across the app switch. It needs:
+
+- `@reown/appkit` + `@reown/appkit-adapter-ethers` or the bare
+  `@walletconnect/ethereum-provider` (smaller; it exposes an EIP-1193 provider
+  that would slot into `walletProvider()` as one more `InstalledWallet`).
+- A Reown Cloud project id (free), set as a public build-time constant.
+- The Robinhood chain registered in the provider's chain list, as in
+  `ensureRobinhoodTestnet`.
+
+Proposed, not done: it is a new runtime dependency and a new external account.
+If approved, the bare provider is the smaller change and keeps the chooser as it
+is, with "WalletConnect" as one more row that shows a QR on desktop and opens
+the wallet picker on a phone.

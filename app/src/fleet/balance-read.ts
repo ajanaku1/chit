@@ -5,6 +5,8 @@
  * Three pages each signing on every load is indistinguishable from being asked
  * to connect over and over. A recent read therefore stands in for all of them,
  * and only an explicit refresh, or an action that must see the chain, signs.
+ * It is kept in localStorage so that a phone coming back from the wallet app,
+ * its tab discarded meanwhile, still has it.
  */
 
 import type { Hex } from "viem";
@@ -16,7 +18,7 @@ export type ReadOptions = { force?: boolean; now?: Date };
 
 /** A recent balance read, or undefined: never signs, so it is safe while a page loads. */
 export const recentBalance = (wallet: Hex, now = new Date()): CachedBalance | undefined =>
-  showableBalance(sessionStorage, wallet, now);
+  showableBalance(localStorage, wallet, now);
 
 /** The trader's balance, from a recent read unless forced. */
 export const readBalance = async (wallet: Hex, options: ReadOptions = {}): Promise<CachedBalance> => {
@@ -31,10 +33,10 @@ export const readBalance = async (wallet: Hex, options: ReadOptions = {}): Promi
 
 /** Keeps a balance the service returned, whether read on its own or alongside an action. */
 export const rememberBalance = (wallet: Hex, body: BalanceState, now = new Date()): CachedBalance => {
-  saveCachedBalance(sessionStorage, wallet, body, now);
+  saveCachedBalance(localStorage, wallet, body, now);
   window.dispatchEvent(new CustomEvent("chit-balance-read", { detail: { wallet } }));
   return { ...body, savedAt: now.getTime() };
 };
 
 /** Call after anything that moves the balance, so the next read is live. */
-export const invalidateBalance = (wallet: Hex): void => clearCachedBalance(sessionStorage, wallet);
+export const invalidateBalance = (wallet: Hex): void => clearCachedBalance(localStorage, wallet);

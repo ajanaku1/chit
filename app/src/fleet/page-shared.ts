@@ -7,6 +7,7 @@
  * keys and the backup never touch storage; sessionStorage clears with the tab.
  */
 
+import { isPhone, walletAppLinks } from "./wallet-links.js";
 import { freshPoolStatus, loadCachedBalance, poolStatus, setChainLabel, showableBalance } from "./balance.js";
 import { initHoldersGate } from "./holders-gate.js";
 import { SetupError } from "./campaign-setup.js";
@@ -654,6 +655,33 @@ const make = <K extends keyof HTMLElementTagNameMap>(tag: K, className?: string,
   return node;
 };
 
+/**
+ * A phone browser with no wallet in it: the wallet apps that can open this page
+ * in their own browser, where connecting works. Nothing here connects; the
+ * trader comes back to the page inside the wallet and taps Connect there.
+ */
+const openInWalletSheet = (): void => {
+  const dialog = document.createElement("dialog");
+  dialog.className = "wallet-chooser wallet-open-in";
+  dialog.setAttribute("aria-label", "Open in your wallet app");
+  const heading = make("h2", undefined, "Open in your wallet app");
+  const lead = make("p", undefined, "This browser has no wallet in it. Open this page in your wallet's own browser, then connect there.");
+  const list = make("div", "wallet-chooser-list");
+  for (const { name, href } of walletAppLinks(window.location.href)) {
+    const link = make("a", undefined, name);
+    link.href = href;
+    link.rel = "noopener";
+    list.append(link);
+  }
+  const cancel = make("button", "wallet-chooser-cancel", "Not now");
+  cancel.type = "button";
+  cancel.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove());
+  dialog.append(heading, lead, list, cancel);
+  document.body.append(dialog);
+  dialog.showModal();
+};
+
 const menuRow = (name: IconName, label: string, className?: string): { row: HTMLButtonElement; label: HTMLSpanElement } => {
   const row = make("button", className);
   row.type = "button";
@@ -769,7 +797,7 @@ export const initHeaderWallet = (): void => {
     void showChainAndEth(address);
 
     // A recent read only: opening the menu never opens the wallet.
-    const cached = showableBalance(sessionStorage, address);
+    const cached = showableBalance(localStorage, address);
     if (cached) {
       chitFigure.textContent = `${toEth(cached.available)} ETH`;
     } else {
@@ -900,6 +928,11 @@ export const initHeaderWallet = (): void => {
   window.addEventListener("chit-wallet-changed", render);
   window.addEventListener("chit-wallet-error", ((event: Event) => {
     const detail = (event as CustomEvent<{ reason: string; message?: string }>).detail;
+    // A phone cannot install an extension; it is offered the wallet apps instead.
+    if (detail.reason === "no_wallet" && isPhone(navigator.userAgent, navigator.maxTouchPoints)) {
+      openInWalletSheet();
+      return;
+    }
     showError(WALLET_ERROR_TEXT[detail.reason] ?? detail.message ?? "Couldn't connect");
   }) as EventListener);
 
@@ -985,7 +1018,7 @@ export const initPoolStatus = (): void => {
     const wallet = getConnectedWallet();
     let status: ReturnType<typeof poolStatus>;
     try {
-      status = freshPoolStatus(wallet ? loadCachedBalance(sessionStorage, wallet) : undefined, new Date());
+      status = freshPoolStatus(wallet ? loadCachedBalance(localStorage, wallet) : undefined, new Date());
     } catch {
       status = undefined;
     }
