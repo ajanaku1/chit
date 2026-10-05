@@ -78,3 +78,22 @@ test("a quote with liquidity follows the pool's curve: more in, less out per wei
   assert.ok(big < 5n * small, "five times the input buys less than five times the output");
   assert.equal(quoteExactIn(2n * 10n ** 14n, sqrtP, 0n, true, 0), 0n, "without a liquidity reading there is no fill here; the venue quote falls back to the spot estimate");
 });
+
+/**
+ * Found 2026-10-05 from a user's report: "Number -28874494619742514906 is not in
+ * safe 128-bit unsigned integer range". A v4 pool with a dynamic fee says so with
+ * the flag 0x800000 in its key's fee; read as a fee that is 838%, the quote went
+ * negative and the buy's floor with it. The fee in force is slot0's lpFee.
+ */
+test("a dynamic-fee pool is quoted at slot0's lpFee, not at the flag in its key, and a quote never goes below zero", async () => {
+  const { DYNAMIC_FEE_FLAG, effectiveFee } = await import("../../src/fleet/market.js");
+  // slot0: price, tick 0, protocol fee 0, lpFee 3000 (0.3%) at bits 208 and up.
+  const price = 1n << 96n;
+  const word = (`0x${((3000n << 208n) | price).toString(16).padStart(64, "0")}`) as `0x${string}`;
+  assert.equal(decodeSlot0(word).lpFee, 3000);
+  assert.equal(effectiveFee(DYNAMIC_FEE_FLAG, 3000), 3000, "the flag means: read slot0");
+  assert.equal(effectiveFee(500, 3000), 500, "a static fee is the key's");
+  const out = quoteExactIn(10n ** 18n, price, 10n ** 30n, true, effectiveFee(DYNAMIC_FEE_FLAG, 3000));
+  assert.ok(out > 0n && out < 10n ** 18n, "a positive fill, less than the input at a 1:1 price");
+  assert.equal(quoteExactIn(10n ** 18n, price, 10n ** 30n, true, DYNAMIC_FEE_FLAG), 0n, "the raw flag can never make a negative quote");
+});

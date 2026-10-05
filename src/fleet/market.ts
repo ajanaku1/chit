@@ -46,13 +46,24 @@ export const poolIdFor = (token: Address, poolKey?: PoolKey): Hex => {
 
 export const slot0Slot = (poolId: Hex): Hex => keccak256(concatHex([poolId, toHex(POOLS_SLOT, { size: 32 })]));
 
-export const decodeSlot0 = (word: Hex): { sqrtPriceX96: bigint; tick: number } => {
+export const decodeSlot0 = (word: Hex): { sqrtPriceX96: bigint; tick: number; lpFee: number } => {
   const value = BigInt(word);
   const sqrtPriceX96 = value & ((1n << 160n) - 1n);
   const rawTick = (value >> 160n) & ((1n << 24n) - 1n);
   const tick = rawTick >= 1n << 23n ? Number(rawTick - (1n << 24n)) : Number(rawTick);
-  return { sqrtPriceX96, tick };
+  // v4's slot0: price (160 bits), tick (24), protocol fee (24), then the LP fee in force (24).
+  const lpFee = Number((value >> 208n) & ((1n << 24n) - 1n));
+  return { sqrtPriceX96, tick, lpFee };
 };
+
+/** A v4 pool key's fee with this bit set means the fee is dynamic: the one in force is slot0's lpFee, not the key's. */
+export const DYNAMIC_FEE_FLAG = 0x800000;
+
+/**
+ * The fee a quote must use. Found 2026-10-05: a dynamic-fee pool's key carries the flag (8 388 608), and read as a
+ * fee that is 838%, so the quote went negative and a buy's floor with it ("not in safe 128-bit unsigned range").
+ */
+export const effectiveFee = (keyFee: number, lpFee: number): number => ((keyFee & DYNAMIC_FEE_FLAG) !== 0 ? lpFee : keyFee);
 
 /** ETH is currency0, so amountOut ≈ amountIn · (sqrtP / 2^96)²: the spot price, before any impact. */
 export const estimateOut = (amountIn: bigint, sqrtPriceX96: bigint): bigint => (amountIn * sqrtPriceX96 * sqrtPriceX96) >> 192n;
@@ -81,7 +92,8 @@ export const quoteExactIn = (
   zeroForOne: boolean,
   feePips: number,
 ): bigint => {
-  if (amountIn === 0n || sqrtPriceX96 === 0n || liquidity === 0n) return 0n;
+  // A fee of 100% or more (a dynamic-fee flag passed as a fee) is no fill, never a negative one.
+  if (amountIn === 0n || sqrtPriceX96 === 0n || liquidity === 0n || feePips >= 1_000_000) return 0n;
   const inLessFee = (amountIn * (FEE_DENOMINATOR - BigInt(feePips))) / FEE_DENOMINATOR;
   if (zeroForOne) {
     // token0 (ETH) in: the price falls. sqrtP' = L·Q96·sqrtP / (L·Q96 + in·sqrtP); out1 = L·(sqrtP − sqrtP') / Q96
@@ -104,12 +116,13 @@ const ERC20_ABI = parseAbi([
 const ESCROW_EVENTS = parseAbi(["event CampaignRegistered(bytes32 indexed campaign, address indexed owner)"]);
 
 /** A pool's price and in-range liquidity, read from the PoolManager's storage. */
-const poolState = async (client: PublicClient, poolManager: Address, id: Hex): Promise<{ sqrtPriceX96: bigint; liquidity: bigint }> => {
+const poolState = async (client: PublicClient, poolManager: Address, id: Hex): Promise<{ sqrtPriceX96: bigint; liquidity: bigint; lpFee: number }> => {
   const [word, liq] = await Promise.all([
     client.readContract({ address: poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slot0Slot(id)] }),
     client.readContract({ address: poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [liquiditySlot(id)] }).catch(() => "0x0" as Hex),
   ]);
-  return { sqrtPriceX96: decodeSlot0(word).sqrtPriceX96, liquidity: BigInt(liq) & ((1n << 128n) - 1n) };
+  const { sqrtPriceX96, lpFee } = decodeSlot0(word);
+  return { sqrtPriceX96, liquidity: BigInt(liq) & ((1n << 128n) - 1n), lpFee };
 };
 
 export const createMarket = (
@@ -118,8 +131,8 @@ export const createMarket = (
 ): MarketPort => ({
   // The sell side: token (currency1) in, ETH (currency0) out. No spot fallback: a sale with no liquidity to quote is not sold.
   async sellQuote(token, amountIn, poolKey) {
-    const { sqrtPriceX96, liquidity } = await poolState(client, addresses.poolManager, poolIdFor(token, poolKey));
-    return quoteExactIn(amountIn, sqrtPriceX96, liquidity, false, poolKey.fee);
+    const { sqrtPriceX96, liquidity, lpFee } = await poolState(client, addresses.poolManager, poolIdFor(token, poolKey));
+    return quoteExactIn(amountIn, sqrtPriceX96, liquidity, false, effectiveFee(poolKey.fee, lpFee));
   },
   async tokenQuote(token, amountInWei, poolKey) {
     const id = poolIdFor(token, poolKey);
@@ -130,7 +143,7 @@ export const createMarket = (
       client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [slot0Slot(id)] }),
       client.readContract({ address: addresses.poolManager, abi: POOL_MANAGER_ABI, functionName: "extsload", args: [liquiditySlot(id)] }).catch(() => "0x0" as Hex),
     ]);
-    const { sqrtPriceX96 } = decodeSlot0(word);
+    const { sqrtPriceX96, lpFee } = decodeSlot0(word);
     const liquidity = BigInt(liq) & ((1n << 128n) - 1n);
     // The fill this trade would get, fee and price impact included, so the
     // slippage guard set against it holds on a thin pool; the spot estimate
@@ -138,7 +151,7 @@ export const createMarket = (
     // of the liquidity.
     // The pool's own fee tier; a hooked pool often says 0 and charges through the hook, which no local quote sees.
     const estimatedOut = liquidity > 0n
-      ? quoteExactIn(BigInt(amountInWei), sqrtPriceX96, liquidity, true, key.fee)
+      ? quoteExactIn(BigInt(amountInWei), sqrtPriceX96, liquidity, true, effectiveFee(key.fee, lpFee))
       : estimateOut(BigInt(amountInWei), sqrtPriceX96);
     return {
       token,

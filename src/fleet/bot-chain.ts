@@ -20,7 +20,10 @@ import { createPublicClient, createWalletClient, encodeFunctionData, http, maxUi
 import { privateKeyToAccount } from "viem/accounts";
 
 import { robinhoodChain } from "./chain-def.js";
-import { quoteExactIn } from "./market.js";
+import { effectiveFee, quoteExactIn } from "./market.js";
+
+/** A quote of zero or less is no quote: never a floor for a trade (2026-10-05, a negative one reached a buy). */
+const positive = (q: bigint): bigint | null => (q > 0n ? q : null);
 import { createPoolRegistry, type DiscoveredPool } from "./pool-registry.js";
 import type { Address, Hex } from "./types.js";
 import { PERMIT2, VENUE_POOL, encodeV4EthBuy, encodeV4TokenSell, minOutFor, sellApprovals, type PoolKey } from "./v4-swap.js";
@@ -200,11 +203,11 @@ export const createBotChain = (config: BotChainConfig): BotChain => {
     },
     async quoteBuy(token, ethIn) {
       const pool = await poolOf(token);
-      return !pool || pool.sqrtPriceX96 === 0n || pool.liquidity === 0n ? null : quoteExactIn(ethIn, pool.sqrtPriceX96, pool.liquidity, true, pool.key.fee);
+      return !pool || pool.sqrtPriceX96 === 0n || pool.liquidity === 0n ? null : positive(quoteExactIn(ethIn, pool.sqrtPriceX96, pool.liquidity, true, effectiveFee(pool.key.fee, pool.lpFee)));
     },
     async quoteSell(token, tokensIn) {
       const pool = await poolOf(token);
-      return !pool || pool.sqrtPriceX96 === 0n || pool.liquidity === 0n ? null : quoteExactIn(tokensIn, pool.sqrtPriceX96, pool.liquidity, false, pool.key.fee);
+      return !pool || pool.sqrtPriceX96 === 0n || pool.liquidity === 0n ? null : positive(quoteExactIn(tokensIn, pool.sqrtPriceX96, pool.liquidity, false, effectiveFee(pool.key.fee, pool.lpFee)));
     },
     async buy(key, token, ethIn, minOut) {
       const wallet = walletFor(key);
