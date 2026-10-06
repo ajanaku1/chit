@@ -1,5 +1,7 @@
 // Drawn from chit-fleet/app/fleet-privacy.html by scripts/app-pages.mjs; every id and class is the one the app's logic reads.
 /* eslint-disable */
+import { FOOT_LINE } from "@/components/chain";
+
 export const meta = { title: "Chit Fleet · What's private", description: "Exactly what Chit Fleet keeps private, what stays public, and who is trusted.", skip: {"href":"#privacy","label":"Skip to content"} };
 
 export function PrivacyMarkup() {
@@ -48,7 +50,7 @@ Private, not anonymous. We are not a mixer and we do not try to make you disappe
       </main>
 
       <footer className="fleet-foot">
-        <p>Testnet demonstration on Robinhood Chain.</p>
+        <p>{FOOT_LINE}</p>
         <p className="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
       </footer>
     

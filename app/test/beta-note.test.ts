@@ -65,6 +65,10 @@ test("on the beta the build puts the strip before the masthead of every page and
         for (const fact of betaFacts("1")) assert.ok(strip.includes(fact), `${page}: the strip omits ${fact}`);
         assert.doesNotMatch(strip, /<button|<input|<a /, `${page}: the strip has a control in it`);
         assert.ok(html.indexOf('id="beta-note"') < html.indexOf('<header class="masthead">'), `${page}: the strip is not before the masthead`);
+        // The footer stops calling the beta a testnet demonstration with no real money (it is real ETH).
+        assert.doesNotMatch(html, /Testnet demonstration/, `${page}: the beta still says testnet demonstration`);
+        assert.doesNotMatch(html, /no real money/, `${page}: the beta still says no real money`);
+        assert.match(html, /Beta on Robinhood Chain\./, `${page}: the footer does not say it is the beta`);
       }
       const balance = await readFile(join(out, "balance.html"), "utf8");
       const custody = /<p id="deposit-custody"([^>]*)>([^<]*)<\/p>/.exec(balance)!;
@@ -74,6 +78,7 @@ test("on the beta the build puts the strip before the masthead of every page and
         assert.ok(balance.indexOf('id="deposit-custody"') < balance.indexOf('id="deposit-sizes"'), "the statement is not beside the amount");
       } else {
         assert.match(custody[1]!, /\bhidden\b/, "off the beta the statement should stay hidden");
+        assert.match(balance, /Testnet demonstration on Robinhood Chain\. Test ETH and a test token only, no real money\./, "the testnet footer stands as written");
       }
     } finally {
       await rm(out, { recursive: true, force: true });

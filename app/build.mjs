@@ -4,7 +4,7 @@ import { copyFile, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promi
 // is not a URL; esbuild is given paths, so both crossings go through node:url.
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { chainTargetFromEnv, sessionTargetFromEnv, withBetaNote, withCaps } from "./chain-target.mjs";
+import { chainTargetFromEnv, sessionTargetFromEnv, withBetaNote, withCaps, withChainFooter } from "./chain-target.mjs";
 
 // APP_OUTPUT: explicit output directory (scripts/assemble-site.mjs sets it to
 // public/app/ so the app deploys beneath the landing). Default: ./dist.
@@ -15,7 +15,7 @@ const output = process.env.APP_OUTPUT
 // The chain, from the environment, at build time (T054): chain-target.json is
 // written here, never copied, and the beta note goes into every page (T056).
 const target = chainTargetFromEnv(process.env);
-const page = async (source) => writeFile(new URL(source.replace(/^\.\//, ""), output), withCaps(withBetaNote(await readFile(new URL(source, import.meta.url), "utf8"), target), target));
+const page = async (source) => writeFile(new URL(source.replace(/^\.\//, ""), output), withChainFooter(withCaps(withBetaNote(await readFile(new URL(source, import.meta.url), "utf8"), target), target), target));
 
 await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });

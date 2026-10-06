@@ -94,7 +94,11 @@ const forChain = (jsx) =>
     .replace(/<(\w+)([^>]*?) data-beta-note([^>]*?) hidden([^>]*)><\/\1>/g, (_, tag, a, b, c) => `<${tag}${a} data-beta-note${b} hidden={!BETA}${c}>{BETA ? BETA_NOTE : null}</${tag}>`)
     .replace(/<(\w+)([^>]*?) data-beta-gate-note([^>]*?) hidden([^>]*)><\/\1>/g, (_, tag, a, b, c) => `<${tag}${a} data-beta-gate-note${b} hidden={!BETA}${c}>{BETA ? GATE_SENTENCE : null}</${tag}>`)
     .replace(/data-led="[0-9.]+" data-unit="ETH" data-cap="draw">[0-9.]+ ETH/g, 'data-led={DRAW_CAP} data-unit="ETH" data-cap="draw">{`${DRAW_CAP} ETH`}')
-    .replace(/aria-label="This draw against the [0-9.]+ ETH cap"/g, "aria-label={`This draw against the ${DRAW_CAP} ETH cap`}");
+    .replace(/aria-label="This draw against the [0-9.]+ ETH cap"/g, "aria-label={`This draw against the ${DRAW_CAP} ETH cap`}")
+    // The footer's chain line, which the beta build rewrites (withChainFooter).
+    .replace(/Testnet demonstration on Robinhood Chain\. Test ETH and a test token only, no real money\./g, "{FOOT_LINE}{FOOT_MONEY}")
+    .replace(/Testnet demonstration on Robinhood Chain\./g, "{FOOT_LINE}")
+    .replace(/Testnet demonstration\./g, "{FOOT_SHORT}");
 
 await mkdir(OUT, { recursive: true });
 for (const [page, component] of Object.entries(PAGES)) {
@@ -105,7 +109,7 @@ for (const [page, component] of Object.entries(PAGES)) {
   const afterHeader = html.slice(html.indexOf("</header>") + "</header>".length, html.lastIndexOf("<script"));
   const inner = afterHeader.slice(0, afterHeader.lastIndexOf("</div>"));
   const body = forChain(toJsx(inner)).split("\n").map((l) => l.replace(/^ {6}/, "      ")).join("\n");
-  const used = ["BETA", "BETA_NOTE", "GATE_SENTENCE", "DRAW_CAP"].filter((name) => new RegExp(`\\b${name}\\b`).test(body));
+  const used = ["BETA", "BETA_NOTE", "GATE_SENTENCE", "DRAW_CAP", "FOOT_LINE", "FOOT_MONEY", "FOOT_SHORT"].filter((name) => new RegExp(`\\b${name}\\b`).test(body));
   const tsx = `// Drawn from chit-fleet/app/${page}.html by scripts/app-pages.mjs; every id and class is the one the app's logic reads.
 /* eslint-disable */
 ${used.length ? `import { ${used.join(", ")} } from "@/components/chain";\n\n` : ""}export const meta = { title: ${JSON.stringify(title)}, description: ${JSON.stringify(description)}, skip: ${JSON.stringify(skip ? { href: `#${skip[1]}`, label: skip[2] } : null)} };

@@ -1,6 +1,6 @@
 // Drawn from chit-fleet/app/balance.html by scripts/app-pages.mjs; every id and class is the one the app's logic reads.
 /* eslint-disable */
-import { BETA, BETA_NOTE, GATE_SENTENCE, DRAW_CAP } from "@/components/chain";
+import { BETA, BETA_NOTE, GATE_SENTENCE, DRAW_CAP, FOOT_LINE, FOOT_MONEY } from "@/components/chain";
 
 export const meta = { title: "Chit Fleet · Your balance", description: "Your Chit balance: deposit ETH into the shared pool, fund fleets from it, and withdraw to an address you choose.", skip: {"href":"#balance","label":"Skip to your balance"} };
 
@@ -92,7 +92,7 @@ You can take your unspent deposit straight from the pool contract, without us. A
       </main>
 
       <footer className="fleet-foot">
-        <p>Testnet demonstration on Robinhood Chain. Test ETH and a test token only, no real money.</p>
+        <p>{FOOT_LINE}{FOOT_MONEY}</p>
         <p className="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
       </footer>
     

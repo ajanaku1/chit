@@ -1,5 +1,7 @@
 // Drawn from chit-fleet/app/sessions.html by scripts/app-pages.mjs; every id and class is the one the app's logic reads.
 /* eslint-disable */
+import { FOOT_LINE, FOOT_MONEY } from "@/components/chain";
+
 export const meta = { title: "Chit · Session keys", description: "Session keys: give your bot a bounded key with a kill switch instead of your wallet. One contract, your rules, revoke in one transaction.", skip: {"href":"#sessions","label":"Skip to your sessions"} };
 
 export function SessionsMarkup() {
@@ -145,7 +147,7 @@ canExecute(key, target, selector, value)      // ask first, it says why not</pre
       </main>
 
       <footer className="fleet-foot">
-        <p>Testnet demonstration on Robinhood Chain. Test ETH and a test token only, no real money.</p>
+        <p>{FOOT_LINE}{FOOT_MONEY}</p>
         <p className="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
       </footer>
     

@@ -1,6 +1,6 @@
 // Drawn from chit-fleet/app/fleet.html by scripts/app-pages.mjs; every id and class is the one the app's logic reads.
 /* eslint-disable */
-import { DRAW_CAP } from "@/components/chain";
+import { DRAW_CAP, FOOT_LINE, FOOT_SHORT } from "@/components/chain";
 
 export const meta = { title: "Chit Fleet · Set up your fleet", description: "Chit Fleet: one private gas budget for all your trading wallets. Your keys stay with you; your main wallet stays out of sight.", skip: {"href":"#wizard","label":"Skip to setup"} };
 
@@ -35,7 +35,7 @@ Before you start: launching needs ETH in your Chit balance
             (<a href="./balance" target="_blank" rel="noopener">add it in a new tab</a>). Setup asks your wallet for a
             few free signatures and sends no transactions from it.
 {" "}</p>
-          <p className="fineprint">Testnet demonstration. <a href="./fleet-privacy">Exactly what's private →</a></p>
+          <p className="fineprint">{FOOT_SHORT} <a href="./fleet-privacy">Exactly what's private →</a></p>
         </section>{" "}
 {/* STEP 1: Connect */}
 {" "}<section className="wstep" data-wstep="connect" hidden aria-labelledby="connect-h">
@@ -176,7 +176,7 @@ Your fleet spends from your Chit balance.
       </main>
 
       <footer className="fleet-foot">
-        <p>Testnet demonstration on Robinhood Chain. Budget is ETH. No CHIT is required to create a fleet; holding CHIT is optional and only ever adds discounts and early access.</p>
+        <p>{FOOT_LINE} Budget is ETH. No CHIT is required to create a fleet; holding CHIT is optional and only ever adds discounts and early access.</p>
         <p className="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
       </footer>
     

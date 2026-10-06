@@ -1,6 +1,6 @@
 import { fileURLToPath } from "node:url";
 
-import { CAPS_UNTIL_AUDIT, GATE_SENTENCE, chainTargetFromEnv, sessionTargetFromEnv } from "../app/chain-target.mjs";
+import { CAPS_UNTIL_AUDIT, GATE_SENTENCE, chainFooter, chainTargetFromEnv, sessionTargetFromEnv } from "../app/chain-target.mjs";
 
 /*
  * The app's logic is ../app/src (wallet, deposits, fleets, sessions), imported as it is and
@@ -28,6 +28,7 @@ const nextConfig = {
     NEXT_PUBLIC_SESSION_TARGET: JSON.stringify(sessions),
     NEXT_PUBLIC_BETA_STRIP: JSON.stringify(target.beta ? [...target.betaFacts, CAPS_UNTIL_AUDIT] : []),
     NEXT_PUBLIC_GATE_SENTENCE: GATE_SENTENCE,
+    NEXT_PUBLIC_CHAIN_FOOTER: JSON.stringify(chainFooter(target)),
   },
   webpack(config, { webpack }) {
     config.resolve.extensionAlias = { ".js": [".ts", ".tsx", ".js"], ".mjs": [".mts", ".mjs"] };

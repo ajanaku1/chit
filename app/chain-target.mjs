@@ -105,6 +105,25 @@ export const withBetaNote = (html, target) => {
  * page and the wizard's meter label are rewritten from the target; at runtime
  * the pool's own caps replace them.
  */
+/**
+ * The footer's chain line. The pages are written for the testnet, where the
+ * line says test ETH and no real money; on the beta that sentence is false, so
+ * the build rewrites it to say real ETH within the pool's cap. The three
+ * forms are the three the pages use: with the money sentence, without, short.
+ */
+export const chainFooter = (target) => target.beta
+  ? { line: `Beta on ${target.chainName}.`, money: " Real ETH, within the pool's cap.", short: "Beta." }
+  : { line: "Testnet demonstration on Robinhood Chain.", money: " Test ETH and a test token only, no real money.", short: "Testnet demonstration." };
+
+export const withChainFooter = (html, target) => {
+  if (!target.beta) return html;
+  const foot = chainFooter(target);
+  return html
+    .replace(/Testnet demonstration on Robinhood Chain\. Test ETH and a test token only, no real money\./g, `${foot.line}${foot.money}`)
+    .replace(/Testnet demonstration on Robinhood Chain\./g, foot.line)
+    .replace(/Testnet demonstration\./g, foot.short);
+};
+
 export const withCaps = (html, target) => html
   .replace(/data-led="[0-9.]+" data-unit="ETH" data-cap="draw">[0-9.]+ ETH/g, `data-led="${target.caps.draw}" data-unit="ETH" data-cap="draw">${target.caps.draw} ETH`)
   .replace(/aria-label="This draw against the [0-9.]+ ETH cap"/g, `aria-label="This draw against the ${target.caps.draw} ETH cap"`);

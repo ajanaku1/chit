@@ -27,6 +27,12 @@ export const APP_ORIGIN = (process.env.NEXT_PUBLIC_APP_ORIGIN ?? "").replace(/\/
 /** The app's entry, on whichever host serves it, so the site can be one host and the app another. */
 export const APP_HREF = `${APP_ORIGIN}/app/balance`;
 
+/** The footer's chain line (app/chain-target.mjs chainFooter): on the beta it says real ETH, not a testnet demonstration. */
+const FOOTER = JSON.parse(process.env.NEXT_PUBLIC_CHAIN_FOOTER ?? "{}") as { line?: string; money?: string; short?: string };
+export const FOOT_LINE = FOOTER.line ?? "Testnet demonstration on Robinhood Chain.";
+export const FOOT_MONEY = FOOTER.money ?? " Test ETH and a test token only, no real money.";
+export const FOOT_SHORT = FOOTER.short ?? "Testnet demonstration.";
+
 /** The draw cap a page states before the pool has answered (FR-001, T059). */
 export const DRAW_CAP = TARGET.caps?.draw ?? "";
 

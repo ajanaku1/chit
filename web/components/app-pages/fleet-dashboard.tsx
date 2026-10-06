@@ -1,5 +1,7 @@
 // Drawn from chit-fleet/app/fleet-dashboard.html by scripts/app-pages.mjs; every id and class is the one the app's logic reads.
 /* eslint-disable */
+import { FOOT_LINE } from "@/components/chain";
+
 export const meta = { title: "Chit Fleet · Dashboard", description: "Chit Fleet dashboard: watch your gas budget, pause, stop, or close your fleet.", skip: {"href":"#dash","label":"Skip to dashboard"} };
 
 export function DashboardMarkup() {
@@ -75,7 +77,7 @@ export function DashboardMarkup() {
       </main>
 
       <footer className="fleet-foot">
-        <p>Testnet demonstration on Robinhood Chain. <a href="./fleet-privacy">Exactly what's private →</a></p>
+        <p>{FOOT_LINE} <a href="./fleet-privacy">Exactly what's private →</a></p>
         <p className="disclaimer">Chit is independent and not affiliated with, sponsored by, or endorsed by Robinhood, Uniswap, or any other project named here.</p>
       </footer>
     
