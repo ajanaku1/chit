@@ -99,6 +99,20 @@
             <a id="run-buy" class="primary linkbtn" href="./trade">Trade from these wallets</a>
             <p class="hint" id="buy-note">Buys are placed as orders on the Trade page: a token, a total, and slices spread across the fleet and over time.</p>
           </div>
+
+          <div class="dash-card" id="recover-card" data-reveal hidden>
+            <p class="cardlabel">Gas left in the wallets</p>
+            <p class="lead small">Each wallet was given a little ETH for gas when the fleet was funded. Closing the fleet does not move it: only the wallets' own keys can, and those are in your backup file.</p>
+            <form id="recover-form" novalidate>
+              <div class="field"><label for="r-payout">Send it to</label><input id="r-payout" name="payout" type="text" inputmode="text" placeholder="0x…" autocomplete="off" /></div>
+              <p class="fineprint">Use a wallet that has never sent to or received from your main wallet. Paying out to your main wallet would link it to your fleet, so it is not allowed.</p>
+              <div class="field"><label for="r-backup">Your fleet's backup file</label><input id="r-backup" name="backup" type="file" accept="application/json,.json" /></div>
+              <p class="fineprint">The file you saved when you set up the fleet. Your wallet signs once to open it; the keys inside never leave this page.</p>
+              <p id="r-status" class="fineprint" role="status" aria-live="polite"></p>
+              <p id="r-error" class="field-error" role="alert" hidden></p>
+              <button id="r-send" type="submit" class="primary">Get the gas back</button>
+            </form>
+          </div>
         </section>
       </main>
 

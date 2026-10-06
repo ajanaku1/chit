@@ -73,6 +73,20 @@ export function DashboardMarkup() {
             <a id="run-buy" className="primary linkbtn" href="./trade">Trade from these wallets</a>
             <p className="hint" id="buy-note">Buys are placed as orders on the Trade page: a token, a total, and slices spread across the fleet and over time.</p>
           </div>
+
+          <div className="dash-card" id="recover-card" data-reveal hidden>
+            <p className="cardlabel">Gas left in the wallets</p>
+            <p className="lead small">Each wallet was given a little ETH for gas when the fleet was funded. Closing the fleet does not move it: only the wallets' own keys can, and those are in your backup file.</p>
+            <form id="recover-form" noValidate>
+              <div className="field"><label htmlFor="r-payout">Send it to</label><input id="r-payout" name="payout" type="text" inputMode="text" placeholder="0x…" autoComplete="off" /></div>
+              <p className="fineprint">Use a wallet that has never sent to or received from your main wallet. Paying out to your main wallet would link it to your fleet, so it is not allowed.</p>
+              <div className="field"><label htmlFor="r-backup">Your fleet's backup file</label><input id="r-backup" name="backup" type="file" accept="application/json,.json" /></div>
+              <p className="fineprint">The file you saved when you set up the fleet. Your wallet signs once to open it; the keys inside never leave this page.</p>
+              <p id="r-status" className="fineprint" role="status" aria-live="polite"></p>
+              <p id="r-error" className="field-error" role="alert" hidden></p>
+              <button id="r-send" type="submit" className="primary">Get the gas back</button>
+            </form>
+          </div>
         </section>
       </main>
 

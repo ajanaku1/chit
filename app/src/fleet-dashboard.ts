@@ -14,11 +14,33 @@ import { RequestFailed, signedFleetApi } from "./fleet/signed-request.js";
 import type { DrawView } from "./fleet/control-room.js";
 import { capShare, pollDelayMs, stateLabel, type CachedBalance } from "./fleet/balance.js";
 import { renderLed } from "./fleet/led.js";
+import { RecoverFlowError, runRecovery, type RecoverStep } from "./fleet/recover-eth-flow.js";
+import { chainRecoverPorts } from "./fleet/sell-ports.js";
+
+type Hex = `0x${string}`;
 
 const el = <T extends HTMLElement = HTMLElement>(id: string): T => {
   const node = document.getElementById(id);
   if (!node) throw new Error(`missing element: ${id}`);
   return node as T;
+};
+
+const recoverStepLine = (step: RecoverStep): string => ({
+  unlocking: "Step 1 of 3: your wallet asks you to sign, which opens your backup. Nothing is sent yet.",
+  gas: "Step 2 of 3: Chit sends each wallet's key a little gas so it can move the ETH.",
+  sending: "Step 3 of 3: each wallet sends its ETH to the address you named. This can take a minute; keep this page open.",
+})[step];
+
+const recoverErrorText = (error: unknown): string => {
+  const reason = error instanceof RecoverFlowError ? error.reason : error instanceof RequestFailed ? (error.reason ?? error.code) : (error as Error).message;
+  if (reason === "payout_invalid") return "Enter the address to send the ETH to.";
+  if (reason === "payout_is_main_wallet") return "That is your main wallet. Paying out to it would link it to your fleet, so it is not allowed.";
+  if (reason === "payout_is_contract") return "That address is a contract. Name a wallet.";
+  if (reason === "nothing_to_recover") return "Your fleet's wallets hold no ETH right now.";
+  if (reason === "fleet_not_finished") return "Close the fleet first. While it runs, that ETH is its gas.";
+  if (reason === "vault_decryption_failed") return "That backup could not be opened with this wallet. Check it is this fleet's file, and that your wallet is on the same account as this page.";
+  if (reason === "transfer_failed") return "A wallet's transfer failed on chain. Nothing else was moved; try again in a minute.";
+  return `Didn't go through: ${reason}`;
 };
 
 const KNOWN_STATES: readonly CampaignState[] = [
@@ -45,6 +67,7 @@ class FleetDashboard {
     for (const button of Array.from(document.querySelectorAll<HTMLButtonElement>("[data-action]"))) {
       button.addEventListener("click", () => void this.#control(button.dataset["action"] as ControlAction));
     }
+    el<HTMLFormElement>("recover-form").addEventListener("submit", (event) => void this.#recover(event));
     // The header owns the wallet button; follow it rather than bind it again.
     window.addEventListener("chit-wallet-changed", () => void this.#refresh());
     void this.#refresh();
@@ -100,6 +123,8 @@ class FleetDashboard {
     }
     // Trading lives on the Trade page; the link only makes sense for a fleet that can trade.
     (el("run-buy") as HTMLAnchorElement).hidden = state !== "Active";
+    // The seeded gas is the fleet's while it runs, and a depleted fleet may be topped up; one over for good can send it home.
+    el("recover-card").hidden = !(["Closed", "Revoked", "Expired"] as string[]).includes(state) || this.#snapshot.accounts.length === 0;
 
     const budget = view.budget;
     el("b-funded").textContent = `${toEth(budget.funded)} ETH`;
@@ -292,6 +317,35 @@ class FleetDashboard {
   }
 
 
+
+  /** A finished fleet's leftover ETH, sent home by its own keys (recover-eth-flow.ts). */
+  async #recover(event: SubmitEvent): Promise<void> {
+    event.preventDefault();
+    const status = el("r-status");
+    const errorLine = el("r-error");
+    const button = el<HTMLButtonElement>("r-send");
+    errorLine.hidden = true;
+    const wallet = getConnectedWallet();
+    if (!wallet) { errorLine.textContent = "Connect your wallet first."; errorLine.hidden = false; return; }
+    const file = el<HTMLInputElement>("r-backup").files?.[0];
+    if (!file) { errorLine.textContent = "Choose your fleet's backup file first."; errorLine.hidden = false; return; }
+    button.disabled = true;
+    try {
+      const payout = el<HTMLInputElement>("r-payout").value.trim() as Hex;
+      const result = await runRecovery(chainRecoverPorts(wallet), {
+        campaign: this.#snapshot.campaign, payout, main: wallet, envelopeJson: await file.text(), accounts: this.#snapshot.accounts as Hex[],
+        progress: (sent, of) => { if (sent > 0) status.textContent = `${sent} of ${of} wallets sent.`; },
+      }, (step) => { status.textContent = recoverStepLine(step); });
+      status.textContent = `Done. ${toEth(result.total.toString())} ETH from ${result.transfers.length} wallet${result.transfers.length === 1 ? "" : "s"} went to ${payout}.`;
+      void this.#refresh();
+    } catch (error) {
+      status.textContent = "";
+      errorLine.textContent = recoverErrorText(error);
+      errorLine.hidden = false;
+    } finally {
+      button.disabled = false;
+    }
+  }
 
   #pendingOrError(action: string, error: unknown): void {
     const code = (error as Error).message;
