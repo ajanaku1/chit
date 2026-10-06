@@ -154,6 +154,9 @@ const STATUS: Record<string, number> = {
 /** Buy-path policy refusals are 403 per the fleet-api.md route table. */
 const POLICY_REJECTED_STATUS = 403;
 
+/** States a fleet never trades from again: the only ones whose seeded gas may go home (`recoverGas`). Depleted is not one; a top-up revives it. */
+const OVER_FOR_GOOD: ReadonlySet<CampaignState> = new Set<CampaignState>(["Closed", "Revoked", "Expired"]);
+
 const CONTROL_EVENTS = {
   pause: "pause",
   resume: "resume",
@@ -293,6 +296,7 @@ export class CampaignRouter {
     if (action === "holdings") return this.#holdings(wallet, body);
     // Selling (docs/design-sell.md). Not behind an idempotency key: a transfer hash counts once ever, and gas is once an hour per fleet and token.
     if (action === "sellGas") return this.#sellGas(wallet, body);
+    if (action === "recoverGas") return this.#recoverGas(wallet, body);
     if (action === "sell") return this.#sell(wallet, body);
     if (action === "sales") return this.#sales(wallet);
 
@@ -709,6 +713,25 @@ export class CampaignRouter {
     const fromChain = await this.#enrolledOwners(sell, this.#key(record), body["accounts"], holding ? (token as Address) : undefined);
     const owners = [...new Set([...fromRecord, ...fromChain])] as Address[];
     return { status: 200, body: { operator: sell.operator, topped: await topUpOwners(sell, owners) } };
+  }
+
+  /**
+   * Gas for a finished fleet's owner keys to send home the ETH its accounts
+   * still hold (`withdrawEth`): the gas each account was seeded with and did
+   * not spend. The sale's top-up, without a token. While a fleet trades that
+   * ETH is its gas, and a depleted one may be topped up and trade again, so
+   * only a fleet that is over for good may take it; the same hourly limit
+   * per key applies.
+   */
+  async #recoverGas(wallet: string, body: Record<string, unknown>): Promise<RouterResult> {
+    const sell = this.#seller();
+    const record = await this.#campaign(wallet, body);
+    if (!OVER_FOR_GOOD.has(record.state)) throw new CampaignStateError("state_invalid", "fleet_not_finished");
+    if (typeof body["payout"] === "string" && (await sell.chain.isContract?.(body["payout"] as Address))) throw new SellRefused("payout_is_contract");
+    const fromRecord = record.accounts.map((a) => a.ownerAddress.toLowerCase());
+    const fromChain = await this.#enrolledOwners(sell, this.#key(record), body["accounts"]);
+    const owners = [...new Set([...fromRecord, ...fromChain])] as Address[];
+    return { status: 200, body: { topped: await topUpOwners(sell, owners) } };
   }
 
   /** The owner keys of the named accounts enrolled in this fleet (and holding `token`, when given), read from the chain; at most a fleet's fifty. */
